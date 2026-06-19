@@ -12,7 +12,7 @@ type MarkdownRenderOptions = { inline?: boolean };
 type LegacyCryptoWindow = Window & { msCrypto?: Crypto };
 type WorldFeedEvent = LooseRecord & { id?: unknown; at?: unknown };
 type WorldFeedRoomView = { title: string; meta: string };
-type WorldFeedEventView = { label: string; age: string };
+type WorldFeedEventView = { id?: string; label: string; age: string };
 type QuestionPromptImageView = { src: string; alt: string };
 type LeaderboardGradeChipView = { className: string; text: string };
 type LeaderboardRowView = {
@@ -477,10 +477,16 @@ export function worldFeedRoomViews(rooms: unknown, roster: unknown, limit = 5): 
 export function worldFeedEventViews(events: unknown, now: unknown, limit = 3): WorldFeedEventView[] {
   return (Array.isArray(events) ? events : [])
     .slice(0, Math.max(0, Math.floor(Number(limit) || 3)))
-    .map((event) => ({
-      label: worldFeedEventDisplayLabel(event),
-      age: worldFeedEventAgeLabel(event && typeof event === "object" ? (event as WorldFeedEvent).at : 0, now),
-    }));
+    .map((event) => {
+      const record = event && typeof event === "object" ? event as WorldFeedEvent : {};
+      const id = typeof record.id === "string" && record.id ? record.id : "";
+      const view: WorldFeedEventView = {
+        label: worldFeedEventDisplayLabel(event),
+        age: worldFeedEventAgeLabel(record.at, now),
+      };
+      if (id) view.id = id;
+      return view;
+    });
 }
 
 export function worldFeedPanelView(state: unknown, roster: unknown, now: unknown): {

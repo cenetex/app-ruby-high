@@ -1361,6 +1361,20 @@ export function runViewerClient(bootstrap) {
       clearTimeout(handle);
     },
   });
+  const worldActionsController = createViewerWorldActionsController({
+    root: els.worldPanelEvents,
+    command,
+    removeEvent(eventId) {
+      worldFeedClient.state.events = worldFeedClient.state.events.filter((event) => !event || event.id !== eventId);
+      renderWorldPanel();
+    },
+    refreshWorld(opts) {
+      return loadWorldFeed(opts || {});
+    },
+    notify(message, ok) {
+      showCongrats(message, ok, ok ? 2400 : 4200);
+    },
+  });
 
   function renderWorldPanel() {
     worldPanelController.render();
@@ -12626,6 +12640,7 @@ export function runViewerClient(bootstrap) {
     await applySharedPackFromUrl(sharedPackId);
   }
   void bootInitialSession();
+  worldActionsController.attach();
   worldLifecycleController.attach();
   initializePrivyFromStoredSession();
   // Adaptive poll: tick every second during an active race so NPC picks

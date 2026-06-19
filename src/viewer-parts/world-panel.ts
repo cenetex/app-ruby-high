@@ -8,6 +8,7 @@ export interface ViewerWorldPanelRoomView {
 }
 
 export interface ViewerWorldPanelEventView {
+  id?: string;
   label: string;
   age: string;
 }
@@ -78,6 +79,7 @@ export function createViewerWorldPanelController(deps: ViewerWorldPanelControlle
   function appendEventRow(parent: HTMLElement, event: ViewerWorldPanelEventView): void {
     const row = deps.document.createElement("div");
     row.className = "world-event-row";
+    if (event.id) row.dataset.worldEventId = event.id;
     const dot = deps.document.createElement("span");
     dot.className = "world-event-dot";
     const label = deps.document.createElement("span");
@@ -89,6 +91,29 @@ export function createViewerWorldPanelController(deps: ViewerWorldPanelControlle
     row.appendChild(dot);
     row.appendChild(label);
     row.appendChild(time);
+    if (event.id) {
+      const actions = deps.document.createElement("span");
+      actions.className = "world-event-actions";
+      const hide = deps.document.createElement("button");
+      hide.className = "world-event-action";
+      hide.type = "button";
+      hide.title = "Hide this world event";
+      hide.setAttribute("aria-label", "Hide this world event");
+      hide.dataset.worldEventAction = "hide";
+      hide.dataset.worldEventId = event.id;
+      hide.textContent = "×";
+      const report = deps.document.createElement("button");
+      report.className = "world-event-action is-report";
+      report.type = "button";
+      report.title = "Report this world event";
+      report.setAttribute("aria-label", "Report this world event");
+      report.dataset.worldEventAction = "report";
+      report.dataset.worldEventId = event.id;
+      report.textContent = "!";
+      actions.appendChild(hide);
+      actions.appendChild(report);
+      row.appendChild(actions);
+    }
     parent.appendChild(row);
   }
 

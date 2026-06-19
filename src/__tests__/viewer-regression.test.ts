@@ -100,9 +100,11 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function renderWorldPanel()");
     expectScriptToContain(script, "async function loadWorldFeed(opts)");
     expectScriptToContain(script, "function createViewerWorldFeedClient");
+    expectScriptToContain(script, "function createViewerWorldActionsController");
     expectScriptToContain(script, "function createViewerWorldLifecycleController");
     expectScriptToContain(script, "function createViewerWorldPanelController");
     expectScriptToContain(clientSource, "const worldFeedClient = createViewerWorldFeedClient({");
+    expectScriptToContain(clientSource, "const worldActionsController = createViewerWorldActionsController({");
     expectScriptToContain(clientSource, "const worldLifecycleController = createViewerWorldLifecycleController({");
     expectScriptToContain(clientSource, "const worldPanelController = createViewerWorldPanelController({");
     expectScriptToContain(script, '"/world/events?limit=8"');
@@ -144,6 +146,11 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function appendEventRow(parent, event)");
     expectScriptToContain(script, "label.textContent = event.label;");
     expectScriptToContain(script, "time.textContent = event.age;");
+    expectScriptToContain(script, 'hide.dataset.worldEventAction = "hide";');
+    expectScriptToContain(script, 'report.dataset.worldEventAction = "report";');
+    expectScriptToContain(script, 'type: "hide-public-world-event", eventId');
+    expectScriptToContain(script, 'type: "report-public-world-event", eventId, reason: "player-report"');
+    expectScriptToContain(clientSource, "worldActionsController.attach();");
     expectScriptToContain(clientSource, "function pauseWorldFeedPoll()");
     expectScriptToContain(clientSource, "function resumeWorldFeedPoll(delayMs)");
     expectScriptToContain(script, "if (deps.document.visibilityState === \"hidden\")");

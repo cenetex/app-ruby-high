@@ -6,7 +6,11 @@ class FakeElement {
   className = "";
   textContent = "";
   hidden = false;
+  dataset: Record<string, string> = {};
   children: FakeElement[] = [];
+  title = "";
+  type = "";
+  attributes: Record<string, string> = {};
 
   constructor(readonly tagName: string) {}
 
@@ -17,6 +21,10 @@ class FakeElement {
 
   replaceChildren(...children: FakeElement[]): void {
     this.children = children;
+  }
+
+  setAttribute(name: string, value: string): void {
+    this.attributes[name] = value;
   }
 }
 
@@ -90,7 +98,7 @@ function makeHarness(overrides: {
       return {
         summary: "2 students live · 1 room",
         rooms: [{ title: "Freshman · Ruby", meta: "2 students active" }],
-        events: [{ label: "Ruby started class", age: "1m" }],
+        events: [{ id: "world:event:a", label: "Ruby started class", age: "1m" }],
       };
     },
     setTimeout(fn) {
@@ -136,7 +144,12 @@ describe("viewer world panel controller", () => {
     expect(textTree(harness.rooms)).toEqual(["Freshman · Ruby", "2 students active"]);
     expect(harness.events.children).toHaveLength(1);
     expect(harness.events.children[0]?.className).toBe("world-event-row");
-    expect(textTree(harness.events)).toEqual(["Ruby started class", "1m"]);
+    expect(harness.events.children[0]?.dataset.worldEventId).toBe("world:event:a");
+    expect(textTree(harness.events)).toEqual(["Ruby started class", "1m", "×", "!"]);
+    const actions = harness.events.children[0]?.children[3];
+    expect(actions?.className).toBe("world-event-actions");
+    expect(actions?.children[0]?.dataset).toEqual({ worldEventAction: "hide", worldEventId: "world:event:a" });
+    expect(actions?.children[1]?.dataset).toEqual({ worldEventAction: "report", worldEventId: "world:event:a" });
   });
 
   it("hides the panel until loaded or when the caller suppresses it", () => {

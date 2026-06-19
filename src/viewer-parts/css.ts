@@ -2449,7 +2449,7 @@ export const VIEWER_CSS = `
   .world-event-row {
     min-width: 0;
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
     align-items: center;
     gap: 8px;
     color: var(--text-soft);
@@ -2473,6 +2473,39 @@ export const VIEWER_CSS = `
     color: var(--text-fade);
     font-size: 10px;
     white-space: nowrap;
+  }
+  .world-event-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .world-event-action {
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.04);
+    color: var(--text-fade);
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    cursor: pointer;
+  }
+  .world-event-action:hover {
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--accent) 45%, rgba(255,255,255,0.14));
+  }
+  .world-event-action.is-report:hover {
+    color: #ffdf8b;
+    border-color: rgba(255, 223, 139, 0.55);
+  }
+  .world-event-action:disabled {
+    cursor: wait;
+    opacity: 0.55;
   }
   .world-panel-empty {
     color: var(--text-mute);

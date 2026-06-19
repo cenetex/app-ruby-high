@@ -124,8 +124,8 @@ describe("viewer world feed pure helpers", () => {
       { title: "Sophomore · Sally Science", meta: "Sally Science live class 2/3" },
     ]);
     expect(worldFeedEventViews(state.events, now)).toEqual([
-      { label: "Ruby started class", age: "1m" },
-      { label: "Comic page unlocked", age: "2m" },
+      { id: "world:event:a", label: "Ruby started class", age: "1m" },
+      { id: "world:event:b", label: "Comic page unlocked", age: "2m" },
     ]);
     expect(worldFeedPanelView(state, roster, now)).toEqual({
       summary: "3 students live · 2 rooms",
@@ -134,8 +134,8 @@ describe("viewer world feed pure helpers", () => {
         { title: "Sophomore · Sally Science", meta: "Sally Science live class 2/3" },
       ],
       events: [
-        { label: "Ruby started class", age: "1m" },
-        { label: "Comic page unlocked", age: "2m" },
+        { id: "world:event:a", label: "Ruby started class", age: "1m" },
+        { id: "world:event:b", label: "Comic page unlocked", age: "2m" },
       ],
     });
   });
@@ -147,8 +147,8 @@ describe("viewer world feed pure helpers", () => {
 
     expect(worldFeedRoomViews(rooms, [], 2)).toHaveLength(2);
     expect(worldFeedEventViews(events, now, 2)).toEqual([
-      { label: "Event 0", age: "now" },
-      { label: "Event 1", age: "1m" },
+      { id: "world:event:0", label: "Event 0", age: "now" },
+      { id: "world:event:1", label: "Event 1", age: "1m" },
     ]);
     expect(worldFeedPanelView({ activeStudents: 0, activeRooms: [], events: [], error: "offline" }, [], now)).toEqual({
       summary: "World feed paused",
