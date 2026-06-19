@@ -23,7 +23,7 @@ the implementation contract.
 | [#143 MMO: durable room and world state model](https://github.com/cenetex/app-ruby-high/issues/143) | Open, first durable slices in #138 | **P0 MMO data model.** Live-room goals, sanitized room/term snapshots, completed room outcomes, teacher agenda records, public event replay, summary counters, moderation suppression state, and rollback docs are durable; next is richer outcome summaries, agenda execution rules, and restart/replay acceptance tests that prove the durable model is not just an admin counter. |
 | [#142 MMO: public presence and moderation controls](https://github.com/cenetex/app-ruby-high/issues/142) | Open, operator workflow in #138 | **P0 safety.** Public presence toggle, public-name review policy, per-player hide/report, admin moderation snapshot, repeated-report counts, moderator notes, report dismissal, global suppression, action throttles, and account copy that names public/private profile fields exist; next is tying moderation surfaces into richer live-room rewards and term progression. |
 | [#141 MMO: teacher curriculum research loop](https://github.com/cenetex/app-ruby-high/issues/141) | Open, deeper loop in #138 | **P1 content engine.** Teacher corpora metadata, reading lists, primary-source packets, misconception checks, grade briefs, replenishment proposals, coverage-exhaustion auto-enqueue, validation, review readiness, explicit approval gates, runtime promotion, weak-subject and repetition signals exist; next is broader per-teacher corpus depth. |
-| [#140 MMO: typed public-world viewer module](https://github.com/cenetex/app-ruby-high/issues/140) | Open, several seams in #138 | **P1 maintainability.** World feed, world panel, lifecycle wiring, race/question/leaderboard/progress models, and account public-world visibility view models are typed; next is extracting larger public-world action/UI surfaces out of `viewer-parts/client.ts`. |
+| [#140 MMO: typed public-world viewer module](https://github.com/cenetex/app-ruby-high/issues/140) | Open, several seams in #138 | **P1 maintainability.** World feed, world panel, lifecycle wiring, public-world action handling, composed world-controller wiring, race/question/leaderboard/progress models, and account public-world visibility view models are typed; next is extracting the next public-world/account surface still owned by `viewer-parts/client.ts`. |
 | [#139 MMO: live class rooms MVP](https://github.com/cenetex/app-ruby-high/issues/139) | Open, answer-flow goal path in #138 | **P1 gameplay.** Two guest sessions can contribute to a room goal through normal answer commands and observe sanitized public progress; next is richer room rules and visible cooperative rewards. |
 | [#122 Return 400 for unknown viewer command types](https://github.com/cenetex/app-ruby-high/issues/122) | Fixed in #138; close after merge | **P0 pre-MMO hardening.** Unknown mutation commands fail closed with a 400 before mutating state. |
 | [#121 Harden creator materials URL ingestion](https://github.com/cenetex/app-ruby-high/issues/121) | Fixed in #138; close after merge | **P1 security.** Creator/import URL ingestion is constrained by host allowlisting, raw GitHub normalization, private-network rejection, redirect checks, and size limits. |
@@ -214,8 +214,10 @@ outcomes without requiring crypto participation.
    continue extracting public-world UI from `viewer-parts/client.ts` into typed
    modules with unit tests. The account public-world control is now behind a
    typed controller, and live-room channel row view models now come from typed
-   helpers plus a typed room-row DOM controller; the next target is the next
-   large public-world or account surface still owned by the unchecked client.
+   helpers plus a typed room-row DOM controller. The public-world feed, panel,
+   action, and lifecycle wiring now compose behind one typed world controller
+   that still serializes into the inline viewer. Next target: the next large
+   public-world or account surface still owned by the unchecked client.
 2. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the
    current minimal room contribution proof with one visible cooperative reward:
    completed live-room goals now carry a class-wide Study Spark reward label in

@@ -4,6 +4,7 @@ import { createViewerApiClient, withViewerTimeoutSignal } from "./api.js";
 import { consumeViewerSseStream, parseViewerSseFrames } from "./sse.js";
 import { createViewerTurnController } from "./turn-controller.js";
 import { createViewerWorldActionsController } from "./world-actions.js";
+import { createViewerWorldController } from "./world-controller.js";
 import { createViewerWorldFeedClient } from "./world-feed.js";
 import { createViewerWorldLifecycleController } from "./world-lifecycle.js";
 import { createViewerWorldPanelController } from "./world-panel.js";
@@ -174,6 +175,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createViewerWorldFeedClient = ${createViewerWorldFeedClient.toString()};
   const createViewerWorldLifecycleController = ${createViewerWorldLifecycleController.toString()};
   const createViewerWorldPanelController = ${createViewerWorldPanelController.toString()};
+  const createViewerWorldController = ${createViewerWorldController.toString()};
   const createRoomChannelRowsController = ${createRoomChannelRowsController.toString()};
   const parseViewerSseFrames = ${parseViewerSseFrames.toString()};
   const consumeViewerSseStream = ${consumeViewerSseStream.toString()};

@@ -1322,34 +1322,28 @@ export function runViewerClient(bootstrap) {
     return apiClient.apiFetch(url, init);
   }
 
-  const worldFeedClient = createViewerWorldFeedClient({
-    apiBase,
-    now() {
-      return Date.now();
-    },
-    apiFetch,
-    consumeSse: consumeViewerSseStream,
-    buildEventsUrl: worldFeedEventsUrl,
-    pruneEvents: pruneWorldFeedEventList,
-    mergeEvents: mergeWorldFeedEventList,
-    onChange() {
-      renderWorldPanel();
-    },
-  });
-
-  const worldPanelController = createViewerWorldPanelController({
+  const worldController = createViewerWorldController({
     document,
+    window,
     elements: {
       panel: els.worldPanel,
       sub: els.worldPanelSub,
       rooms: els.worldPanelRooms,
       events: els.worldPanelEvents,
+      refreshButton: els.worldPanelRefresh,
     },
-    feedClient: worldFeedClient,
+    apiBase,
     maxEventAgeMs: WORLD_FEED_EVENT_MAX_AGE_MS,
+    authKeys: [AUTH_KEY, AUTH_LABEL, AUTH_PERSIST],
     now() {
       return Date.now();
     },
+    apiFetch,
+    command,
+    consumeSse: consumeViewerSseStream,
+    buildEventsUrl: worldFeedEventsUrl,
+    pruneEvents: pruneWorldFeedEventList,
+    mergeEvents: mergeWorldFeedEventList,
     getRoster() {
       return lastTelemetry && Array.isArray(lastTelemetry.faculty_roster) ? lastTelemetry.faculty_roster : [];
     },
@@ -1357,6 +1351,12 @@ export function runViewerClient(bootstrap) {
       return leaderboardViewOpen;
     },
     panelView: worldFeedPanelView,
+    notify(message, ok) {
+      showCongrats(message, ok, ok ? 2400 : 4200);
+    },
+    deriveAuth,
+    initializePrivyFromStoredSession,
+    postViewerMetricEvent,
     setTimeout(fn, delayMs) {
       return setTimeout(fn, delayMs);
     },
@@ -1364,46 +1364,19 @@ export function runViewerClient(bootstrap) {
       clearTimeout(handle);
     },
   });
-  const worldActionsController = createViewerWorldActionsController({
-    root: els.worldPanelEvents,
-    command,
-    removeEvent(eventId) {
-      worldFeedClient.state.events = worldFeedClient.state.events.filter((event) => !event || event.id !== eventId);
-      renderWorldPanel();
-    },
-    refreshWorld(opts) {
-      return loadWorldFeed(opts || {});
-    },
-    notify(message, ok) {
-      showCongrats(message, ok, ok ? 2400 : 4200);
-    },
-  });
 
   function renderWorldPanel() {
-    worldPanelController.render();
+    worldController.render();
   }
   async function loadWorldFeed(opts) {
-    await worldPanelController.load(opts || {});
+    await worldController.load(opts || {});
   }
   function pauseWorldFeedPoll() {
-    worldPanelController.pausePoll();
+    worldController.pausePoll();
   }
   function resumeWorldFeedPoll(delayMs) {
-    worldPanelController.resumePoll(delayMs || 0);
+    worldController.resumePoll(delayMs || 0);
   }
-  const worldLifecycleController = createViewerWorldLifecycleController({
-    document,
-    window,
-    refreshButton: els.worldPanelRefresh,
-    authKeys: [AUTH_KEY, AUTH_LABEL, AUTH_PERSIST],
-    now: () => Date.now(),
-    loadWorldFeed,
-    pauseWorldFeedPoll,
-    resumeWorldFeedPoll,
-    deriveAuth,
-    initializePrivyFromStoredSession,
-    postViewerMetricEvent,
-  });
 
   function postViewerMetricEvent(type, payload) {
     const body = Object.assign({ type: type }, payload || {});
@@ -12614,8 +12587,7 @@ export function runViewerClient(bootstrap) {
     await applySharedPackFromUrl(sharedPackId);
   }
   void bootInitialSession();
-  worldActionsController.attach();
-  worldLifecycleController.attach();
+  worldController.attach();
   initializePrivyFromStoredSession();
   // Adaptive poll: tick every second during an active race so NPC picks
   // land in real time; back off to 4s when idle to save bandwidth.
