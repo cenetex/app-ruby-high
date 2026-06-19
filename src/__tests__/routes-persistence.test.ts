@@ -305,6 +305,102 @@ describe("command route persistence and scheduler misses", () => {
     expect(ruby.getOrCreate("rh:anonymous").character).toBeNull();
   });
 
+  it("lets two routed clients contribute to the same public live-room goal", async () => {
+    vi.useFakeTimers();
+    const now = Date.UTC(2026, 5, 15, 12);
+    vi.setSystemTime(now);
+    setActivePack(rubyHomeroomSocialPack());
+    const store = new MemorySessionStore();
+    const faculty = await FacultyService.start({} as never);
+    const ruby = new RubyHighService({} as never, store);
+    ruby.setFacultyService(faculty);
+    const auth = await AuthService.start({} as never, store);
+    try {
+      const firstSession = await auth.createGuestSession();
+      const secondSession = await auth.createGuestSession();
+      const firstCookie = `rh_session=${firstSession.token}`;
+      const secondCookie = `rh_session=${secondSession.token}`;
+      const firstState = ruby.getOrCreate(auth.stateKeyForRecord(firstSession.record));
+      const secondState = ruby.getOrCreate(auth.stateKeyForRecord(secondSession.record));
+
+      ruby.createCharacter(firstState.sessionId, {
+        name: "Route Goal Noor",
+        playbookId: "overachiever",
+        stats: { head: 2, heart: 1, hustle: 0, honor: 1 },
+        arcAnswer: "I help shared goals move.",
+        personality: "Brisk and kind.",
+      });
+      ruby.createCharacter(secondState.sessionId, {
+        name: "Route Goal Mina",
+        playbookId: "overachiever",
+        stats: { head: 1, heart: 2, hustle: 1, honor: 0 },
+        arcAnswer: "I watch the room progress.",
+        personality: "Steady and bright.",
+      });
+      for (const state of [firstState, secondState]) {
+        state.currentGrade = "10";
+        state.faculty = "ruby";
+        state.character!.dailyClasses = {
+          "10:ruby:2026-06-15": {
+            grade: "10",
+            facultyId: "ruby",
+            date: "2026-06-15",
+            status: "complete",
+            questionCount: 3,
+            correctCount: 3,
+            scoreTotal: 300,
+            scoreMax: 300,
+            letterGrade: "A",
+            completedAt: now,
+            updatedAt: now,
+          },
+        };
+      }
+
+      const runCommand = async (cookieHeader: string, body: Record<string, unknown>) => {
+        const harness = makeCommandCtx(ruby, body, faculty, null, auth, cookieHeader);
+        const handled = await handleAppRoutes(harness.ctx);
+        expect(handled).toBe(true);
+        if (harness.response?.status !== 200) throw new Error(JSON.stringify(harness.response?.body));
+        expect(harness.response?.status).toBe(200);
+        return harness.response!.body;
+      };
+      await runCommand(firstCookie, { type: "pick", faculty: "ruby" });
+      await runCommand(secondCookie, { type: "pick", faculty: "ruby" });
+      await runCommand(firstCookie, { type: "answer", picked: firstState.current!.correct });
+      await runCommand(secondCookie, { type: "answer", picked: secondState.current!.correct });
+
+      const world = ruby.getSchoolWorldSnapshot(10, now);
+      expect(world.activeRooms[0]).toMatchObject({
+        grade: "10",
+        facultyId: "ruby",
+        activeStudents: 2,
+        goal: {
+          progress: 2,
+          target: 3,
+          complete: false,
+          updatedAt: now,
+        },
+      });
+      expect(world.recentEvents.filter((event) => event.kind === "room.goal-progress")).toEqual([
+        expect.objectContaining({
+          kind: "room.goal-progress",
+          faculty: "ruby",
+          grade: "10",
+          progress: 2,
+          target: 3,
+          complete: false,
+        }),
+      ]);
+      expect(JSON.stringify(world.recentEvents)).not.toContain("rh:guest");
+      expect(JSON.stringify(world.recentEvents)).not.toContain("Route Goal Noor");
+      expect(JSON.stringify(world.recentEvents)).not.toContain("Route Goal Mina");
+    } finally {
+      await auth.stop();
+      vi.useRealTimers();
+    }
+  });
+
   it("returns a no-op success when offline pick has no scheduled card due", async () => {
     setActivePack(singleQuestionPack());
     const faculty = await FacultyService.start({} as never);
