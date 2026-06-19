@@ -141,6 +141,22 @@ export type AccountHallPassCardsPanelView = {
   mintTitle: string;
   needsWalletConnection: boolean;
 };
+export type AccountComicPageTileView = {
+  pageNumber: number;
+  title: string;
+  unlocked: boolean;
+  ariaLabel: string;
+  unlock: LooseRecord | null;
+};
+export type AccountComicPanelView = {
+  issueId: string;
+  title: string;
+  pageCount: number;
+  unlockedCount: number;
+  summaryText: string;
+  progressText: string;
+  tiles: AccountComicPageTileView[];
+};
 type ClassmateArcProgress = { value: number; total: number };
 type RoomCompletionProgress = { value: number; total: number };
 export type RoomChannelStudentView = { id: string; name: string };
@@ -843,6 +859,54 @@ export function accountHallPassCardsPanelView(
     mintText,
     mintTitle,
     needsWalletConnection,
+  };
+}
+
+export function comicPageTitle(pageNumber: unknown): string {
+  const n = Math.max(1, Math.floor(Number(pageNumber || 1)));
+  return (VIEWER_CONSTANTS.FIRST_BELL_PAGE_TITLES as Record<number, string>)[n] || "First Bell";
+}
+
+export function accountComicPanelView(collectionInput: NullableRecord): AccountComicPanelView {
+  const collection = collectionInput && typeof collectionInput === "object" ? collectionInput : null;
+  const issueId = String((collection && collection.issueId) || "first-bell");
+  const title = String((collection && collection.title) || "Ruby High: Book One - First Bell");
+  const rawPageCount = Math.max(1, Math.floor(Number(collection && collection.pageCount || VIEWER_CONSTANTS.FIRST_BELL_PAGE_COUNT)));
+  const pageCount = Math.min(VIEWER_CONSTANTS.FIRST_BELL_PAGE_COUNT, rawPageCount);
+  const rawUnlockedPages: unknown[] = collection && Array.isArray(collection.unlockedPages) ? collection.unlockedPages : [];
+  const unlockedPages = rawUnlockedPages.length > 0
+    ? rawUnlockedPages
+      .filter((page) => page && typeof page === "object" && Number.isFinite(Number((page as LooseRecord).pageNumber)))
+      .map((page) => ({
+        ...(page as LooseRecord),
+        pageNumber: Math.floor(Number((page as LooseRecord).pageNumber)),
+      }))
+    : [];
+  const byPage = new Map<number, LooseRecord>();
+  unlockedPages.forEach((page) => {
+    if (page.pageNumber >= 1 && page.pageNumber <= pageCount) byPage.set(page.pageNumber, page);
+  });
+  const unlockedCount = byPage.size;
+  const tiles: AccountComicPageTileView[] = [];
+  for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
+    const unlock = byPage.get(pageNumber) || null;
+    const pageTitle = comicPageTitle(pageNumber);
+    tiles.push({
+      pageNumber,
+      title: pageTitle,
+      unlocked: !!unlock,
+      ariaLabel: unlock ? "Open " + pageTitle : "Comic page " + pageNumber + " locked",
+      unlock,
+    });
+  }
+  return {
+    issueId,
+    title,
+    pageCount,
+    unlockedCount,
+    summaryText: unlockedCount + "/" + pageCount + " pages found",
+    progressText: unlockedCount + "/" + pageCount + " pages",
+    tiles,
   };
 }
 

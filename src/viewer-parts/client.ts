@@ -3199,11 +3199,9 @@ export function runViewerClient(bootstrap) {
 
   function renderAccountComics() {
     if (!els.accountComics) return;
-    const collection = comicCollectionForTelemetry();
-    const unlocked = collection ? collection.unlockedPages.length : 0;
-    const pageCount = collection ? collection.pageCount : FIRST_BELL_PAGE_COUNT;
+    const view = accountComicPanelView(comicCollectionForTelemetry());
     if (els.accountComicSummary) {
-      els.accountComicSummary.textContent = unlocked + "/" + pageCount + " pages found";
+      els.accountComicSummary.textContent = view.summaryText;
     }
     els.accountComics.replaceChildren();
     els.accountComics.appendChild(buildComicLocker());
@@ -7907,11 +7905,6 @@ export function runViewerClient(bootstrap) {
     return apiBase + "/assets/comics/first-bell/page-" + page + ".jpg";
   }
 
-  function comicPageTitle(pageNumber) {
-    const n = Math.max(1, Math.floor(Number(pageNumber || 1)));
-    return FIRST_BELL_PAGE_TITLES[n] || "First Bell";
-  }
-
   function comicUnlockEventsForTelemetry(t) {
     const events = t && Array.isArray(t.school_events) ? t.school_events : [];
     return events.filter((event) => event && event.kind === "comic.page-unlocked" && event.id);
@@ -7970,9 +7963,7 @@ export function runViewerClient(bootstrap) {
 
   function buildComicLocker() {
     const collection = comicCollectionForTelemetry();
-    const pageCount = collection ? Math.min(FIRST_BELL_PAGE_COUNT, collection.pageCount) : FIRST_BELL_PAGE_COUNT;
-    const unlocked = collection ? collection.unlockedPages : [];
-    const byPage = new Map(unlocked.map((page) => [page.pageNumber, page]));
+    const view = accountComicPanelView(collection);
     const wrap = document.createElement("div");
     wrap.className = "comic-locker";
 
@@ -7983,29 +7974,27 @@ export function runViewerClient(bootstrap) {
     title.textContent = "First Bell Comic";
     const progress = document.createElement("div");
     progress.className = "comic-locker-progress";
-    progress.textContent = unlocked.length + "/" + pageCount + " pages";
+    progress.textContent = view.progressText;
     head.appendChild(title);
     head.appendChild(progress);
     wrap.appendChild(head);
 
     const grid = document.createElement("div");
     grid.className = "comic-page-grid";
-    for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
-      const unlock = byPage.get(pageNumber);
-      const pageTitle = comicPageTitle(pageNumber);
+    view.tiles.forEach((tileView) => {
       const tile = document.createElement("button");
       tile.type = "button";
-      tile.className = "comic-page-tile" + (unlock ? " is-unlocked" : " is-locked");
-      tile.setAttribute("aria-label", unlock ? "Open " + pageTitle : "Comic page " + pageNumber + " locked");
-      if (!unlock) tile.disabled = true;
+      tile.className = "comic-page-tile" + (tileView.unlocked ? " is-unlocked" : " is-locked");
+      tile.setAttribute("aria-label", tileView.ariaLabel);
+      if (!tileView.unlocked) tile.disabled = true;
 
-      if (unlock) {
+      if (tileView.unlocked) {
         const img = document.createElement("img");
         img.loading = "lazy";
-        img.alt = pageTitle;
-        img.src = comicPageUrl(pageNumber);
+        img.alt = tileView.title;
+        img.src = comicPageUrl(tileView.pageNumber);
         tile.appendChild(img);
-        tile.addEventListener("click", () => showComicReader(collection, unlock));
+        tile.addEventListener("click", () => showComicReader(collection, tileView.unlock));
       } else {
         const mark = document.createElement("span");
         mark.className = "comic-page-locked-mark";
@@ -8013,7 +8002,7 @@ export function runViewerClient(bootstrap) {
         tile.appendChild(mark);
       }
       grid.appendChild(tile);
-    }
+    });
     wrap.appendChild(grid);
     return wrap;
   }
