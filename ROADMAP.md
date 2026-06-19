@@ -69,10 +69,10 @@ Goal: make the current app safe to extend into shared-world play.
   interfaces. Cursor math, event pruning, event labels, room titles, summary
   formatting, SSE sequencing/backoff/replay, snapshots, event merging,
   world-panel render models, race-strip models, question prompts, Honor Roll
-  rows, arc indicators, progress labels, and public-world lifecycle wiring now
-  live in typed helpers. The next slice should move public-world actions and
-  larger viewer surfaces behind module boundaries before larger multiplayer UI
-  is added.
+  rows, arc indicators, progress labels, public-world lifecycle wiring, and
+  public-world hide/report actions now live in typed helpers. The next slice
+  should move larger viewer surfaces behind module boundaries before larger
+  multiplayer UI is added.
 - Keep the public world smoke guard in every deploy.
 
 Acceptance gate: new multiplayer UI can be added without expanding the most
@@ -113,8 +113,10 @@ Goal: make question generation a teacher research loop, not one-off expansion.
   concepts. #138 exposes these signals to replenishment planning.
 - Add a generation queue that proposes new questions only when a pool is weak,
   then validates and promotes candidates through tests/check scripts. #138 has a
-  proposal queue and runtime promotion; the next step is automatic generation
-  from coverage exhaustion using the teacher corpus rather than blind expansion.
+  proposal queue, automatic corpus-backed candidate draft seeding from weak
+  pools, validation, and runtime promotion; the next step is replacing the
+  deterministic seed cards with OpenRouter-generated drafts that cite the same
+  teacher corpus and repetition constraints.
 - Keep first-grade sets curated and narrow; allow higher grades to become more
   expansive.
 
@@ -171,11 +173,12 @@ outcomes without requiring crypto participation.
 ### Next implementation slices
 
 1. [#140](https://github.com/cenetex/app-ruby-high/issues/140) / [#117](https://github.com/cenetex/app-ruby-high/issues/117):
-   extract public-world hide/report action wiring and status messaging from
-   `viewer-parts/client.ts` into a typed module with unit tests.
-2. [#141](https://github.com/cenetex/app-ruby-high/issues/141): make automatic
-   replenishment proposals produce candidate drafts from weak-pool signals and
-   teacher corpora, then keep promotion behind validation/review.
+   continue extracting larger public-world and account UI surfaces from
+   `viewer-parts/client.ts` into typed modules with unit tests.
+2. [#141](https://github.com/cenetex/app-ruby-high/issues/141): wire the
+   OpenRouter-backed generator into admin replenishment draft creation so weak
+   pools can request corpus-aware candidates without shelling out manually, then
+   keep promotion behind validation/review.
 3. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the
    browser smoke's dev-only live-room contribution helper with a normal answer
    flow that contributes sanitized room progress.

@@ -473,7 +473,7 @@ async function createAdminCurriculumReplenishmentDrafts(
       ...(faculty?.stats ? { stats: faculty.stats } : {}),
       materials: curriculumDraftMaterials(step, sourceCards),
       sourceCards,
-      questions: [],
+      questions: buildAdminCurriculumCandidateQuestions(step, sourceCards, draftFacultyId),
       generationCount: 0,
       generationDay: day,
       generatedAt: now,
@@ -525,6 +525,10 @@ function curriculumDraftMaterials(step: AdminCurriculumReplenishmentStep, source
   const cardRows = sourceCards.length
     ? sourceCards.map((card, index) => `${index + 1}. [${card.subject}/${card.difficulty}] ${card.front} => ${card.back}`).join("\n")
     : "No source cards were matched; use the teacher corpus before generating.";
+  const candidateTopics = adminCurriculumCandidateTopics(step, sourceCards)
+    .slice(0, adminCurriculumCandidateCount(step, sourceCards))
+    .map((topic, index) => `${index + 1}. ${topic.label} — ${topic.lane}`)
+    .join("\n");
   return [
     `# Curriculum Replenishment Request`,
     `Faculty: ${step.displayName} (${step.facultyId})`,
@@ -551,9 +555,164 @@ function curriculumDraftMaterials(step: AdminCurriculumReplenishmentStep, source
     `## Prompt Seed`,
     step.promptSeed,
     ``,
+    `## Automatic Candidate Drafts`,
+    candidateTopics || "No automatic candidate topics were available; review the corpus manually.",
+    ``,
     `## Source Cards`,
     cardRows,
   ].join("\n");
+}
+
+function buildAdminCurriculumCandidateQuestions(
+  step: AdminCurriculumReplenishmentStep,
+  sourceCards: readonly PackSourceCard[],
+  draftFacultyId: string,
+): BankedQuestion[] {
+  const topics = adminCurriculumCandidateTopics(step, sourceCards);
+  const count = adminCurriculumCandidateCount(step, sourceCards);
+  return topics.slice(0, count).map((topic, index): BankedQuestion => {
+    const n = index + 1;
+    return {
+      id: `draft-${slugForAdminId(`${step.facultyId}-${step.grade}-${topic.label}-${n}`)}`,
+      type: "multiple-choice",
+      prompt: adminCurriculumCandidatePrompt(step, topic),
+      options: adminCurriculumCandidateOptions(step, topic),
+      correct: "A",
+      explanation: adminCurriculumCandidateExplanation(step, topic),
+      subject: topic.subject,
+      difficulty: step.targetDifficulty as BankedQuestion["difficulty"],
+      minGrade: step.targetMinGrade as Grade,
+      faculty: draftFacultyId,
+      stat: adminCurriculumCandidateStat(step, topic),
+      ...(topic.sourceCardId ? { sourceCardId: topic.sourceCardId } : {}),
+    };
+  });
+}
+
+function adminCurriculumCandidateCount(
+  step: AdminCurriculumReplenishmentStep,
+  sourceCards: readonly PackSourceCard[],
+): number {
+  const topicCount = Math.max(
+    sourceCards.length,
+    step.weakSubjects.length,
+    step.focusSubjects.length,
+    step.researchLanes.length,
+    1,
+  );
+  return Math.max(1, Math.min(6, step.targetNewQuestions, topicCount));
+}
+
+function adminCurriculumCandidateTopics(
+  step: AdminCurriculumReplenishmentStep,
+  sourceCards: readonly PackSourceCard[],
+): Array<{ label: string; subject: string; lane: string; sourceCardId?: string; sourcePrompt?: string }> {
+  const topics: Array<{ label: string; subject: string; lane: string; sourceCardId?: string; sourcePrompt?: string }> = [];
+  const seen = new Set<string>();
+  function pushTopic(label: string, lane: string, sourceCard?: PackSourceCard): void {
+    const cleanLabel = cleanCurriculumTopic(label) || cleanCurriculumTopic(sourceCard?.subject) || "teacher research";
+    const key = cleanLabel.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    topics.push({
+      label: cleanLabel,
+      subject: slugForAdminId(sourceCard?.subject || cleanLabel).slice(0, 48) || "teacher-research",
+      lane: lane.trim() || step.researchDirective,
+      ...(sourceCard?.id ? { sourceCardId: sourceCard.id } : {}),
+      ...(sourceCard?.front ? { sourcePrompt: sourceCard.front } : {}),
+    });
+  }
+  for (const subject of step.weakSubjects) {
+    const lane = step.researchLanes.find((entry) => entry.toLowerCase().includes(subject.toLowerCase())) ?? step.researchLanes[0] ?? step.researchDirective;
+    const card = sourceCards.find((entry) => entry.subject === subject);
+    pushTopic(subject, lane, card);
+  }
+  for (const subject of step.focusSubjects) {
+    const lane = step.researchLanes.find((entry) => entry.toLowerCase().includes(subject.toLowerCase())) ?? step.researchLanes[topics.length % Math.max(1, step.researchLanes.length)] ?? step.researchDirective;
+    const card = sourceCards.find((entry) => entry.subject === subject);
+    pushTopic(subject, lane, card);
+  }
+  for (const card of sourceCards) {
+    pushTopic(card.subject || card.id, step.researchLanes[topics.length % Math.max(1, step.researchLanes.length)] ?? step.researchDirective, card);
+  }
+  for (const lane of step.researchLanes) {
+    const label = lane.split(":")[0] || lane;
+    pushTopic(label, lane);
+  }
+  if (topics.length === 0) pushTopic(step.researchInterests[0] ?? "teacher research", step.researchDirective);
+  return topics;
+}
+
+function cleanCurriculumTopic(value: unknown): string {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/[^\w .:/+-]+/g, "")
+    .trim()
+    .slice(0, 72);
+}
+
+function adminCurriculumCandidatePrompt(
+  step: AdminCurriculumReplenishmentStep,
+  topic: { label: string; lane: string; sourcePrompt?: string },
+): string {
+  const label = topic.label || "the research lane";
+  if (step.facultyId === "sally-science") {
+    return `Sally Science is rebuilding a grade ${step.grade} ${label} pool. Which move makes the next lab question scientifically trustworthy?`;
+  }
+  if (step.facultyId === "professor-edward") {
+    return `Professor Edward is rebuilding a grade ${step.grade} ${label} seminar pool. Which move makes the next question responsible literary analysis?`;
+  }
+  return `Ruby is rebuilding a grade ${step.grade} ${label} pool. Which move makes the next classroom question useful without repeating the old deck?`;
+}
+
+function adminCurriculumCandidateOptions(
+  step: AdminCurriculumReplenishmentStep,
+  topic: { label: string; sourcePrompt?: string },
+): BankedQuestion["options"] {
+  if (step.facultyId === "sally-science") {
+    return {
+      A: `Use a concrete ${topic.label} scenario with variables, evidence, and one tested misconception`,
+      B: "Change the vocabulary while keeping the same hidden assumption",
+      C: "Ask for a memorized slogan without units, controls, or observations",
+      D: "Reward the answer that sounds confident before checking the evidence",
+    };
+  }
+  if (step.facultyId === "professor-edward") {
+    return {
+      A: `Anchor the ${topic.label} question in a precise textual choice and a plausible misreading`,
+      B: "Treat the narrator and author as the same voice in every passage",
+      C: "Ask for plot recall while pretending it is interpretation",
+      D: "Reward a fashionable theory label without evidence from the text",
+    };
+  }
+  return {
+    A: `Turn ${topic.label} into a small classroom scenario with one clear operational judgment`,
+    B: "Reuse the closest old card and swap only the names",
+    C: "Make the answer depend on private classmate data",
+    D: "Prefer the flashiest wording even when the behavior is unsafe",
+  };
+}
+
+function adminCurriculumCandidateExplanation(
+  step: AdminCurriculumReplenishmentStep,
+  topic: { label: string; lane: string },
+): string {
+  const source = step.corpusTitle ? ` from ${step.corpusTitle}` : "";
+  return [
+    `The replenishment loop should repair ${topic.label}${source} by asking a fresh, concrete question.`,
+    `This follows the lane: ${topic.lane}`,
+  ].join(" ");
+}
+
+function adminCurriculumCandidateStat(
+  step: AdminCurriculumReplenishmentStep,
+  topic: { label: string },
+): NonNullable<BankedQuestion["stat"]> {
+  const haystack = `${step.facultyId} ${topic.label}`.toLowerCase();
+  if (haystack.includes("ethic") || haystack.includes("seminar") || haystack.includes("literary")) return "heart";
+  if (haystack.includes("lab") || haystack.includes("safety") || haystack.includes("systems")) return "hustle";
+  if (haystack.includes("authority") || haystack.includes("fairness") || haystack.includes("evidence")) return "honor";
+  return "head";
 }
 
 function adminCurriculumDraftSummary(

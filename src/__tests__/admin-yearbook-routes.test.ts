@@ -1876,7 +1876,7 @@ describe("admin metrics route", () => {
           mode: "generate",
           status: "created",
           teacherCount: 1,
-          questionCount: 0,
+          questionCount: 6,
         }),
       ],
     });
@@ -1886,7 +1886,17 @@ describe("admin metrics route", () => {
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Ruby Research Corpus");
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Research Directive");
     expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Prompt Seed");
+    expect(persistedDrafts[0]!.teachers[0]!.materials).toContain("Automatic Candidate Drafts");
     expect(persistedDrafts[0]!.teachers[0]!.sourceCards.length).toBeGreaterThan(0);
+    expect(persistedDrafts[0]!.teachers[0]!.questions).toHaveLength(6);
+    expect(persistedDrafts[0]!.teachers[0]!.questions[0]).toMatchObject({
+      type: "multiple-choice",
+      correct: "A",
+      faculty: expect.stringMatching(/^draft-/),
+      minGrade: "10",
+      difficulty: "easy",
+      explanation: expect.stringContaining("Ruby Research Corpus"),
+    });
 
     response = await appRoute({
       path: "/api/apps/ruby-high/admin/curriculum/replenishment",
@@ -1897,10 +1907,10 @@ describe("admin metrics route", () => {
         id: persistedDrafts[0]!.id,
         facultyId: "ruby",
         grade: "10",
-        questionCount: 0,
+        questionCount: 6,
         validation: {
-          ok: false,
-          errors: ["Review and generate questions in the draft before exporting."],
+          ok: true,
+          errors: [],
         },
       }),
     ]);
@@ -1919,36 +1929,11 @@ describe("admin metrics route", () => {
       }),
     ]));
 
-    response = await appRoute({
-      method: "POST",
-      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
-      authorizationHeader: "Bearer admin-test-token",
-      body: { action: "export-reviewed", draftId: persistedDrafts[0]!.id },
-    });
-    expect(response.status).toBe(400);
-    expect(response.body.error).toContain("Review and generate questions");
-
     const reviewedDraft = {
       ...persistedDrafts[0]!,
       teachers: [{
         ...persistedDrafts[0]!.teachers[0]!,
-        questions: [{
-          id: "draft-ruby-ai-1",
-          type: "multiple-choice" as const,
-          prompt: "Which habit helps Ruby notice a curriculum gap before it becomes repetition?",
-          options: {
-            A: "Watching low-pool metrics",
-            B: "Ignoring prior cards",
-            C: "Removing source notes",
-            D: "Posting the same question daily",
-          },
-          correct: "A" as const,
-          explanation: "The replenishment loop starts from low-pool metrics and review.",
-          subject: "ai-literacy",
-          difficulty: "easy" as const,
-          faculty: "draft-ruby",
-          stat: "head" as const,
-        }],
+        questions: persistedDrafts[0]!.teachers[0]!.questions,
       }],
     };
     await ruby.saveDraftPackRecord(reviewedDraft);
@@ -2001,15 +1986,15 @@ describe("admin metrics route", () => {
       facultyId: "ruby",
       grade: "10",
       targetFile: "assets/questions/ruby.json",
-      questionCount: 1,
-      sourceQuestionIds: ["draft-ruby-ai-1"],
-      questions: [
+      questionCount: 6,
+      sourceQuestionIds: persistedDrafts[0]!.teachers[0]!.questions.map((question) => question.id),
+      questions: expect.arrayContaining([
         expect.objectContaining({
           faculty: "ruby",
           minGrade: "10",
           id: expect.stringMatching(/^ruby-review-\d{8}-001$/),
         }),
-      ],
+      ]),
     });
 
     response = await appRoute({
@@ -2027,7 +2012,7 @@ describe("admin metrics route", () => {
       grade: "10",
       promoted: {
         packId: "ruby-high-original",
-        inserted: 1,
+        inserted: 6,
         skipped: 0,
         totalQuestions: expect.any(Number),
       },
@@ -2052,11 +2037,11 @@ describe("admin metrics route", () => {
         facultyId: "ruby",
         grade: "10",
         teacherCount: 1,
-        questionCount: 1,
+        questionCount: 6,
         sourceCardCount: persistedDrafts[0]!.teachers[0]!.sourceCards.length,
         validation: {
           ok: false,
-          errors: [expect.stringContaining("duplicates existing built-in question")],
+          errors: expect.arrayContaining([expect.stringContaining("duplicates existing built-in question")]),
         },
       }),
     ]);
