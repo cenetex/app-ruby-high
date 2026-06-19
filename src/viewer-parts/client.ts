@@ -3497,25 +3497,27 @@ export function runViewerClient(bootstrap) {
       selectedBillingProductId = null;
     }
     shownProducts.forEach((product) => {
+      const view = billingProductRowView(mode, product, solana, {
+        selected: product.id === selectedBillingProductId,
+        billingBusy,
+      });
       const row = document.createElement("div");
       row.className = "billing-product";
-      if (product.id === selectedBillingProductId) row.classList.add("is-selected");
+      if (view.selected) row.classList.add("is-selected");
       const body = document.createElement("div");
       const title = document.createElement("div");
       title.className = "billing-product-title";
-      title.textContent = mode === "card-packs" ? (product.name || packCountLabel(product.packCount)) : (product.name || hallPassCostLabel(productHallPassCount(product)));
+      title.textContent = view.titleText;
       const meta = document.createElement("div");
       meta.className = "billing-product-meta";
-      meta.textContent = mode === "card-packs"
-        ? cardPackProductMeta(product, solana)
-        : formatMoney(product.unitAmount, product.currency) + " · " + hallPassCostLabel(productHallPassCount(product));
+      meta.textContent = view.metaText;
       body.appendChild(title);
       body.appendChild(meta);
       const buy = document.createElement("button");
       buy.type = "button";
       buy.className = "billing-buy";
-      buy.textContent = product.id === selectedBillingProductId ? "Selected" : "Choose";
-      buy.disabled = billingBusy;
+      buy.textContent = view.buttonText;
+      buy.disabled = view.buttonDisabled;
       buy.addEventListener("click", () => selectBillingProduct(product.id));
       row.appendChild(body);
       row.appendChild(buy);

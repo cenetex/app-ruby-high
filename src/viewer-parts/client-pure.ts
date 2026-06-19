@@ -219,6 +219,13 @@ export type BillingHallPassPaymentChoiceView = {
   buttonDisabled: boolean;
   buttonTitle: string;
 };
+export type BillingProductRowView = {
+  titleText: string;
+  metaText: string;
+  buttonText: string;
+  buttonDisabled: boolean;
+  selected: boolean;
+};
 export type AccountComicPageTileView = {
   pageNumber: number;
   title: string;
@@ -1909,6 +1916,31 @@ export function billingCardPackPaymentChoiceView(
         ? "RUBY token setup is incomplete. Get $RUBY, then choose a pack."
         : "",
     showGetRubyLink: !cryptoUnavailable && !canPackCheckout,
+  };
+}
+export function billingProductRowView(
+  modeInput: unknown,
+  productInput: NullableRecord,
+  solanaInput?: NullableRecord,
+  opts?: NullableRecord,
+): BillingProductRowView {
+  const mode = modeInput === "card-packs" ? "card-packs" : "hall-passes";
+  const product = productInput && typeof productInput === "object" ? productInput : {};
+  const solana = solanaInput && typeof solanaInput === "object" ? solanaInput : {};
+  const explicitHallPasses = Number(product.hallPasses);
+  const hallPasses = Number.isFinite(explicitHallPasses) && explicitHallPasses > 0 ? Math.floor(explicitHallPasses) : 1;
+  const selected = !!(opts && opts.selected);
+  const billingBusy = !!(opts && opts.billingBusy);
+  return {
+    titleText: mode === "card-packs"
+      ? String(product.name || packCountLabel(product.packCount))
+      : String(product.name || hallPassCostLabel(hallPasses)),
+    metaText: mode === "card-packs"
+      ? cardPackProductMeta(product, solana)
+      : formatMoney(product.unitAmount, product.currency) + " · " + hallPassCostLabel(hallPasses),
+    buttonText: selected ? "Selected" : "Choose",
+    buttonDisabled: billingBusy,
+    selected,
   };
 }
 

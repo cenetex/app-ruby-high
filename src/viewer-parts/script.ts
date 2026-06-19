@@ -56,6 +56,7 @@ const PURE_HELPER_NAMES = [
   "cardPackPaymentDeltaLabel",
   "cardPackProductMeta",
   "billingCardPackPaymentChoiceView",
+  "billingProductRowView",
   "escapeHtml",
   "escape",
   "safeMarkdownHref",
