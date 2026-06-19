@@ -1065,6 +1065,50 @@ describe("RubyHighService Phase 1", () => {
     expect(sophomore?.replenishment?.researchDirective).toContain("source cards as a temporary corpus");
     expect(coverage.lowPools.map((row) => `${row.grade}:${row.facultyId}`)).toContain("9:level-test-course");
     expect(coverage.activeCharacterSessions).toBeGreaterThanOrEqual(2);
+
+    await ruby.flush();
+    const agendaState = await new StateStore(storePath).loadServiceState("ruby-high:public-world-teacher-agendas:v1");
+    expect(agendaState?.data).toMatchObject({
+      version: 1,
+      agendas: expect.arrayContaining([
+        expect.objectContaining({
+          id: expect.stringMatching(/^teacher:agenda:[a-f0-9]{16}$/),
+          schoolYear: expect.stringMatching(/^\d{4}-\d{4}$/),
+          grade: "9",
+          facultyId: "level-test-course",
+          displayName: "Ruby",
+          agendaKind: "curriculum-replenishment",
+          mode: "manual-curation",
+          targetDifficulty: "easy",
+          lowPoolSessions: 1,
+          exhaustedSessions: 1,
+          weakSubjects: ["leveling"],
+          recentConcepts: ["leveling"],
+          corpusId: null,
+        }),
+        expect.objectContaining({
+          id: expect.stringMatching(/^teacher:agenda:[a-f0-9]{16}$/),
+          schoolYear: expect.stringMatching(/^\d{4}-\d{4}$/),
+          grade: "10",
+          facultyId: "level-test-course",
+          displayName: "Ruby",
+          agendaKind: "curriculum-replenishment",
+          mode: "generate",
+          targetDifficulty: "easy",
+          focusSubjects: ["research"],
+          weakSubjects: ["research"],
+          sourcePacketIds: [],
+          corpusId: null,
+        }),
+      ]),
+    });
+    expect(JSON.stringify(agendaState)).not.toContain(freshmanSid);
+    expect(JSON.stringify(agendaState)).not.toContain(sophomoreSid);
+    expect(JSON.stringify(agendaState)).not.toContain("A reusable concept base");
+    expect(ruby.worldHealthSnapshot()).toMatchObject({
+      durableTeacherAgendas: 2,
+      durableTeacherAgendaLimit: 80,
+    });
   });
 
   it("does not replace or clear a live unresolved board", async () => {
@@ -2249,6 +2293,20 @@ describe("RubyHighService Phase 1", () => {
         },
       },
       {
+        id: "ruby-high:public-world-teacher-agendas:v1",
+        updatedAt: now,
+        data: {
+          version: 1,
+          agendas: [
+            null,
+            { id: "teacher:agenda:bad", schoolYear: "2025-2026", grade: "10", facultyId: "ruby", mode: "generate", targetDifficulty: "easy", generatedAt: now, updatedAt: now },
+            { schoolYear: "bad-year", grade: "10", facultyId: "ruby", mode: "generate", targetDifficulty: "easy", generatedAt: now, updatedAt: now },
+            { schoolYear: "2025-2026", grade: "13", facultyId: "ruby", mode: "generate", targetDifficulty: "easy", generatedAt: now, updatedAt: now },
+            { schoolYear: "2025-2026", grade: "10", facultyId: "ruby", mode: "automatic", targetDifficulty: "easy", generatedAt: now, updatedAt: now },
+          ],
+        },
+      },
+      {
         id: "ruby-high:live-room-goals:v1",
         updatedAt: now,
         data: {
@@ -2272,6 +2330,7 @@ describe("RubyHighService Phase 1", () => {
       recentEvents: 0,
       durableRoomRecords: 0,
       durableRoomOutcomes: 0,
+      durableTeacherAgendas: 0,
       publicEventLogSize: 0,
       liveRoomGoals: 0,
       suppressedEvents: 0,

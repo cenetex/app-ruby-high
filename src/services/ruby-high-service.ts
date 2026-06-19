@@ -687,6 +687,8 @@ export interface RubyHighWorldHealthSnapshot {
   durableRoomRecordLimit: number;
   durableRoomOutcomes: number;
   durableRoomOutcomeLimit: number;
+  durableTeacherAgendas: number;
+  durableTeacherAgendaLimit: number;
   liveRoomGoals: number;
   suppressedEvents: number;
   summary: PublicWorldSummarySnapshot;
@@ -924,11 +926,13 @@ const PUBLIC_WORLD_MODERATOR_NOTE_LIMIT = 500;
 const PUBLIC_WORLD_EVENTS_STATE_ID = "ruby-high:public-world-events:v1";
 const PUBLIC_WORLD_ROOMS_STATE_ID = "ruby-high:public-world-rooms:v1";
 const PUBLIC_WORLD_ROOM_OUTCOMES_STATE_ID = "ruby-high:public-world-room-outcomes:v1";
+const PUBLIC_WORLD_TEACHER_AGENDAS_STATE_ID = "ruby-high:public-world-teacher-agendas:v1";
 const PUBLIC_WORLD_SUMMARY_STATE_ID = "ruby-high:public-world-summary:v1";
 const PUBLIC_WORLD_MODERATION_STATE_ID = "ruby-high:public-world-moderation:v1";
 const LIVE_ROOM_GOALS_STATE_ID = "ruby-high:live-room-goals:v1";
 const PUBLIC_WORLD_ROOM_RECORD_LIMIT = 80;
 const PUBLIC_WORLD_ROOM_OUTCOME_LIMIT = 120;
+const PUBLIC_WORLD_TEACHER_AGENDA_LIMIT = 80;
 
 export interface LiveRoomGoalContributionResult {
   grade: Grade;
@@ -976,6 +980,29 @@ export interface PublicWorldRoomOutcomeRecord {
   contributorCount: number;
   completedAt: number;
   createdAt: number;
+}
+
+export interface PublicWorldTeacherAgendaRecord {
+  id: string;
+  schoolYear: string;
+  termId: string;
+  grade: Grade;
+  facultyId: string;
+  displayName: string;
+  agendaKind: "curriculum-replenishment";
+  mode: "manual-curation" | "generate";
+  targetDifficulty: Difficulty;
+  targetNewQuestions: number;
+  lowPoolSessions: number;
+  exhaustedSessions: number;
+  repetitionPressure: number;
+  focusSubjects: string[];
+  weakSubjects: string[];
+  recentConcepts: string[];
+  sourcePacketIds: string[];
+  corpusId: string | null;
+  generatedAt: number;
+  updatedAt: number;
 }
 
 export interface RecentlyActiveStudent {
@@ -1176,6 +1203,7 @@ export class RubyHighService extends Service {
   private readonly liveRoomGoalStates = new Map<string, LiveRoomGoalState>();
   private readonly publicWorldRoomRecords = new Map<string, PublicWorldRoomRecord>();
   private readonly publicWorldRoomOutcomeRecords = new Map<string, PublicWorldRoomOutcomeRecord>();
+  private readonly publicWorldTeacherAgendaRecords = new Map<string, PublicWorldTeacherAgendaRecord>();
   private readonly publicWorldEventLog = new Map<string, SchoolWorldEvent>();
   private readonly publicWorldSuppressedEvents = new Map<string, PublicWorldSuppressedEvent>();
   private readonly publicWorldModeratorNotes = new Map<string, PublicWorldModeratorNote>();
@@ -1219,6 +1247,7 @@ export class RubyHighService extends Service {
     this.liveRoomGoalStates.clear();
     this.publicWorldRoomRecords.clear();
     this.publicWorldRoomOutcomeRecords.clear();
+    this.publicWorldTeacherAgendaRecords.clear();
     this.publicWorldEventLog.clear();
     this.publicWorldSuppressedEvents.clear();
     this.publicWorldModeratorNotes.clear();
@@ -1235,6 +1264,7 @@ export class RubyHighService extends Service {
       this.persistPhotoPostSchedulerState({ surfaceErrors: true }),
       this.persistPublicWorldRoomState({ surfaceErrors: true }),
       this.persistPublicWorldRoomOutcomeState({ surfaceErrors: true }),
+      this.persistPublicWorldTeacherAgendaState({ surfaceErrors: true }),
       this.persistPublicWorldEventLog({ surfaceErrors: true }),
       this.persistPublicWorldSummaryState({ surfaceErrors: true }),
       this.persistPublicWorldModerationState({ surfaceErrors: true }),
@@ -1849,6 +1879,8 @@ export class RubyHighService extends Service {
       durableRoomRecordLimit: PUBLIC_WORLD_ROOM_RECORD_LIMIT,
       durableRoomOutcomes: this.publicWorldRoomOutcomeRecords.size,
       durableRoomOutcomeLimit: PUBLIC_WORLD_ROOM_OUTCOME_LIMIT,
+      durableTeacherAgendas: this.publicWorldTeacherAgendaRecords.size,
+      durableTeacherAgendaLimit: PUBLIC_WORLD_TEACHER_AGENDA_LIMIT,
       liveRoomGoals: this.liveRoomGoalStates.size,
       suppressedEvents: this.publicWorldSuppressedEvents.size,
       summary: this.publicWorldSummarySnapshot(now),
@@ -2158,6 +2190,113 @@ export class RubyHighService extends Service {
       .sort((a, b) => b.completedAt - a.completedAt || a.id.localeCompare(b.id));
   }
 
+  private hydratePublicWorldTeacherAgendaState(record: StoredServiceStateRecord | null): void {
+    this.publicWorldTeacherAgendaRecords.clear();
+    const data = record?.data;
+    const agendas = data && data.version === 1 && Array.isArray(data.agendas) ? data.agendas : [];
+    for (const raw of agendas) {
+      const agenda = normalizePublicWorldTeacherAgendaRecord(raw);
+      if (!agenda) continue;
+      this.publicWorldTeacherAgendaRecords.set(agenda.id, agenda);
+    }
+    this.prunePublicWorldTeacherAgendaRecords(record?.updatedAt ?? Date.now());
+  }
+
+  private publicWorldTeacherAgendaStateRecord(now = Date.now()): StoredServiceStateRecord {
+    this.prunePublicWorldTeacherAgendaRecords(now);
+    return {
+      id: PUBLIC_WORLD_TEACHER_AGENDAS_STATE_ID,
+      updatedAt: now,
+      data: {
+        version: 1,
+        agendas: this.publicWorldTeacherAgendaRecordList(now),
+      },
+    };
+  }
+
+  private persistPublicWorldTeacherAgendaState(options: { surfaceErrors?: boolean } = {}, now = Date.now()): Promise<void> {
+    if (!this.store.saveServiceState) return Promise.resolve();
+    const record = this.publicWorldTeacherAgendaStateRecord(now);
+    const save = this.store.saveServiceState(record).catch((err) => {
+      log.error("public-world-teacher-agendas.persist-failed", err);
+      if (options.surfaceErrors) throw err;
+    });
+    if (!options.surfaceErrors) this.trackBackgroundWrite(save);
+    return save;
+  }
+
+  private syncPublicWorldTeacherAgendaRecords(rows: readonly RubyHighCurriculumCoverageRow[], now = Date.now()): void {
+    let changed = this.prunePublicWorldTeacherAgendaRecords(now);
+    const schoolYear = schoolYearForTimestamp(now);
+    const retainedIds = new Set<string>();
+    for (const row of rows) {
+      const plan = row.replenishment;
+      if (!plan) continue;
+      const facultyId = publicWorldRoomId(row.facultyId);
+      if (!facultyId) continue;
+      const id = publicWorldTeacherAgendaId(schoolYear, row.grade, facultyId);
+      retainedIds.add(id);
+      const prior = this.publicWorldTeacherAgendaRecords.get(id);
+      const candidate: PublicWorldTeacherAgendaRecord = {
+        id,
+        schoolYear,
+        termId: schoolYear,
+        grade: row.grade,
+        facultyId,
+        displayName: publicWorldRoomDisplayName(row.displayName, facultyId),
+        agendaKind: "curriculum-replenishment",
+        mode: plan.mode,
+        targetDifficulty: plan.targetDifficulty,
+        targetNewQuestions: publicWorldStoredInteger(plan.targetNewQuestions, 0),
+        lowPoolSessions: publicWorldStoredInteger(row.lowPoolSessions, 0),
+        exhaustedSessions: publicWorldStoredInteger(row.exhaustedSessions, 0),
+        repetitionPressure: publicWorldStoredRatio(row.repetitionPressure),
+        focusSubjects: publicWorldStoredTextList(plan.focusSubjects, 8, 80),
+        weakSubjects: publicWorldStoredTextList(plan.weakSubjects, 8, 80),
+        recentConcepts: publicWorldStoredTextList(plan.recentConcepts, 8, 120),
+        sourcePacketIds: publicWorldStoredTextList(plan.sourcePackets.map((packet) => packet.id), 8, 80),
+        corpusId: plan.corpusId ? publicWorldStoredText(plan.corpusId, 80) || null : null,
+        generatedAt: prior?.generatedAt ?? now,
+        updatedAt: now,
+      };
+      if (!prior || publicWorldTeacherAgendaContentKey(prior) !== publicWorldTeacherAgendaContentKey(candidate)) {
+        this.publicWorldTeacherAgendaRecords.set(id, candidate);
+        changed = true;
+      }
+    }
+    for (const id of Array.from(this.publicWorldTeacherAgendaRecords.keys())) {
+      if (!retainedIds.has(id)) {
+        this.publicWorldTeacherAgendaRecords.delete(id);
+        changed = true;
+      }
+    }
+    if (this.prunePublicWorldTeacherAgendaRecords(now)) changed = true;
+    if (changed) void this.persistPublicWorldTeacherAgendaState({}, now);
+  }
+
+  private prunePublicWorldTeacherAgendaRecords(now = Date.now()): boolean {
+    const schoolYear = schoolYearForTimestamp(now);
+    const retained = this.publicWorldTeacherAgendaRecordList(now)
+      .filter((agenda) => agenda.schoolYear === schoolYear)
+      .slice(0, PUBLIC_WORLD_TEACHER_AGENDA_LIMIT);
+    if (retained.length === this.publicWorldTeacherAgendaRecords.size && retained.every((agenda) => this.publicWorldTeacherAgendaRecords.get(agenda.id) === agenda)) {
+      return false;
+    }
+    this.publicWorldTeacherAgendaRecords.clear();
+    for (const agenda of retained) this.publicWorldTeacherAgendaRecords.set(agenda.id, agenda);
+    return true;
+  }
+
+  private publicWorldTeacherAgendaRecordList(now = Date.now()): PublicWorldTeacherAgendaRecord[] {
+    return Array.from(this.publicWorldTeacherAgendaRecords.values())
+      .filter((agenda) => Number.isFinite(agenda.updatedAt) && agenda.updatedAt >= 0 && agenda.updatedAt <= now)
+      .sort((a, b) =>
+        b.updatedAt - a.updatedAt ||
+        Number(a.grade) - Number(b.grade) ||
+        a.facultyId.localeCompare(b.facultyId)
+      );
+  }
+
   private hydratePublicWorldEventLog(record: StoredServiceStateRecord | null): void {
     this.publicWorldEventLog.clear();
     const data = record?.data;
@@ -2359,7 +2498,9 @@ export class RubyHighService extends Service {
   }
 
   curriculumCoverageSnapshot(): RubyHighCurriculumCoverageSnapshot {
-    return this.curriculumCoverageSnapshotForStates(this.sessions.values());
+    const snapshot = this.curriculumCoverageSnapshotForStates(this.sessions.values());
+    this.syncPublicWorldTeacherAgendaRecords(snapshot.lowPools);
+    return snapshot;
   }
 
   private curriculumCoverageSnapshotForStates(states: Iterable<QuizState>): RubyHighCurriculumCoverageSnapshot {
@@ -3557,6 +3698,7 @@ export class RubyHighService extends Service {
       storedPhotoPostSchedulerState,
       storedPublicWorldRoomState,
       storedPublicWorldRoomOutcomeState,
+      storedPublicWorldTeacherAgendaState,
       storedPublicWorldEventLogState,
       storedPublicWorldModerationState,
       storedLiveRoomGoalState,
@@ -3571,6 +3713,7 @@ export class RubyHighService extends Service {
       this.store.loadServiceState?.(PHOTO_POST_SCHEDULER_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_ROOMS_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_ROOM_OUTCOMES_STATE_ID) ?? Promise.resolve(null),
+      this.store.loadServiceState?.(PUBLIC_WORLD_TEACHER_AGENDAS_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_EVENTS_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_MODERATION_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(LIVE_ROOM_GOALS_STATE_ID) ?? Promise.resolve(null),
@@ -3625,6 +3768,7 @@ export class RubyHighService extends Service {
     this.hydratePhotoPostSchedulerState(storedPhotoPostSchedulerState);
     this.hydratePublicWorldRoomState(storedPublicWorldRoomState);
     this.hydratePublicWorldRoomOutcomeState(storedPublicWorldRoomOutcomeState);
+    this.hydratePublicWorldTeacherAgendaState(storedPublicWorldTeacherAgendaState);
     this.hydratePublicWorldEventLog(storedPublicWorldEventLogState);
     this.hydratePublicWorldModerationState(storedPublicWorldModerationState);
     this.hydrateLiveRoomGoalState(storedLiveRoomGoalState);
@@ -9471,6 +9615,25 @@ function publicWorldStoredInteger(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+function publicWorldStoredRatio(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : 0;
+}
+
+function publicWorldStoredTextList(value: unknown, maxItems: number, maxLength: number): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of value) {
+    const text = publicWorldStoredText(raw, maxLength);
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
 function publicWorldRoomRecordKey(schoolYear: string, grade: Grade, facultyId: string): string {
   return `${schoolYear}:${grade}:${facultyId}`;
 }
@@ -9478,6 +9641,11 @@ function publicWorldRoomRecordKey(schoolYear: string, grade: Grade, facultyId: s
 function publicWorldRoomOutcomeId(day: string, grade: Grade, facultyId: string): string {
   const digest = createHash("sha256").update(`${day}:${grade}:${facultyId}`).digest("hex").slice(0, 16);
   return `room:outcome:${digest}`;
+}
+
+function publicWorldTeacherAgendaId(schoolYear: string, grade: Grade, facultyId: string): string {
+  const digest = createHash("sha256").update(`${schoolYear}:${grade}:${facultyId}`).digest("hex").slice(0, 16);
+  return `teacher:agenda:${digest}`;
 }
 
 function normalizePublicWorldRoomRecord(raw: unknown): PublicWorldRoomRecord | null {
@@ -9554,6 +9722,75 @@ function normalizePublicWorldRoomOutcomeRecord(raw: unknown): PublicWorldRoomOut
     completedAt,
     createdAt,
   };
+}
+
+function normalizePublicWorldTeacherAgendaRecord(raw: unknown): PublicWorldTeacherAgendaRecord | null {
+  if (!raw || typeof raw !== "object") return null;
+  const source = raw as Record<string, unknown>;
+  const schoolYear = typeof source.schoolYear === "string" && /^\d{4}-\d{4}$/.test(source.schoolYear)
+    ? source.schoolYear
+    : "";
+  const grade = typeof source.grade === "string" && (GRADES as readonly string[]).includes(source.grade)
+    ? source.grade as Grade
+    : null;
+  const facultyId = publicWorldRoomId(typeof source.facultyId === "string" ? source.facultyId : "");
+  if (!schoolYear || !grade || !facultyId) return null;
+  const id = publicWorldTeacherAgendaId(schoolYear, grade, facultyId);
+  if (typeof source.id === "string" && source.id !== id) return null;
+  if (source.agendaKind !== undefined && source.agendaKind !== "curriculum-replenishment") return null;
+  const mode = source.mode === "manual-curation" || source.mode === "generate" ? source.mode : null;
+  if (!mode) return null;
+  const targetDifficulty = source.targetDifficulty === "easy" || source.targetDifficulty === "medium" || source.targetDifficulty === "hard"
+    ? source.targetDifficulty
+    : null;
+  if (!targetDifficulty) return null;
+  const generatedAt = publicWorldStoredInteger(source.generatedAt, 0);
+  const updatedAt = publicWorldStoredInteger(source.updatedAt, generatedAt);
+  if (generatedAt <= 0 || updatedAt <= 0) return null;
+  return {
+    id,
+    schoolYear,
+    termId: typeof source.termId === "string" && source.termId.trim() ? source.termId.trim().slice(0, 48) : schoolYear,
+    grade,
+    facultyId,
+    displayName: publicWorldRoomDisplayName(typeof source.displayName === "string" ? source.displayName : facultyId, facultyId),
+    agendaKind: "curriculum-replenishment",
+    mode,
+    targetDifficulty,
+    targetNewQuestions: Math.min(200, publicWorldStoredInteger(source.targetNewQuestions, 0)),
+    lowPoolSessions: Math.min(999, publicWorldStoredInteger(source.lowPoolSessions, 0)),
+    exhaustedSessions: Math.min(999, publicWorldStoredInteger(source.exhaustedSessions, 0)),
+    repetitionPressure: publicWorldStoredRatio(source.repetitionPressure),
+    focusSubjects: publicWorldStoredTextList(source.focusSubjects, 8, 80),
+    weakSubjects: publicWorldStoredTextList(source.weakSubjects, 8, 80),
+    recentConcepts: publicWorldStoredTextList(source.recentConcepts, 8, 120),
+    sourcePacketIds: publicWorldStoredTextList(source.sourcePacketIds, 8, 80),
+    corpusId: source.corpusId === null || source.corpusId === undefined ? null : publicWorldStoredText(source.corpusId, 80) || null,
+    generatedAt,
+    updatedAt,
+  };
+}
+
+function publicWorldTeacherAgendaContentKey(agenda: PublicWorldTeacherAgendaRecord): string {
+  return JSON.stringify({
+    schoolYear: agenda.schoolYear,
+    termId: agenda.termId,
+    grade: agenda.grade,
+    facultyId: agenda.facultyId,
+    displayName: agenda.displayName,
+    agendaKind: agenda.agendaKind,
+    mode: agenda.mode,
+    targetDifficulty: agenda.targetDifficulty,
+    targetNewQuestions: agenda.targetNewQuestions,
+    lowPoolSessions: agenda.lowPoolSessions,
+    exhaustedSessions: agenda.exhaustedSessions,
+    repetitionPressure: agenda.repetitionPressure,
+    focusSubjects: agenda.focusSubjects,
+    weakSubjects: agenda.weakSubjects,
+    recentConcepts: agenda.recentConcepts,
+    sourcePacketIds: agenda.sourcePacketIds,
+    corpusId: agenda.corpusId,
+  });
 }
 
 function schoolYearForTimestamp(value: number): string {
