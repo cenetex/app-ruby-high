@@ -47,6 +47,19 @@ type ArcIndicatorView = {
   subjectMet: boolean;
   scoreText: string;
 };
+export type AccountPublicWorldView = {
+  hasCharacter: boolean;
+  hasPublicName: boolean;
+  blockedBySocialConsent: boolean;
+  visible: boolean;
+  summaryText: string;
+  statusText: string;
+  statusClass: string;
+  toggleText: string;
+  toggleDisabled: boolean;
+  toggleTitle: string;
+  nextVisible: boolean;
+};
 type ClassmateArcProgress = { value: number; total: number };
 type RoomCompletionProgress = { value: number; total: number };
 
@@ -298,6 +311,49 @@ export function walletPreviewAddress(address: unknown): string {
 export function walletPreviewLine(label: string, value: unknown): string {
   const text = String(value || "").trim();
   return label + ": " + (text || "Unavailable");
+}
+
+// ── account public-world visibility ────────────────────────────────
+export function accountPublicWorldView(character: unknown, opts?: { authed?: unknown; busy?: unknown }): AccountPublicWorldView {
+  const c = character && typeof character === "object" ? character as LooseRecord : null;
+  const hasCharacter = !!c;
+  const hasPublicName = !!(c && typeof c.name === "string" && c.name.trim());
+  const blockedBySocialConsent = !!(c && c.socialConsent === false);
+  const visible = !!(c && hasPublicName && !blockedBySocialConsent && c.publicWorldVisible !== false);
+  const authed = !!(opts && opts.authed);
+  const busy = !!(opts && opts.busy);
+  const nextVisible = !visible;
+  const summaryText = !hasCharacter
+    ? "Create a student before joining the shared school map."
+    : visible
+    ? "Your active student can appear in public rooms and activity."
+    : blockedBySocialConsent
+    ? "A legacy privacy setting is hiding this student from public rooms and activity."
+    : hasPublicName
+    ? "Your active student is hidden from public rooms and activity."
+    : "Name your student before they can appear publicly.";
+  const toggleTitle = !hasCharacter
+    ? "Create a student first"
+    : !hasPublicName
+    ? "Public world requires a real student name"
+    : blockedBySocialConsent
+    ? "Legacy social sharing is off, so public world stays hidden"
+    : visible
+    ? "Hide this student from public rooms and activity"
+    : "Allow this student to appear in public rooms and activity";
+  return {
+    hasCharacter,
+    hasPublicName,
+    blockedBySocialConsent,
+    visible,
+    summaryText,
+    statusText: visible ? "Visible in the public world" : "Hidden from the public world",
+    statusClass: visible ? "is-visible" : "",
+    toggleText: visible ? "Hide" : "Show",
+    toggleDisabled: !authed || busy || !hasCharacter || !hasPublicName || blockedBySocialConsent,
+    toggleTitle,
+    nextVisible,
+  };
 }
 
 // ── date formatters ────────────────────────────────────────────────

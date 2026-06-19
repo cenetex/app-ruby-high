@@ -66,6 +66,7 @@ const PURE_HELPER_NAMES = [
   "shortWallet",
   "walletPreviewAddress",
   "walletPreviewLine",
+  "accountPublicWorldView",
   "formatAccountDate",
   "formatSealedDate",
   "nextGradeAfterClient",

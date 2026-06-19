@@ -20,7 +20,7 @@ research plumbing, presence/moderation controls, and durable public-world state.
 | [#143 MMO: durable room and world state model](https://github.com/cenetex/app-ruby-high/issues/143) | Open, first durable slices in #138 | **P0 MMO data model.** Live-room goals, public event replay, summary counters, moderation suppression state, and rollback docs are durable; next is turning those records into a fuller room/term model. |
 | [#142 MMO: public presence and moderation controls](https://github.com/cenetex/app-ruby-high/issues/142) | Open, operator workflow in #138 | **P0 safety.** Public presence toggle, per-player hide/report, admin moderation snapshot, repeated-report counts, moderator notes, report dismissal, global suppression, action throttles, and account copy that names public/private profile fields exist; next is stronger public-name review policy. |
 | [#141 MMO: teacher curriculum research loop](https://github.com/cenetex/app-ruby-high/issues/141) | Open, deeper loop in #138 | **P1 content engine.** Teacher corpora metadata, reading lists, misconception checks, grade briefs, replenishment proposals, coverage-exhaustion auto-enqueue, validation, review readiness, runtime promotion, weak-subject and repetition signals exist; next is richer reviewer approval and primary-source packets. |
-| [#140 MMO: typed public-world viewer module](https://github.com/cenetex/app-ruby-high/issues/140) | Open, several seams in #138 | **P1 maintainability.** World feed, world panel, lifecycle wiring, race/question/leaderboard/progress models are typed; next is extracting larger public-world action/UI surfaces out of `viewer-parts/client.ts`. |
+| [#140 MMO: typed public-world viewer module](https://github.com/cenetex/app-ruby-high/issues/140) | Open, several seams in #138 | **P1 maintainability.** World feed, world panel, lifecycle wiring, race/question/leaderboard/progress models, and account public-world visibility view models are typed; next is extracting larger public-world action/UI surfaces out of `viewer-parts/client.ts`. |
 | [#139 MMO: live class rooms MVP](https://github.com/cenetex/app-ruby-high/issues/139) | Open, two-client goal path in #138 | **P1 gameplay.** Two guest sessions can contribute to a room goal and observe sanitized public progress; next is richer room rules, visible cooperative rewards, and less dev-helper coverage. |
 | [#122 Return 400 for unknown viewer command types](https://github.com/cenetex/app-ruby-high/issues/122) | Fixed in #138; close after merge | **P0 pre-MMO hardening.** Unknown mutation commands fail closed with a 400 before mutating state. |
 | [#121 Harden creator materials URL ingestion](https://github.com/cenetex/app-ruby-high/issues/121) | Fixed in #138; close after merge | **P1 security.** Creator/import URL ingestion is constrained by host allowlisting, raw GitHub normalization, private-network rejection, redirect checks, and size limits. |
@@ -69,10 +69,10 @@ Goal: make the current app safe to extend into shared-world play.
   interfaces. Cursor math, event pruning, event labels, room titles, summary
   formatting, SSE sequencing/backoff/replay, snapshots, event merging,
   world-panel render models, race-strip models, question prompts, Honor Roll
-  rows, arc indicators, progress labels, public-world lifecycle wiring, and
-  public-world hide/report actions now live in typed helpers. The next slice
-  should move larger viewer surfaces behind module boundaries before larger
-  multiplayer UI is added.
+  rows, arc indicators, progress labels, public-world lifecycle wiring,
+  account public-world visibility models, and public-world hide/report actions
+  now live in typed helpers. The next slice should move larger viewer surfaces
+  behind module boundaries before larger multiplayer UI is added.
 - Keep the public world smoke guard in every deploy.
 
 Acceptance gate: new multiplayer UI can be added without expanding the most

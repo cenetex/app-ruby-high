@@ -3172,47 +3172,19 @@ export function runViewerClient(bootstrap) {
     }
   }
 
-  function activeCharacterHasPublicName() {
-    const c = lastTelemetry && lastTelemetry.character;
-    return !!(c && typeof c.name === "string" && c.name.trim());
-  }
-
-  function activeCharacterPublicWorldVisible() {
-    const c = lastTelemetry && lastTelemetry.character;
-    if (!c) return false;
-    return c.socialConsent !== false && c.publicWorldVisible !== false && activeCharacterHasPublicName();
-  }
-
   function renderAccountPublicWorld() {
-    const c = lastTelemetry && lastTelemetry.character;
-    const hasCharacter = !!c;
-    const hasPublicName = activeCharacterHasPublicName();
-    const visible = activeCharacterPublicWorldVisible();
+    const view = accountPublicWorldView(lastTelemetry && lastTelemetry.character, { authed, busy: billingBusy });
     if (els.accountPublicWorldSummary) {
-      els.accountPublicWorldSummary.textContent = !hasCharacter
-        ? "Create a student before joining the shared school map."
-        : visible
-        ? "Your active student can appear in public rooms and activity."
-        : hasPublicName
-        ? "Your active student is hidden from public rooms and activity."
-        : "Name your student before they can appear publicly.";
+      els.accountPublicWorldSummary.textContent = view.summaryText;
     }
     if (els.accountPublicWorldStatus) {
-      els.accountPublicWorldStatus.textContent = visible
-        ? "Visible in the public world"
-        : "Hidden from the public world";
-      els.accountPublicWorldStatus.classList.toggle("is-visible", visible);
+      els.accountPublicWorldStatus.textContent = view.statusText;
+      els.accountPublicWorldStatus.classList.toggle("is-visible", view.visible);
     }
     if (els.accountPublicWorldToggle) {
-      els.accountPublicWorldToggle.textContent = visible ? "Hide" : "Show";
-      els.accountPublicWorldToggle.disabled = !authed || !hasCharacter || !hasPublicName || billingBusy;
-      els.accountPublicWorldToggle.title = !hasCharacter
-        ? "Create a student first"
-        : !hasPublicName
-        ? "Public world requires a real student name"
-        : visible
-        ? "Hide this student from public rooms and activity"
-        : "Allow this student to appear in public rooms and activity";
+      els.accountPublicWorldToggle.textContent = view.toggleText;
+      els.accountPublicWorldToggle.disabled = view.toggleDisabled;
+      els.accountPublicWorldToggle.title = view.toggleTitle;
     }
   }
 
@@ -3543,10 +3515,11 @@ export function runViewerClient(bootstrap) {
   }
 
   async function togglePublicWorldFromAccount() {
-    if (!authed || billingBusy || !activeCharacterHasPublicName()) return;
+    const view = accountPublicWorldView(lastTelemetry && lastTelemetry.character, { authed, busy: billingBusy });
+    if (view.toggleDisabled) return;
     billingBusy = true;
     renderAccountPublicWorld();
-    const nextVisible = !activeCharacterPublicWorldVisible();
+    const nextVisible = view.nextVisible;
     try {
       const data = await command({ type: "set-public-presence", publicWorldVisible: nextVisible });
       if (data && data.session) {
