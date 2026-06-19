@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   fetchLlmChatCompletions,
   hasConfiguredLlmCredential,
@@ -156,6 +156,13 @@ interface AdminCurriculumReviewDraftSummary {
     ok: boolean;
     errors: string[];
   };
+  approval: {
+    approved: boolean;
+    approvedAt: number | null;
+    approvedBy: string | null;
+    stale: boolean;
+    required: boolean;
+  };
 }
 
 interface AdminCurriculumDraftResult {
@@ -192,6 +199,18 @@ interface AdminCurriculumDraftExport {
   questionCount: number;
   questions: BankedQuestion[];
   sourceQuestionIds: string[];
+}
+
+interface AdminCurriculumDraftApproval {
+  ok: true;
+  dryRun: false;
+  draftId: string;
+  facultyId: string;
+  grade: string;
+  approvedAt: number;
+  approvedBy: string;
+  questionCount: number;
+  fingerprint: string;
 }
 
 interface AdminCurriculumDraftPromotion extends Omit<AdminCurriculumDraftExport, "dryRun"> {
@@ -961,7 +980,52 @@ function adminCurriculumReviewDraftSummary(
     questionCount: draft.teachers.reduce((sum, entry) => sum + entry.questions.length, 0),
     updatedAt: draft.updatedAt,
     validation: adminCurriculumReviewDraftValidation(teacher, grade, facultyId, pack),
+    approval: adminCurriculumReviewApprovalStatus(draft, teacher, grade, facultyId),
   };
+}
+
+function adminCurriculumReviewApprovalStatus(
+  draft: StoredDraftContentPackRecord,
+  teacher: StoredDraftTeacherRecord,
+  grade: string,
+  facultyId: string,
+): AdminCurriculumReviewDraftSummary["approval"] {
+  const approval = draft.curriculumReviewApproval;
+  const fingerprint = adminCurriculumReviewFingerprint(teacher, grade, facultyId);
+  const stale = !!approval && approval.fingerprint !== fingerprint;
+  return {
+    approved: !!approval && !stale,
+    approvedAt: approval && !stale ? approval.approvedAt : null,
+    approvedBy: approval && !stale ? approval.approvedBy : null,
+    stale,
+    required: true,
+  };
+}
+
+function adminCurriculumReviewFingerprint(
+  teacher: StoredDraftTeacherRecord,
+  grade: string,
+  facultyId: string,
+): string {
+  const payload = {
+    facultyId,
+    grade,
+    questions: teacher.questions.map((question) => ({
+      id: question.id,
+      type: question.type,
+      prompt: question.prompt,
+      options: question.options,
+      correct: question.correct,
+      expectedAnswer: question.expectedAnswer,
+      acceptedAnswers: question.acceptedAnswers,
+      explanation: question.explanation,
+      difficulty: question.difficulty,
+      stat: question.stat,
+      minGrade: question.minGrade,
+      sourceCardId: question.sourceCardId,
+    })),
+  };
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 16);
 }
 
 function adminCurriculumReviewDraftValidation(
@@ -1042,10 +1106,68 @@ async function exportAdminCurriculumDraft(
   };
 }
 
+async function approveAdminCurriculumDraft(
+  deps: AdminDeps,
+  draftId: string,
+  approvedBy = "admin",
+  now = Date.now(),
+): Promise<AdminCurriculumDraftApproval> {
+  const draft = (await deps.ruby.listDraftPackRecords()).find((entry) => entry.id === draftId);
+  if (!draft) throw new Error("Unknown curriculum draft.");
+  if (draft.ownerUserId !== "admin:curriculum" || draft.ownerSessionId !== "admin:curriculum") {
+    throw new Error("Draft is not an admin curriculum draft.");
+  }
+  const teacher = draft.teachers.find((entry) => entry.clientRequestId?.startsWith("curriculum-replenishment:"));
+  if (!teacher?.clientRequestId) throw new Error("Draft is missing its curriculum request id.");
+  const [, , grade, facultyId] = teacher.clientRequestId.split(":");
+  if (!isGrade(grade) || !facultyId) throw new Error("Draft curriculum request id is invalid.");
+  const pack = await getActivePack();
+  const validation = adminCurriculumReviewDraftValidation(teacher, grade, facultyId, pack);
+  if (!validation.ok) {
+    throw new Error(`Reviewed curriculum draft failed validation: ${validation.errors.join("; ")}`);
+  }
+  const fingerprint = adminCurriculumReviewFingerprint(teacher, grade, facultyId);
+  const safeApprovedBy = approvedBy.replace(/\s+/g, " ").trim().slice(0, 80) || "admin";
+  const approvedDraft: StoredDraftContentPackRecord = {
+    ...draft,
+    curriculumReviewApproval: {
+      approvedAt: now,
+      approvedBy: safeApprovedBy,
+      questionCount: teacher.questions.length,
+      fingerprint,
+    },
+    updatedAt: now,
+  };
+  await deps.ruby.saveDraftPackRecord(approvedDraft);
+  return {
+    ok: true,
+    dryRun: false,
+    draftId: draft.id,
+    facultyId,
+    grade,
+    approvedAt: now,
+    approvedBy: safeApprovedBy,
+    questionCount: teacher.questions.length,
+    fingerprint,
+  };
+}
+
 async function promoteAdminCurriculumDraft(
   deps: AdminDeps,
   draftId: string,
 ): Promise<AdminCurriculumDraftPromotion> {
+  const draft = (await deps.ruby.listDraftPackRecords()).find((entry) => entry.id === draftId);
+  if (!draft) throw new Error("Unknown curriculum draft.");
+  const teacher = draft.teachers.find((entry) => entry.clientRequestId?.startsWith("curriculum-replenishment:"));
+  if (!teacher?.clientRequestId) throw new Error("Draft is missing its curriculum request id.");
+  const [, , grade, facultyId] = teacher.clientRequestId.split(":");
+  if (!isGrade(grade) || !facultyId) throw new Error("Draft curriculum request id is invalid.");
+  const approval = adminCurriculumReviewApprovalStatus(draft, teacher, grade, facultyId);
+  if (!approval.approved) {
+    throw new Error(approval.stale
+      ? "Reviewed curriculum draft approval is stale; approve the latest questions before promotion."
+      : "Approve the reviewed curriculum draft before promotion.");
+  }
   const exported = await exportAdminCurriculumDraft(deps, draftId);
   const promoted = await deps.ruby.promoteBuiltInCurriculumQuestions(
     exported.facultyId,
@@ -1513,6 +1635,20 @@ export async function handleAdminCurriculumReplenishmentRoute(ctx: RouteContext,
       }
       try {
         ctx.json(ctx.res, await exportAdminCurriculumDraft(deps, draftId));
+      } catch (err) {
+        ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 400);
+      }
+      return true;
+    }
+    if (action === "approve-reviewed") {
+      const draftId = typeof body === "object" && body ? String((body as { draftId?: unknown }).draftId ?? "").trim() : "";
+      const approvedBy = typeof body === "object" && body ? String((body as { approvedBy?: unknown }).approvedBy ?? "admin") : "admin";
+      if (!draftId) {
+        ctx.error(ctx.res, "draftId is required.", 400);
+        return true;
+      }
+      try {
+        ctx.json(ctx.res, await approveAdminCurriculumDraft(deps, draftId, approvedBy));
       } catch (err) {
         ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 400);
       }
@@ -2274,6 +2410,11 @@ async function postTelegramSnapshot() {
       exportCurriculumDraft(btn.dataset.draftId || "", btn);
     });
     document.addEventListener("click", (event) => {
+      const btn = event.target.closest(".curriculum-approve-btn");
+      if (!btn) return;
+      approveCurriculumDraft(btn.dataset.draftId || "", btn);
+    });
+    document.addEventListener("click", (event) => {
       const btn = event.target.closest(".curriculum-promote-btn");
       if (!btn) return;
       promoteCurriculumDraft(btn.dataset.draftId || "", btn);
@@ -2421,6 +2562,37 @@ async function postTelegramSnapshot() {
         status(err && err.message ? err.message : String(err), "is-error");
       } finally {
         btn.textContent = original || "Export";
+        btn.disabled = false;
+      }
+    }
+
+    async function approveCurriculumDraft(draftId, btn) {
+      const token = tokenEl.value.trim();
+      if (!token || !draftId) {
+        status("Locked.", "");
+        return;
+      }
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Approving...";
+      try {
+        const response = await fetch(replenishmentPath, {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ action: "approve-reviewed", draftId, approvedBy: "admin-dashboard" }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) throw new Error(data.error || "Approval failed.");
+        status("Approved " + n(data.questionCount) + " reviewed questions for promotion.", "");
+        latestReplenishment = await loadReplenishment(token);
+        if (latestMetrics) render(latestMetrics);
+      } catch (err) {
+        status(err && err.message ? err.message : String(err), "is-error");
+      } finally {
+        btn.textContent = original || "Approve";
         btn.disabled = false;
       }
     }
@@ -2783,12 +2955,19 @@ async function postTelegramSnapshot() {
         const label = "Grade " + esc(row.grade) + " · " + esc(row.facultyId);
         const sub = esc(row.name || row.id) + "<div class=\\"sub\\">request " + esc(row.requestDay || "unknown") + "</div>";
         const validation = row.validation || { ok: row.questionCount > 0, errors: [] };
+        const approval = row.approval || { approved: false, stale: false, approvedAt: null, approvedBy: null };
         const errors = (validation.errors || []).slice(0, 2);
         const status = validation.ok
-          ? "Ready<div class=\\"sub\\">validation passed</div>"
+          ? approval.approved
+            ? "Approved<div class=\\"sub\\">" + esc(approval.approvedBy || "admin") + " · " + esc(time(approval.approvedAt)) + "</div>"
+            : approval.stale
+              ? "Re-approval needed<div class=\\"sub\\">questions changed after approval</div>"
+              : "Ready<div class=\\"sub\\">validation passed; approval required</div>"
           : "Needs review" + (errors.length ? "<div class=\\"sub\\">" + errors.map(esc).join("<br>") + "</div>" : "");
-        const action = validation.ok
+        const action = validation.ok && approval.approved
           ? "<button class=\\"secondary curriculum-export-btn\\" type=\\"button\\" data-draft-id=\\"" + esc(row.id) + "\\">Export</button> <button class=\\"secondary curriculum-promote-btn\\" type=\\"button\\" data-draft-id=\\"" + esc(row.id) + "\\">Promote</button><div class=\\"sub\\">" + esc(time(row.updatedAt)) + "</div>"
+          : validation.ok
+            ? "<button class=\\"secondary curriculum-export-btn\\" type=\\"button\\" data-draft-id=\\"" + esc(row.id) + "\\">Export</button> <button class=\\"secondary curriculum-approve-btn\\" type=\\"button\\" data-draft-id=\\"" + esc(row.id) + "\\">Approve</button><div class=\\"sub\\">approval required before promotion</div>"
           : "<span class=\\"sub\\">" + (row.questionCount > 0 ? "Fix validation first" : "Generate questions first") + "</span><div class=\\"sub\\">" + esc(time(row.updatedAt)) + "</div>";
         return "<tr><td>" + label + "<div class=\\"sub\\">" + sub + "</div></td><td>" + n(row.questionCount) + " q / " + n(row.sourceCardCount) + " src</td><td>" + status + "</td><td>" + action + "</td></tr>";
       }).join("") + "</tbody></table>";

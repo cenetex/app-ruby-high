@@ -127,6 +127,12 @@ export interface StoredDraftContentPackRecord {
   derivedFrom?: string;
   courseSlot?: StoredCourseSlotRecord;
   teachers: StoredDraftTeacherRecord[];
+  curriculumReviewApproval?: {
+    approvedAt: number;
+    approvedBy: string;
+    questionCount: number;
+    fingerprint: string;
+  };
   createdAt: number;
   updatedAt: number;
 }

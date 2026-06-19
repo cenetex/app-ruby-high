@@ -1467,6 +1467,8 @@ describe("admin metrics route", () => {
     expect(response.body).toContain("Trends");
     expect(response.body).toContain("Create review drafts");
     expect(response.body).toContain("curriculum-export-btn");
+    expect(response.body).toContain("curriculum-approve-btn");
+    expect(response.body).toContain("approval required before promotion");
     expect(response.body).toContain("Photo posts");
     expect(response.body).toContain("photoPostMetricValue");
     expect(response.body).toContain("Reconnect for image posts - missing media.write");
@@ -2087,6 +2089,88 @@ describe("admin metrics route", () => {
         }),
       ]),
     });
+
+    response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
+      authorizationHeader: "Bearer admin-test-token",
+      body: { action: "promote-reviewed", draftId: persistedDrafts[0]!.id },
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("Approve the reviewed curriculum draft before promotion.");
+
+    response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
+      authorizationHeader: "Bearer admin-test-token",
+      body: { action: "approve-reviewed", draftId: persistedDrafts[0]!.id, approvedBy: "curriculum-reviewer" },
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      ok: true,
+      dryRun: false,
+      draftId: persistedDrafts[0]!.id,
+      facultyId: "ruby",
+      grade: "10",
+      approvedBy: "curriculum-reviewer",
+      questionCount: 6,
+      fingerprint: expect.stringMatching(/^[a-f0-9]{16}$/),
+    });
+
+    response = await appRoute({
+      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
+      authorizationHeader: "Bearer admin-test-token",
+    });
+    expect(response.body.reviewQueue[0]).toMatchObject({
+      id: persistedDrafts[0]!.id,
+      approval: {
+        approved: true,
+        approvedBy: "curriculum-reviewer",
+        stale: false,
+        required: true,
+      },
+    });
+
+    await ruby.saveDraftPackRecord({
+      ...reviewedDraft,
+      curriculumReviewApproval: (await store.loadDraftPacks())[0]!.curriculumReviewApproval,
+      teachers: [{
+        ...reviewedDraft.teachers[0]!,
+        questions: [{
+          ...reviewedDraft.teachers[0]!.questions[0]!,
+          prompt: "Which concrete review habit keeps a generated Ruby question grounded in the teacher corpus?",
+        }],
+      }],
+    });
+    response = await appRoute({
+      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
+      authorizationHeader: "Bearer admin-test-token",
+    });
+    expect(response.body.reviewQueue[0]).toMatchObject({
+      id: persistedDrafts[0]!.id,
+      approval: {
+        approved: false,
+        stale: true,
+        required: true,
+      },
+    });
+    response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
+      authorizationHeader: "Bearer admin-test-token",
+      body: { action: "promote-reviewed", draftId: persistedDrafts[0]!.id },
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("approval is stale");
+
+    await ruby.saveDraftPackRecord(reviewedDraft);
+    response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
+      authorizationHeader: "Bearer admin-test-token",
+      body: { action: "approve-reviewed", draftId: persistedDrafts[0]!.id, approvedBy: "curriculum-reviewer" },
+    });
+    expect(response.status).toBe(200);
 
     response = await appRoute({
       method: "POST",
