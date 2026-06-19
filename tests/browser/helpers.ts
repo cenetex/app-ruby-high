@@ -201,19 +201,19 @@ export async function tickGrade(page: Page) {
 /**
  * Contribute this browser session to the dev live-room goal helper.
  */
-export async function contributeLiveRoomGoal(page: Page) {
-  const result = await page.evaluate(async () => {
+export async function contributeLiveRoomGoal(page: Page, faculty = "ruby") {
+  const result = await page.evaluate(async (requestedFaculty) => {
     const resp = await fetch("/dev/contribute-live-room-goal", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ faculty: requestedFaculty }),
     });
     const body = await resp.json();
     if (!resp.ok) {
       throw new Error(`contribute-live-room-goal failed: ${JSON.stringify(body)}`);
     }
     return body;
-  });
+  }, faculty);
   return result;
 }

@@ -339,6 +339,12 @@ const server = createServer(async (req, res) => {
   if (req.method === "POST" && url.pathname === "/dev/contribute-live-room-goal") {
     try {
       const sessionId = authSvc.stateKeyForCookie(req.headers.cookie ?? null);
+      const body = await readJsonBody(req, bodyLimitForPath(url.pathname)).catch(() => ({}));
+      const requestedFaculty = typeof body?.faculty === "string" ? body.faculty.trim() : "";
+      if (requestedFaculty) {
+        const state = rubySvc.getOrCreate(sessionId);
+        if (state?.character) state.faculty = requestedFaculty;
+      }
       const result = rubySvc.contributeLiveRoomGoal(sessionId);
       if (!result) {
         res.statusCode = 400;

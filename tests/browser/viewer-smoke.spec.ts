@@ -98,8 +98,22 @@ test("shows shared live-room progress across two browser clients", async ({ brow
     await closeRewardComicIfVisible(pageA);
     await closeRewardComicIfVisible(pageB);
 
-    await contributeLiveRoomGoal(pageA);
-    await contributeLiveRoomGoal(pageB);
+    await expect.poll(async () => {
+      const contribution = await contributeLiveRoomGoal(pageA, "ruby");
+      return contribution.result;
+    }, { timeout: 10_000 }).toMatchObject({
+      facultyId: "ruby",
+      progress: expect.any(Number),
+      duplicate: expect.any(Boolean),
+    });
+    await expect.poll(async () => {
+      const contribution = await contributeLiveRoomGoal(pageB, "ruby");
+      return contribution.result;
+    }, { timeout: 10_000 }).toMatchObject({
+      facultyId: "ruby",
+      progress: expect.any(Number),
+      duplicate: expect.any(Boolean),
+    });
 
     const refreshA = pageA.locator("#world-panel-refresh");
     const refreshB = pageB.locator("#world-panel-refresh");
