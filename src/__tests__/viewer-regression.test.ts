@@ -787,9 +787,11 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain("Answers, chat text, session id, wallets, AI keys, receipts, and account identity stay off the public world feed.");
     expectScriptToContain(script, "function renderAccountPublicWorld()");
     expectScriptToContain(script, "function accountPublicWorldView(character, opts)");
+    expectScriptToContain(script, "function createAccountPublicWorldController(deps)");
     expectScriptToContain(script, "function togglePublicWorldFromAccount()");
-    expectScriptToContain(script, "const view = accountPublicWorldView(lastTelemetry && lastTelemetry.character, { authed, busy: billingBusy })");
-    expectScriptToContain(script, 'command({ type: "set-public-presence", publicWorldVisible: nextVisible })');
+    expectScriptToContain(script, "const accountPublicWorldController = createAccountPublicWorldController");
+    expectScriptToContain(script, "viewFor: accountPublicWorldView");
+    expectScriptToContain(script, 'type: "set-public-presence"');
     expect(cssRule(".account-public-world-rules")).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
     expect(cssRule(".account-public-world-status.is-visible")).toContain("color: #8fdc9b");
   });

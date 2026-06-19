@@ -1422,6 +1422,37 @@ export function runViewerClient(bootstrap) {
     return apiClient.command(payload);
   }
 
+  const accountPublicWorldController = createAccountPublicWorldController({
+    elements: {
+      summary: els.accountPublicWorldSummary,
+      status: els.accountPublicWorldStatus,
+      toggle: els.accountPublicWorldToggle,
+    },
+    getCharacter() {
+      return lastTelemetry && lastTelemetry.character;
+    },
+    isAuthed() {
+      return !!authed;
+    },
+    isBusy() {
+      return !!billingBusy;
+    },
+    setBusy(busy) {
+      billingBusy = !!busy;
+    },
+    viewFor: accountPublicWorldView,
+    command,
+    notify(message, ok) {
+      showCongrats(message, ok);
+    },
+    setStatus(message, isError) {
+      setPrivyStatus(message, isError);
+    },
+    onUpdated() {
+      renderAccountPage();
+    },
+  });
+
   // ── message factories ────────────────────────────────────────────────────
   function knownTeacherAssetId(faculty) {
     const haystack = [
@@ -3173,19 +3204,7 @@ export function runViewerClient(bootstrap) {
   }
 
   function renderAccountPublicWorld() {
-    const view = accountPublicWorldView(lastTelemetry && lastTelemetry.character, { authed, busy: billingBusy });
-    if (els.accountPublicWorldSummary) {
-      els.accountPublicWorldSummary.textContent = view.summaryText;
-    }
-    if (els.accountPublicWorldStatus) {
-      els.accountPublicWorldStatus.textContent = view.statusText;
-      els.accountPublicWorldStatus.classList.toggle("is-visible", view.visible);
-    }
-    if (els.accountPublicWorldToggle) {
-      els.accountPublicWorldToggle.textContent = view.toggleText;
-      els.accountPublicWorldToggle.disabled = view.toggleDisabled;
-      els.accountPublicWorldToggle.title = view.toggleTitle;
-    }
+    accountPublicWorldController.render();
   }
 
   function buildAccountCharacterCard(entry, slotNumber) {
@@ -3515,23 +3534,7 @@ export function runViewerClient(bootstrap) {
   }
 
   async function togglePublicWorldFromAccount() {
-    const view = accountPublicWorldView(lastTelemetry && lastTelemetry.character, { authed, busy: billingBusy });
-    if (view.toggleDisabled) return;
-    billingBusy = true;
-    renderAccountPublicWorld();
-    const nextVisible = view.nextVisible;
-    try {
-      const data = await command({ type: "set-public-presence", publicWorldVisible: nextVisible });
-      if (data && data.session) {
-        showCongrats(nextVisible ? "Public world presence enabled" : "Public world presence hidden", true);
-        renderAccountPage();
-      } else {
-        setPrivyStatus("Could not update public world presence.", true);
-      }
-    } finally {
-      billingBusy = false;
-      renderAccountPublicWorld();
-    }
+    await accountPublicWorldController.toggle();
   }
 
   async function ensureSolanaWalletFromAccount() {

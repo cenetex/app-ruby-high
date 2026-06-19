@@ -1,4 +1,5 @@
 import type { ViewerRenderOptions } from "../viewer.js";
+import { createAccountPublicWorldController } from "./account-public-world.js";
 import { createViewerApiClient, withViewerTimeoutSignal } from "./api.js";
 import { consumeViewerSseStream, parseViewerSseFrames } from "./sse.js";
 import { createViewerTurnController } from "./turn-controller.js";
@@ -163,6 +164,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   ${serializeConstants()}
   ${serializePureHelpers()}
   const withViewerTimeoutSignal = ${withViewerTimeoutSignal.toString()};
+  const createAccountPublicWorldController = ${createAccountPublicWorldController.toString()};
   const createViewerApiClient = ${createViewerApiClient.toString()};
   const createViewerTurnController = ${createViewerTurnController.toString()};
   const createViewerWorldActionsController = ${createViewerWorldActionsController.toString()};
