@@ -277,6 +277,10 @@ outcomes without requiring crypto participation.
 5. [#141](https://github.com/cenetex/app-ruby-high/issues/141): continue
    broadening the teacher corpora and reviewer affordances once live-room and
    durable-world telemetry shows which grade/teacher pools are actually weak.
+   Ruby, Sally Science, and Professor Edward now each have a fourth
+   hand-authored source packet aimed at multiplayer/runtime, scientific systems
+   constraints, or public seminar ethics respectively, with tests enforcing
+   packet depth, seed coverage, and defensive copies.
 
 ---
 
