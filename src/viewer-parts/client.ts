@@ -3302,86 +3302,25 @@ export function runViewerClient(bootstrap) {
   }
 
   function buildAccountHistoryRow(tx) {
+    const view = accountHistoryRowView(tx);
     const row = document.createElement("div");
-    row.className = "account-history-row";
-    const amount = Number(tx.hallPasses || 0);
-    const photoDayAmount = Number(tx.photoDayCredits || 0);
-    const cardAmount = walletTransactionCardCount(tx);
-    const isPackPurchase = tx && tx.kind === "hall-pass-pack-mint";
-    const visibleAmount = amount || photoDayAmount || cardAmount;
-    if (isPackPurchase) row.classList.add("is-swap");
-    else if (visibleAmount > 0) row.classList.add("is-credit");
-    else if (visibleAmount < 0) row.classList.add("is-debit");
+    row.className = view.className;
     const main = document.createElement("div");
     main.className = "account-history-main";
     const title = document.createElement("div");
     title.className = "account-history-title";
-    title.textContent = walletTransactionDescription(tx);
+    title.textContent = view.title;
     const meta = document.createElement("div");
     meta.className = "account-history-meta";
-    meta.textContent = walletTransactionSource(tx) + " · " + formatAccountDate(tx.at);
+    meta.textContent = view.meta;
     main.appendChild(title);
     main.appendChild(meta);
     const delta = document.createElement("div");
     delta.className = "account-history-delta";
-    delta.textContent = isPackPurchase
-      ? walletTransactionPackDeltaText(tx)
-      : cardAmount !== 0
-      ? (cardAmount > 0 ? "+" : "") + formatWholeNumber(cardAmount) + " Card" + (Math.abs(cardAmount) === 1 ? "" : "s")
-      : amount !== 0
-        ? (amount > 0 ? "+" : "") + formatWholeNumber(amount) + " Hall Pass" + (Math.abs(amount) === 1 ? "" : "es")
-        : photoDayAmount !== 0
-          ? (photoDayAmount > 0 ? "+" : "") + formatWholeNumber(photoDayAmount) + " Photo Day"
-          : "0";
+    delta.textContent = view.delta;
     row.appendChild(main);
     row.appendChild(delta);
     return row;
-  }
-
-  function walletTransactionTitle(tx) {
-    if (!tx || !tx.kind) return "Wallet update";
-    if (tx.kind === "hall-pass-grant") return walletTransactionCardCount(tx) > 0 ? "Pack opened" : "Hall Pass grant";
-    if (tx.kind === "hall-pass-spend") return walletTransactionCardCount(tx) < 0 ? "Card burn" : "Hall Pass spend";
-    if (tx.kind === "hall-pass-refund") return "Hall Pass refund";
-    if (tx.kind === "hall-pass-revoke") return "Hall Pass reversal";
-    if (tx.kind === "hall-pass-card-burn") return "Card burned for Hall Pass";
-    if (tx.kind === "hall-pass-pack-mint") return "Pack minted";
-    if (tx.kind === "hall-pass-pack-open") return "Pack opened";
-    if (tx.kind === "hall-pass-card-mint") return "Card minted";
-    if (tx.kind === "photo-day-spend") return "Photo Day credit";
-    if (tx.kind === "photo-day-refund") return "Photo Day refund";
-    return "Wallet update";
-  }
-
-  function walletTransactionDescription(tx) {
-    const raw = tx && typeof tx.description === "string" && tx.description.trim()
-      ? tx.description.trim()
-      : walletTransactionTitle(tx);
-    return raw;
-  }
-
-  function walletTransactionCardCount(tx) {
-    const metadata = tx && tx.metadata && typeof tx.metadata === "object" ? tx.metadata : {};
-    const rawCount = Math.max(0, Math.floor(Number(metadata.hallPassCardCount || metadata.cardCount || 0)));
-    const packCount = Math.max(0, Math.floor(Number(metadata.packCount || 0)));
-    const count = tx && tx.kind === "hall-pass-pack-mint" && packCount > 0
-      ? Math.max(rawCount, packCount * HALL_PASS_CARDS_PER_PACK)
-      : rawCount;
-    if (count <= 0) return 0;
-    return tx.kind === "hall-pass-spend" || tx.kind === "hall-pass-revoke" ? -count : count;
-  }
-
-  function walletTransactionPackDeltaText(tx) {
-    const metadata = tx && tx.metadata && typeof tx.metadata === "object" ? tx.metadata : {};
-    const packCount = Math.max(1, Math.floor(Number(metadata.packCount || 1)));
-    const tokenAmount = metadata.solanaTokenAmount || "";
-    const tokenSymbol = metadata.solanaTokenSymbol || "RUBY";
-    return "-" + formatTokenDisplayAmount(tokenAmount) + " " + tokenSymbol + " · +" + packCountLabel(packCount);
-  }
-
-  function walletTransactionSource(tx) {
-    const source = String((tx && tx.source) || "system").replace(/-/g, " ");
-    return source.charAt(0).toUpperCase() + source.slice(1);
   }
 
   function welcomeHallPassGrant(t) {
@@ -3493,7 +3432,7 @@ export function runViewerClient(bootstrap) {
     document.body.appendChild(overlay);
   }
 
-  // formatAccountDate is in client-pure.
+  // accountHistoryRowView is in client-pure.
 
   async function unlockCharacterSlotFromAccount() {
     if (!authed || billingBusy) return;

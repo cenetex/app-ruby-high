@@ -240,6 +240,7 @@ describe("viewer regression guardrails", () => {
   it("wires the Privy account UI through the lazy widget bundle", () => {
     const html = renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test", loginMethods: ["wallet"] } });
     const script = inlineScript(html);
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
 
     expect(() => new Function(script)).not.toThrow();
     expect(html).toContain('id="privy-action"');
@@ -262,6 +263,8 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="account-create-character"');
     expect(html).toContain('id="account-history-list"');
     expect(html).toContain('id="account-comics"');
+    expectScriptToContain(script, "function accountHistoryRowView(tx)");
+    expectScriptToContain(clientSource, "const view = accountHistoryRowView(tx);");
     expectScriptToContain(script, '"build":"dev"');
     expectScriptToContain(script, '"privyConfig":{"appId":"privy-app-test","clientId":"privy-client-test","loginMethods":["wallet"]}');
     expectScriptToContain(script, 'const PRIVY_CLIENT_URL = apiBase + "/assets/privy-client.global.js?v=" + encodeURIComponent(buildId)');

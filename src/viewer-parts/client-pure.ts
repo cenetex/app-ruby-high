@@ -62,6 +62,12 @@ export type AccountPublicWorldView = {
   toggleTitle: string;
   nextVisible: boolean;
 };
+export type AccountHistoryRowView = {
+  className: string;
+  title: string;
+  meta: string;
+  delta: string;
+};
 type ClassmateArcProgress = { value: number; total: number };
 type RoomCompletionProgress = { value: number; total: number };
 export type RoomChannelStudentView = { id: string; name: string };
@@ -402,6 +408,77 @@ export function formatAccountDate(ts: unknown): string {
     return "unknown date";
   }
 }
+
+export function walletTransactionCardCount(tx: NullableRecord): number {
+  const metadata = tx && tx.metadata && typeof tx.metadata === "object" ? tx.metadata : {};
+  const rawCount = Math.max(0, Math.floor(Number(metadata.hallPassCardCount || metadata.cardCount || 0)));
+  const packCount = Math.max(0, Math.floor(Number(metadata.packCount || 0)));
+  const count = tx && tx.kind === "hall-pass-pack-mint" && packCount > 0
+    ? Math.max(rawCount, packCount * VIEWER_CONSTANTS.HALL_PASS_CARDS_PER_PACK)
+    : rawCount;
+  if (count <= 0) return 0;
+  return tx && (tx.kind === "hall-pass-spend" || tx.kind === "hall-pass-revoke") ? -count : count;
+}
+
+export function walletTransactionTitle(tx: NullableRecord): string {
+  if (!tx || !tx.kind) return "Wallet update";
+  if (tx.kind === "hall-pass-grant") return walletTransactionCardCount(tx) > 0 ? "Pack opened" : "Hall Pass grant";
+  if (tx.kind === "hall-pass-spend") return walletTransactionCardCount(tx) < 0 ? "Card burn" : "Hall Pass spend";
+  if (tx.kind === "hall-pass-refund") return "Hall Pass refund";
+  if (tx.kind === "hall-pass-revoke") return "Hall Pass reversal";
+  if (tx.kind === "hall-pass-card-burn") return "Card burned for Hall Pass";
+  if (tx.kind === "hall-pass-pack-mint") return "Pack minted";
+  if (tx.kind === "hall-pass-pack-open") return "Pack opened";
+  if (tx.kind === "hall-pass-card-mint") return "Card minted";
+  if (tx.kind === "photo-day-spend") return "Photo Day credit";
+  if (tx.kind === "photo-day-refund") return "Photo Day refund";
+  return "Wallet update";
+}
+
+export function walletTransactionDescription(tx: NullableRecord): string {
+  return tx && typeof tx.description === "string" && tx.description.trim()
+    ? tx.description.trim()
+    : walletTransactionTitle(tx);
+}
+
+export function walletTransactionPackDeltaText(tx: NullableRecord): string {
+  const metadata = tx && tx.metadata && typeof tx.metadata === "object" ? tx.metadata : {};
+  const packCount = Math.max(1, Math.floor(Number(metadata.packCount || 1)));
+  const tokenAmount = metadata.solanaTokenAmount || "";
+  const tokenSymbol = metadata.solanaTokenSymbol || "RUBY";
+  return "-" + formatTokenDisplayAmount(tokenAmount) + " " + tokenSymbol + " · +" + packCountLabel(packCount);
+}
+
+export function walletTransactionSource(tx: NullableRecord): string {
+  const source = String((tx && tx.source) || "system").replace(/-/g, " ");
+  return source.charAt(0).toUpperCase() + source.slice(1);
+}
+
+export function accountHistoryRowView(tx: NullableRecord): AccountHistoryRowView {
+  const amount = Number((tx && tx.hallPasses) || 0);
+  const photoDayAmount = Number((tx && tx.photoDayCredits) || 0);
+  const cardAmount = walletTransactionCardCount(tx);
+  const isPackPurchase = !!(tx && tx.kind === "hall-pass-pack-mint");
+  const visibleAmount = amount || photoDayAmount || cardAmount;
+  const className = "account-history-row"
+    + (isPackPurchase ? " is-swap" : visibleAmount > 0 ? " is-credit" : visibleAmount < 0 ? " is-debit" : "");
+  const delta = isPackPurchase
+    ? walletTransactionPackDeltaText(tx)
+    : cardAmount !== 0
+    ? (cardAmount > 0 ? "+" : "") + formatWholeNumber(cardAmount) + " Card" + (Math.abs(cardAmount) === 1 ? "" : "s")
+    : amount !== 0
+      ? (amount > 0 ? "+" : "") + formatWholeNumber(amount) + " Hall Pass" + (Math.abs(amount) === 1 ? "" : "es")
+      : photoDayAmount !== 0
+        ? (photoDayAmount > 0 ? "+" : "") + formatWholeNumber(photoDayAmount) + " Photo Day"
+        : "0";
+  return {
+    className,
+    title: walletTransactionDescription(tx),
+    meta: walletTransactionSource(tx) + " · " + formatAccountDate(tx && tx.at),
+    delta,
+  };
+}
+
 export function formatSealedDate(ts: unknown): string {
   if (!ts) return "—";
   try {
