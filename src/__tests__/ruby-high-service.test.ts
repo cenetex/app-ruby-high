@@ -2051,6 +2051,86 @@ describe("RubyHighService Phase 1", () => {
     expect(JSON.stringify(world)).not.toContain("noor@example.test");
   });
 
+  it("blocks public-name-review failures from live-room rewards", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+    const reviewed = attachTestCharacter(ruby, "test:world-name-review-reward");
+    reviewed.sessionId = "test:world-name-review-reward";
+    reviewed.currentGrade = "10";
+    reviewed.faculty = "ruby";
+    reviewed.character!.name = "noor@example.test";
+    reviewed.character!.createdAt = now;
+    reviewed.character!.socialConsent = true;
+    reviewed.character!.publicWorldVisible = true;
+    const reviewedClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    reviewedClass.completedAt = now;
+    reviewedClass.updatedAt = now;
+    reviewed.character!.dailyClasses = { ruby: reviewedClass };
+
+    const visible = attachTestCharacter(ruby, "test:world-name-visible-reward");
+    visible.sessionId = "test:world-name-visible-reward";
+    visible.currentGrade = "10";
+    visible.faculty = "ruby";
+    visible.character!.name = "Visible World Mina";
+    visible.character!.createdAt = now;
+    const visibleClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    visibleClass.completedAt = now;
+    visibleClass.updatedAt = now;
+    visible.character!.dailyClasses = { ruby: visibleClass };
+
+    expect(ruby.contributeLiveRoomGoal(reviewed.sessionId, now)).toBeNull();
+    expect(ruby.contributeLiveRoomGoal(visible.sessionId, now + 1)).toMatchObject({
+      grade: "10",
+      facultyId: "ruby",
+      progress: 1,
+      target: 3,
+      complete: false,
+      duplicate: false,
+    });
+
+    const world = ruby.getSchoolWorldSnapshot(10, now + 1);
+    const roomGoalEvents = world.recentEvents.filter((event) => event.kind === "room.goal-progress");
+    expect(world.activeRooms[0]).toMatchObject({
+      grade: "10",
+      facultyId: "ruby",
+      activeStudents: 1,
+      goal: {
+        kind: "live-class",
+        progress: 1,
+        target: 3,
+        complete: false,
+        updatedAt: now + 1,
+      },
+    });
+    expect(roomGoalEvents).toHaveLength(1);
+    expect(roomGoalEvents[0]).toMatchObject({
+      kind: "room.goal-progress",
+      progress: 1,
+      target: 3,
+      complete: false,
+    });
+    expect(JSON.stringify(world)).toContain("Visible World Mina");
+    expect(JSON.stringify(world)).not.toContain("noor@example.test");
+    expect(JSON.stringify(world)).not.toContain("test:world-name-review-reward");
+
+    await ruby.flush();
+    const goalState = await new StateStore(storePath).loadServiceState("ruby-high:live-room-goals:v1");
+    expect(goalState?.data).toMatchObject({
+      version: 1,
+      goals: [
+        expect.objectContaining({
+          grade: "10",
+          facultyId: "ruby",
+          day: "2026-06-15",
+          contributors: [visible.sessionId],
+          updatedAt: now + 1,
+        }),
+      ],
+    });
+    expect(JSON.stringify(goalState)).not.toContain("noor@example.test");
+    expect(JSON.stringify(goalState)).not.toContain("test:world-name-review-reward");
+  });
+
   it("exposes shared live-room goal progress through the public world feed", async () => {
     const { ruby } = await makeServices();
     const now = Date.UTC(2026, 5, 15, 12);

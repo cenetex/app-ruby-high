@@ -49,7 +49,8 @@ order unless production evidence says otherwise:
    admin visibility.
 4. **#142 — keep public play safe as it becomes central.** Extend the
    public-name review, profile copy, and moderation paths so they match the
-   richer live-room surfaces.
+   richer live-room surfaces; public-name review now gates live-room reward
+   contribution as well as room visibility.
 5. **#141 — deepen the teacher research loop.** Broaden the corpora and
    approval/replenishment affordances after the gameplay loop shows which
    concepts actually need more material.
@@ -274,8 +275,10 @@ outcomes without requiring crypto participation.
    review now blocks reserved, contact-info, empty, and unsafe student names
    from entering public rooms, filters already-visible unsafe names out of
    server projections, and explains the review in the account public-world
-   control. Next, wire that safety model into richer room or term progression
-   surfaces as public presence becomes more valuable.
+   control. The same gate now has regression coverage for shared live-room
+   rewards, so reviewed names cannot earn public room progress while valid
+   classmates can continue the goal. Next, carry that safety model into richer
+   term progression rewards as public presence becomes more valuable.
 5. [#141](https://github.com/cenetex/app-ruby-high/issues/141): continue
    broadening the teacher corpora and reviewer affordances once live-room and
    durable-world telemetry shows which grade/teacher pools are actually weak.
