@@ -6,6 +6,7 @@ import {
   throwLlmResponseError,
 } from "../services/llm-provider.js";
 import { log, logMetricsSnapshot } from "../services/logger.js";
+import { validateCurriculumCandidateQuestions } from "../services/ruby-high/curriculum-candidate-validation.js";
 import type { AuthAnalyticsSnapshot, AuthService } from "../services/auth-service.js";
 import type { RubyHighAnalyticsSnapshot, RubyHighService } from "../services/ruby-high-service.js";
 import type { StoredDraftContentPackRecord, StoredDraftTeacherRecord } from "../services/state-store.js";
@@ -509,22 +510,14 @@ async function exportAdminCurriculumDraft(
   const pack = await getActivePack();
   const faculty = pack.faculty.find((entry) => entry.id === facultyId);
   if (!faculty) throw new Error("Built-in teacher was not found.");
-  const existingPrompts = new Map(
-    faculty.questions.map((question) => [normalizePromptForDuplicateCheck(question.prompt), question.id]),
-  );
-  const exportPrompts = new Map<string, string>();
-  for (const question of teacher.questions) {
-    const promptKey = normalizePromptForDuplicateCheck(question.prompt);
-    if (!promptKey) throw new Error(`Reviewed question ${question.id} is missing a prompt.`);
-    const existingId = existingPrompts.get(promptKey);
-    if (existingId) {
-      throw new Error(`Reviewed question duplicates existing built-in question ${existingId}.`);
-    }
-    const priorDraftId = exportPrompts.get(promptKey);
-    if (priorDraftId) {
-      throw new Error(`Reviewed question ${question.id} duplicates draft question ${priorDraftId}.`);
-    }
-    exportPrompts.set(promptKey, question.id);
+  const validation = validateCurriculumCandidateQuestions({
+    facultyId,
+    targetMinGrade: grade,
+    questions: teacher.questions,
+    existingQuestions: faculty.questions,
+  });
+  if (!validation.ok) {
+    throw new Error(`Reviewed curriculum draft failed validation: ${validation.errors.join("; ")}`);
   }
   const slugDay = requestDay.replace(/[^0-9]/g, "") || new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const questions = teacher.questions.map((question, index) => ({
@@ -554,16 +547,6 @@ function draftFacultyIdForAdminTeacher(teacherId: string): string {
 
 function isGrade(value: string | undefined): value is Grade {
   return value === "9" || value === "10" || value === "11" || value === "12";
-}
-
-function normalizePromptForDuplicateCheck(value: string): string {
-  return value
-    .replace(/\s+/g, " ")
-    .toLowerCase()
-    .replace(/[“”]/g, "\"")
-    .replace(/[‘’]/g, "'")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
 }
 
 function slugForAdminId(value: string): string {
