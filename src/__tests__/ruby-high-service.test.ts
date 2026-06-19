@@ -2241,6 +2241,13 @@ describe("RubyHighService Phase 1", () => {
           "10": 1,
         },
       },
+      termProgress: {
+        totalSparks: 1,
+        level: 0,
+        nextLevelAt: 3,
+        sparksToNextLevel: 2,
+        label: "Term Spark 1/3",
+      },
     });
     expect(rehydratedWorld.recentEvents.filter((event) => event.kind === "room.goal-progress")).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -2279,6 +2286,10 @@ describe("RubyHighService Phase 1", () => {
           byGrade: {
             "10": 1,
           },
+        },
+        termProgress: {
+          label: "Term Spark 1/3",
+          sparksToNextLevel: 2,
         },
       },
     });
@@ -2354,6 +2365,13 @@ describe("RubyHighService Phase 1", () => {
         },
         studySparks: {
           total: 0,
+        },
+        termProgress: {
+          totalSparks: 0,
+          level: 0,
+          nextLevelAt: 3,
+          sparksToNextLevel: 3,
+          label: "Term Spark 0/3",
         },
       },
     });
@@ -2584,6 +2602,10 @@ describe("RubyHighService Phase 1", () => {
               byGrade: {
                 "10": 1,
               },
+            },
+            termProgress: {
+              label: "Term Spark 1/3",
+              sparksToNextLevel: 2,
             },
           },
         });

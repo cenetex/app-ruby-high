@@ -105,6 +105,14 @@ describe("viewer world feed pure helpers", () => {
     expect(worldFeedSummaryLabel(3, [{}, {}])).toBe("3 students live · 2 rooms");
     expect(worldFeedSummaryLabel(3, [{}, {}], null, { studySparks: { total: 1 } })).toBe("3 students live · 2 rooms · 1 Study Spark");
     expect(worldFeedSummaryLabel(3, [{}, {}], null, { studySparks: { total: 2 } })).toBe("3 students live · 2 rooms · 2 Study Sparks");
+    expect(worldFeedSummaryLabel(3, [{}, {}], null, {
+      studySparks: { total: 1 },
+      termProgress: { label: "Term Spark 1/3" },
+    })).toBe("3 students live · 2 rooms · 1 Study Spark · Term Spark 1/3");
+    expect(worldFeedSummaryLabel(3, [{}, {}], null, {
+      studySparks: { total: 3 },
+      termProgress: { label: "Term Level 1" },
+    })).toBe("3 students live · 2 rooms · 3 Study Sparks · Term Level 1");
     expect(worldFeedSummaryLabel(3, 2)).toBe("3 students live · 2 rooms");
     expect(worldFeedSummaryLabel(3, 2, "offline")).toBe("World feed paused");
   });

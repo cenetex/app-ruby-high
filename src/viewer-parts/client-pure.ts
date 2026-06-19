@@ -1218,7 +1218,9 @@ export function worldFeedSummaryLabel(activeStudents: unknown, activeRooms: unkn
   const record = summary && typeof summary === "object" ? summary as LooseRecord : {};
   const sparks = Math.max(0, Math.floor(Number(record.studySparks && typeof record.studySparks === "object" ? (record.studySparks as LooseRecord).total : 0)));
   const sparkText = sparks > 0 ? " · " + sparks + " Study " + (sparks === 1 ? "Spark" : "Sparks") : "";
-  return studentText + " live · " + roomText + sparkText;
+  const term = record.termProgress && typeof record.termProgress === "object" ? record.termProgress as LooseRecord : null;
+  const termLabel = term && typeof term.label === "string" && term.label.trim() ? " · " + term.label.trim() : "";
+  return studentText + " live · " + roomText + sparkText + termLabel;
 }
 
 export function worldFeedRoomViews(rooms: unknown, roster: unknown, limit = 5): WorldFeedRoomView[] {

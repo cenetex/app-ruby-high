@@ -717,6 +717,13 @@ export interface PublicWorldSummarySnapshot {
     total: number;
     byGrade: Partial<Record<Grade, number>>;
   };
+  termProgress: {
+    totalSparks: number;
+    level: number;
+    nextLevelAt: number;
+    sparksToNextLevel: number;
+    label: string;
+  };
 }
 
 export type { DailyPhotoPostResult, RubyHighPhotoPostSchedulerSnapshot };
@@ -869,7 +876,7 @@ export interface SchoolWorldSnapshot {
   activeRooms: SchoolWorldRoom[];
   cohorts: Record<string, SchoolWorldStudent[]>;
   recentEvents: SchoolWorldEvent[];
-  summary: Pick<PublicWorldSummarySnapshot, "schoolYear" | "roomGoalEvents" | "studySparks">;
+  summary: Pick<PublicWorldSummarySnapshot, "schoolYear" | "roomGoalEvents" | "studySparks" | "termProgress">;
   curriculum: {
     activeCharacterSessions: number;
     lowPools: RubyHighCurriculumCoverageRow[];
@@ -2415,6 +2422,7 @@ export class RubyHighService extends Service {
         total: studySparkTotal,
         byGrade: studySparksByGrade,
       },
+      termProgress: publicWorldTermProgress(studySparkTotal),
     };
   }
 
@@ -8054,6 +8062,7 @@ export class RubyHighService extends Service {
         schoolYear: summary.schoolYear,
         roomGoalEvents: summary.roomGoalEvents,
         studySparks: summary.studySparks,
+        termProgress: summary.termProgress,
       },
       curriculum: {
         activeCharacterSessions: curriculum.activeCharacterSessions,
@@ -9722,6 +9731,25 @@ function publicWorldRoomOutcomeSummaryLabel(displayName: string, progress: numbe
   const contributorText = contributors === 1 ? "1 contributor" : `${contributors} contributors`;
   return publicWorldStoredText(`${displayName} live class completed ${progress}/${target} with ${contributorText}`, 180)
     || "Live class completed";
+}
+
+function publicWorldTermProgress(studySparkTotal: number): PublicWorldSummarySnapshot["termProgress"] {
+  const totalSparks = Math.max(0, Math.floor(Number(studySparkTotal) || 0));
+  const sparksPerLevel = 3;
+  const level = Math.floor(totalSparks / sparksPerLevel);
+  const currentStep = totalSparks % sparksPerLevel;
+  const nextLevelAt = (level + 1) * sparksPerLevel;
+  const sparksToNextLevel = nextLevelAt - totalSparks;
+  const label = level > 0 && currentStep === 0
+    ? `Term Level ${level}`
+    : `Term Spark ${currentStep}/${sparksPerLevel}`;
+  return {
+    totalSparks,
+    level,
+    nextLevelAt,
+    sparksToNextLevel,
+    label,
+  };
 }
 
 function publicWorldTeacherAgendaId(schoolYear: string, grade: Grade, facultyId: string): string {

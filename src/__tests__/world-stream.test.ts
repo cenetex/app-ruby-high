@@ -36,6 +36,13 @@ function publicWorldSummary() {
     schoolYear: "2025-2026",
     roomGoalEvents: { total: 0, complete: 0 },
     studySparks: { total: 0, byGrade: {} },
+    termProgress: {
+      totalSparks: 0,
+      level: 0,
+      nextLevelAt: 3,
+      sparksToNextLevel: 3,
+      label: "Term Spark 0/3",
+    },
   };
 }
 

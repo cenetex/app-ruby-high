@@ -240,17 +240,20 @@ outcomes without requiring crypto participation.
    public-world summary/admin health surface; the public `/world` snapshot now
    carries those totals, the live `/world/events` snapshot includes them, and
    the player School World panel renders them in its compact summary with
-   browser coverage across multiple public clients. Next, make the reward
-   affect a richer room or term progression surface verified through normal
-   answer flow.
+   browser coverage across multiple public clients. Study Sparks now also drive
+   a deterministic term-progress label in the durable public-world summary,
+   `/world` snapshot, live `/world/events` snapshot, admin health surface, and
+   player School World summary. Next, make that term progression unlock or
+   modify a concrete room rule.
 3. [#143](https://github.com/cenetex/app-ruby-high/issues/143): durable room
    outcomes now carry sanitized room titles, aggregate completion summaries,
    Study Spark reward labels, and a recent-outcomes admin health surface.
    Durable teacher agendas now carry aggregate execution status, reason, next
    action, and priority score with admin health counts. JSON/dev and
-   SQLite-backed restart replay tests now prove sanitized events, outcomes, and
-   agendas hydrate without private sessions. Next, expand replay acceptance into
-   richer room/term progression once those entities are added.
+   SQLite-backed restart replay tests now prove sanitized events, outcomes,
+   agendas, summary Study Sparks, and term-progress labels hydrate without
+   private sessions. Next, expand replay acceptance into concrete term entities
+   once term progression has player-facing rules.
 4. [#142](https://github.com/cenetex/app-ruby-high/issues/142): public-name
    review now blocks reserved, contact-info, empty, and unsafe student names
    from entering public rooms, filters already-visible unsafe names out of
