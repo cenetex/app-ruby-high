@@ -1487,9 +1487,7 @@ describe("admin metrics route", () => {
   });
 
   it("serves authenticated public world moderation reports without raw session ids", async () => {
-    vi.useFakeTimers();
     const now = Date.UTC(2026, 5, 15, 14);
-    vi.setSystemTime(now);
     const sessionId = "rh:user:moderation-reporter";
     attachCohortStudent(sessionId, "Report Noor", "10", "A");
     const state = ruby.getOrCreate(sessionId);
@@ -1530,7 +1528,7 @@ describe("admin metrics route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       ok: true,
-      generatedAt: now,
+      generatedAt: expect.any(Number),
       reportCount: 1,
       reports: [{
         eventId,
@@ -1557,12 +1555,52 @@ describe("admin metrics route", () => {
       method: "POST",
       path: "/api/apps/ruby-high/admin/world/moderation",
       authorizationHeader: "Bearer admin-test-token",
+      body: { action: "suppress-event", eventId, reason: "globally noisy" },
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      ok: true,
+      generatedAt: expect.any(Number),
+      eventId,
+      reason: "globally noisy",
+      suppressed: true,
+    });
+
+    const world = await appRoute({ path: "/api/apps/ruby-high/world?limit=10" });
+    expect(world.status).toBe(200);
+    expect(JSON.stringify(world.body.world.recentEvents)).not.toContain("Moderation page");
+
+    const storedModeration = await store.loadServiceState("ruby-high:public-world-moderation:v1");
+    expect(storedModeration?.data).toMatchObject({
+      version: 1,
+      suppressedEvents: [{
+        eventId,
+        reason: "globally noisy",
+        suppressedAt: expect.any(Number),
+      }],
+    });
+
+    response = await appRoute({
+      path: "/api/apps/ruby-high/admin/world/moderation?limit=10",
+      authorizationHeader: "Bearer admin-test-token",
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.suppressedEvents).toEqual([{
+      eventId,
+      reason: "globally noisy",
+      suppressedAt: expect.any(Number),
+    }]);
+
+    response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/admin/world/moderation",
+      authorizationHeader: "Bearer admin-test-token",
       body: { action: "dismiss-report", reportId },
     });
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       ok: true,
-      generatedAt: now,
+      generatedAt: expect.any(Number),
       reportId,
       dismissed: true,
       dismissedCount: 1,

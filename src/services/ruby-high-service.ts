@@ -846,11 +846,18 @@ export interface PublicWorldModerationReport {
   event: Pick<SchoolWorldEvent, "id" | "kind" | "at" | "faculty" | "grade"> & { label: string | null } | null;
 }
 
+export interface PublicWorldSuppressedEvent {
+  eventId: string;
+  reason: string;
+  suppressedAt: number;
+}
+
 export interface PublicWorldModerationSnapshot {
   ok: true;
   generatedAt: number;
   reportCount: number;
   reports: PublicWorldModerationReport[];
+  suppressedEvents: PublicWorldSuppressedEvent[];
 }
 
 export interface PublicWorldModerationDismissResult {
@@ -861,8 +868,17 @@ export interface PublicWorldModerationDismissResult {
   dismissedCount: number;
 }
 
+export interface PublicWorldEventSuppressionResult {
+  ok: true;
+  generatedAt: number;
+  eventId: string;
+  reason: string;
+  suppressed: boolean;
+}
+
 const PUBLIC_WORLD_EVENT_ID_RE = /^world:event:[a-f0-9]{16}$/i;
 const PUBLIC_WORLD_REPORT_REASON_LIMIT = 240;
+const PUBLIC_WORLD_MODERATION_STATE_ID = "ruby-high:public-world-moderation:v1";
 
 export interface LiveRoomGoalContributionResult {
   grade: Grade;
@@ -1080,6 +1096,7 @@ export class RubyHighService extends Service {
   private readonly metricEvents = new Map<string, StoredMetricEventRecord>();
   private readonly schoolEventRecords = new Map<string, StoredSchoolEventRecord>();
   private readonly liveRoomGoalStates = new Map<string, LiveRoomGoalState>();
+  private readonly publicWorldSuppressedEvents = new Map<string, PublicWorldSuppressedEvent>();
   private readonly pendingPhotoPosts = new Set<string>();
   private readonly deferredPhotoPosts = new Map<string, number>();
   private photoPostSchedulerTimer: ReturnType<typeof setInterval> | null = null;
@@ -1118,6 +1135,7 @@ export class RubyHighService extends Service {
     this.metricEvents.clear();
     this.schoolEventRecords.clear();
     this.liveRoomGoalStates.clear();
+    this.publicWorldSuppressedEvents.clear();
     this.persistedPackRecords = null;
     this.teacherRecords = null;
     this.draftPackRecords = null;
@@ -1129,6 +1147,7 @@ export class RubyHighService extends Service {
     await Promise.all([
       this.persistAll(),
       this.persistPhotoPostSchedulerState({ surfaceErrors: true }),
+      this.persistPublicWorldModerationState({ surfaceErrors: true }),
     ]);
     if (typeof this.store.flush === "function") await this.store.flush();
     await Promise.allSettled(Array.from(this.backgroundWrites));
@@ -1794,6 +1813,48 @@ export class RubyHighService extends Service {
     const record = this.photoPostSchedulerStateRecord();
     const save = this.store.saveServiceState(record).catch((err) => {
       log.error("photo-post-scheduler.persist-failed", err);
+      if (options.surfaceErrors) throw err;
+    });
+    if (!options.surfaceErrors) this.trackBackgroundWrite(save);
+    return save;
+  }
+
+  private hydratePublicWorldModerationState(record: StoredServiceStateRecord | null): void {
+    this.publicWorldSuppressedEvents.clear();
+    const data = record?.data;
+    const entries = data && data.version === 1 && Array.isArray(data.suppressedEvents)
+      ? data.suppressedEvents
+      : [];
+    for (const entry of entries) {
+      if (!entry || typeof entry !== "object") continue;
+      const source = entry as Record<string, unknown>;
+      const eventId = normalizePublicWorldEventId(source.eventId);
+      if (!eventId) continue;
+      this.publicWorldSuppressedEvents.set(eventId, {
+        eventId,
+        reason: normalizePublicWorldReportReason(source.reason),
+        suppressedAt: Math.max(0, Math.floor(Number(source.suppressedAt) || 0)),
+      });
+    }
+  }
+
+  private publicWorldModerationStateRecord(now = Date.now()): StoredServiceStateRecord {
+    return {
+      id: PUBLIC_WORLD_MODERATION_STATE_ID,
+      updatedAt: now,
+      data: {
+        version: 1,
+        suppressedEvents: Array.from(this.publicWorldSuppressedEvents.values())
+          .sort((a, b) => b.suppressedAt - a.suppressedAt || a.eventId.localeCompare(b.eventId)),
+      },
+    };
+  }
+
+  private persistPublicWorldModerationState(options: { surfaceErrors?: boolean } = {}, now = Date.now()): Promise<void> {
+    if (!this.store.saveServiceState) return Promise.resolve();
+    const record = this.publicWorldModerationStateRecord(now);
+    const save = this.store.saveServiceState(record).catch((err) => {
+      log.error("public-world-moderation.persist-failed", err);
       if (options.surfaceErrors) throw err;
     });
     if (!options.surfaceErrors) this.trackBackgroundWrite(save);
@@ -2940,6 +3001,7 @@ export class RubyHighService extends Service {
       storedMetricEvents,
       storedSchoolEvents,
       storedPhotoPostSchedulerState,
+      storedPublicWorldModerationState,
     ] = await Promise.all([
       this.store.loadPacks(),
       this.store.loadTeachers(),
@@ -2949,6 +3011,7 @@ export class RubyHighService extends Service {
       this.store.loadMetricEvents?.() ?? Promise.resolve([]),
       this.store.loadSchoolEvents?.({ limit: SCHOOL_WORLD_EVENT_CACHE_LIMIT }) ?? Promise.resolve([]),
       this.store.loadServiceState?.(PHOTO_POST_SCHEDULER_STATE_ID) ?? Promise.resolve(null),
+      this.store.loadServiceState?.(PUBLIC_WORLD_MODERATION_STATE_ID) ?? Promise.resolve(null),
     ]);
     const staleBuiltInPackRecords = storedPacks.filter(isPersistedBuiltInPackOverride);
     this.persistedPackRecords = storedPacks.filter((record) => !isPersistedBuiltInPackOverride(record));
@@ -2998,6 +3061,7 @@ export class RubyHighService extends Service {
     }
     this.pruneSchoolEventRecords();
     this.hydratePhotoPostSchedulerState(storedPhotoPostSchedulerState);
+    this.hydratePublicWorldModerationState(storedPublicWorldModerationState);
     this.loaded = true;
     if (repaired) await this.persistAll();
   }
@@ -7219,6 +7283,7 @@ export class RubyHighService extends Service {
       generatedAt: now,
       reportCount: reports.length,
       reports: boundedReports,
+      suppressedEvents: this.publicWorldSuppressedEventList(),
     };
   }
 
@@ -7250,19 +7315,39 @@ export class RubyHighService extends Service {
     };
   }
 
+  async suppressPublicWorldEvent(eventId: string, reason: string | undefined, now = Date.now()): Promise<PublicWorldEventSuppressionResult> {
+    const id = normalizePublicWorldEventId(eventId);
+    if (!id) throw new Error("Public world event id is invalid.");
+    const normalizedReason = normalizePublicWorldReportReason(reason);
+    const existing = this.publicWorldSuppressedEvents.get(id);
+    this.publicWorldSuppressedEvents.set(id, {
+      eventId: id,
+      reason: normalizedReason,
+      suppressedAt: existing?.suppressedAt ?? now,
+    });
+    await this.persistPublicWorldModerationState({ surfaceErrors: true }, now);
+    return {
+      ok: true,
+      generatedAt: now,
+      eventId: id,
+      reason: normalizedReason,
+      suppressed: !existing,
+    };
+  }
+
   filterSchoolWorldSnapshotForSession(snapshot: SchoolWorldSnapshot, sessionId: string | null | undefined): SchoolWorldSnapshot {
     const hiddenIds = this.publicWorldHiddenEventIdsForSession(sessionId);
-    if (hiddenIds.size === 0) return snapshot;
+    if (hiddenIds.size === 0 && this.publicWorldSuppressedEvents.size === 0) return snapshot;
     return {
       ...snapshot,
-      recentEvents: snapshot.recentEvents.filter((event) => !hiddenIds.has(event.id)),
+      recentEvents: snapshot.recentEvents.filter((event) => !hiddenIds.has(event.id) && !this.publicWorldSuppressedEvents.has(event.id)),
     };
   }
 
   filterSchoolWorldEventsForSession(events: readonly SchoolWorldEvent[], sessionId: string | null | undefined): SchoolWorldEvent[] {
     const hiddenIds = this.publicWorldHiddenEventIdsForSession(sessionId);
-    if (hiddenIds.size === 0) return events.slice();
-    return events.filter((event) => !hiddenIds.has(event.id));
+    if (hiddenIds.size === 0 && this.publicWorldSuppressedEvents.size === 0) return events.slice();
+    return events.filter((event) => !hiddenIds.has(event.id) && !this.publicWorldSuppressedEvents.has(event.id));
   }
 
   private publicWorldHiddenEventIdsForSession(sessionId: string | null | undefined): Set<string> {
@@ -7354,8 +7439,14 @@ export class RubyHighService extends Service {
     }
 
     return Array.from(rows.values())
+      .filter((event) => !this.publicWorldSuppressedEvents.has(event.id))
       .sort((a, b) => this.schoolWorldEventKindRank(a.kind) - this.schoolWorldEventKindRank(b.kind) || b.at - a.at || b.id.localeCompare(a.id))
       .slice(0, eventLimit);
+  }
+
+  private publicWorldSuppressedEventList(): PublicWorldSuppressedEvent[] {
+    return Array.from(this.publicWorldSuppressedEvents.values())
+      .sort((a, b) => b.suppressedAt - a.suppressedAt || a.eventId.localeCompare(b.eventId));
   }
 
   private clampPublicWorldRoomGoalTimes(rooms: readonly SchoolWorldRoom[], now: number): void {

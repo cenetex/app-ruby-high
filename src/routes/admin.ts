@@ -1015,16 +1015,26 @@ export async function handleAdminWorldModerationRoute(ctx: RouteContext, deps: A
   if (ctx.method === "POST") {
     const body = await ctx.readJsonBody?.().catch(() => ({})) ?? {};
     const action = typeof body === "object" && body ? String((body as { action?: unknown }).action ?? "") : "";
-    if (action !== "dismiss-report") {
-      ctx.error(ctx.res, "Unknown moderation action.", 400);
+    if (action === "dismiss-report") {
+      const reportId = typeof body === "object" && body ? String((body as { reportId?: unknown }).reportId ?? "").trim() : "";
+      try {
+        ctx.json(ctx.res, await deps.ruby.dismissPublicWorldModerationReport(reportId));
+      } catch (err) {
+        ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 400);
+      }
       return true;
     }
-    const reportId = typeof body === "object" && body ? String((body as { reportId?: unknown }).reportId ?? "").trim() : "";
-    try {
-      ctx.json(ctx.res, await deps.ruby.dismissPublicWorldModerationReport(reportId));
-    } catch (err) {
-      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 400);
+    if (action === "suppress-event") {
+      const eventId = typeof body === "object" && body ? String((body as { eventId?: unknown }).eventId ?? "").trim() : "";
+      const reason = typeof body === "object" && body ? String((body as { reason?: unknown }).reason ?? "") : "";
+      try {
+        ctx.json(ctx.res, await deps.ruby.suppressPublicWorldEvent(eventId, reason));
+      } catch (err) {
+        ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 400);
+      }
+      return true;
     }
+    ctx.error(ctx.res, "Unknown moderation action.", 400);
     return true;
   }
   const rawLimit = ctx.url?.searchParams.get("limit");
