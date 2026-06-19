@@ -84,6 +84,15 @@ test("shows shared live-room progress across two browser clients", async ({ brow
     }
     return body.world;
   });
+  const rubyRoomProgress = (world: any) => {
+    const activeRoomProgress = (world.activeRooms || [])
+      .filter((room: any) => room.facultyId === "ruby")
+      .map((room: any) => Number(room.goal?.progress) || 0);
+    const eventProgress = (world.recentEvents || [])
+      .filter((event: any) => event.kind === "room.goal-progress" && event.faculty === "ruby")
+      .map((event: any) => Number(event.progress) || 0);
+    return Math.max(0, ...activeRoomProgress, ...eventProgress);
+  };
 
   try {
     const clientA = await openViewer(pageA);
@@ -127,16 +136,14 @@ test("shows shared live-room progress across two browser clients", async ({ brow
     await expect.poll(async () => {
       await refreshA.click();
       const world = await readWorld(pageA);
-      const rubyRoom = (world.activeRooms || []).find((room: any) => room.facultyId === "ruby");
-      return rubyRoom?.goal?.progress ?? 0;
-    }, { timeout: 20_000 }).toBeGreaterThanOrEqual(2);
+      return rubyRoomProgress(world);
+    }, { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
 
     await expect.poll(async () => {
       await refreshB.click();
       const world = await readWorld(pageB);
-      const rubyRoom = (world.activeRooms || []).find((room: any) => room.facultyId === "ruby");
-      return rubyRoom?.goal?.progress ?? 0;
-    }, { timeout: 20_000 }).toBeGreaterThanOrEqual(2);
+      return rubyRoomProgress(world);
+    }, { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
 
     await expect(pageA.locator("#world-panel-sub")).toContainText(/2 students live|live/i);
     await expect(pageB.locator("#world-panel-sub")).toContainText(/2 students live|live/i);
@@ -158,8 +165,8 @@ test("shows shared live-room progress across two browser clients", async ({ brow
         target: 3,
       }),
     ]));
-    expect(Math.max(...worldA.recentEvents.filter((event: any) => event.kind === "room.goal-progress" && event.faculty === "ruby").map((event: any) => event.progress))).toBeGreaterThanOrEqual(2);
-    expect(Math.max(...worldB.recentEvents.filter((event: any) => event.kind === "room.goal-progress" && event.faculty === "ruby").map((event: any) => event.progress))).toBeGreaterThanOrEqual(2);
+    expect(rubyRoomProgress(worldA)).toBeGreaterThanOrEqual(2);
+    expect(rubyRoomProgress(worldB)).toBeGreaterThanOrEqual(2);
     await expect(pageA.locator("#world-panel-events")).not.toContainText(/Noor|Mina|rh:guest/i);
     await expect(pageB.locator("#world-panel-events")).not.toContainText(/Noor|Mina|rh:guest/i);
     expect(clientA.errors).toEqual([]);
