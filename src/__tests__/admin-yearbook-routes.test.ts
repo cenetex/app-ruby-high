@@ -2305,6 +2305,16 @@ describe("admin metrics route", () => {
         },
       },
     });
+    expect(ruby.worldHealthSnapshot().summary.curriculumLoopHistory).toEqual([
+      expect.objectContaining({
+        grade: "10",
+        facultyId: "ruby",
+        displayName: "Ruby",
+        status: "questions-promoted",
+        questionCount: 6,
+        at: expect.any(Number),
+      }),
+    ]);
     expect(ruby.worldHealthSnapshot().recentTerms[0]).toMatchObject({
       curriculumLoops: {
         inReview: 0,
@@ -2316,6 +2326,14 @@ describe("admin metrics route", () => {
           },
         },
       },
+      curriculumLoopHistory: [
+        expect.objectContaining({
+          grade: "10",
+          facultyId: "ruby",
+          status: "questions-promoted",
+          questionCount: 6,
+        }),
+      ],
     });
 
     response = await appRoute({

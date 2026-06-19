@@ -285,8 +285,10 @@ outcomes without requiring crypto participation.
    the generation queue satisfied so already-reviewed replenishment pressure
    does not keep asking for another draft. Satisfied agenda loops now appear in
    the public world summary, durable term record, player world-feed label, and
-   admin world health line as aggregate curriculum-loop counts. Next, turn
-   those aggregates into richer cohort/term entities with history.
+   admin world health line as aggregate curriculum-loop counts; term summaries
+   also carry a sanitized recent curriculum-loop history by grade/teacher,
+   lifecycle status, question count, and timestamp. Next, turn those aggregate
+   histories into explicit cohort/term entities.
 3. [#143](https://github.com/cenetex/app-ruby-high/issues/143): durable room
    outcomes now carry sanitized room titles, aggregate completion summaries,
    Study Spark reward labels, and a recent-outcomes admin health surface.

@@ -45,6 +45,7 @@ function publicWorldSummary() {
     },
     termRules: { byGrade: {} },
     curriculumLoops: { inReview: 0, promoted: 0, byGrade: {} },
+    curriculumLoopHistory: [],
   };
 }
 
