@@ -1788,6 +1788,9 @@ describe("admin metrics route", () => {
               total: 1,
               complete: 0,
             },
+            studySparks: {
+              total: 0,
+            },
           },
         },
         photoPosts: {

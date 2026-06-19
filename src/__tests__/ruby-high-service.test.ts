@@ -2134,6 +2134,18 @@ describe("RubyHighService Phase 1", () => {
       durableRoomOutcomes: 1,
       durableRoomOutcomeLimit: 120,
       liveRoomGoals: 1,
+      summary: {
+        roomGoalEvents: {
+          total: 2,
+          complete: 1,
+        },
+        studySparks: {
+          total: 1,
+          byGrade: {
+            "10": 1,
+          },
+        },
+      },
     });
   });
 
@@ -2204,6 +2216,9 @@ describe("RubyHighService Phase 1", () => {
         roomGoalEvents: {
           total: 1,
           complete: 0,
+        },
+        studySparks: {
+          total: 0,
         },
       },
     });
@@ -2341,6 +2356,9 @@ describe("RubyHighService Phase 1", () => {
         roomGoalEvents: {
           total: 0,
           complete: 0,
+        },
+        studySparks: {
+          total: 0,
         },
       },
     });

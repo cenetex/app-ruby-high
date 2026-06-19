@@ -705,6 +705,10 @@ export interface PublicWorldSummarySnapshot {
     total: number;
     complete: number;
   };
+  studySparks: {
+    total: number;
+    byGrade: Partial<Record<Grade, number>>;
+  };
 }
 
 export type { DailyPhotoPostResult, RubyHighPhotoPostSchedulerSnapshot };
@@ -2337,14 +2341,22 @@ export class RubyHighService extends Service {
       .filter((event) => !this.publicWorldSuppressedEvents.has(event.id));
     const byKind: Partial<Record<SchoolWorldEvent["kind"], number>> = {};
     const byGrade: Partial<Record<Grade, number>> = {};
+    const studySparksByGrade: Partial<Record<Grade, number>> = {};
     let roomGoalTotal = 0;
     let roomGoalComplete = 0;
+    let studySparkTotal = 0;
     for (const event of events) {
       byKind[event.kind] = (byKind[event.kind] ?? 0) + 1;
       if (event.grade) byGrade[event.grade] = (byGrade[event.grade] ?? 0) + 1;
       if (event.kind === "room.goal-progress") {
         roomGoalTotal += 1;
-        if (event.complete) roomGoalComplete += 1;
+        if (event.complete) {
+          roomGoalComplete += 1;
+          if (event.rewardLabel) {
+            studySparkTotal += 1;
+            if (event.grade) studySparksByGrade[event.grade] = (studySparksByGrade[event.grade] ?? 0) + 1;
+          }
+        }
       }
     }
     return {
@@ -2357,6 +2369,10 @@ export class RubyHighService extends Service {
       roomGoalEvents: {
         total: roomGoalTotal,
         complete: roomGoalComplete,
+      },
+      studySparks: {
+        total: studySparkTotal,
+        byGrade: studySparksByGrade,
       },
     };
   }
