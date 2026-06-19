@@ -2122,7 +2122,7 @@ describe("RubyHighService Phase 1", () => {
           grade: "10",
           facultyId: "ruby",
           day: "2026-06-15",
-          contributors: [visible.sessionId],
+          contributors: [expect.stringMatching(/^world:session:[a-f0-9]{16}$/)],
           updatedAt: now + 1,
         }),
       ],

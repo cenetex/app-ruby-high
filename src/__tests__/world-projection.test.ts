@@ -212,7 +212,11 @@ describe("public world projection", () => {
   });
 
   it("admits only usable session ids into public world presence", () => {
-    expect(publicWorldSessionId("  session:abc  ")).toBe("session:abc");
+    const validPublicId = publicWorldSessionId("session:valid");
+
+    expect(publicWorldSessionId("  session:abc  ")).toMatch(/^world:session:[a-f0-9]{16}$/);
+    expect(publicWorldSessionId("  session:abc  ")).toBe(publicWorldSessionId("session:abc"));
+    expect(publicWorldSessionId(publicWorldSessionId("session:abc"))).toBe(publicWorldSessionId("session:abc"));
     expect(publicWorldSessionId("")).toBeUndefined();
     expect(publicWorldSessionId("session:\u0000abc")).toBeUndefined();
 
@@ -224,7 +228,7 @@ describe("public world projection", () => {
 
     expect(result.activeStudents).toBe(1);
     expect(result.activeRooms[0]?.students.map((student) => student.name)).toEqual(["Noor"]);
-    expect(Array.from(result.publicSessionIds)).toEqual(["session:valid"]);
+    expect(Array.from(result.publicSessionIds)).toEqual([validPublicId]);
     expect(buildPublicWorldCohorts([
       entry({ sessionId: "session:valid", grade: "10", facultyId: "ruby", name: "Noor" }),
       entry({ sessionId: "session:\u0000bad", grade: "10", facultyId: "ruby", name: "Bad" }),
@@ -263,7 +267,13 @@ describe("public world projection", () => {
     ], 2);
 
     expect(result.activeStudents).toBe(5);
-    expect(Array.from(result.publicSessionIds).sort()).toEqual(["s1", "s2", "s3", "s4", "s5"]);
+    expect(Array.from(result.publicSessionIds).sort()).toEqual([
+      publicWorldSessionId("s1"),
+      publicWorldSessionId("s2"),
+      publicWorldSessionId("s3"),
+      publicWorldSessionId("s4"),
+      publicWorldSessionId("s5"),
+    ].sort());
     expect(result.activeRooms.map((room) => `${room.grade}:${room.displayName}:${room.activeStudents}`)).toEqual([
       "9:Sally:1",
       "10:Ruby:3",
@@ -429,7 +439,7 @@ describe("public world projection", () => {
       "faculty-07",
     ]);
     expect(Array.from(result.publicSessionIds)).toHaveLength(30);
-    expect(result.publicSessionIds.has("s29")).toBe(true);
+    expect(result.publicSessionIds.has(publicWorldSessionId("s29")!)).toBe(true);
   });
 
   it("builds grade cohorts from already-public presence entries", () => {

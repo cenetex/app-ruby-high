@@ -8431,12 +8431,14 @@ export class RubyHighService extends Service {
     };
 
     for (const record of this.schoolEventRecords.values()) {
-      if (!visibleSessionIds.has(record.sessionId)) continue;
+      const publicSessionId = publicWorldSessionId(record.sessionId);
+      if (!publicSessionId || !visibleSessionIds.has(publicSessionId)) continue;
       addEvent(record.event);
     }
 
     for (const [sessionId, state] of this.sessions) {
-      if (!visibleSessionIds.has(sessionId)) continue;
+      const publicSessionId = publicWorldSessionId(sessionId);
+      if (!publicSessionId || !visibleSessionIds.has(publicSessionId)) continue;
       for (const event of Array.isArray(state.schoolEvents) ? state.schoolEvents : []) addEvent(event);
     }
 

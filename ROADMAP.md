@@ -277,8 +277,10 @@ outcomes without requiring crypto participation.
    server projections, and explains the review in the account public-world
    control. The same gate now has regression coverage for shared live-room
    rewards, so reviewed names cannot earn public room progress while valid
-   classmates can continue the goal. Next, carry that safety model into richer
-   term progression rewards as public presence becomes more valuable.
+   classmates can continue the goal. Public-world participant IDs are also
+   pseudonymous `world:session:*` tokens across room presence, event visibility,
+   and durable live-room contributor state. Next, carry that safety model into
+   richer term progression rewards as public presence becomes more valuable.
 5. [#141](https://github.com/cenetex/app-ruby-high/issues/141): continue
    broadening the teacher corpora and reviewer affordances once live-room and
    durable-world telemetry shows which grade/teacher pools are actually weak.

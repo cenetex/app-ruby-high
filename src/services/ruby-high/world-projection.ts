@@ -212,7 +212,12 @@ export function publicWorldRoomDisplayName(raw: string | null | undefined, fallb
 export function publicWorldSessionId(raw: string | null | undefined): string | undefined {
   const value = String(raw ?? "").trim();
   if (!value || /[\u0000-\u001f\u007f]/.test(value)) return undefined;
-  return value;
+  if (/^world:session:[a-f0-9]{16}$/.test(value)) return value;
+  const hash = createHash("sha256")
+    .update(`world:session:${value}`)
+    .digest("hex")
+    .slice(0, 16);
+  return `world:session:${hash}`;
 }
 
 export function publicWorldGrade(raw: unknown, fallback: Grade | null = "9"): Grade | null {
