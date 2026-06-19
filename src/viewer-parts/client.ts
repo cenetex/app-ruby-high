@@ -1452,6 +1452,14 @@ export function runViewerClient(bootstrap) {
       renderAccountPage();
     },
   });
+  const roomChannelRowsController = createRoomChannelRowsController({
+    document,
+    teacherSmallAvatarUrl,
+    teacherInitial,
+    buildStudentFaceChip,
+    openTeacherProfile,
+    setFaculty,
+  });
 
   // ── message factories ────────────────────────────────────────────────────
   function knownTeacherAssetId(faculty) {
@@ -5456,24 +5464,6 @@ export function runViewerClient(bootstrap) {
   function roomCompletionLabel(fac, progress) {
     return roomCompletionProgressLabel(fac, progress);
   }
-  function buildRoomCompletionMeterForView(progress, label) {
-    if (!progress) return null;
-    const meter = document.createElement("span");
-    meter.className = "student-year-meter room-completion-meter";
-    meter.title = label;
-    meter.setAttribute("aria-label", label);
-    for (let i = 0; i < progress.total; i += 1) {
-      const segment = document.createElement("span");
-      segment.className = "student-year-segment" + (i < progress.value ? " is-filled" : "");
-      meter.appendChild(segment);
-    }
-    return meter;
-  }
-  function buildRoomCompletionMeter(fac) {
-    const progress = roomCompletionProgress(fac);
-    const label = roomCompletionLabel(fac, progress);
-    return buildRoomCompletionMeterForView(progress, label);
-  }
   function buildStudentFaceChip(studentId, className) {
     const s = STUDENTS.find((x) => x.id === studentId);
     const chip = document.createElement("span");
@@ -5551,63 +5541,7 @@ export function runViewerClient(bootstrap) {
     const cohort = t.room_cohort || {};
     const visibleStudentIds = STUDENTS.filter((s) => shouldShowStudentId(s.id)).map((s) => s.id);
     const roomViews = roomChannelRowViews(t.rooms || [], roster, cohort, t.faculty, STUDENTS, visibleStudentIds);
-    roomViews.forEach((roomView) => {
-      const fac = roster.find((f) => f.id === roomView.facultyId);
-      const row = document.createElement("button");
-      row.className = "channel-row room-row" + (roomView.isActive ? " is-active" : "");
-      row.dataset.faculty = roomView.facultyId;
-      if (fac) {
-        const thumb = document.createElement("span");
-        thumb.className = "teacher-thumb";
-        thumb.title = "Open " + fac.displayName + "'s card";
-        thumb.style.cursor = "pointer";
-        thumb.addEventListener("click", (e) => { e.stopPropagation(); openTeacherProfile(fac.id); });
-        const thumbUrl = teacherSmallAvatarUrl(fac);
-        if (thumbUrl) {
-          const img = document.createElement("img");
-          img.src = thumbUrl;
-          img.alt = "";
-          img.onerror = () => {
-            thumb.style.background = fac.accent || "#444";
-            thumb.textContent = teacherInitial(fac);
-            if (img.parentNode === thumb) thumb.removeChild(img);
-          };
-          thumb.appendChild(img);
-        } else {
-          thumb.style.background = fac.accent || "#444";
-          thumb.textContent = teacherInitial(fac);
-        }
-        row.appendChild(thumb);
-      }
-      const hash = document.createElement("span");
-      hash.className = "hash";
-      hash.textContent = "#";
-      row.appendChild(hash);
-      const meta = document.createElement("span");
-      meta.className = "room-row-meta";
-      const name = document.createElement("span");
-      name.className = "room-row-name";
-      name.textContent = roomView.channelName;
-      meta.appendChild(name);
-      if (roomView.completionProgress) {
-        const meter = buildRoomCompletionMeterForView(roomView.completionProgress, roomView.completionLabel);
-        if (meter) meta.appendChild(meter);
-      }
-      row.appendChild(meta);
-      if (roomView.students.length > 0) {
-        const students = document.createElement("span");
-        students.className = "room-student-stack";
-        const studentNames = roomView.students.map((student) => student.name).join(", ");
-        students.title = "Students here: " + studentNames;
-        students.setAttribute("aria-label", students.title);
-        roomView.students.forEach((student) => {
-          students.appendChild(buildStudentFaceChip(student.id, "room-student-chip"));
-        });
-        row.appendChild(students);
-      }
-      row.addEventListener("click", () => fac && setFaculty(roomView.facultyId));
-      els.channelsList.appendChild(row);
-    });
+    roomChannelRowsController.appendRows(els.channelsList, roomViews, roster);
 
     // The Teachers' Lounge and class roster stay out of the first-session
     // path until the player has completed at least one daily class.

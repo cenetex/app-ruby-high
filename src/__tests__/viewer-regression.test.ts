@@ -220,6 +220,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function roomCompletionProgressView");
     expectScriptToContain(script, "function roomCompletionProgressLabel");
     expectScriptToContain(script, "function roomChannelRowViews");
+    expectScriptToContain(script, "function createRoomChannelRowsController");
     expectScriptToContain(clientSource, "return classmateArcStanding(entry, currentGrade");
     expectScriptToContain(clientSource, "return classmateArcSubtitle(entry, currentGrade");
     expectScriptToContain(clientSource, "return classmateArcProgress(entry);");
@@ -227,6 +228,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(clientSource, "return roomCompletionProgressView(fac);");
     expectScriptToContain(clientSource, "return roomCompletionProgressLabel(fac, progress);");
     expectScriptToContain(clientSource, "const roomViews = roomChannelRowViews(t.rooms || [], roster, cohort, t.faculty, STUDENTS, visibleStudentIds);");
+    expectScriptToContain(clientSource, "roomChannelRowsController.appendRows(els.channelsList, roomViews, roster);");
   });
 
   it("keeps lounge mode out of the empty-board class-start CTA", () => {
@@ -727,7 +729,7 @@ describe("viewer regression guardrails", () => {
     const script = inlineScript(renderedViewer());
 
     expect(script).not.toContain("clearResolvedBoardAfterTeacherTurn");
-    expectScriptToContain(script, "function buildRoomCompletionMeter(fac)");
+    expectScriptToContain(script, "function appendCompletionMeter(parent, roomView)");
     expectScriptToContain(script, "function earnedCourseGrade(progress)");
     expectScriptToContain(script, "function subjectProgressShortLabel(progress)");
     expectScriptToContain(script, "if (phase === \"revealed\")");
@@ -744,7 +746,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function teacherSmallAvatarUrl(facultyOrId)");
     expectScriptToContain(script, 'return teacherPortraitUrl(facultyOrId, "face");');
     expectScriptToContain(script, "avatarImgSrc = teacherSmallAvatarUrl(facultyId)");
-    expectScriptToContain(script, "const thumbUrl = teacherSmallAvatarUrl(fac);");
+    expectScriptToContain(script, "const thumbUrl = deps.teacherSmallAvatarUrl(faculty);");
     expectScriptToContain(script, '+ ":" + (f.assetTeacherId || "") + ":" + (f.profileImageUrl || "")');
     expect(script).not.toContain("function teacherStickerUrl");
     expect(script).not.toContain('avatarImgSrc = teacherPortraitUrl(facultyId, "")');

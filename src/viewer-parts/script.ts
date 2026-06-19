@@ -7,6 +7,7 @@ import { createViewerWorldActionsController } from "./world-actions.js";
 import { createViewerWorldFeedClient } from "./world-feed.js";
 import { createViewerWorldLifecycleController } from "./world-lifecycle.js";
 import { createViewerWorldPanelController } from "./world-panel.js";
+import { createRoomChannelRowsController } from "./room-channel-rows.js";
 import { runViewerClient } from "./client.js";
 import * as Pure from "./client-pure.js";
 
@@ -172,6 +173,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createViewerWorldFeedClient = ${createViewerWorldFeedClient.toString()};
   const createViewerWorldLifecycleController = ${createViewerWorldLifecycleController.toString()};
   const createViewerWorldPanelController = ${createViewerWorldPanelController.toString()};
+  const createRoomChannelRowsController = ${createRoomChannelRowsController.toString()};
   const parseViewerSseFrames = ${parseViewerSseFrames.toString()};
   const consumeViewerSseStream = ${consumeViewerSseStream.toString()};
   const runViewerClient = ${runViewerClient.toString()};
