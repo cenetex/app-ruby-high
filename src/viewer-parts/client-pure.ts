@@ -196,6 +196,13 @@ export type AccountHallPassCardReaderView = {
   revealDisabled: boolean;
   revealTitle: string;
 };
+export type BillingCardBurnChoiceView = {
+  titleText: string;
+  metaText: string;
+  buttonText: string;
+  buttonDisabled: boolean;
+  buttonTitle: string;
+};
 export type AccountComicPageTileView = {
   pageNumber: number;
   title: string;
@@ -1203,6 +1210,30 @@ export function accountHallPassCardReaderView(cardInput: NullableRecord, opts?: 
     revealText: billingBusy ? "Minting..." : "Mint to Reveal",
     revealDisabled: !authed || billingBusy,
     revealTitle: "Mint this Card with your Solana wallet to reveal it.",
+  };
+}
+
+export function billingCardBurnChoiceView(opts?: NullableRecord): BillingCardBurnChoiceView {
+  const hasWallet = !!(opts && opts.hasWallet);
+  const burnableCards = Math.max(0, Math.floor(Number(opts && opts.burnableCards || 0)));
+  const hallPassesPerBurnedCard = positiveWholeNumber(opts && opts.hallPassesPerBurnedCard, 5);
+  const authed = !!(opts && opts.authed);
+  const billingBusy = !!(opts && opts.billingBusy);
+  const creditLabel = hallPassCostLabel(hallPassesPerBurnedCard);
+  return {
+    titleText: "Burn Card",
+    metaText: hasWallet
+      ? burnableCards > 0
+        ? formatWholeNumber(burnableCards) + " burnable Card" + (burnableCards === 1 ? "" : "s") + " · +" + creditLabel
+        : "No active on-chain Cards in this wallet."
+      : "Connect your Solana wallet to burn a Card for " + creditLabel + ".",
+    buttonText: billingBusy ? "Burning..." : hasWallet ? "Burn Card" : "Connect Wallet",
+    buttonDisabled: !authed || billingBusy || (hasWallet && burnableCards <= 0),
+    buttonTitle: hasWallet
+      ? burnableCards > 0
+        ? "Burn one Card for " + creditLabel + "."
+        : "No active on-chain Cards are available to burn."
+      : "Connect a Solana wallet before burning a Card.",
   };
 }
 

@@ -99,6 +99,7 @@ const PURE_HELPER_NAMES = [
   "hallPassCardDetailLabel",
   "hallPassCardProfile",
   "accountHallPassCardReaderView",
+  "billingCardBurnChoiceView",
   "comicPageTitle",
   "accountComicPanelView",
   "formatSealedDate",

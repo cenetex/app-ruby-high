@@ -3585,31 +3585,30 @@ export function runViewerClient(bootstrap) {
   function buildHallPassCardBurnChoice(hallPassesPerBurnedCard) {
     const ownerWallet = knownSolanaOwnerWalletAddress() || connectedSolanaWalletAddress();
     const burnableCards = ownerWallet ? activeMintedHallPassCardsForWallet(ownerWallet).length : mintedCardCount(lastTelemetry);
+    const view = billingCardBurnChoiceView({
+      hasWallet: !!ownerWallet,
+      burnableCards,
+      hallPassesPerBurnedCard,
+      authed,
+      billingBusy,
+    });
     const row = document.createElement("div");
     row.className = "billing-product billing-card-burn";
     const body = document.createElement("div");
     const title = document.createElement("div");
     title.className = "billing-product-title";
-    title.textContent = "Burn Card";
+    title.textContent = view.titleText;
     const meta = document.createElement("div");
     meta.className = "billing-product-meta";
-    meta.textContent = ownerWallet
-      ? burnableCards > 0
-        ? formatWholeNumber(burnableCards) + " burnable Card" + (burnableCards === 1 ? "" : "s") + " · +" + hallPassCostLabel(hallPassesPerBurnedCard)
-        : "No active on-chain Cards in this wallet."
-      : "Connect your Solana wallet to burn a Card for " + hallPassCostLabel(hallPassesPerBurnedCard) + ".";
+    meta.textContent = view.metaText;
     body.appendChild(title);
     body.appendChild(meta);
     const burn = document.createElement("button");
     burn.type = "button";
     burn.className = "billing-buy";
-    burn.textContent = billingBusy ? "Burning..." : ownerWallet ? "Burn Card" : "Connect Wallet";
-    burn.disabled = !authed || billingBusy || (!!ownerWallet && burnableCards <= 0);
-    burn.title = ownerWallet
-      ? burnableCards > 0
-        ? "Burn one Card for " + hallPassCostLabel(hallPassesPerBurnedCard) + "."
-        : "No active on-chain Cards are available to burn."
-      : "Connect a Solana wallet before burning a Card.";
+    burn.textContent = view.buttonText;
+    burn.disabled = view.buttonDisabled;
+    burn.title = view.buttonTitle;
     burn.addEventListener("click", () => burnHallPassCardFromBilling());
     row.appendChild(body);
     row.appendChild(burn);

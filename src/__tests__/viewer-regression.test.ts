@@ -281,6 +281,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(clientSource, "const profile = hallPassCardProfile(currentCard);");
     expectScriptToContain(script, "function accountHallPassCardReaderView(cardInput, opts)");
     expectScriptToContain(clientSource, "const view = accountHallPassCardReaderView(currentCard, {");
+    expectScriptToContain(script, "function billingCardBurnChoiceView(opts)");
+    expectScriptToContain(clientSource, "const view = billingCardBurnChoiceView({");
     expectScriptToContain(script, "function accountComicPanelView(collectionInput)");
     expectScriptToContain(clientSource, "const view = accountComicPanelView(comicCollectionForTelemetry());");
     expectScriptToContain(script, "function accountCharacterCardView(entry, slotNumber, playbooks, currentGrade, fallbackPortraitUrl)");
