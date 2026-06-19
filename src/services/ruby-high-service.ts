@@ -727,6 +727,9 @@ export interface PublicWorldSummarySnapshot {
     sparksToNextLevel: number;
     label: string;
   };
+  termRules: {
+    byGrade: Partial<Record<Grade, PublicWorldTermRoomRule>>;
+  };
 }
 
 export type { DailyPhotoPostResult, RubyHighPhotoPostSchedulerSnapshot };
@@ -879,7 +882,7 @@ export interface SchoolWorldSnapshot {
   activeRooms: SchoolWorldRoom[];
   cohorts: Record<string, SchoolWorldStudent[]>;
   recentEvents: SchoolWorldEvent[];
-  summary: Pick<PublicWorldSummarySnapshot, "schoolYear" | "roomGoalEvents" | "studySparks" | "termProgress">;
+  summary: Pick<PublicWorldSummarySnapshot, "schoolYear" | "roomGoalEvents" | "studySparks" | "termProgress" | "termRules">;
   curriculum: {
     activeCharacterSessions: number;
     lowPools: RubyHighCurriculumCoverageRow[];
@@ -2541,6 +2544,7 @@ export class RubyHighService extends Service {
         byGrade: studySparksByGrade,
       },
       termProgress: publicWorldTermProgress(studySparkTotal),
+      termRules: publicWorldTermRulesForGrades(studySparksByGrade),
     };
   }
 
@@ -8198,6 +8202,7 @@ export class RubyHighService extends Service {
         roomGoalEvents: summary.roomGoalEvents,
         studySparks: summary.studySparks,
         termProgress: summary.termProgress,
+        termRules: summary.termRules,
       },
       curriculum: {
         activeCharacterSessions: curriculum.activeCharacterSessions,
@@ -9909,6 +9914,16 @@ function publicWorldTermRuleLabels(level: number): string[] {
 
 function publicWorldTermRoomRule(level: number): PublicWorldTermRoomRule | undefined {
   return level > 0 ? { kind: "term-momentum", label: "Term Momentum", target: 2 } : undefined;
+}
+
+function publicWorldTermRulesForGrades(studySparksByGrade: Partial<Record<Grade, number>>): PublicWorldSummarySnapshot["termRules"] {
+  const byGrade: Partial<Record<Grade, PublicWorldTermRoomRule>> = {};
+  for (const grade of GRADES) {
+    const progress = publicWorldTermProgress(studySparksByGrade[grade] ?? 0);
+    const rule = publicWorldTermRoomRule(progress.level);
+    if (rule) byGrade[grade] = rule;
+  }
+  return { byGrade };
 }
 
 function publicWorldTermGradeProgress(studySparkTotal: number): PublicWorldTermGradeProgress {

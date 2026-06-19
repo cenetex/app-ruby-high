@@ -43,6 +43,7 @@ function publicWorldSummary() {
       sparksToNextLevel: 3,
       label: "Term Spark 0/3",
     },
+    termRules: { byGrade: {} },
   };
 }
 

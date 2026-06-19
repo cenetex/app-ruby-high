@@ -1220,7 +1220,21 @@ export function worldFeedSummaryLabel(activeStudents: unknown, activeRooms: unkn
   const sparkText = sparks > 0 ? " · " + sparks + " Study " + (sparks === 1 ? "Spark" : "Sparks") : "";
   const term = record.termProgress && typeof record.termProgress === "object" ? record.termProgress as LooseRecord : null;
   const termLabel = term && typeof term.label === "string" && term.label.trim() ? " · " + term.label.trim() : "";
-  return studentText + " live · " + roomText + sparkText + termLabel;
+  const termRules = record.termRules && typeof record.termRules === "object" ? record.termRules as LooseRecord : null;
+  const byGrade = termRules && termRules.byGrade && typeof termRules.byGrade === "object" ? termRules.byGrade as LooseRecord : null;
+  const ruleRows = byGrade
+    ? Object.keys(byGrade)
+      .sort((a, b) => Number(a) - Number(b) || a.localeCompare(b))
+      .map((grade) => {
+        const rule = byGrade[grade] && typeof byGrade[grade] === "object" ? byGrade[grade] as LooseRecord : null;
+        const label = rule && typeof rule.label === "string" ? rule.label.trim() : "";
+        return label ? label + " in " + worldFeedGradeLabel(grade) : "";
+      })
+      .filter(Boolean)
+      .slice(0, 2)
+    : [];
+  const ruleText = ruleRows.length > 0 ? " · " + ruleRows.join(", ") : "";
+  return studentText + " live · " + roomText + sparkText + termLabel + ruleText;
 }
 
 export function worldFeedRoomViews(rooms: unknown, roster: unknown, limit = 5): WorldFeedRoomView[] {

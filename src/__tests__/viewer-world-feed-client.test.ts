@@ -27,6 +27,7 @@ function makeClient(overrides: Partial<ViewerWorldFeedClientDeps> = {}) {
           sparksToNextLevel: 2,
           label: "Term Spark 1/3",
         },
+        termRules: { byGrade: {} },
       },
     }, null);
     await handlers.onEvent("world-event", { id: "world:event:a", at: now, label: "Ruby started class" }, "world:cursor:1:world%3Aevent%3Aa");
@@ -75,6 +76,7 @@ describe("viewer world feed client", () => {
         sparksToNextLevel: 2,
         label: "Term Spark 1/3",
       },
+      termRules: { byGrade: {} },
     });
     expect(harness.client.state.events).toEqual([
       { id: "world:event:a", at: Date.UTC(2026, 5, 18, 12), label: "Ruby started class" },

@@ -2393,6 +2393,15 @@ describe("RubyHighService Phase 1", () => {
       level: 1,
       label: "Term Spark 1/3",
     });
+    expect(world.summary.termRules).toEqual({
+      byGrade: {
+        "10": {
+          kind: "term-momentum",
+          label: "Term Momentum",
+          target: 2,
+        },
+      },
+    });
     await ruby.flush();
     const roomOutcomeState = await new StateStore(storePath).loadServiceState("ruby-high:public-world-room-outcomes:v1");
     expect(roomOutcomeState?.data).toMatchObject({
@@ -2544,6 +2553,9 @@ describe("RubyHighService Phase 1", () => {
           nextLevelAt: 3,
           sparksToNextLevel: 3,
           label: "Term Spark 0/3",
+        },
+        termRules: {
+          byGrade: {},
         },
       },
     });
