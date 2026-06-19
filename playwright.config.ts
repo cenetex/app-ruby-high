@@ -8,6 +8,7 @@ const baseURL = externalBaseURL ?? `http://${host}:${port}`;
 export default defineConfig({
   testDir: "./tests/browser",
   timeout: 60_000,
+  workers: 1,
   expect: {
     timeout: 15_000,
   },
