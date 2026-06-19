@@ -4,6 +4,7 @@ import {
   buildPublicWorldCohorts,
   buildPublicWorldRooms,
   publicSchoolWorldEvent,
+  publicWorldNameReview,
   publicWorldRoomGoalEvents,
   publicWorldPortraitUrl,
   publicWorldRoomDisplayName,
@@ -333,7 +334,7 @@ function characterAllowsSocialSharing(ch: PlayerCharacter): boolean {
 }
 
 function characterHasPublicName(ch: PlayerCharacter): boolean {
-  return typeof ch.name === "string" && ch.name.trim().length > 0 && !isSyntheticCharacterName(ch.name);
+  return publicWorldNameReview(ch.name).ok && !isSyntheticCharacterName(ch.name);
 }
 
 function characterAllowsPublicSharing(ch: PlayerCharacter): boolean {

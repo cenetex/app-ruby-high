@@ -15,6 +15,7 @@ import {
   resolveTextLlmCredential,
 } from "../openrouter-generation-access.js";
 import { PLAYBOOKS, isValidStatDistribution } from "../characters/playbooks.js";
+import { publicWorldNameReview } from "../services/ruby-high/world-projection.js";
 import {
   CHOICES,
   GRADES,
@@ -346,6 +347,20 @@ export async function handleCommandRoute(args: {
       const visible = body?.publicWorldVisible ?? true;
       const state = ruby.getOrCreate(stateKey);
       if (!state.character) throw new Error("No character to update.");
+      if (visible) {
+        const review = publicWorldNameReview(state.character.name);
+        if (!review.ok) {
+          throw new Error(
+            review.reason === "reserved"
+              ? "Choose a student name that is not a reserved staff or system name before joining the public world."
+              : review.reason === "contact"
+                ? "Remove contact info, handles, or links from the student name before joining the public world."
+                : review.reason === "unsafe"
+                  ? "Choose a school-appropriate student name before joining the public world."
+                  : "Name your student before joining the public world.",
+          );
+        }
+      }
       state.character.publicWorldVisible = !!visible;
       state.updatedAt = Date.now();
       void ruby.flushSession(stateKey);

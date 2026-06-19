@@ -8,6 +8,7 @@ import {
   publicWorldEventLabel,
   publicWorldEventFaculty,
   publicWorldGrade,
+  publicWorldNameReview,
   publicWorldPlaybookId,
   publicWorldPortraitUrl,
   publicWorldRoomGoalEvents,
@@ -72,6 +73,15 @@ describe("public world projection", () => {
     expect(buildPublicWorldCohorts([
       entry({ sessionId: "s1", grade: "10", facultyId: "ruby", name: "", playbookId: "" }),
     ])["10"]?.[0]).toMatchObject({ name: "Student", playbookId: "student" });
+  });
+
+  it("reviews public student names before projection", () => {
+    expect(publicWorldNameReview("Noor Sol")).toMatchObject({ ok: true, displayName: "Noor Sol", reason: null });
+    expect(publicWorldNameReview(" ")).toMatchObject({ ok: false, reason: "empty" });
+    expect(publicWorldNameReview("Admin")).toMatchObject({ ok: false, reason: "reserved" });
+    expect(publicWorldNameReview("noor@example.test")).toMatchObject({ ok: false, reason: "contact" });
+    expect(publicWorldNameReview("www.noor.test")).toMatchObject({ ok: false, reason: "contact" });
+    expect(publicWorldNameReview("shit name")).toMatchObject({ ok: false, reason: "unsafe" });
   });
 
   it("normalizes malformed public grades before grouping", () => {

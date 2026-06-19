@@ -86,6 +86,12 @@ export interface PublicWorldRoomBuildResult {
   publicSessionIds: Set<string>;
 }
 
+export interface PublicWorldNameReview {
+  ok: boolean;
+  displayName: string;
+  reason: "empty" | "reserved" | "contact" | "unsafe" | null;
+}
+
 export type PublicWorldEvent =
   | {
       id: string;
@@ -156,6 +162,22 @@ function publicWorldText(raw: string | null | undefined, fallback: string, maxLe
 
 export function publicWorldDisplayName(raw: string | null | undefined, fallback = "Student"): string {
   return publicWorldText(raw, fallback, 48);
+}
+
+export function publicWorldNameReview(raw: string | null | undefined): PublicWorldNameReview {
+  const displayName = publicWorldDisplayName(raw, "");
+  const folded = displayName.toLowerCase();
+  if (!displayName) return { ok: false, displayName, reason: "empty" };
+  if (/^(admin|administrator|moderator|mod|ruby high|support|staff|teacher|principal)$/i.test(displayName)) {
+    return { ok: false, displayName, reason: "reserved" };
+  }
+  if (/@/.test(displayName) || /\b(?:https?:\/\/|www\.)/i.test(displayName)) {
+    return { ok: false, displayName, reason: "contact" };
+  }
+  if (/\b(?:fuck|shit|bitch|cunt|dick|pussy|slut|whore|nazi)\b/i.test(folded)) {
+    return { ok: false, displayName, reason: "unsafe" };
+  }
+  return { ok: true, displayName, reason: null };
 }
 
 export function publicWorldPlaybookId(raw: string | null | undefined): string {

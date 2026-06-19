@@ -21,7 +21,7 @@ the implementation contract.
 | Issue | Status | Roadmap meaning |
 |---|---:|---|
 | [#143 MMO: durable room and world state model](https://github.com/cenetex/app-ruby-high/issues/143) | Open, first durable slices in #138 | **P0 MMO data model.** Live-room goals, sanitized room/term snapshots, completed room outcomes, teacher agenda records, public event replay, summary counters, moderation suppression state, and rollback docs are durable; next is richer outcome summaries, agenda execution rules, and restart/replay acceptance tests that prove the durable model is not just an admin counter. |
-| [#142 MMO: public presence and moderation controls](https://github.com/cenetex/app-ruby-high/issues/142) | Open, operator workflow in #138 | **P0 safety.** Public presence toggle, per-player hide/report, admin moderation snapshot, repeated-report counts, moderator notes, report dismissal, global suppression, action throttles, and account copy that names public/private profile fields exist; next is stronger public-name review policy. |
+| [#142 MMO: public presence and moderation controls](https://github.com/cenetex/app-ruby-high/issues/142) | Open, operator workflow in #138 | **P0 safety.** Public presence toggle, public-name review policy, per-player hide/report, admin moderation snapshot, repeated-report counts, moderator notes, report dismissal, global suppression, action throttles, and account copy that names public/private profile fields exist; next is tying moderation surfaces into richer live-room rewards and term progression. |
 | [#141 MMO: teacher curriculum research loop](https://github.com/cenetex/app-ruby-high/issues/141) | Open, deeper loop in #138 | **P1 content engine.** Teacher corpora metadata, reading lists, primary-source packets, misconception checks, grade briefs, replenishment proposals, coverage-exhaustion auto-enqueue, validation, review readiness, explicit approval gates, runtime promotion, weak-subject and repetition signals exist; next is broader per-teacher corpus depth. |
 | [#140 MMO: typed public-world viewer module](https://github.com/cenetex/app-ruby-high/issues/140) | Open, several seams in #138 | **P1 maintainability.** World feed, world panel, lifecycle wiring, race/question/leaderboard/progress models, and account public-world visibility view models are typed; next is extracting larger public-world action/UI surfaces out of `viewer-parts/client.ts`. |
 | [#139 MMO: live class rooms MVP](https://github.com/cenetex/app-ruby-high/issues/139) | Open, answer-flow goal path in #138 | **P1 gameplay.** Two guest sessions can contribute to a room goal through normal answer commands and observe sanitized public progress; next is richer room rules and visible cooperative rewards. |
@@ -47,8 +47,8 @@ order unless production evidence says otherwise:
 3. **#143 — prove the world survives restarts.** Extend durable room outcomes
    and teacher agendas into replayable summaries with rollback coverage and
    admin visibility.
-4. **#142 — keep public play safe as it becomes central.** Add public-name
-   review policy, clearer profile copy, and moderation paths that match the
+4. **#142 — keep public play safe as it becomes central.** Extend the
+   public-name review, profile copy, and moderation paths so they match the
    richer live-room surfaces.
 5. **#141 — deepen the teacher research loop.** Broaden the corpora and
    approval/replenishment affordances after the gameplay loop shows which
@@ -185,8 +185,9 @@ Goal: make public presence safe and legible.
   separates public-world presence from teacher social/X posting consent while
   preserving the legacy `socialConsent=false` hide behavior.
 - Report/hide/admin moderation flows for public names and events. #138 covers
-  event hide/report, admin review, repeated-report counts, durable moderator
-  notes, dismissal, and durable global suppression.
+  public-name review before world entry, event hide/report, admin review,
+  repeated-report counts, durable moderator notes, dismissal, and durable
+  global suppression.
 - Rate limits for public actions, not just HTTP endpoints. #138 adds a tighter
   public-world safety action limiter.
 - Product language that explains what becomes public before it happens.
@@ -233,9 +234,12 @@ outcomes without requiring crypto participation.
    SQLite-backed restart replay tests now prove sanitized events, outcomes, and
    agendas hydrate without private sessions. Next, expand replay acceptance into
    richer room/term progression once those entities are added.
-4. [#142](https://github.com/cenetex/app-ruby-high/issues/142): add public-name
-   review policy and clearer player-facing public-profile language before the
-   richer room loop makes public presence more visible.
+4. [#142](https://github.com/cenetex/app-ruby-high/issues/142): public-name
+   review now blocks reserved, contact-info, empty, and unsafe student names
+   from entering public rooms, filters already-visible unsafe names out of
+   server projections, and explains the review in the account public-world
+   control. Next, wire that safety model into richer room or term progression
+   surfaces as public presence becomes more valuable.
 5. [#141](https://github.com/cenetex/app-ruby-high/issues/141): continue
    broadening the teacher corpora and reviewer affordances once live-room and
    durable-world telemetry shows which grade/teacher pools are actually weak.

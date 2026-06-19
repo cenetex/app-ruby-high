@@ -50,6 +50,8 @@ type ArcIndicatorView = {
 export type AccountPublicWorldView = {
   hasCharacter: boolean;
   hasPublicName: boolean;
+  publicNameReviewOk: boolean;
+  publicNameReviewReason: string | null;
   blockedBySocialConsent: boolean;
   visible: boolean;
   summaryText: string;
@@ -324,12 +326,26 @@ export function walletPreviewLine(label: string, value: unknown): string {
 }
 
 // ── account public-world visibility ────────────────────────────────
+export function accountPublicWorldNameReview(raw: unknown): { ok: boolean; reason: string | null } {
+  const displayName = String(raw || "")
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!displayName) return { ok: false, reason: "empty" };
+  if (/^(admin|administrator|moderator|mod|ruby high|support|staff|teacher|principal)$/i.test(displayName)) return { ok: false, reason: "reserved" };
+  if (/@/.test(displayName) || /\b(?:https?:\/\/|www\.)/i.test(displayName)) return { ok: false, reason: "contact" };
+  if (/\b(?:fuck|shit|bitch|cunt|dick|pussy|slut|whore|nazi)\b/i.test(displayName.toLowerCase())) return { ok: false, reason: "unsafe" };
+  return { ok: true, reason: null };
+}
+
 export function accountPublicWorldView(character: unknown, opts?: { authed?: unknown; busy?: unknown }): AccountPublicWorldView {
   const c = character && typeof character === "object" ? character as LooseRecord : null;
   const hasCharacter = !!c;
   const hasPublicName = !!(c && typeof c.name === "string" && c.name.trim());
+  const nameReview = accountPublicWorldNameReview(c && c.name);
+  const publicNameReviewOk = hasPublicName && nameReview.ok;
   const blockedBySocialConsent = !!(c && c.socialConsent === false);
-  const visible = !!(c && hasPublicName && !blockedBySocialConsent && c.publicWorldVisible !== false);
+  const visible = !!(c && publicNameReviewOk && !blockedBySocialConsent && c.publicWorldVisible !== false);
   const authed = !!(opts && opts.authed);
   const busy = !!(opts && opts.busy);
   const nextVisible = !visible;
@@ -339,6 +355,12 @@ export function accountPublicWorldView(character: unknown, opts?: { authed?: unk
     ? "Your active student can appear in public rooms and activity."
     : blockedBySocialConsent
     ? "A legacy privacy setting is hiding this student from public rooms and activity."
+    : hasPublicName && !publicNameReviewOk
+    ? nameReview.reason === "reserved"
+      ? "Choose a student name that is not a staff or system name before joining public rooms."
+      : nameReview.reason === "contact"
+        ? "Remove contact info, handles, or links from this student name before joining public rooms."
+        : "Choose a school-appropriate student name before joining public rooms."
     : hasPublicName
     ? "Your active student is hidden from public rooms and activity."
     : "Name your student before they can appear publicly.";
@@ -346,6 +368,8 @@ export function accountPublicWorldView(character: unknown, opts?: { authed?: unk
     ? "Create a student first"
     : !hasPublicName
     ? "Public world requires a real student name"
+    : !publicNameReviewOk
+    ? "Review this student name before joining the public world"
     : blockedBySocialConsent
     ? "Legacy social sharing is off, so public world stays hidden"
     : visible
@@ -354,13 +378,15 @@ export function accountPublicWorldView(character: unknown, opts?: { authed?: unk
   return {
     hasCharacter,
     hasPublicName,
+    publicNameReviewOk,
+    publicNameReviewReason: nameReview.reason,
     blockedBySocialConsent,
     visible,
     summaryText,
     statusText: visible ? "Visible in the public world" : "Hidden from the public world",
     statusClass: visible ? "is-visible" : "",
     toggleText: visible ? "Hide" : "Show",
-    toggleDisabled: !authed || busy || !hasCharacter || !hasPublicName || blockedBySocialConsent,
+    toggleDisabled: !authed || busy || !hasCharacter || !hasPublicName || !publicNameReviewOk || blockedBySocialConsent,
     toggleTitle,
     nextVisible,
   };

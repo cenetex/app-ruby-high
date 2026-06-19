@@ -63,6 +63,7 @@ describe("accountPublicWorldView", () => {
     expect(visible).toMatchObject({
       hasCharacter: true,
       hasPublicName: true,
+      publicNameReviewOk: true,
       visible: true,
       summaryText: "Your active student can appear in public rooms and activity.",
       statusClass: "is-visible",
@@ -77,6 +78,43 @@ describe("accountPublicWorldView", () => {
       toggleText: "Show",
       toggleDisabled: false,
       nextVisible: true,
+    });
+  });
+
+  it("blocks public presence for names that need review", () => {
+    const reserved = accountPublicWorldView({
+      name: "Admin",
+      publicWorldVisible: true,
+      socialConsent: true,
+    }, { authed: true });
+    const contact = accountPublicWorldView({
+      name: "noor@example.test",
+      publicWorldVisible: true,
+      socialConsent: true,
+    }, { authed: true });
+    const unsafe = accountPublicWorldView({
+      name: "shit name",
+      publicWorldVisible: true,
+      socialConsent: true,
+    }, { authed: true });
+
+    expect(reserved).toMatchObject({
+      publicNameReviewOk: false,
+      publicNameReviewReason: "reserved",
+      visible: false,
+      summaryText: "Choose a student name that is not a staff or system name before joining public rooms.",
+      toggleDisabled: true,
+      toggleTitle: "Review this student name before joining the public world",
+    });
+    expect(contact).toMatchObject({
+      publicNameReviewReason: "contact",
+      summaryText: "Remove contact info, handles, or links from this student name before joining public rooms.",
+      toggleDisabled: true,
+    });
+    expect(unsafe).toMatchObject({
+      publicNameReviewReason: "unsafe",
+      summaryText: "Choose a school-appropriate student name before joining public rooms.",
+      toggleDisabled: true,
     });
   });
 
