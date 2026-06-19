@@ -3126,36 +3126,32 @@ export function runViewerClient(bootstrap) {
     const wallet = walletNumbers(lastTelemetry);
     const entries = ownedCharacterEntries();
     const hasActiveCharacter = !!(lastTelemetry && lastTelemetry.character);
-    const displaySlots = Math.max(slots.unlockedSlots, entries.length, 1);
-    const emptySlots = Math.max(0, displaySlots - entries.length);
-    const canCreateCharacter = !!authed && !hasActiveCharacter && entries.length < displaySlots;
+    const view = accountCharacterPanelView(slots, wallet, {
+      authed,
+      billingBusy,
+      entryCount: entries.length,
+      hasActiveCharacter,
+    });
     if (els.accountCharacterSummary) {
-      els.accountCharacterSummary.textContent = entries.length === 0
-        ? "Create your first student to start class."
-        : displaySlots + " unlocked "
-          + (displaySlots === 1 ? "slot" : "slots") + " · "
-          + slots.photoDayCredits + " Photo Day "
-          + (slots.photoDayCredits === 1 ? "credit" : "credits");
+      els.accountCharacterSummary.textContent = view.summaryText;
     }
     if (els.accountCreateCharacter) {
-      els.accountCreateCharacter.hidden = !canCreateCharacter;
-      els.accountCreateCharacter.disabled = !canCreateCharacter;
+      els.accountCreateCharacter.hidden = view.createHidden;
+      els.accountCreateCharacter.disabled = view.createDisabled;
     }
     if (els.accountUnlockSlot) {
-      els.accountUnlockSlot.textContent = "Unlock Slot (" + slots.costHallPasses + " Card" + (slots.costHallPasses === 1 ? "" : "s") + ")";
-      els.accountUnlockSlot.disabled = !authed || wallet.hallPasses < slots.costHallPasses || billingBusy;
-      els.accountUnlockSlot.title = wallet.hallPasses < slots.costHallPasses
-        ? "Need " + slots.costHallPasses + " Card" + (slots.costHallPasses === 1 ? "" : "s")
-        : "Adds one student slot and " + slots.photoDayCreditsPerSlot + " Photo Day credit";
+      els.accountUnlockSlot.textContent = view.unlockText;
+      els.accountUnlockSlot.disabled = view.unlockDisabled;
+      els.accountUnlockSlot.title = view.unlockTitle;
     }
     els.accountCharacterGrid.replaceChildren();
     entries.forEach((entry, idx) => {
       els.accountCharacterGrid.appendChild(buildAccountCharacterCard(entry, idx + 1));
     });
-    for (let i = 0; i < emptySlots; i++) {
-      els.accountCharacterGrid.appendChild(buildEmptyCharacterSlot(entries.length + i + 1, canCreateCharacter));
+    for (let i = 0; i < view.emptySlots; i++) {
+      els.accountCharacterGrid.appendChild(buildEmptyCharacterSlot(entries.length + i + 1, view.canCreateCharacter));
     }
-    if (entries.length === 0 && emptySlots === 0) {
+    if (entries.length === 0 && view.emptySlots === 0) {
       const empty = document.createElement("div");
       empty.className = "account-empty";
       empty.textContent = "Roll your first student to start filling your account.";

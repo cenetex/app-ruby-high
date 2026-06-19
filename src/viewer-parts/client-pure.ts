@@ -85,6 +85,17 @@ export type AccountEmptyCharacterSlotView = {
   meta: string;
   canCreate: boolean;
 };
+export type AccountCharacterPanelView = {
+  displaySlots: number;
+  emptySlots: number;
+  canCreateCharacter: boolean;
+  summaryText: string;
+  createHidden: boolean;
+  createDisabled: boolean;
+  unlockText: string;
+  unlockDisabled: boolean;
+  unlockTitle: string;
+};
 export type AccountAiPanelView = {
   status: string;
   meta: string;
@@ -553,6 +564,41 @@ export function accountEmptyCharacterSlotView(slotNumber: unknown, canCreateChar
       ? "Slot " + slotNumber + " · start today's class"
       : "Slot " + slotNumber + " · ready for a future student",
     canCreate,
+  };
+}
+
+export function accountCharacterPanelView(slotsInput: NullableRecord, walletInput: NullableRecord, opts?: NullableRecord): AccountCharacterPanelView {
+  const slots = slotsInput || {};
+  const wallet = walletInput || {};
+  const unlockedSlots = Math.max(1, Math.floor(Number(slots.unlockedSlots || 1)));
+  const photoDayCredits = Math.max(0, Math.floor(Number(slots.photoDayCredits || 0)));
+  const costHallPasses = Math.max(1, Math.floor(Number(slots.costHallPasses || 1)));
+  const photoDayCreditsPerSlot = Math.max(0, Math.floor(Number(slots.photoDayCreditsPerSlot || 1)));
+  const entryCount = Math.max(0, Math.floor(Number((opts && opts.entryCount) || 0)));
+  const displaySlots = Math.max(unlockedSlots, entryCount, 1);
+  const emptySlots = Math.max(0, displaySlots - entryCount);
+  const authed = !!(opts && opts.authed);
+  const hasActiveCharacter = !!(opts && opts.hasActiveCharacter);
+  const billingBusy = !!(opts && opts.billingBusy);
+  const hallPasses = Math.max(0, Math.round(Number(wallet.hallPasses || 0)));
+  const canCreateCharacter = authed && !hasActiveCharacter && entryCount < displaySlots;
+  return {
+    displaySlots,
+    emptySlots,
+    canCreateCharacter,
+    summaryText: entryCount === 0
+      ? "Create your first student to start class."
+      : displaySlots + " unlocked "
+        + (displaySlots === 1 ? "slot" : "slots") + " · "
+        + photoDayCredits + " Photo Day "
+        + (photoDayCredits === 1 ? "credit" : "credits"),
+    createHidden: !canCreateCharacter,
+    createDisabled: !canCreateCharacter,
+    unlockText: "Unlock Slot (" + costHallPasses + " Card" + (costHallPasses === 1 ? "" : "s") + ")",
+    unlockDisabled: !authed || hallPasses < costHallPasses || billingBusy,
+    unlockTitle: hallPasses < costHallPasses
+      ? "Need " + costHallPasses + " Card" + (costHallPasses === 1 ? "" : "s")
+      : "Adds one student slot and " + photoDayCreditsPerSlot + " Photo Day credit",
   };
 }
 
