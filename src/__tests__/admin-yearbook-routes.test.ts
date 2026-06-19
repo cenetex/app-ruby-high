@@ -1463,6 +1463,7 @@ describe("admin metrics route", () => {
     expect(response.body).toContain("/api/apps/ruby-high/admin/metrics/schema");
     expect(response.body).toContain("/api/apps/ruby-high/admin/overview");
     expect(response.body).toContain("/api/apps/ruby-high/admin/curriculum/replenishment");
+    expect(response.body).toContain("/api/apps/ruby-high/admin/world/moderation");
     expect(response.body).toContain("Trends");
     expect(response.body).toContain("Create review drafts");
     expect(response.body).toContain("curriculum-export-btn");
@@ -1483,6 +1484,73 @@ describe("admin metrics route", () => {
     expect(response.body).not.toContain("\"auth\":");
     const script = String(response.body).match(/<script>([\s\S]*)<\/script>/)?.[1] ?? "";
     expect(() => new Function(script)).not.toThrow();
+  });
+
+  it("serves authenticated public world moderation reports without raw session ids", async () => {
+    vi.useFakeTimers();
+    const now = Date.UTC(2026, 5, 15, 14);
+    vi.setSystemTime(now);
+    const sessionId = "rh:user:moderation-reporter";
+    attachCohortStudent(sessionId, "Report Noor", "10", "A");
+    const state = ruby.getOrCreate(sessionId);
+    state.faculty = "ruby";
+    state.updatedAt = now;
+    state.schoolEvents.push({
+      id: "school:event:moderation-page",
+      kind: "comic.page-unlocked",
+      at: now,
+      faculty: "ruby",
+      grade: "10",
+      issueId: "first-bell",
+      pageId: "first-bell-moderation",
+      pageNumber: 6,
+      reason: "teacher-class-aced",
+      sourceId: "teacher:ruby:grade:10",
+      label: "Moderation page",
+    });
+    const eventId = publicWorldEventId("comic.page-unlocked", now, "school:event:moderation-page");
+    ruby.reportPublicWorldEvent(sessionId, {
+      eventId,
+      reason: "spoiler in the world feed\nwith extra whitespace",
+      now,
+    });
+
+    let response = await appRoute({
+      path: "/api/apps/ruby-high/admin/world/moderation",
+      authorizationHeader: "Bearer wrong",
+    });
+    expect(response.status).toBe(503);
+
+    vi.stubEnv("RUBY_HIGH_ADMIN_TOKEN", "admin-test-token");
+    response = await appRoute({
+      path: "/api/apps/ruby-high/admin/world/moderation?limit=10",
+      authorizationHeader: "Bearer admin-test-token",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      ok: true,
+      generatedAt: now,
+      reportCount: 1,
+      reports: [{
+        eventId,
+        reason: "spoiler in the world feed with extra whitespace",
+        createdAt: now,
+        reporterCharacterName: "Report Noor",
+        event: {
+          id: eventId,
+          kind: "comic.page-unlocked",
+          at: now,
+          faculty: "ruby",
+          grade: "10",
+          label: "Moderation page",
+        },
+      }],
+    });
+    expect(response.body.reports[0].reporterId).toMatch(/^world:reporter:[a-f0-9]{16}$/);
+    expect(JSON.stringify(response.body)).not.toContain(sessionId);
+    expect(JSON.stringify(response.body)).not.toContain("school:event:moderation-page");
+    expect(JSON.stringify(response.body)).not.toContain("teacher:ruby:grade:10");
   });
 
   it("requires an admin token and returns auth, Ruby High, and log snapshots", async () => {

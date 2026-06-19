@@ -21,6 +21,7 @@ export const ADMIN_METRICS_PATH = `${APP_ROUTE_PREFIX}/admin/metrics`;
 export const ADMIN_METRICS_SCHEMA_PATH = `${APP_ROUTE_PREFIX}/admin/metrics/schema`;
 export const ADMIN_OVERVIEW_PATH = `${APP_ROUTE_PREFIX}/admin/overview`;
 export const ADMIN_CURRICULUM_REPLENISHMENT_PATH = `${APP_ROUTE_PREFIX}/admin/curriculum/replenishment`;
+export const ADMIN_WORLD_MODERATION_PATH = `${APP_ROUTE_PREFIX}/admin/world/moderation`;
 export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v5";
 const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-06-15";
 const ADMIN_METRICS_DEFAULT_TRUST_START = ADMIN_METRICS_SCHEMA_PUBLISHED_AT;
@@ -1004,6 +1005,19 @@ export async function handleAdminCurriculumReplenishmentRoute(ctx: RouteContext,
   return true;
 }
 
+export async function handleAdminWorldModerationRoute(ctx: RouteContext, deps: AdminDeps): Promise<boolean> {
+  if (ctx.pathname !== ADMIN_WORLD_MODERATION_PATH) return false;
+  if (ctx.method !== "GET" && ctx.method !== "HEAD") {
+    ctx.error(ctx.res, "Method not allowed", 405);
+    return true;
+  }
+  if (!requireAdminAuth(ctx)) return true;
+  const rawLimit = ctx.url?.searchParams.get("limit");
+  const limit = rawLimit ? Number(rawLimit) : 100;
+  ctx.json(ctx.res, await deps.ruby.getPublicWorldModerationSnapshot(limit));
+  return true;
+}
+
 export async function handleAdminOverviewRoute(ctx: RouteContext, deps: AdminDeps): Promise<boolean> {
   if (ctx.pathname !== ADMIN_OVERVIEW_PATH) return false;
   if (ctx.method !== "GET" && ctx.method !== "HEAD") {
@@ -1494,7 +1508,7 @@ export function renderAdminDashboardHtml(): string {
       <div class="brand">
         <img src="${APP_ROUTE_PREFIX}/assets/logo.png" alt="">
         <h1>Ruby High Admin</h1>
-        <p class="sub">JSON: <code>${ADMIN_METRICS_PATH}</code> · <code>${ADMIN_METRICS_SCHEMA_PATH}</code> · <code>${ADMIN_OVERVIEW_PATH}</code> · <code>${ADMIN_CURRICULUM_REPLENISHMENT_PATH}</code></p>
+        <p class="sub">JSON: <code>${ADMIN_METRICS_PATH}</code> · <code>${ADMIN_METRICS_SCHEMA_PATH}</code> · <code>${ADMIN_OVERVIEW_PATH}</code> · <code>${ADMIN_CURRICULUM_REPLENISHMENT_PATH}</code> · <code>${ADMIN_WORLD_MODERATION_PATH}</code></p>
       </div>
       <form class="controls" id="admin-form">
         <input id="token" type="password" autocomplete="current-password" placeholder="Admin token">

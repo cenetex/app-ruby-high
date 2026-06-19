@@ -36,11 +36,13 @@ import {
   ADMIN_METRICS_SCHEMA_PATH,
   ADMIN_OVERVIEW_PATH,
   ADMIN_CURRICULUM_REPLENISHMENT_PATH,
+  ADMIN_WORLD_MODERATION_PATH,
   ADMIN_PATH,
   handleAdminCurriculumReplenishmentRoute,
   handleAdminMetricsSchemaRoute,
   handleAdminOverviewRoute,
   handleAdminMetricsRoute,
+  handleAdminWorldModerationRoute,
   renderAdminDashboardHtml,
 } from "./routes/admin.js";
 import type { AdminOpsSnapshot } from "./routes/admin.js";
@@ -583,6 +585,16 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       return true;
     }
     return handleAdminCurriculumReplenishmentRoute(ctx, { auth, ruby });
+  }
+
+  if (ctx.pathname === ADMIN_WORLD_MODERATION_PATH) {
+    const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
+    const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
+    if (!auth || !ruby) {
+      ctx.error(ctx.res, !auth ? "AuthService unavailable" : "RubyHighService unavailable", 503);
+      return true;
+    }
+    return handleAdminWorldModerationRoute(ctx, { auth, ruby });
   }
 
   if (ctx.pathname === METRICS_EVENT_PATH) {

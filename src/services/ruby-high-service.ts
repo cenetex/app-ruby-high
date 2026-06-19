@@ -836,6 +836,23 @@ export interface SchoolWorldSnapshot {
   };
 }
 
+export interface PublicWorldModerationReport {
+  id: string;
+  eventId: string;
+  reason: string;
+  createdAt: number;
+  reporterId: string;
+  reporterCharacterName: string | null;
+  event: Pick<SchoolWorldEvent, "id" | "kind" | "at" | "faculty" | "grade"> & { label: string | null } | null;
+}
+
+export interface PublicWorldModerationSnapshot {
+  ok: true;
+  generatedAt: number;
+  reportCount: number;
+  reports: PublicWorldModerationReport[];
+}
+
 const PUBLIC_WORLD_EVENT_ID_RE = /^world:event:[a-f0-9]{16}$/i;
 const PUBLIC_WORLD_REPORT_REASON_LIMIT = 240;
 
@@ -7162,6 +7179,41 @@ export class RubyHighService extends Service {
     return this.getSchoolWorldEvents(limit, now);
   }
 
+  async getPublicWorldModerationSnapshot(limit = 100, now = Date.now()): Promise<PublicWorldModerationSnapshot> {
+    await this.refreshWorldSessionsFromStore(now);
+    const eventLimit = Math.max(SCHOOL_WORLD_RECENT_EVENT_LIMIT, Math.min(200, Math.floor(Number(limit) || 100)));
+    const eventsById = new Map(this.getSchoolWorldEvents(eventLimit, now).map((event) => [event.id, event]));
+    const reports: PublicWorldModerationReport[] = [];
+    for (const [sessionId, state] of this.sessions) {
+      const stateReports = normalizePublicWorldEventReports(state.publicWorldEventReports);
+      if (stateReports.length === 0) continue;
+      const reporterId = publicWorldReporterId(sessionId);
+      const reporterCharacterName = state.character?.name && typeof state.character.name === "string"
+        ? state.character.name.trim().slice(0, 80) || null
+        : null;
+      for (const report of stateReports) {
+        const event = eventsById.get(report.eventId) ?? null;
+        reports.push({
+          id: report.id,
+          eventId: report.eventId,
+          reason: report.reason,
+          createdAt: report.createdAt,
+          reporterId,
+          reporterCharacterName,
+          event: event ? publicWorldModerationEventContext(event) : null,
+        });
+      }
+    }
+    reports.sort((a, b) => b.createdAt - a.createdAt || a.eventId.localeCompare(b.eventId) || a.reporterId.localeCompare(b.reporterId));
+    const boundedReports = reports.slice(0, Math.max(0, Math.min(200, Math.floor(Number(limit) || 100))));
+    return {
+      ok: true,
+      generatedAt: now,
+      reportCount: reports.length,
+      reports: boundedReports,
+    };
+  }
+
   filterSchoolWorldSnapshotForSession(snapshot: SchoolWorldSnapshot, sessionId: string | null | undefined): SchoolWorldSnapshot {
     const hiddenIds = this.publicWorldHiddenEventIdsForSession(sessionId);
     if (hiddenIds.size === 0) return snapshot;
@@ -8580,6 +8632,30 @@ function normalizePublicWorldEventReports(value: unknown): PublicWorldEventRepor
     seen.add(eventId);
   }
   return out.slice(-50);
+}
+
+function publicWorldReporterId(sessionId: string): string {
+  const hash = createHash("sha256")
+    .update(`public-world-reporter:${sessionId}`)
+    .digest("hex")
+    .slice(0, 16);
+  return `world:reporter:${hash}`;
+}
+
+function publicWorldModerationEventContext(event: SchoolWorldEvent): PublicWorldModerationReport["event"] {
+  const label = "label" in event && typeof event.label === "string"
+    ? event.label
+    : "roomTitle" in event && typeof event.roomTitle === "string"
+      ? event.roomTitle
+      : null;
+  return {
+    id: event.id,
+    kind: event.kind,
+    at: event.at,
+    ...(event.faculty ? { faculty: event.faculty } : {}),
+    grade: event.grade,
+    label,
+  };
 }
 
 function persistedPackRecordKey(ownerSessionId: string | null, packId: string): string {
