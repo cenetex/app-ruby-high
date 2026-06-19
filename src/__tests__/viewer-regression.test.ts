@@ -568,6 +568,9 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('data-account-tab="trust"');
     expect(html).toContain('id="account-trust-list"');
     expect(html).toContain("Receipts");
+    expectScriptToContain(script, "function accountPaneItemView(id, activePane)");
+    expectScriptToContain(script, "function normalizeAccountPane(pane)");
+    expectScriptToContain(script, "const view = accountPaneItemView(rawId, active);");
     expect(characters).toBeGreaterThan(-1);
     expect(wallet).toBeGreaterThan(characters);
     expect(ai).toBeGreaterThan(wallet);

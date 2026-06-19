@@ -112,6 +112,15 @@ export type AccountWalletPanelView = {
   buyPassesTitle: string;
   buyPassesDisabled: boolean;
 };
+export type AccountPaneId = "account" | "wallet" | "cards" | "library" | "receipts" | "trust";
+export type AccountPaneItemView = {
+  id: AccountPaneId;
+  selected: boolean;
+  classActive: boolean;
+  ariaSelected: "true" | "false";
+  tabIndex: 0 | -1;
+  hidden: boolean;
+};
 type ClassmateArcProgress = { value: number; total: number };
 type RoomCompletionProgress = { value: number; total: number };
 export type RoomChannelStudentView = { id: string; name: string };
@@ -674,6 +683,26 @@ export function accountWalletPanelView(walletInput: NullableRecord, slotsInput?:
     buyPassesText: billingBusy && billingMode === "hall-passes" ? "Loading..." : "Buy Hall Passes",
     buyPassesTitle: "Buy Hall Passes for hosted AI, creator slots, and image generation.",
     buyPassesDisabled: !(opts && opts.authed) || billingBusy,
+  };
+}
+
+export function normalizeAccountPane(pane: unknown): AccountPaneId {
+  const value = String(pane || "account");
+  return value === "wallet" || value === "cards" || value === "library" || value === "receipts" || value === "trust"
+    ? value
+    : "account";
+}
+
+export function accountPaneItemView(id: unknown, activePane: unknown): AccountPaneItemView {
+  const normalizedId = normalizeAccountPane(id);
+  const selected = normalizedId === normalizeAccountPane(activePane);
+  return {
+    id: normalizedId,
+    selected,
+    classActive: selected,
+    ariaSelected: selected ? "true" : "false",
+    tabIndex: selected ? 0 : -1,
+    hidden: !selected,
   };
 }
 

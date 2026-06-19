@@ -2255,11 +2255,6 @@ export function runViewerClient(bootstrap) {
 
   // formatDuration, formatRelativeExpiry are in client-pure.ts.
 
-  function normalizeAccountPane(pane) {
-    const value = String(pane || "account");
-    return ["account", "wallet", "cards", "library", "receipts", "trust"].includes(value) ? value : "account";
-  }
-
   function setAccountPane(pane) {
     const next = normalizeAccountPane(pane);
     const changed = activeAccountPane !== next;
@@ -2273,17 +2268,21 @@ export function runViewerClient(bootstrap) {
     const active = normalizeAccountPane(activeAccountPane);
     if (Array.isArray(els.accountTabs)) {
       els.accountTabs.forEach((tab) => {
-        const selected = tab && tab.getAttribute("data-account-tab") === active;
-        tab.classList.toggle("is-active", !!selected);
-        tab.setAttribute("aria-selected", selected ? "true" : "false");
-        tab.tabIndex = selected ? 0 : -1;
+        const rawId = tab && tab.getAttribute("data-account-tab");
+        const view = accountPaneItemView(rawId, active);
+        const selected = rawId === view.id && view.selected;
+        tab.classList.toggle("is-active", selected);
+        tab.setAttribute("aria-selected", selected ? view.ariaSelected : "false");
+        tab.tabIndex = selected ? view.tabIndex : -1;
       });
     }
     if (Array.isArray(els.accountPanels)) {
       els.accountPanels.forEach((panel) => {
-        const selected = panel && panel.getAttribute("data-account-panel") === active;
-        panel.classList.toggle("is-active", !!selected);
-        panel.hidden = !selected;
+        const rawId = panel && panel.getAttribute("data-account-panel");
+        const view = accountPaneItemView(rawId, active);
+        const selected = rawId === view.id && view.selected;
+        panel.classList.toggle("is-active", selected);
+        panel.hidden = selected ? view.hidden : true;
       });
     }
   }

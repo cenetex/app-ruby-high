@@ -83,6 +83,8 @@ const PURE_HELPER_NAMES = [
   "accountCharacterPanelView",
   "accountAiPanelView",
   "accountWalletPanelView",
+  "normalizeAccountPane",
+  "accountPaneItemView",
   "formatSealedDate",
   "nextGradeAfterClient",
   "fmtStat",
