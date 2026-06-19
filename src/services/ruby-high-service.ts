@@ -691,6 +691,7 @@ export interface RubyHighWorldHealthSnapshot {
   durableTeacherAgendaLimit: number;
   liveRoomGoals: number;
   suppressedEvents: number;
+  recentRoomOutcomes: PublicWorldRoomOutcomeRecord[];
   summary: PublicWorldSummarySnapshot;
 }
 
@@ -980,6 +981,10 @@ export interface PublicWorldRoomOutcomeRecord {
   facultyId: string;
   displayName: string;
   goalKind: "live-class";
+  roomTitle: string;
+  summaryLabel: string;
+  rewardKind: "study-spark";
+  rewardLabel: string;
   progress: number;
   target: number;
   contributorCount: number;
@@ -1888,6 +1893,7 @@ export class RubyHighService extends Service {
       durableTeacherAgendaLimit: PUBLIC_WORLD_TEACHER_AGENDA_LIMIT,
       liveRoomGoals: this.liveRoomGoalStates.size,
       suppressedEvents: this.publicWorldSuppressedEvents.size,
+      recentRoomOutcomes: this.publicWorldRoomOutcomeRecordList(now).slice(0, 5),
       summary: this.publicWorldSummarySnapshot(now),
     };
   }
@@ -2154,6 +2160,7 @@ export class RubyHighService extends Service {
     const id = publicWorldRoomOutcomeId(goal.day, goal.grade, goal.facultyId);
     if (this.publicWorldRoomOutcomeRecords.has(id)) return;
     const schoolYear = schoolYearForTimestamp(completedAt);
+    const displayName = publicWorldRoomDisplayName(goal.displayName, goal.facultyId);
     const outcome: PublicWorldRoomOutcomeRecord = {
       id,
       schoolYear,
@@ -2161,8 +2168,12 @@ export class RubyHighService extends Service {
       day: goal.day,
       grade: goal.grade,
       facultyId: goal.facultyId,
-      displayName: publicWorldRoomDisplayName(goal.displayName, goal.facultyId),
+      displayName,
       goalKind: "live-class",
+      roomTitle: publicWorldRoomOutcomeRoomTitle(displayName),
+      summaryLabel: publicWorldRoomOutcomeSummaryLabel(displayName, progress, target, goal.contributors.size),
+      rewardKind: "study-spark",
+      rewardLabel: publicWorldRoomOutcomeRewardLabel(displayName),
       progress,
       target,
       contributorCount: goal.contributors.size,
@@ -9669,6 +9680,21 @@ function publicWorldRoomOutcomeId(day: string, grade: Grade, facultyId: string):
   return `room:outcome:${digest}`;
 }
 
+function publicWorldRoomOutcomeRoomTitle(displayName: string): string {
+  return publicWorldStoredText(`${displayName} room`, 120) || "Class room";
+}
+
+function publicWorldRoomOutcomeRewardLabel(displayName: string): string {
+  return publicWorldStoredText(`${displayName} earned a class-wide Study Spark`, 180) || "Class earned a Study Spark";
+}
+
+function publicWorldRoomOutcomeSummaryLabel(displayName: string, progress: number, target: number, contributorCount: number): string {
+  const contributors = Math.max(0, Math.floor(Number(contributorCount) || 0));
+  const contributorText = contributors === 1 ? "1 contributor" : `${contributors} contributors`;
+  return publicWorldStoredText(`${displayName} live class completed ${progress}/${target} with ${contributorText}`, 180)
+    || "Live class completed";
+}
+
 function publicWorldTeacherAgendaId(schoolYear: string, grade: Grade, facultyId: string): string {
   const digest = createHash("sha256").update(`${schoolYear}:${grade}:${facultyId}`).digest("hex").slice(0, 16);
   return `teacher:agenda:${digest}`;
@@ -9733,6 +9759,11 @@ function normalizePublicWorldRoomOutcomeRecord(raw: unknown): PublicWorldRoomOut
   const completedAt = publicWorldStoredInteger(source.completedAt, 0);
   const createdAt = publicWorldStoredInteger(source.createdAt, completedAt);
   if (completedAt <= 0 || createdAt <= 0) return null;
+  const displayName = publicWorldRoomDisplayName(typeof source.displayName === "string" ? source.displayName : facultyId, facultyId);
+  const roomTitle = publicWorldStoredText(source.roomTitle, 120) || publicWorldRoomOutcomeRoomTitle(displayName);
+  const summaryLabel = publicWorldStoredText(source.summaryLabel, 180) || publicWorldRoomOutcomeSummaryLabel(displayName, progress, target, contributorCount);
+  const rewardKind = source.rewardKind === "study-spark" ? source.rewardKind : "study-spark";
+  const rewardLabel = publicWorldStoredText(source.rewardLabel, 180) || publicWorldRoomOutcomeRewardLabel(displayName);
   return {
     id,
     schoolYear,
@@ -9740,8 +9771,12 @@ function normalizePublicWorldRoomOutcomeRecord(raw: unknown): PublicWorldRoomOut
     day,
     grade,
     facultyId,
-    displayName: publicWorldRoomDisplayName(typeof source.displayName === "string" ? source.displayName : facultyId, facultyId),
+    displayName,
     goalKind: "live-class",
+    roomTitle,
+    summaryLabel,
+    rewardKind,
+    rewardLabel,
     progress,
     target,
     contributorCount,

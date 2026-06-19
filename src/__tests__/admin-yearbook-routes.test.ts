@@ -1777,6 +1777,7 @@ describe("admin metrics route", () => {
           durableRoomRecordLimit: 80,
           durableRoomOutcomes: 0,
           durableRoomOutcomeLimit: 120,
+          recentRoomOutcomes: [],
           durableTeacherAgendas: 0,
           durableTeacherAgendaLimit: 80,
           liveRoomGoals: 0,

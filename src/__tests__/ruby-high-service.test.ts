@@ -2082,6 +2082,10 @@ describe("RubyHighService Phase 1", () => {
           facultyId: "ruby",
           displayName: "Ruby",
           goalKind: "live-class",
+          roomTitle: "Ruby room",
+          summaryLabel: "Ruby live class completed 3/3 with 3 contributors",
+          rewardKind: "study-spark",
+          rewardLabel: "Ruby earned a class-wide Study Spark",
           progress: 3,
           target: 3,
           contributorCount: 3,
@@ -2145,6 +2149,14 @@ describe("RubyHighService Phase 1", () => {
       durableRoomRecordLimit: 80,
       durableRoomOutcomes: 1,
       durableRoomOutcomeLimit: 120,
+      recentRoomOutcomes: [
+        expect.objectContaining({
+          roomTitle: "Ruby room",
+          summaryLabel: "Ruby live class completed 3/3 with 3 contributors",
+          rewardKind: "study-spark",
+          rewardLabel: "Ruby earned a class-wide Study Spark",
+        }),
+      ],
       liveRoomGoals: 1,
       summary: {
         roomGoalEvents: {
@@ -2267,6 +2279,50 @@ describe("RubyHighService Phase 1", () => {
     });
   });
 
+  it("hydrates legacy durable room outcomes with derived aggregate labels", async () => {
+    const now = Date.UTC(2026, 5, 16, 12);
+    const store = serviceStateOnlyStore([
+      {
+        id: "ruby-high:public-world-room-outcomes:v1",
+        updatedAt: now,
+        data: {
+          version: 1,
+          outcomes: [
+            {
+              day: "2026-06-16",
+              schoolYear: "2025-2026",
+              termId: "2025-2026",
+              grade: "10",
+              facultyId: "ruby",
+              displayName: "Ruby",
+              goalKind: "live-class",
+              progress: 3,
+              target: 3,
+              contributorCount: 3,
+              completedAt: now,
+              createdAt: now,
+            },
+          ],
+        },
+      },
+    ]);
+    const ruby = new RubyHighService({} as never, store);
+    await ruby["hydrate"]();
+    activeRuby = ruby;
+
+    expect(ruby.worldHealthSnapshot(now)).toMatchObject({
+      durableRoomOutcomes: 1,
+      recentRoomOutcomes: [
+        expect.objectContaining({
+          roomTitle: "Ruby room",
+          summaryLabel: "Ruby live class completed 3/3 with 3 contributors",
+          rewardKind: "study-spark",
+          rewardLabel: "Ruby earned a class-wide Study Spark",
+        }),
+      ],
+    });
+  });
+
   it("ignores unknown or malformed durable public-world state during migration rollback", async () => {
     const now = Date.UTC(2026, 5, 16, 12);
     const store = serviceStateOnlyStore([
@@ -2359,6 +2415,7 @@ describe("RubyHighService Phase 1", () => {
       recentEvents: 0,
       durableRoomRecords: 0,
       durableRoomOutcomes: 0,
+      recentRoomOutcomes: [],
       durableTeacherAgendas: 0,
       publicEventLogSize: 0,
       liveRoomGoals: 0,
