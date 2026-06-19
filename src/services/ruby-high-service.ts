@@ -680,6 +680,8 @@ export interface RubyHighWorldHealthSnapshot {
   newestEventAt: number | null;
   durableEventCacheSize: number;
   durableEventCacheLimit: number;
+  liveRoomGoals: number;
+  suppressedEvents: number;
 }
 
 export type { DailyPhotoPostResult, RubyHighPhotoPostSchedulerSnapshot };
@@ -1754,6 +1756,8 @@ export class RubyHighService extends Service {
       newestEventAt: events[0]?.at ?? null,
       durableEventCacheSize: this.schoolEventRecords.size,
       durableEventCacheLimit: SCHOOL_WORLD_EVENT_CACHE_LIMIT,
+      liveRoomGoals: this.liveRoomGoalStates.size,
+      suppressedEvents: this.publicWorldSuppressedEvents.size,
     };
   }
 

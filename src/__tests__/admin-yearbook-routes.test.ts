@@ -1474,6 +1474,7 @@ describe("admin metrics route", () => {
     expect(response.body).toContain("Image posts enabled");
     expect(response.body).toContain("World health");
     expect(response.body).toContain("worldHealthMetricValue");
+    expect(response.body).toContain("suppressed");
     expect(response.body).toContain("Public reads");
     expect(response.body).toContain("publicReadMetricValue");
     expect(response.body).toContain("World streams");
@@ -1679,6 +1680,8 @@ describe("admin metrics route", () => {
           newestEventAt: eventAt,
           durableEventCacheSize: 0,
           durableEventCacheLimit: 400,
+          liveRoomGoals: 0,
+          suppressedEvents: 0,
         },
         photoPosts: {
           schedulerActive: false,

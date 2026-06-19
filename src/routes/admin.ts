@@ -918,8 +918,8 @@ function buildAdminMetricsSchema(): {
       {
         path: "ruby.world",
         label: "Public world health",
-        source: "RubyHighService public school-world projection and durable event cache",
-        semantics: "Current public-world presence, recent visible event count/newest event time, durable event cache pressure, and last external-store refresh age.",
+        source: "RubyHighService public school-world projection, durable event cache, and public-world service state",
+        semantics: "Current public-world presence, recent visible event count/newest event time, durable event cache pressure, live-room goal state count, suppressed-event count, and last external-store refresh age.",
         reliability: "proxy",
         caveat: "Refresh age is process-local and reflects the most recent public-world store hydration in this app instance.",
       },
@@ -2103,7 +2103,7 @@ async function postTelegramSnapshot() {
       world = world || {};
       const refresh = world.lastRefreshAt ? "refresh " + time(world.lastRefreshAt) : "not refreshed";
       const newest = world.newestEventAt ? " · newest " + time(world.newestEventAt) : "";
-      return "students / events · rooms " + n(world.activeRooms) + " · cache " + n(world.durableEventCacheSize) + "/" + n(world.durableEventCacheLimit) + " · " + refresh + newest;
+      return "students / events · rooms " + n(world.activeRooms) + " · goals " + n(world.liveRoomGoals) + " · suppressed " + n(world.suppressedEvents) + " · cache " + n(world.durableEventCacheSize) + "/" + n(world.durableEventCacheLimit) + " · " + refresh + newest;
     }
     function publicReadMetricValue(limiter) {
       limiter = limiter || {};
