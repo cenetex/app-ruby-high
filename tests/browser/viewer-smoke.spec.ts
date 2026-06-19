@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { closeRewardComicIfVisible, contributeLiveRoomGoal, createCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
+import { answerLiveRoomQuestion, closeRewardComicIfVisible, createCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
 
 test("boots as a guest, creates a character, answers a card, and opens account tabs", async ({ page }) => {
   const { errors } = await openViewer(page);
@@ -99,20 +99,24 @@ test("shows shared live-room progress across two browser clients", async ({ brow
     await closeRewardComicIfVisible(pageB);
 
     await expect.poll(async () => {
-      const contribution = await contributeLiveRoomGoal(pageA, "ruby");
-      return contribution.result;
-    }, { timeout: 10_000 }).toMatchObject({
-      facultyId: "ruby",
-      progress: expect.any(Number),
-      duplicate: expect.any(Boolean),
+      const response = await answerLiveRoomQuestion(pageA, "ruby");
+      return {
+        faculty: response.session?.telemetry?.faculty,
+        lastReveal: response.session?.telemetry?.lastReveal,
+      };
+    }, { timeout: 15_000 }).toMatchObject({
+      faculty: "ruby",
+      lastReveal: expect.objectContaining({ picked: expect.any(String) }),
     });
     await expect.poll(async () => {
-      const contribution = await contributeLiveRoomGoal(pageB, "ruby");
-      return contribution.result;
-    }, { timeout: 10_000 }).toMatchObject({
-      facultyId: "ruby",
-      progress: expect.any(Number),
-      duplicate: expect.any(Boolean),
+      const response = await answerLiveRoomQuestion(pageB, "ruby");
+      return {
+        faculty: response.session?.telemetry?.faculty,
+        lastReveal: response.session?.telemetry?.lastReveal,
+      };
+    }, { timeout: 15_000 }).toMatchObject({
+      faculty: "ruby",
+      lastReveal: expect.objectContaining({ picked: expect.any(String) }),
     });
 
     const refreshA = pageA.locator("#world-panel-refresh");

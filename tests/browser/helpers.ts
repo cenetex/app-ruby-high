@@ -199,21 +199,45 @@ export async function tickGrade(page: Page) {
 }
 
 /**
- * Contribute this browser session to the dev live-room goal helper.
+ * Pose and answer a real room question so live-room goal progress comes from
+ * the same command route used by players.
  */
-export async function contributeLiveRoomGoal(page: Page, faculty = "ruby") {
+export async function answerLiveRoomQuestion(page: Page, faculty = "ruby") {
   const result = await page.evaluate(async (requestedFaculty) => {
-    const resp = await fetch("/dev/contribute-live-room-goal", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ faculty: requestedFaculty }),
-    });
-    const body = await resp.json();
-    if (!resp.ok) {
-      throw new Error(`contribute-live-room-goal failed: ${JSON.stringify(body)}`);
+    const postCommand = async (payload: Record<string, unknown>) => {
+      const resp = await fetch("/api/apps/ruby-high/session/browser-smoke/command", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await resp.json();
+      if (!resp.ok) {
+        throw new Error(`command ${String(payload.type)} failed: ${JSON.stringify(body)}`);
+      }
+      return body;
+    };
+    const readSession = async () => {
+      const resp = await fetch("/api/apps/ruby-high/session/browser-smoke", { credentials: "same-origin" });
+      const body = await resp.json();
+      if (!resp.ok) {
+        throw new Error(`session read failed: ${JSON.stringify(body)}`);
+      }
+      return body;
+    };
+
+    const existing = await readSession();
+    const picked = existing?.session?.telemetry?.current
+      ? existing
+      : await postCommand({ type: "pick", mode: "practice", faculty: requestedFaculty });
+    const current = picked?.session?.telemetry?.current;
+    if (!current) {
+      throw new Error(`pick did not return a current question: ${JSON.stringify(picked)}`);
     }
-    return body;
+    const answerPayload = current.type === "multiple-choice"
+      ? { type: "answer", picked: "A" }
+      : { type: "answer-text", answerText: "A focused smoke-test answer." };
+    return await postCommand(answerPayload);
   }, faculty);
   return result;
 }

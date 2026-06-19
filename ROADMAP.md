@@ -21,7 +21,7 @@ research plumbing, presence/moderation controls, and durable public-world state.
 | [#142 MMO: public presence and moderation controls](https://github.com/cenetex/app-ruby-high/issues/142) | Open, operator workflow in #138 | **P0 safety.** Public presence toggle, per-player hide/report, admin moderation snapshot, repeated-report counts, moderator notes, report dismissal, global suppression, action throttles, and account copy that names public/private profile fields exist; next is stronger public-name review policy. |
 | [#141 MMO: teacher curriculum research loop](https://github.com/cenetex/app-ruby-high/issues/141) | Open, deeper loop in #138 | **P1 content engine.** Teacher corpora metadata, reading lists, primary-source packets, misconception checks, grade briefs, replenishment proposals, coverage-exhaustion auto-enqueue, validation, review readiness, explicit approval gates, runtime promotion, weak-subject and repetition signals exist; next is broader per-teacher corpus depth. |
 | [#140 MMO: typed public-world viewer module](https://github.com/cenetex/app-ruby-high/issues/140) | Open, several seams in #138 | **P1 maintainability.** World feed, world panel, lifecycle wiring, race/question/leaderboard/progress models, and account public-world visibility view models are typed; next is extracting larger public-world action/UI surfaces out of `viewer-parts/client.ts`. |
-| [#139 MMO: live class rooms MVP](https://github.com/cenetex/app-ruby-high/issues/139) | Open, two-client goal path in #138 | **P1 gameplay.** Two guest sessions can contribute to a room goal and observe sanitized public progress; next is richer room rules, visible cooperative rewards, and less dev-helper coverage. |
+| [#139 MMO: live class rooms MVP](https://github.com/cenetex/app-ruby-high/issues/139) | Open, answer-flow goal path in #138 | **P1 gameplay.** Two guest sessions can contribute to a room goal through normal answer commands and observe sanitized public progress; next is richer room rules and visible cooperative rewards. |
 | [#122 Return 400 for unknown viewer command types](https://github.com/cenetex/app-ruby-high/issues/122) | Fixed in #138; close after merge | **P0 pre-MMO hardening.** Unknown mutation commands fail closed with a 400 before mutating state. |
 | [#121 Harden creator materials URL ingestion](https://github.com/cenetex/app-ruby-high/issues/121) | Fixed in #138; close after merge | **P1 security.** Creator/import URL ingestion is constrained by host allowlisting, raw GitHub normalization, private-network rejection, redirect checks, and size limits. |
 | [#120 Make the Privy browser bundle cacheable or smaller](https://github.com/cenetex/app-ruby-high/issues/120) | Fixed in #138; close after merge | **P2 performance.** Versioned Privy bundle requests are immutable-cacheable and the bundle-size guard protects the lazy account widget payload. |
@@ -94,8 +94,8 @@ around those structures:
   consent-aware.
 - The world feed emits room-level progress events that clients can replay with
   existing cursors.
-- Browser tests should move from dev-helper contribution coverage toward a
-  normal answer-flow contribution path once the public UI rules are stable.
+- Browser tests now cover room goal contribution through normal `pick` /
+  `answer` commands rather than the dev-only contribution helper.
 
 Acceptance gate: two anonymous/guest sessions can contribute to the same room
 goal and both clients observe progress through the public world feed without
@@ -187,9 +187,9 @@ outcomes without requiring crypto participation.
 2. [#141](https://github.com/cenetex/app-ruby-high/issues/141): add richer
    reviewer approval affordances, then continue broadening the teacher corpora
    with primary-source packets.
-3. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the
-   browser smoke's dev-only live-room contribution helper with a normal answer
-   flow that contributes sanitized room progress.
+3. [#139](https://github.com/cenetex/app-ruby-high/issues/139): add richer room
+   goal rules and visible cooperative rewards on top of the normal answer-flow
+   contribution path.
 4. [#143](https://github.com/cenetex/app-ruby-high/issues/143): introduce
    explicit room/term records and migrate current derived room summaries into
    durable state with rollback coverage.
