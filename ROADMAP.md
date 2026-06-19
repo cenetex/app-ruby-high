@@ -12,12 +12,15 @@ As of June 19, 2026, #138 is green on GitHub Actions and contains the first
 issue-backed MMO runway: deploy/security hardening, browser smoke, public world
 projection, typed viewer seams, live-room goal contributions, curriculum
 research plumbing, presence/moderation controls, and durable public-world state.
+The live GitHub tracker still has exactly five active MMO issues (#139-#143)
+plus the broader viewer refactor (#117); this roadmap treats those issues as
+the implementation contract.
 
 ### Tracker audit
 
 | Issue | Status | Roadmap meaning |
 |---|---:|---|
-| [#143 MMO: durable room and world state model](https://github.com/cenetex/app-ruby-high/issues/143) | Open, first durable slices in #138 | **P0 MMO data model.** Live-room goals, sanitized room/term snapshots, completed room outcomes, teacher agenda records, public event replay, summary counters, moderation suppression state, and rollback docs are durable; next is richer outcome summaries and agenda execution rules. |
+| [#143 MMO: durable room and world state model](https://github.com/cenetex/app-ruby-high/issues/143) | Open, first durable slices in #138 | **P0 MMO data model.** Live-room goals, sanitized room/term snapshots, completed room outcomes, teacher agenda records, public event replay, summary counters, moderation suppression state, and rollback docs are durable; next is richer outcome summaries, agenda execution rules, and restart/replay acceptance tests that prove the durable model is not just an admin counter. |
 | [#142 MMO: public presence and moderation controls](https://github.com/cenetex/app-ruby-high/issues/142) | Open, operator workflow in #138 | **P0 safety.** Public presence toggle, per-player hide/report, admin moderation snapshot, repeated-report counts, moderator notes, report dismissal, global suppression, action throttles, and account copy that names public/private profile fields exist; next is stronger public-name review policy. |
 | [#141 MMO: teacher curriculum research loop](https://github.com/cenetex/app-ruby-high/issues/141) | Open, deeper loop in #138 | **P1 content engine.** Teacher corpora metadata, reading lists, primary-source packets, misconception checks, grade briefs, replenishment proposals, coverage-exhaustion auto-enqueue, validation, review readiness, explicit approval gates, runtime promotion, weak-subject and repetition signals exist; next is broader per-teacher corpus depth. |
 | [#140 MMO: typed public-world viewer module](https://github.com/cenetex/app-ruby-high/issues/140) | Open, several seams in #138 | **P1 maintainability.** World feed, world panel, lifecycle wiring, race/question/leaderboard/progress models, and account public-world visibility view models are typed; next is extracting larger public-world action/UI surfaces out of `viewer-parts/client.ts`. |
@@ -29,6 +32,31 @@ research plumbing, presence/moderation controls, and durable public-world state.
 | [#118 Add Playwright browser smoke tests](https://github.com/cenetex/app-ruby-high/issues/118) | Fixed in #138; close after merge | **Tracker cleanup.** Playwright browser smoke exists locally and in a dedicated Actions workflow for viewer/browser PRs. |
 | [#117 Refactor inline viewer client into typed modules](https://github.com/cenetex/app-ruby-high/issues/117) | Open, many slices in #138 | **P1 maintainability.** Continue extracting UI areas before adding larger multiplayer surfaces. |
 | [#65 Deploy Workflow Failed: deploy-fly](https://github.com/cenetex/app-ruby-high/issues/65) | Open but stale | **Tracker cleanup.** Current PR deploy verification is green; close or replace after confirming `main` no longer has that historical failure mode. |
+
+### Operating order
+
+The active issues are intentionally not parallel wishlists. Work them in this
+order unless production evidence says otherwise:
+
+1. **#140 / #117 — reduce viewer risk before adding more MMO UI.** Extract the
+   next public-world/account surfaces from the unchecked serialized client into
+   typed helpers with focused tests.
+2. **#139 — make the live room loop fun on purpose.** Upgrade the current
+   answer-flow contribution path into visible cooperative room rules and rewards
+   while keeping answer details private.
+3. **#143 — prove the world survives restarts.** Extend durable room outcomes
+   and teacher agendas into replayable summaries with rollback coverage and
+   admin visibility.
+4. **#142 — keep public play safe as it becomes central.** Add public-name
+   review policy, clearer profile copy, and moderation paths that match the
+   richer live-room surfaces.
+5. **#141 — deepen the teacher research loop.** Broaden the corpora and
+   approval/replenishment affordances after the gameplay loop shows which
+   concepts actually need more material.
+
+The older issues (#118-#122) should close after #138 lands on `main`; they are
+not roadmap work anymore. Issue #65 should be closed or replaced only after
+checking current `main` deploy history.
 
 ### Current readiness evidence
 
@@ -182,19 +210,22 @@ outcomes without requiring crypto participation.
 ### Next implementation slices
 
 1. [#140](https://github.com/cenetex/app-ruby-high/issues/140) / [#117](https://github.com/cenetex/app-ruby-high/issues/117):
-   continue extracting larger public-world and account UI surfaces from
-   `viewer-parts/client.ts` into typed modules with unit tests.
-2. [#141](https://github.com/cenetex/app-ruby-high/issues/141): add richer
-   reviewer approval affordances, then continue broadening the teacher corpora
-   with primary-source packets.
-3. [#139](https://github.com/cenetex/app-ruby-high/issues/139): add richer room
-   goal rules and visible cooperative rewards on top of the normal answer-flow
-   contribution path.
-4. [#143](https://github.com/cenetex/app-ruby-high/issues/143): add durable
-   room outcome history and teacher agenda records on top of the room/term
-   snapshot row.
-5. [#142](https://github.com/cenetex/app-ruby-high/issues/142): add public-name
-   review and clearer player-facing public-profile language.
+   extract the next account/public-world action surface from
+   `viewer-parts/client.ts` into typed modules with unit tests. Candidate target:
+   the remaining public profile controls and live-room presentation glue.
+2. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the
+   current minimal room contribution proof with one visible cooperative reward:
+   a class goal result that appears in the room/world feed and can be verified
+   by two clients through normal answer flow.
+3. [#143](https://github.com/cenetex/app-ruby-high/issues/143): add richer
+   durable room outcome summaries and teacher agenda execution rules, then test
+   replay after restart with JSON/dev and SQLite-compatible state.
+4. [#142](https://github.com/cenetex/app-ruby-high/issues/142): add public-name
+   review policy and clearer player-facing public-profile language before the
+   richer room loop makes public presence more visible.
+5. [#141](https://github.com/cenetex/app-ruby-high/issues/141): continue
+   broadening the teacher corpora and reviewer affordances once live-room and
+   durable-world telemetry shows which grade/teacher pools are actually weak.
 
 ---
 
