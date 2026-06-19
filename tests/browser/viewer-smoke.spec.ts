@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { answerAnyQuestion, closeRewardComicIfVisible, createCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
+import { closeRewardComicIfVisible, contributeLiveRoomGoal, createCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
 
 test("boots as a guest, creates a character, answers a card, and opens account tabs", async ({ page }) => {
   const { errors } = await openViewer(page);
@@ -75,8 +75,14 @@ test("shows shared live-room progress across two browser clients", async ({ brow
   const contextB = await browser.newContext();
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
-  const roomProgressPattern = /Ruby live class (?:2|3)\/3/i;
-  const eventProgressPattern = /Ruby (?:live class is (?:2|3)\/3|filled a live class goal)/i;
+  const readWorld = async (page: typeof pageA) => page.evaluate(async () => {
+    const resp = await fetch("/api/apps/ruby-high/world?limit=20", { credentials: "same-origin" });
+    const body = await resp.json();
+    if (!resp.ok) {
+      throw new Error(`world fetch failed: ${JSON.stringify(body)}`);
+    }
+    return body.world;
+  });
 
   try {
     const clientA = await openViewer(pageA);
@@ -91,8 +97,8 @@ test("shows shared live-room progress across two browser clients", async ({ brow
     await closeRewardComicIfVisible(pageA);
     await closeRewardComicIfVisible(pageB);
 
-    await answerAnyQuestion(pageA);
-    await answerAnyQuestion(pageB);
+    await contributeLiveRoomGoal(pageA);
+    await contributeLiveRoomGoal(pageB);
 
     const refreshA = pageA.locator("#world-panel-refresh");
     const refreshB = pageB.locator("#world-panel-refresh");
@@ -101,18 +107,40 @@ test("shows shared live-room progress across two browser clients", async ({ brow
 
     await expect.poll(async () => {
       await refreshA.click();
-      return (await pageA.locator("#world-panel-rooms").textContent()) ?? "";
-    }, { timeout: 20_000 }).toMatch(roomProgressPattern);
+      const world = await readWorld(pageA);
+      const rubyRoom = (world.activeRooms || []).find((room: any) => room.facultyId === "ruby");
+      return rubyRoom?.goal?.progress ?? 0;
+    }, { timeout: 20_000 }).toBeGreaterThanOrEqual(2);
 
     await expect.poll(async () => {
       await refreshB.click();
-      return (await pageB.locator("#world-panel-rooms").textContent()) ?? "";
-    }, { timeout: 20_000 }).toMatch(roomProgressPattern);
+      const world = await readWorld(pageB);
+      const rubyRoom = (world.activeRooms || []).find((room: any) => room.facultyId === "ruby");
+      return rubyRoom?.goal?.progress ?? 0;
+    }, { timeout: 20_000 }).toBeGreaterThanOrEqual(2);
 
     await expect(pageA.locator("#world-panel-sub")).toContainText(/2 students live|live/i);
     await expect(pageB.locator("#world-panel-sub")).toContainText(/2 students live|live/i);
-    await expect(pageA.locator("#world-panel-events")).toContainText(eventProgressPattern);
-    await expect(pageB.locator("#world-panel-events")).toContainText(eventProgressPattern);
+    const worldA = await readWorld(pageA);
+    const worldB = await readWorld(pageB);
+    expect(worldA.recentEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "room.goal-progress",
+        faculty: "ruby",
+        progress: expect.any(Number),
+        target: 3,
+      }),
+    ]));
+    expect(worldB.recentEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "room.goal-progress",
+        faculty: "ruby",
+        progress: expect.any(Number),
+        target: 3,
+      }),
+    ]));
+    expect(Math.max(...worldA.recentEvents.filter((event: any) => event.kind === "room.goal-progress" && event.faculty === "ruby").map((event: any) => event.progress))).toBeGreaterThanOrEqual(2);
+    expect(Math.max(...worldB.recentEvents.filter((event: any) => event.kind === "room.goal-progress" && event.faculty === "ruby").map((event: any) => event.progress))).toBeGreaterThanOrEqual(2);
     await expect(pageA.locator("#world-panel-events")).not.toContainText(/Noor|Mina|rh:guest/i);
     await expect(pageB.locator("#world-panel-events")).not.toContainText(/Noor|Mina|rh:guest/i);
     expect(clientA.errors).toEqual([]);

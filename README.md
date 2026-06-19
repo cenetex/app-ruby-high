@@ -6,7 +6,7 @@ Ruby High is a standalone Node service and installable SPA. Ruby hosts the schoo
 
 **For the product story, mechanics, cast, and roadmap, see [`DESIGN.md`](./DESIGN.md).** For the revenue plan and distribution pipeline, see [`ROADMAP.md`](./ROADMAP.md). This file is the runbook.
 
-Production is on **Fly.io** with SQLite on a Fly Volume; see [`infra/fly-deploy.md`](./infra/fly-deploy.md). The legacy DynamoDB backend and App Runner deployment are archived in [`infra/README.md`](./infra/README.md); the AWS exit migration is documented in [`docs/aws-exit-migration.md`](./docs/aws-exit-migration.md).
+Production is on **Fly.io** with SQLite on a Fly Volume; see [`infra/fly-deploy.md`](./infra/fly-deploy.md). The legacy DynamoDB backend and App Runner deployment are archived in [`infra/README.md`](./infra/README.md); the AWS exit migration is documented in [`docs/aws-exit-migration.md`](./docs/aws-exit-migration.md). Public-world service-state migration and rollback notes live in [`docs/world-state-runbook.md`](./docs/world-state-runbook.md).
 
 ## Run it locally
 

@@ -197,3 +197,23 @@ export async function tickGrade(page: Page) {
   });
   return result;
 }
+
+/**
+ * Contribute this browser session to the dev live-room goal helper.
+ */
+export async function contributeLiveRoomGoal(page: Page) {
+  const result = await page.evaluate(async () => {
+    const resp = await fetch("/dev/contribute-live-room-goal", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const body = await resp.json();
+    if (!resp.ok) {
+      throw new Error(`contribute-live-room-goal failed: ${JSON.stringify(body)}`);
+    }
+    return body;
+  });
+  return result;
+}

@@ -336,6 +336,27 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/dev/contribute-live-room-goal") {
+    try {
+      const sessionId = authSvc.stateKeyForCookie(req.headers.cookie ?? null);
+      const result = rubySvc.contributeLiveRoomGoal(sessionId);
+      if (!result) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ ok: false, error: "No public live-room contribution available for this session." }));
+        return;
+      }
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ ok: true, result }));
+    } catch (err) {
+      res.statusCode = err.statusCode ?? 500;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+    }
+    return;
+  }
+
   if (url.pathname.startsWith("/api/apps/ruby-high")) {
     const ctx = makeRouteContext(req, res, url);
     try {

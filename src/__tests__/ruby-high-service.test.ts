@@ -80,7 +80,8 @@ function completedClassRecord(
   };
 }
 
-function serviceStateOnlyStore(record: StoredServiceStateRecord): StateStoreLike {
+function serviceStateOnlyStore(record: StoredServiceStateRecord | StoredServiceStateRecord[]): StateStoreLike {
+  const records = new Map((Array.isArray(record) ? record : [record]).map((entry) => [entry.id, entry]));
   return {
     describe: () => "service-state-only",
     load: async () => new Map(),
@@ -91,7 +92,7 @@ function serviceStateOnlyStore(record: StoredServiceStateRecord): StateStoreLike
     loadPackInstallations: async () => [],
     loadMetricEvents: async () => [],
     loadSchoolEvents: async () => [],
-    loadServiceState: async (id) => id === record.id ? record : null,
+    loadServiceState: async (id) => records.get(id) ?? null,
     save: async () => undefined,
     saveSession: async () => undefined,
     saveAuthUser: async () => undefined,
@@ -2120,6 +2121,69 @@ describe("RubyHighService Phase 1", () => {
         byKind: {
           "comic.page-unlocked": 1,
           "room.goal-progress": 1,
+        },
+      },
+    });
+  });
+
+  it("ignores unknown or malformed durable public-world state during migration rollback", async () => {
+    const now = Date.UTC(2026, 5, 16, 12);
+    const store = serviceStateOnlyStore([
+      {
+        id: "ruby-high:public-world-events:v1",
+        updatedAt: now,
+        data: {
+          version: 2,
+          events: [{
+            id: "world:event:future",
+            kind: "room.goal-progress",
+            at: now,
+            label: "Future schema should be ignored",
+          }],
+        },
+      },
+      {
+        id: "ruby-high:public-world-moderation:v1",
+        updatedAt: now,
+        data: {
+          version: 1,
+          suppressedEvents: [
+            null,
+            { eventId: "", reason: "spam", suppressedAt: now },
+            { eventId: "world:event:bad reason", reason: "not-a-reason", suppressedAt: "soon" },
+          ],
+        },
+      },
+      {
+        id: "ruby-high:live-room-goals:v1",
+        updatedAt: now,
+        data: {
+          version: 1,
+          goals: [
+            null,
+            { grade: "13", facultyId: "ruby", day: "2026-06-16", contributors: ["public:bad"], updatedAt: now },
+            { grade: "10", facultyId: "", day: "bad-day", contributors: [], updatedAt: 0 },
+          ],
+        },
+      },
+    ]);
+    const ruby = new RubyHighService({} as never, store);
+    await ruby["hydrate"]();
+    activeRuby = ruby;
+
+    expect(ruby.getSchoolWorldEvents(10, now)).toEqual([]);
+    expect(ruby.worldHealthSnapshot(now)).toMatchObject({
+      activeStudents: 0,
+      activeRooms: 0,
+      recentEvents: 0,
+      publicEventLogSize: 0,
+      liveRoomGoals: 0,
+      suppressedEvents: 0,
+      summary: {
+        eventCount: 0,
+        roomGoalEvents: {
+          total: 0,
+          complete: 0,
         },
       },
     });
