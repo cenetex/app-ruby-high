@@ -1548,9 +1548,34 @@ describe("admin metrics route", () => {
       }],
     });
     expect(response.body.reports[0].reporterId).toMatch(/^world:reporter:[a-f0-9]{16}$/);
+    const reportId = response.body.reports[0].id;
     expect(JSON.stringify(response.body)).not.toContain(sessionId);
     expect(JSON.stringify(response.body)).not.toContain("school:event:moderation-page");
     expect(JSON.stringify(response.body)).not.toContain("teacher:ruby:grade:10");
+
+    response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/admin/world/moderation",
+      authorizationHeader: "Bearer admin-test-token",
+      body: { action: "dismiss-report", reportId },
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      ok: true,
+      generatedAt: now,
+      reportId,
+      dismissed: true,
+      dismissedCount: 1,
+    });
+    expect(ruby.getOrCreate(sessionId).publicWorldEventReports).toEqual([]);
+
+    response = await appRoute({
+      path: "/api/apps/ruby-high/admin/world/moderation?limit=10",
+      authorizationHeader: "Bearer admin-test-token",
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.reportCount).toBe(0);
+    expect(response.body.reports).toEqual([]);
   });
 
   it("requires an admin token and returns auth, Ruby High, and log snapshots", async () => {

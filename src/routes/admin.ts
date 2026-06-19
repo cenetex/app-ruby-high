@@ -1007,11 +1007,26 @@ export async function handleAdminCurriculumReplenishmentRoute(ctx: RouteContext,
 
 export async function handleAdminWorldModerationRoute(ctx: RouteContext, deps: AdminDeps): Promise<boolean> {
   if (ctx.pathname !== ADMIN_WORLD_MODERATION_PATH) return false;
-  if (ctx.method !== "GET" && ctx.method !== "HEAD") {
+  if (ctx.method !== "GET" && ctx.method !== "HEAD" && ctx.method !== "POST") {
     ctx.error(ctx.res, "Method not allowed", 405);
     return true;
   }
   if (!requireAdminAuth(ctx)) return true;
+  if (ctx.method === "POST") {
+    const body = await ctx.readJsonBody?.().catch(() => ({})) ?? {};
+    const action = typeof body === "object" && body ? String((body as { action?: unknown }).action ?? "") : "";
+    if (action !== "dismiss-report") {
+      ctx.error(ctx.res, "Unknown moderation action.", 400);
+      return true;
+    }
+    const reportId = typeof body === "object" && body ? String((body as { reportId?: unknown }).reportId ?? "").trim() : "";
+    try {
+      ctx.json(ctx.res, await deps.ruby.dismissPublicWorldModerationReport(reportId));
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 400);
+    }
+    return true;
+  }
   const rawLimit = ctx.url?.searchParams.get("limit");
   const limit = rawLimit ? Number(rawLimit) : 100;
   ctx.json(ctx.res, await deps.ruby.getPublicWorldModerationSnapshot(limit));

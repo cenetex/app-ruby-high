@@ -853,6 +853,14 @@ export interface PublicWorldModerationSnapshot {
   reports: PublicWorldModerationReport[];
 }
 
+export interface PublicWorldModerationDismissResult {
+  ok: true;
+  generatedAt: number;
+  reportId: string;
+  dismissed: boolean;
+  dismissedCount: number;
+}
+
 const PUBLIC_WORLD_EVENT_ID_RE = /^world:event:[a-f0-9]{16}$/i;
 const PUBLIC_WORLD_REPORT_REASON_LIMIT = 240;
 
@@ -7214,6 +7222,34 @@ export class RubyHighService extends Service {
     };
   }
 
+  async dismissPublicWorldModerationReport(reportId: string, now = Date.now()): Promise<PublicWorldModerationDismissResult> {
+    const id = normalizePublicWorldReportId(reportId);
+    if (!id) throw new Error("reportId is required.");
+    const changedSessionIds: string[] = [];
+    let dismissedCount = 0;
+    for (const [sessionId, state] of this.sessions) {
+      const reports = normalizePublicWorldEventReports(state.publicWorldEventReports);
+      if (reports.length === 0) continue;
+      const retained = reports.filter((report) => report.id !== id);
+      const removed = reports.length - retained.length;
+      if (removed <= 0) continue;
+      dismissedCount += removed;
+      state.publicWorldEventReports = retained;
+      state.updatedAt = now;
+      changedSessionIds.push(sessionId);
+    }
+    for (const sessionId of changedSessionIds) {
+      await this.flushSession(sessionId);
+    }
+    return {
+      ok: true,
+      generatedAt: now,
+      reportId: id,
+      dismissed: dismissedCount > 0,
+      dismissedCount,
+    };
+  }
+
   filterSchoolWorldSnapshotForSession(snapshot: SchoolWorldSnapshot, sessionId: string | null | undefined): SchoolWorldSnapshot {
     const hiddenIds = this.publicWorldHiddenEventIdsForSession(sessionId);
     if (hiddenIds.size === 0) return snapshot;
@@ -8588,6 +8624,13 @@ function normalizeStudentPool(value: unknown): StudentPoolEntry[] {
 function normalizePublicWorldEventId(value: unknown): string | null {
   const id = String(value ?? "").trim();
   return PUBLIC_WORLD_EVENT_ID_RE.test(id) ? id.toLowerCase() : null;
+}
+
+function normalizePublicWorldReportId(value: unknown): string | null {
+  const id = String(value ?? "").trim();
+  if (!id.startsWith("public-world-report:")) return null;
+  if (/[\u0000-\u001f\u007f]/.test(id)) return null;
+  return id.slice(0, 160);
 }
 
 function normalizePublicWorldHiddenEventIds(value: unknown): string[] {
