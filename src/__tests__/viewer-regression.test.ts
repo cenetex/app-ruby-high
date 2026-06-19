@@ -778,6 +778,20 @@ describe("viewer regression guardrails", () => {
     expect(VIEWER_CSS).not.toContain("Stack links vertically in the channels footer");
   });
 
+  it("explains public world visibility before the account toggle can publish a profile", () => {
+    const html = renderedViewer();
+    const script = inlineScript(html);
+
+    expect(html).toContain('id="account-public-world-toggle"');
+    expect(html).toContain("Student name, grade, playbook, stats, completed class grades, yearbook count, and safe portrait URL.");
+    expect(html).toContain("Answers, chat text, session id, wallets, AI keys, receipts, and account identity stay off the public world feed.");
+    expectScriptToContain(script, "function renderAccountPublicWorld()");
+    expectScriptToContain(script, "function togglePublicWorldFromAccount()");
+    expectScriptToContain(script, 'command({ type: "set-public-presence", publicWorldVisible: nextVisible })');
+    expect(cssRule(".account-public-world-rules")).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
+    expect(cssRule(".account-public-world-status.is-visible")).toContain("color: #8fdc9b");
+  });
+
   it("keeps installed packs as one-click rows and searches creator packs separately", () => {
     const html = renderedViewer();
     const script = inlineScript(html);

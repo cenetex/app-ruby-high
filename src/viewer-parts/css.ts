@@ -3608,11 +3608,15 @@ export const VIEWER_CSS = `
     line-height: 1.35;
   }
   .account-ai-status,
-  .account-wallet-balance {
+  .account-wallet-balance,
+  .account-public-world-status {
     margin-top: 8px;
     color: #ffe08a;
     font-weight: 900;
     font-size: 15px;
+  }
+  .account-public-world-status.is-visible {
+    color: #8fdc9b;
   }
   .account-wallet-rules {
     display: grid;
@@ -3628,20 +3632,37 @@ export const VIEWER_CSS = `
     background: rgba(255,255,255,0.035);
   }
   .account-wallet-rules strong,
-  .account-wallet-rules span {
+  .account-wallet-rules span,
+  .account-public-world-rules strong,
+  .account-public-world-rules span {
     display: block;
     min-width: 0;
   }
-  .account-wallet-rules strong {
+  .account-wallet-rules strong,
+  .account-public-world-rules strong {
     color: var(--text);
     font-size: 12px;
     font-weight: 900;
   }
-  .account-wallet-rules span {
+  .account-wallet-rules span,
+  .account-public-world-rules span {
     margin-top: 3px;
     color: var(--text-mute);
     font-size: 12px;
     line-height: 1.35;
+  }
+  .account-public-world-rules {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .account-public-world-rules div {
+    min-width: 0;
+    padding: 9px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.035);
   }
   .account-card .sheet-actions {
     margin-top: 10px;
@@ -4298,6 +4319,9 @@ export const VIEWER_CSS = `
     .account-wallet-rules {
       grid-template-columns: 1fr;
     }
+    .account-public-world-rules {
+      grid-template-columns: 1fr;
+    }
     .account-hall-pass-cards {
       grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
     }
@@ -4354,7 +4378,8 @@ export const VIEWER_CSS = `
   #account-buy-card-packs:disabled,
   #account-mint-cards:disabled,
   #account-create-character:disabled,
-  #account-unlock-slot:disabled {
+  #account-unlock-slot:disabled,
+  #account-public-world-toggle:disabled {
     opacity: 0.45;
     cursor: not-allowed;
   }

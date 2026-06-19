@@ -282,6 +282,22 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           </div>
           <div class="account-character-grid" id="account-character-grid"></div>
         </section>
+        <section class="account-section account-public-world-section">
+          <div class="account-section-head">
+            <div>
+              <div class="account-section-title">Public World</div>
+              <div class="account-section-sub" id="account-public-world-summary"></div>
+            </div>
+            <div class="account-section-actions">
+              <button type="button" class="secondary" id="account-public-world-toggle">Hide</button>
+            </div>
+          </div>
+          <div class="account-public-world-status" id="account-public-world-status"></div>
+          <div class="account-public-world-rules">
+            <div><strong>Shown</strong><span>Student name, grade, playbook, stats, completed class grades, yearbook count, and safe portrait URL.</span></div>
+            <div><strong>Private</strong><span>Answers, chat text, session id, wallets, AI keys, receipts, and account identity stay off the public world feed.</span></div>
+          </div>
+        </section>
       </div>
       <div class="account-panel" id="account-panel-wallet" data-account-panel="wallet" role="tabpanel" aria-labelledby="account-tab-wallet" hidden>
         <section class="account-section account-wallet-section">
