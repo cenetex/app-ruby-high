@@ -2295,6 +2295,28 @@ describe("admin metrics route", () => {
         }),
       ]),
     });
+    expect(ruby.worldHealthSnapshot().summary.curriculumLoops).toMatchObject({
+      inReview: 0,
+      promoted: 1,
+      byGrade: {
+        "10": {
+          inReview: 0,
+          promoted: 1,
+        },
+      },
+    });
+    expect(ruby.worldHealthSnapshot().recentTerms[0]).toMatchObject({
+      curriculumLoops: {
+        inReview: 0,
+        promoted: 1,
+        byGrade: {
+          "10": {
+            inReview: 0,
+            promoted: 1,
+          },
+        },
+      },
+    });
 
     response = await appRoute({
       path: "/api/apps/ruby-high/admin/curriculum/replenishment",

@@ -1560,7 +1560,10 @@ export function worldFeedSummaryLabel(activeStudents: unknown, activeRooms: unkn
   const termLabel = term && typeof term.label === "string" && term.label.trim() ? " · " + term.label.trim() : "";
   const ruleRows = worldFeedTermRuleLabels(record.termRules);
   const ruleText = ruleRows.length > 0 ? " · " + ruleRows.join(", ") : "";
-  return studentText + " live · " + roomText + sparkText + termLabel + ruleText;
+  const loops = record.curriculumLoops && typeof record.curriculumLoops === "object" ? record.curriculumLoops as LooseRecord : null;
+  const promotedLoops = Math.max(0, Math.floor(Number(loops?.promoted || 0)));
+  const loopText = promotedLoops > 0 ? " · " + promotedLoops + " curriculum " + (promotedLoops === 1 ? "loop" : "loops") : "";
+  return studentText + " live · " + roomText + sparkText + termLabel + ruleText + loopText;
 }
 
 export function worldFeedTermRuleLabels(termRules: unknown, limit = 2): string[] {

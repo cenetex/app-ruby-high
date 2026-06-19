@@ -730,6 +730,16 @@ export interface PublicWorldSummarySnapshot {
   termRules: {
     byGrade: Partial<Record<Grade, PublicWorldTermRoomRule>>;
   };
+  curriculumLoops: PublicWorldCurriculumLoopSummary;
+}
+
+export interface PublicWorldCurriculumLoopSummary {
+  inReview: number;
+  promoted: number;
+  byGrade: Partial<Record<Grade, {
+    inReview: number;
+    promoted: number;
+  }>>;
 }
 
 export type { DailyPhotoPostResult, RubyHighPhotoPostSchedulerSnapshot };
@@ -882,7 +892,7 @@ export interface SchoolWorldSnapshot {
   activeRooms: SchoolWorldRoom[];
   cohorts: Record<string, SchoolWorldStudent[]>;
   recentEvents: SchoolWorldEvent[];
-  summary: Pick<PublicWorldSummarySnapshot, "schoolYear" | "roomGoalEvents" | "studySparks" | "termProgress" | "termRules">;
+  summary: Pick<PublicWorldSummarySnapshot, "schoolYear" | "roomGoalEvents" | "studySparks" | "termProgress" | "termRules" | "curriculumLoops">;
   curriculum: {
     activeCharacterSessions: number;
     lowPools: RubyHighCurriculumCoverageRow[];
@@ -1028,6 +1038,7 @@ export interface PublicWorldTermRecord {
   sparksToNextLevel: number;
   label: string;
   activeRuleLabels: string[];
+  curriculumLoops?: PublicWorldCurriculumLoopSummary;
   gradeProgress: Partial<Record<Grade, PublicWorldTermGradeProgress>>;
   updatedAt: number;
 }
@@ -2598,6 +2609,7 @@ export class RubyHighService extends Service {
       },
       termProgress: publicWorldTermProgress(studySparkTotal),
       termRules: publicWorldTermRulesForGrades(studySparksByGrade),
+      curriculumLoops: publicWorldCurriculumLoopSummary(this.publicWorldTeacherAgendaRecordList(now)),
     };
   }
 
@@ -8256,6 +8268,7 @@ export class RubyHighService extends Service {
         studySparks: summary.studySparks,
         termProgress: summary.termProgress,
         termRules: summary.termRules,
+        curriculumLoops: summary.curriculumLoops,
       },
       curriculum: {
         activeCharacterSessions: curriculum.activeCharacterSessions,
@@ -9984,6 +9997,27 @@ function publicWorldTermRulesForGrades(studySparksByGrade: Partial<Record<Grade,
   return { byGrade };
 }
 
+function publicWorldCurriculumLoopSummary(agendas: readonly PublicWorldTeacherAgendaRecord[]): PublicWorldCurriculumLoopSummary {
+  const byGrade: PublicWorldCurriculumLoopSummary["byGrade"] = {};
+  let inReview = 0;
+  let promoted = 0;
+  for (const agenda of agendas) {
+    const draftStatus = agenda.draftStatus;
+    if (draftStatus !== "review-draft-created" && draftStatus !== "review-approved" && draftStatus !== "questions-promoted") continue;
+    const grade = agenda.grade;
+    const row = byGrade[grade] ?? { inReview: 0, promoted: 0 };
+    if (draftStatus === "questions-promoted") {
+      promoted += 1;
+      row.promoted += 1;
+    } else {
+      inReview += 1;
+      row.inReview += 1;
+    }
+    byGrade[grade] = row;
+  }
+  return { inReview, promoted, byGrade };
+}
+
 function publicWorldTermGradeProgress(studySparkTotal: number): PublicWorldTermGradeProgress {
   const progress = publicWorldTermProgress(studySparkTotal);
   const roomRule = publicWorldTermRoomRule(progress.level);
@@ -10016,6 +10050,7 @@ function publicWorldTermRecordFromSummary(summary: PublicWorldSummarySnapshot, n
     sparksToNextLevel,
     label,
     activeRuleLabels: publicWorldTermRuleLabels(level),
+    curriculumLoops: normalizePublicWorldCurriculumLoopSummary(summary.curriculumLoops),
     gradeProgress,
     updatedAt: now,
   };
@@ -10031,6 +10066,7 @@ function publicWorldTermRecordContentKey(term: PublicWorldTermRecord): string {
     sparksToNextLevel: term.sparksToNextLevel,
     label: term.label,
     activeRuleLabels: term.activeRuleLabels,
+    curriculumLoops: normalizePublicWorldCurriculumLoopSummary(term.curriculumLoops),
     gradeProgress: term.gradeProgress,
   });
 }
@@ -10213,6 +10249,7 @@ function normalizePublicWorldTermRecord(raw: unknown): PublicWorldTermRecord | n
   const sparksToNextLevel = publicWorldStoredInteger(source.sparksToNextLevel, progress.sparksToNextLevel);
   const label = publicWorldStoredText(source.label, 80) || progress.label;
   const activeRuleLabels = publicWorldStoredTextList(source.activeRuleLabels, 8, 80);
+  const curriculumLoops = normalizePublicWorldCurriculumLoopSummary(source.curriculumLoops);
   const gradeProgress = normalizePublicWorldTermGradeProgressMap(source.gradeProgress);
   const updatedAt = publicWorldStoredInteger(source.updatedAt, 0);
   if (updatedAt <= 0) return null;
@@ -10226,6 +10263,7 @@ function normalizePublicWorldTermRecord(raw: unknown): PublicWorldTermRecord | n
     sparksToNextLevel,
     label,
     activeRuleLabels,
+    curriculumLoops,
     gradeProgress,
     updatedAt,
   };
@@ -10255,6 +10293,31 @@ function normalizePublicWorldTermGradeProgressMap(raw: unknown): Partial<Record<
     };
   }
   return out;
+}
+
+function normalizePublicWorldCurriculumLoopSummary(raw: unknown): PublicWorldCurriculumLoopSummary {
+  const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+  const byGradeSource = source.byGrade && typeof source.byGrade === "object" && !Array.isArray(source.byGrade)
+    ? source.byGrade as Record<string, unknown>
+    : {};
+  const byGrade: PublicWorldCurriculumLoopSummary["byGrade"] = {};
+  let derivedInReview = 0;
+  let derivedPromoted = 0;
+  for (const grade of GRADES) {
+    const rawGrade = byGradeSource[grade] && typeof byGradeSource[grade] === "object" ? byGradeSource[grade] as Record<string, unknown> : null;
+    if (!rawGrade) continue;
+    const inReview = Math.min(999, publicWorldStoredInteger(rawGrade.inReview, 0));
+    const promoted = Math.min(999, publicWorldStoredInteger(rawGrade.promoted, 0));
+    if (inReview <= 0 && promoted <= 0) continue;
+    byGrade[grade] = { inReview, promoted };
+    derivedInReview += inReview;
+    derivedPromoted += promoted;
+  }
+  return {
+    inReview: Math.min(9999, publicWorldStoredInteger(source.inReview, derivedInReview)),
+    promoted: Math.min(9999, publicWorldStoredInteger(source.promoted, derivedPromoted)),
+    byGrade,
+  };
 }
 
 function normalizePublicWorldTermRoomRule(raw: unknown, level: number): PublicWorldTermRoomRule | undefined {

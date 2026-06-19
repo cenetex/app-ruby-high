@@ -124,6 +124,11 @@ describe("viewer world feed pure helpers", () => {
         },
       },
     })).toBe("3 students live · 2 rooms · 3 Study Sparks · Term Level 1 · Term Momentum in Sophomore");
+    expect(worldFeedSummaryLabel(3, [{}, {}], null, {
+      studySparks: { total: 3 },
+      termProgress: { label: "Term Level 1" },
+      curriculumLoops: { promoted: 1 },
+    })).toBe("3 students live · 2 rooms · 3 Study Sparks · Term Level 1 · 1 curriculum loop");
     expect(worldFeedSummaryLabel(3, 2)).toBe("3 students live · 2 rooms");
     expect(worldFeedSummaryLabel(3, 2, "offline")).toBe("World feed paused");
   });

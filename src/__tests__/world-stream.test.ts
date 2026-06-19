@@ -44,6 +44,7 @@ function publicWorldSummary() {
       label: "Term Spark 0/3",
     },
     termRules: { byGrade: {} },
+    curriculumLoops: { inReview: 0, promoted: 0, byGrade: {} },
   };
 }
 
@@ -160,6 +161,7 @@ describe("world stream cursor helpers", () => {
       activeStudents: 1,
       summary: {
         studySparks: { total: 0, byGrade: {} },
+        curriculumLoops: { inReview: 0, promoted: 0, byGrade: {} },
       },
     });
     expect(worldSnapshotSignature(worldSnapshotPayload(world))).toBe(worldSnapshotSignature(worldSnapshotPayload(laterSameWorld)));
