@@ -278,11 +278,11 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function accountTrustPanelView(payloadInput, connectedWalletInput, buildIdInput)");
     expectScriptToContain(clientSource, "const view = accountTrustPanelView(payload, connectedWallet, buildId || \"dev\");");
     expectScriptToContain(script, "function accountHallPassCardsPanelView(");
-    expectScriptToContain(clientSource, "const view = accountHallPassCardsPanelView(packs, cards, pendingMints, {");
+    expectScriptToContain(script, "function createAccountHallPassCardsPanelRenderer(");
+    expectScriptToContain(clientSource, "const accountHallPassCardsRenderer = createAccountHallPassCardsPanelRenderer({");
+    expectScriptToContain(clientSource, "accountHallPassCardsRenderer.render({");
     expectScriptToContain(script, "function accountHallPassPackTileView(packInput, opts)");
-    expectScriptToContain(clientSource, "const view = accountHallPassPackTileView(pack, { authed, billingBusy, walletReady });");
     expectScriptToContain(script, "function accountHallPassCardTileView(cardInput)");
-    expectScriptToContain(clientSource, "const view = accountHallPassCardTileView(card);");
     expectScriptToContain(script, "function hallPassCardProfile(cardInput)");
     expectScriptToContain(clientSource, "const profile = hallPassCardProfile(currentCard);");
     expectScriptToContain(script, "function accountHallPassCardReaderView(cardInput, opts)");
@@ -358,7 +358,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'const DEFAULT_RUBY_TOKEN_MINT = "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump"');
     expectScriptToContain(script, 'const JUPITER_SOL_TO_RUBY_SWAP_PREFIX = "https://jup.ag/swap/SOL-"');
     expectScriptToContain(script, "function rubyTokenSwapLink()");
-    expectScriptToContain(script, "configureGetRubyLink(els.accountGetRuby)");
+    expectScriptToContain(script, "getRubyLink: els.accountGetRuby");
+    expectScriptToContain(script, "configureGetRubyLink,");
     expectScriptToContain(script, "async function ensureSolanaWalletFromAccount()");
     expectScriptToContain(script, "function confirmWalletTransactionPreview(opts)");
     expectScriptToContain(script, "function nftHttpErrorMessage(action, response, data, unchanged)");
@@ -400,7 +401,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, '"Privy account · no Solana wallet"');
     expectScriptToContain(script, "function hallPassPacksForTelemetry(t)");
     expectScriptToContain(script, 'pack.status !== "void"');
-    expectScriptToContain(script, "function buildHallPassPack(pack)");
+    expectScriptToContain(script, "function buildPack(pack, opts)");
     expectScriptToContain(script, "No packs or Cards in this wallet yet.");
     expectScriptToContain(script, "async function openHallPassPackFromAccount(packId)");
     expectScriptToContain(script, 'apiBase + "/nft/open-pack"');
@@ -409,14 +410,14 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'apiBase + "/nft/sync-packs"');
     expectScriptToContain(script, "const removedCount = Math.max(0, Math.floor(Number(data.removedCount || 0)))");
     expectScriptToContain(script, 'void syncWalletPackNftsFromAccount({ force: true })');
-    expectScriptToContain(script, 'img.src = view.imageKind === "active" ? PACK_NFT_ART_URL : PACK_OPENED_NFT_ART_URL');
+    expectScriptToContain(script, 'return kind === "active" ? PACK_NFT_ART_URL : PACK_OPENED_NFT_ART_URL;');
     expectScriptToContain(script, "item.className = view.className");
     expectScriptToContain(script, '"On-chain Core NFT"');
     expectScriptToContain(script, '"Opened pack record"');
     expectScriptToContain(script, '"View pack NFT"');
     expectScriptToContain(script, "item.className = view.className");
     expectScriptToContain(script, 'item.type = "button"');
-    expectScriptToContain(script, 'item.addEventListener("click", () => showHallPassCardReader(card))');
+    expectScriptToContain(script, 'item.addEventListener("click", () => deps.openCard(card));');
     expectScriptToContain(script, '"Face-down Card · mint to reveal · #"');
     expectScriptToContain(script, '"View Card on Solscan"');
     expectScriptToContain(script, "function showHallPassCardReader(card)");
@@ -444,13 +445,15 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "setPrivyStatus(\"Review the card mint transaction in your wallet.\", false)");
     expect(script).not.toContain("Review the mint preview...");
     expect(script).not.toContain("Confirm the mint in your wallet...");
-    const packBuilder = script.slice(script.indexOf("function buildHallPassPack(pack)"), script.indexOf("function buildHallPassCard(card)"));
-    expect(packBuilder).toContain("PACK_NFT_ART_URL");
-    expect(packBuilder).toContain("PACK_OPENED_NFT_ART_URL");
-    expect(packBuilder).not.toContain("WELCOME_HALL_PASS_ART_URL");
-    const cardBuilder = script.slice(script.indexOf("function buildHallPassCard(card)"), script.indexOf("function hallPassCardArtUrl(card)"));
-    expect(cardBuilder).toContain("CARD_BACK_ART_URL");
-    expect(cardBuilder).not.toContain("faceDown ? PACK_NFT_ART_URL");
+    const hallPassRendererConfig = script.slice(
+      script.indexOf("const accountHallPassCardsRenderer = createAccountHallPassCardsPanelRenderer({"),
+      script.indexOf("const roomChannelRowsController = createRoomChannelRowsController({"),
+    );
+    expect(hallPassRendererConfig).toContain("PACK_NFT_ART_URL");
+    expect(hallPassRendererConfig).toContain("PACK_OPENED_NFT_ART_URL");
+    expect(hallPassRendererConfig).toContain("CARD_BACK_ART_URL");
+    expect(hallPassRendererConfig).not.toContain("WELCOME_HALL_PASS_ART_URL");
+    expect(hallPassRendererConfig).not.toContain("faceDown ? PACK_NFT_ART_URL");
     expect(VIEWER_CSS).toContain(".pack-mint-overlay");
     expect(VIEWER_CSS).toContain("z-index: 130");
     expect(VIEWER_CSS).toContain(".account-pack-tile");
@@ -617,9 +620,9 @@ describe("viewer regression guardrails", () => {
     expect(history).toBeGreaterThan(comics);
     expectScriptToContain(script, "function setAccountPane(pane)");
     expectScriptToContain(script, "function renderAccountTrust()");
-    expectScriptToContain(script, "let accountHallPassCardsRenderSig = \"\";");
-    expectScriptToContain(script, "function accountHallPassCardsRenderSignature(shownPacks, shown)");
-    expectScriptToContain(script, "if (renderSig === accountHallPassCardsRenderSig && els.accountHallPassCards.childElementCount > 0) return;");
+    expectScriptToContain(script, "let previousRenderSignature = \"\";");
+    expectScriptToContain(script, "function renderSignature(opts, shownPacks, shownCards)");
+    expectScriptToContain(script, "if (nextSignature === previousRenderSignature && container.childElementCount > 0) return;");
     expectScriptToContain(script, "function syncComicUnlockModals(t)");
     expectScriptToContain(script, "Comic Page Unlocked");
     expectScriptToContain(script, 'title.appendChild(document.createTextNode(" "));');

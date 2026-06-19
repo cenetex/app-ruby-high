@@ -817,7 +817,6 @@ export function runViewerClient(bootstrap) {
   let billingBusy = false;
   let selectedBillingProductId = null;
   let activeAccountPane = "account";
-  let accountHallPassCardsRenderSig = "";
   let comicUnlockEventsPrimed = false;
   let comicUnlockModalOpen = false;
   const seenComicUnlockEventIds = new Set();
@@ -1450,6 +1449,28 @@ export function runViewerClient(bootstrap) {
     viewFor: accountComicPanelView,
     comicPageUrl,
     openReader: showComicReader,
+  });
+  const accountHallPassCardsRenderer = createAccountHallPassCardsPanelRenderer({
+    document,
+    container: els.accountHallPassCards,
+    summary: els.accountCardSummary,
+    buyButton: els.accountBuyCardPacks,
+    mintButton: els.accountMintCards,
+    getRubyLink: els.accountGetRuby,
+    panelView: accountHallPassCardsPanelView,
+    packTileView: accountHallPassPackTileView,
+    cardTileView: accountHallPassCardTileView,
+    packArtUrl(kind) {
+      return kind === "active" ? PACK_NFT_ART_URL : PACK_OPENED_NFT_ART_URL;
+    },
+    cardArtUrl(card, faceDown) {
+      return faceDown ? CARD_BACK_ART_URL : hallPassCardArtUrl(card);
+    },
+    configureGetRubyLink,
+    appendSolanaProofLink,
+    ensureSolanaWallet: ensureSolanaWalletFromAccount,
+    openPack: openHallPassPackFromAccount,
+    openCard: showHallPassCardReader,
   });
   const roomChannelRowsController = createRoomChannelRowsController({
     document,
@@ -2481,182 +2502,20 @@ export function runViewerClient(bootstrap) {
     return Array.from(byAsset.values()).sort((a, b) => Number(a.issuedAt || 0) - Number(b.issuedAt || 0));
   }
 
-  function accountHallPassCardsRenderSignature(shownPacks, shown) {
-    return JSON.stringify({
-      authed: !!authed,
-      billingBusy: !!billingBusy,
-      billingMode,
-      ownerWallet: knownSolanaOwnerWalletAddress() || "",
-      packs: shownPacks.map((pack) => [
-        pack.id,
-        pack.assetAddress,
-        pack.mintSignature,
-        pack.status,
-        pack.packCount,
-        pack.cardCount,
-        pack.serial,
-        pack.issuedAt,
-        pack.updatedAt,
-      ]),
-      cards: shown.map((card) => [
-        card.id,
-        card.characterId,
-        card.characterName,
-        card.role,
-        card.rarity,
-        card.status,
-        card.serial,
-        card.mintAddress,
-        card.mintSignature,
-        card.issuedAt,
-        card.updatedAt,
-      ]),
-    });
-  }
-
   function renderAccountHallPassCards() {
-    if (!els.accountHallPassCards) return;
     const cards = hallPassCardsForTelemetry();
     const packs = hallPassPacksForTelemetry();
     const pendingMints = pendingHallPassCardMintsForTelemetry();
-    const hasSolanaWallet = !!knownSolanaOwnerWalletAddress();
-    const shown = cards
-      .slice()
-      .sort((a, b) => {
-        const activeDelta = (b.status === "active" ? 1 : 0) - (a.status === "active" ? 1 : 0);
-        if (activeDelta) return activeDelta;
-        return Number(b.updatedAt || b.issuedAt || 0) - Number(a.updatedAt || a.issuedAt || 0);
-      })
-      .slice(0, 24);
-    const view = accountHallPassCardsPanelView(packs, cards, pendingMints, {
+    accountHallPassCardsRenderer.render({
       authed,
       billingBusy,
       billingMode,
       checkout: cardPackCheckoutState(),
-      hasSolanaWallet,
+      cards,
+      packs,
+      pendingMints,
+      hasSolanaWallet: !!knownSolanaOwnerWalletAddress(),
     });
-    if (els.accountCardSummary) {
-      els.accountCardSummary.textContent = view.summaryText;
-    }
-    if (els.accountBuyCardPacks) {
-      els.accountBuyCardPacks.disabled = view.buyDisabled;
-      els.accountBuyCardPacks.textContent = view.buyText;
-      els.accountBuyCardPacks.title = view.buyTitle;
-    }
-    configureGetRubyLink(els.accountGetRuby);
-    if (els.accountMintCards) {
-      els.accountMintCards.hidden = view.mintHidden;
-      els.accountMintCards.disabled = view.mintDisabled;
-      els.accountMintCards.textContent = view.mintText;
-      els.accountMintCards.title = view.mintTitle;
-    }
-    const shownPacks = packs
-      .slice()
-      .sort((a, b) => {
-        const activeDelta = (b.status === "active" ? 1 : 0) - (a.status === "active" ? 1 : 0);
-        if (activeDelta) return activeDelta;
-        return Number(b.updatedAt || b.issuedAt || 0) - Number(a.updatedAt || a.issuedAt || 0);
-      })
-      .slice(0, 12);
-    const renderSig = accountHallPassCardsRenderSignature(shownPacks, shown);
-    if (renderSig === accountHallPassCardsRenderSig && els.accountHallPassCards.childElementCount > 0) return;
-    accountHallPassCardsRenderSig = renderSig;
-    els.accountHallPassCards.replaceChildren();
-    if (shownPacks.length === 0 && shown.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "account-empty";
-      empty.textContent = "No packs or Cards in this wallet yet.";
-      els.accountHallPassCards.appendChild(empty);
-      return;
-    }
-    shownPacks.forEach((pack) => {
-      els.accountHallPassCards.appendChild(buildHallPassPack(pack));
-    });
-    shown.forEach((card) => {
-      els.accountHallPassCards.appendChild(buildHallPassCard(card));
-    });
-  }
-
-  function buildHallPassPack(pack) {
-    const walletReady = !!knownSolanaOwnerWalletAddress();
-    const view = accountHallPassPackTileView(pack, { authed, billingBusy, walletReady });
-    const item = document.createElement("article");
-    item.className = view.className;
-    const img = document.createElement("img");
-    img.className = "account-pack-tile-art";
-    img.alt = view.imageAlt;
-    img.loading = "lazy";
-    img.src = view.imageKind === "active" ? PACK_NFT_ART_URL : PACK_OPENED_NFT_ART_URL;
-    item.appendChild(img);
-    const meta = document.createElement("div");
-    meta.className = "account-pack-tile-meta";
-    const copy = document.createElement("div");
-    copy.className = "account-pack-tile-copy";
-    const title = document.createElement("div");
-    title.className = "account-pack-tile-title";
-    title.textContent = view.title;
-    const detail = document.createElement("div");
-    detail.className = "account-pack-tile-detail";
-    detail.textContent = view.detail;
-    copy.appendChild(title);
-    copy.appendChild(detail);
-    appendSolanaProofLink(copy, pack.assetAddress, view.proofLabel);
-    meta.appendChild(copy);
-    if (view.openVisible) {
-      const open = document.createElement("button");
-      open.type = "button";
-      open.className = "account-pack-tile-open";
-      open.textContent = view.openText;
-      open.disabled = view.openDisabled;
-      open.title = view.openTitle;
-      open.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (!view.walletReady) {
-          void ensureSolanaWalletFromAccount();
-          return;
-        }
-        void openHallPassPackFromAccount(pack.id);
-      });
-      meta.appendChild(open);
-    }
-    item.appendChild(meta);
-    return item;
-  }
-
-  function buildHallPassCard(card) {
-    const view = accountHallPassCardTileView(card);
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = view.className;
-    item.setAttribute("aria-label", view.ariaLabel);
-    const artUrl = view.faceDown ? CARD_BACK_ART_URL : hallPassCardArtUrl(card);
-    if (artUrl) {
-      const img = document.createElement("img");
-      img.className = "account-card-tile-art";
-      img.alt = view.imageAlt;
-      img.loading = "lazy";
-      img.src = artUrl;
-      item.appendChild(img);
-    } else {
-      const fallback = document.createElement("div");
-      fallback.className = "account-card-tile-fallback";
-      fallback.textContent = view.fallbackInitial;
-      item.appendChild(fallback);
-    }
-    const meta = document.createElement("div");
-    meta.className = "account-card-tile-meta";
-    const title = document.createElement("div");
-    title.className = "account-card-tile-title";
-    title.textContent = view.title;
-    const detail = document.createElement("div");
-    detail.className = "account-card-tile-detail";
-    detail.textContent = view.detail;
-    meta.appendChild(title);
-    meta.appendChild(detail);
-    item.appendChild(meta);
-    item.addEventListener("click", () => showHallPassCardReader(card));
-    return item;
   }
 
   function showHallPassCardReader(card) {
