@@ -2939,7 +2939,7 @@ async function postTelegramSnapshot() {
       const refresh = world.lastRefreshAt ? "refresh " + time(world.lastRefreshAt) : "not refreshed";
       const newest = world.newestEventAt ? " · newest " + time(world.newestEventAt) : "";
       const summary = world.summary || {};
-      return "students / events · year " + esc(summary.schoolYear || "n/a") + " · rooms " + n(world.activeRooms) + " · durable rooms " + n(world.durableRoomRecords) + "/" + n(world.durableRoomRecordLimit) + " · goals " + n(world.liveRoomGoals) + " · replay " + n(world.publicEventLogSize) + "/" + n(world.publicEventLogLimit) + " · suppressed " + n(world.suppressedEvents) + " · cache " + n(world.durableEventCacheSize) + "/" + n(world.durableEventCacheLimit) + " · summary " + n(summary.eventCount) + " · " + refresh + newest;
+      return "students / events · year " + esc(summary.schoolYear || "n/a") + " · rooms " + n(world.activeRooms) + " · durable rooms " + n(world.durableRoomRecords) + "/" + n(world.durableRoomRecordLimit) + " · outcomes " + n(world.durableRoomOutcomes) + "/" + n(world.durableRoomOutcomeLimit) + " · goals " + n(world.liveRoomGoals) + " · replay " + n(world.publicEventLogSize) + "/" + n(world.publicEventLogLimit) + " · suppressed " + n(world.suppressedEvents) + " · cache " + n(world.durableEventCacheSize) + "/" + n(world.durableEventCacheLimit) + " · summary " + n(summary.eventCount) + " · " + refresh + newest;
     }
     function publicReadMetricValue(limiter) {
       limiter = limiter || {};

@@ -17,7 +17,7 @@ research plumbing, presence/moderation controls, and durable public-world state.
 
 | Issue | Status | Roadmap meaning |
 |---|---:|---|
-| [#143 MMO: durable room and world state model](https://github.com/cenetex/app-ruby-high/issues/143) | Open, first durable slices in #138 | **P0 MMO data model.** Live-room goals, sanitized room/term snapshots, public event replay, summary counters, moderation suppression state, and rollback docs are durable; next is richer room outcomes and teacher agenda records. |
+| [#143 MMO: durable room and world state model](https://github.com/cenetex/app-ruby-high/issues/143) | Open, first durable slices in #138 | **P0 MMO data model.** Live-room goals, sanitized room/term snapshots, completed room outcomes, public event replay, summary counters, moderation suppression state, and rollback docs are durable; next is teacher agenda records and richer outcome summaries. |
 | [#142 MMO: public presence and moderation controls](https://github.com/cenetex/app-ruby-high/issues/142) | Open, operator workflow in #138 | **P0 safety.** Public presence toggle, per-player hide/report, admin moderation snapshot, repeated-report counts, moderator notes, report dismissal, global suppression, action throttles, and account copy that names public/private profile fields exist; next is stronger public-name review policy. |
 | [#141 MMO: teacher curriculum research loop](https://github.com/cenetex/app-ruby-high/issues/141) | Open, deeper loop in #138 | **P1 content engine.** Teacher corpora metadata, reading lists, primary-source packets, misconception checks, grade briefs, replenishment proposals, coverage-exhaustion auto-enqueue, validation, review readiness, explicit approval gates, runtime promotion, weak-subject and repetition signals exist; next is broader per-teacher corpus depth. |
 | [#140 MMO: typed public-world viewer module](https://github.com/cenetex/app-ruby-high/issues/140) | Open, several seams in #138 | **P1 maintainability.** World feed, world panel, lifecycle wiring, race/question/leaderboard/progress models, and account public-world visibility view models are typed; next is extracting larger public-world action/UI surfaces out of `viewer-parts/client.ts`. |
@@ -140,8 +140,7 @@ Phase 2 has proved the first loop enough to introduce explicit durable entities
 incrementally:
 
 - rooms/cohorts/terms
-- room goals and outcomes (first slice exists in #138)
-- room/term snapshots (first slice exists in #138)
+- room goals, completed outcomes, and room/term snapshots (first slices exist in #138)
 - teacher agendas
 - public world events (first slice exists in #138)
 - moderation/report records and suppression state (first slice exists in #138)

@@ -685,6 +685,8 @@ export interface RubyHighWorldHealthSnapshot {
   publicEventLogLimit: number;
   durableRoomRecords: number;
   durableRoomRecordLimit: number;
+  durableRoomOutcomes: number;
+  durableRoomOutcomeLimit: number;
   liveRoomGoals: number;
   suppressedEvents: number;
   summary: PublicWorldSummarySnapshot;
@@ -921,10 +923,12 @@ const PUBLIC_WORLD_REPORT_REASON_LIMIT = 240;
 const PUBLIC_WORLD_MODERATOR_NOTE_LIMIT = 500;
 const PUBLIC_WORLD_EVENTS_STATE_ID = "ruby-high:public-world-events:v1";
 const PUBLIC_WORLD_ROOMS_STATE_ID = "ruby-high:public-world-rooms:v1";
+const PUBLIC_WORLD_ROOM_OUTCOMES_STATE_ID = "ruby-high:public-world-room-outcomes:v1";
 const PUBLIC_WORLD_SUMMARY_STATE_ID = "ruby-high:public-world-summary:v1";
 const PUBLIC_WORLD_MODERATION_STATE_ID = "ruby-high:public-world-moderation:v1";
 const LIVE_ROOM_GOALS_STATE_ID = "ruby-high:live-room-goals:v1";
 const PUBLIC_WORLD_ROOM_RECORD_LIMIT = 80;
+const PUBLIC_WORLD_ROOM_OUTCOME_LIMIT = 120;
 
 export interface LiveRoomGoalContributionResult {
   grade: Grade;
@@ -956,6 +960,22 @@ export interface PublicWorldRoomRecord {
   activeStudents: number;
   goal: PublicWorldRoom["goal"];
   updatedAt: number;
+}
+
+export interface PublicWorldRoomOutcomeRecord {
+  id: string;
+  schoolYear: string;
+  termId: string;
+  day: string;
+  grade: Grade;
+  facultyId: string;
+  displayName: string;
+  goalKind: "live-class";
+  progress: number;
+  target: number;
+  contributorCount: number;
+  completedAt: number;
+  createdAt: number;
 }
 
 export interface RecentlyActiveStudent {
@@ -1155,6 +1175,7 @@ export class RubyHighService extends Service {
   private readonly schoolEventRecords = new Map<string, StoredSchoolEventRecord>();
   private readonly liveRoomGoalStates = new Map<string, LiveRoomGoalState>();
   private readonly publicWorldRoomRecords = new Map<string, PublicWorldRoomRecord>();
+  private readonly publicWorldRoomOutcomeRecords = new Map<string, PublicWorldRoomOutcomeRecord>();
   private readonly publicWorldEventLog = new Map<string, SchoolWorldEvent>();
   private readonly publicWorldSuppressedEvents = new Map<string, PublicWorldSuppressedEvent>();
   private readonly publicWorldModeratorNotes = new Map<string, PublicWorldModeratorNote>();
@@ -1197,6 +1218,7 @@ export class RubyHighService extends Service {
     this.schoolEventRecords.clear();
     this.liveRoomGoalStates.clear();
     this.publicWorldRoomRecords.clear();
+    this.publicWorldRoomOutcomeRecords.clear();
     this.publicWorldEventLog.clear();
     this.publicWorldSuppressedEvents.clear();
     this.publicWorldModeratorNotes.clear();
@@ -1212,6 +1234,7 @@ export class RubyHighService extends Service {
       this.persistAll(),
       this.persistPhotoPostSchedulerState({ surfaceErrors: true }),
       this.persistPublicWorldRoomState({ surfaceErrors: true }),
+      this.persistPublicWorldRoomOutcomeState({ surfaceErrors: true }),
       this.persistPublicWorldEventLog({ surfaceErrors: true }),
       this.persistPublicWorldSummaryState({ surfaceErrors: true }),
       this.persistPublicWorldModerationState({ surfaceErrors: true }),
@@ -1824,6 +1847,8 @@ export class RubyHighService extends Service {
       publicEventLogLimit: SCHOOL_WORLD_EVENT_CACHE_LIMIT,
       durableRoomRecords: this.publicWorldRoomRecords.size,
       durableRoomRecordLimit: PUBLIC_WORLD_ROOM_RECORD_LIMIT,
+      durableRoomOutcomes: this.publicWorldRoomOutcomeRecords.size,
+      durableRoomOutcomeLimit: PUBLIC_WORLD_ROOM_OUTCOME_LIMIT,
       liveRoomGoals: this.liveRoomGoalStates.size,
       suppressedEvents: this.publicWorldSuppressedEvents.size,
       summary: this.publicWorldSummarySnapshot(now),
@@ -2048,6 +2073,89 @@ export class RubyHighService extends Service {
     return Array.from(this.publicWorldRoomRecords.values())
       .filter((room) => Number.isFinite(room.updatedAt) && room.updatedAt >= 0 && room.updatedAt <= now)
       .sort((a, b) => b.updatedAt - a.updatedAt || a.key.localeCompare(b.key));
+  }
+
+  private hydratePublicWorldRoomOutcomeState(record: StoredServiceStateRecord | null): void {
+    this.publicWorldRoomOutcomeRecords.clear();
+    const data = record?.data;
+    const outcomes = data && data.version === 1 && Array.isArray(data.outcomes) ? data.outcomes : [];
+    for (const raw of outcomes) {
+      const outcome = normalizePublicWorldRoomOutcomeRecord(raw);
+      if (!outcome) continue;
+      this.publicWorldRoomOutcomeRecords.set(outcome.id, outcome);
+    }
+    this.prunePublicWorldRoomOutcomeRecords(record?.updatedAt ?? Date.now());
+  }
+
+  private publicWorldRoomOutcomeStateRecord(now = Date.now()): StoredServiceStateRecord {
+    this.prunePublicWorldRoomOutcomeRecords(now);
+    return {
+      id: PUBLIC_WORLD_ROOM_OUTCOMES_STATE_ID,
+      updatedAt: now,
+      data: {
+        version: 1,
+        outcomes: this.publicWorldRoomOutcomeRecordList(now),
+      },
+    };
+  }
+
+  private persistPublicWorldRoomOutcomeState(options: { surfaceErrors?: boolean } = {}, now = Date.now()): Promise<void> {
+    if (!this.store.saveServiceState) return Promise.resolve();
+    const record = this.publicWorldRoomOutcomeStateRecord(now);
+    const save = this.store.saveServiceState(record).catch((err) => {
+      log.error("public-world-room-outcomes.persist-failed", err);
+      if (options.surfaceErrors) throw err;
+    });
+    if (!options.surfaceErrors) this.trackBackgroundWrite(save);
+    return save;
+  }
+
+  private recordPublicWorldRoomOutcome(goal: LiveRoomGoalState, progress: number, target: number, now = Date.now()): void {
+    if (progress < target) return;
+    const completedAt = publicWorldStoredInteger(goal.updatedAt, now);
+    if (completedAt <= 0 || completedAt > now) return;
+    const id = publicWorldRoomOutcomeId(goal.day, goal.grade, goal.facultyId);
+    if (this.publicWorldRoomOutcomeRecords.has(id)) return;
+    const schoolYear = schoolYearForTimestamp(completedAt);
+    const outcome: PublicWorldRoomOutcomeRecord = {
+      id,
+      schoolYear,
+      termId: schoolYear,
+      day: goal.day,
+      grade: goal.grade,
+      facultyId: goal.facultyId,
+      displayName: publicWorldRoomDisplayName(goal.displayName, goal.facultyId),
+      goalKind: "live-class",
+      progress,
+      target,
+      contributorCount: goal.contributors.size,
+      completedAt,
+      createdAt: now,
+    };
+    this.publicWorldRoomOutcomeRecords.set(id, outcome);
+    if (this.prunePublicWorldRoomOutcomeRecords(now)) {
+      this.publicWorldRoomOutcomeRecords.set(id, outcome);
+    }
+    void this.persistPublicWorldRoomOutcomeState({}, now);
+  }
+
+  private prunePublicWorldRoomOutcomeRecords(now = Date.now()): boolean {
+    const schoolYear = schoolYearForTimestamp(now);
+    const retained = this.publicWorldRoomOutcomeRecordList(now)
+      .filter((outcome) => outcome.schoolYear === schoolYear)
+      .slice(0, PUBLIC_WORLD_ROOM_OUTCOME_LIMIT);
+    if (retained.length === this.publicWorldRoomOutcomeRecords.size && retained.every((outcome) => this.publicWorldRoomOutcomeRecords.get(outcome.id) === outcome)) {
+      return false;
+    }
+    this.publicWorldRoomOutcomeRecords.clear();
+    for (const outcome of retained) this.publicWorldRoomOutcomeRecords.set(outcome.id, outcome);
+    return true;
+  }
+
+  private publicWorldRoomOutcomeRecordList(now = Date.now()): PublicWorldRoomOutcomeRecord[] {
+    return Array.from(this.publicWorldRoomOutcomeRecords.values())
+      .filter((outcome) => Number.isFinite(outcome.completedAt) && outcome.completedAt >= 0 && outcome.completedAt <= now)
+      .sort((a, b) => b.completedAt - a.completedAt || a.id.localeCompare(b.id));
   }
 
   private hydratePublicWorldEventLog(record: StoredServiceStateRecord | null): void {
@@ -3448,6 +3556,7 @@ export class RubyHighService extends Service {
       storedSchoolEvents,
       storedPhotoPostSchedulerState,
       storedPublicWorldRoomState,
+      storedPublicWorldRoomOutcomeState,
       storedPublicWorldEventLogState,
       storedPublicWorldModerationState,
       storedLiveRoomGoalState,
@@ -3461,6 +3570,7 @@ export class RubyHighService extends Service {
       this.store.loadSchoolEvents?.({ limit: SCHOOL_WORLD_EVENT_CACHE_LIMIT }) ?? Promise.resolve([]),
       this.store.loadServiceState?.(PHOTO_POST_SCHEDULER_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_ROOMS_STATE_ID) ?? Promise.resolve(null),
+      this.store.loadServiceState?.(PUBLIC_WORLD_ROOM_OUTCOMES_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_EVENTS_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_MODERATION_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(LIVE_ROOM_GOALS_STATE_ID) ?? Promise.resolve(null),
@@ -3514,6 +3624,7 @@ export class RubyHighService extends Service {
     this.pruneSchoolEventRecords();
     this.hydratePhotoPostSchedulerState(storedPhotoPostSchedulerState);
     this.hydratePublicWorldRoomState(storedPublicWorldRoomState);
+    this.hydratePublicWorldRoomOutcomeState(storedPublicWorldRoomOutcomeState);
     this.hydratePublicWorldEventLog(storedPublicWorldEventLogState);
     this.hydratePublicWorldModerationState(storedPublicWorldModerationState);
     this.hydrateLiveRoomGoalState(storedLiveRoomGoalState);
@@ -7705,6 +7816,9 @@ export class RubyHighService extends Service {
       void this.persistLiveRoomGoalState({}, now);
     }
     const progress = Math.min(3, goal.contributors.size);
+    if (!duplicate && progress >= 3) {
+      this.recordPublicWorldRoomOutcome(goal, progress, 3, now);
+    }
     return {
       grade,
       facultyId,
@@ -9361,6 +9475,11 @@ function publicWorldRoomRecordKey(schoolYear: string, grade: Grade, facultyId: s
   return `${schoolYear}:${grade}:${facultyId}`;
 }
 
+function publicWorldRoomOutcomeId(day: string, grade: Grade, facultyId: string): string {
+  const digest = createHash("sha256").update(`${day}:${grade}:${facultyId}`).digest("hex").slice(0, 16);
+  return `room:outcome:${digest}`;
+}
+
 function normalizePublicWorldRoomRecord(raw: unknown): PublicWorldRoomRecord | null {
   if (!raw || typeof raw !== "object") return null;
   const source = raw as Record<string, unknown>;
@@ -9396,6 +9515,44 @@ function normalizePublicWorldRoomRecord(raw: unknown): PublicWorldRoomRecord | n
       updatedAt: publicWorldStoredInteger(rawGoal.updatedAt, 0),
     },
     updatedAt,
+  };
+}
+
+function normalizePublicWorldRoomOutcomeRecord(raw: unknown): PublicWorldRoomOutcomeRecord | null {
+  if (!raw || typeof raw !== "object") return null;
+  const source = raw as Record<string, unknown>;
+  const day = typeof source.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(source.day) ? source.day : "";
+  const schoolYear = typeof source.schoolYear === "string" && /^\d{4}-\d{4}$/.test(source.schoolYear)
+    ? source.schoolYear
+    : "";
+  const grade = typeof source.grade === "string" && (GRADES as readonly string[]).includes(source.grade)
+    ? source.grade as Grade
+    : null;
+  const facultyId = publicWorldRoomId(typeof source.facultyId === "string" ? source.facultyId : "");
+  if (!day || !schoolYear || !grade || !facultyId) return null;
+  if (source.goalKind !== undefined && source.goalKind !== "live-class") return null;
+  const id = publicWorldRoomOutcomeId(day, grade, facultyId);
+  if (typeof source.id === "string" && source.id !== id) return null;
+  const target = Math.max(1, Math.min(99, publicWorldStoredInteger(source.target, 3)));
+  const progress = Math.min(target, publicWorldStoredInteger(source.progress, target));
+  const contributorCount = Math.min(999, publicWorldStoredInteger(source.contributorCount, progress));
+  const completedAt = publicWorldStoredInteger(source.completedAt, 0);
+  const createdAt = publicWorldStoredInteger(source.createdAt, completedAt);
+  if (completedAt <= 0 || createdAt <= 0) return null;
+  return {
+    id,
+    schoolYear,
+    termId: typeof source.termId === "string" && source.termId.trim() ? source.termId.trim().slice(0, 48) : schoolYear,
+    day,
+    grade,
+    facultyId,
+    displayName: publicWorldRoomDisplayName(typeof source.displayName === "string" ? source.displayName : facultyId, facultyId),
+    goalKind: "live-class",
+    progress,
+    target,
+    contributorCount,
+    completedAt,
+    createdAt,
   };
 }
 

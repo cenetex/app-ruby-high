@@ -2018,40 +2018,75 @@ describe("RubyHighService Phase 1", () => {
     expect(JSON.stringify(roomState)).not.toContain("Goal Mina");
     expect(JSON.stringify(roomState)).not.toContain("Goal Sol");
 
+    expect(ruby.contributeLiveRoomGoal(third.sessionId, now + 10)).toMatchObject({
+      progress: 3,
+      target: 3,
+      complete: true,
+      duplicate: false,
+    });
+    await ruby.flush();
+    const roomOutcomeState = await new StateStore(storePath).loadServiceState("ruby-high:public-world-room-outcomes:v1");
+    expect(roomOutcomeState?.data).toMatchObject({
+      version: 1,
+      outcomes: [
+        {
+          id: expect.stringMatching(/^room:outcome:[a-f0-9]{16}$/),
+          schoolYear: "2025-2026",
+          termId: "2025-2026",
+          day: "2026-06-15",
+          grade: "10",
+          facultyId: "ruby",
+          displayName: "Ruby",
+          goalKind: "live-class",
+          progress: 3,
+          target: 3,
+          contributorCount: 3,
+          completedAt: now + 10,
+          createdAt: now + 10,
+        },
+      ],
+    });
+    expect(JSON.stringify(roomOutcomeState)).not.toContain("test:world-room-goal");
+    expect(JSON.stringify(roomOutcomeState)).not.toContain("Goal Noor");
+    expect(JSON.stringify(roomOutcomeState)).not.toContain("Goal Mina");
+    expect(JSON.stringify(roomOutcomeState)).not.toContain("Goal Sol");
+
     await ruby.stop();
     activeRuby = null;
     const rehydrated = new RubyHighService({} as never, new StateStore(storePath));
     await rehydrated["hydrate"]();
     activeRuby = rehydrated;
 
-    const rehydratedWorld = rehydrated.getSchoolWorldSnapshot(10, now);
+    const rehydratedWorld = rehydrated.getSchoolWorldSnapshot(10, now + 10);
     expect(rehydratedWorld.activeRooms[0]).toMatchObject({
       grade: "10",
       facultyId: "ruby",
       activeStudents: 3,
       goal: {
         kind: "live-class",
-        label: "Ruby live class 2/3",
-        progress: 2,
+        label: "Ruby live class 3/3",
+        progress: 3,
         target: 3,
-        complete: false,
-        updatedAt: now,
+        complete: true,
+        updatedAt: now + 10,
       },
     });
-    expect(rehydratedWorld.recentEvents.filter((event) => event.kind === "room.goal-progress")).toEqual([
+    expect(rehydratedWorld.recentEvents.filter((event) => event.kind === "room.goal-progress")).toEqual(expect.arrayContaining([
       expect.objectContaining({
         kind: "room.goal-progress",
-        at: now,
+        at: now + 10,
         faculty: "ruby",
         grade: "10",
-        progress: 2,
+        progress: 3,
         target: 3,
-        complete: false,
+        complete: true,
       }),
-    ]);
-    expect(rehydrated.worldHealthSnapshot(now)).toMatchObject({
+    ]));
+    expect(rehydrated.worldHealthSnapshot(now + 10)).toMatchObject({
       durableRoomRecords: 1,
       durableRoomRecordLimit: 80,
+      durableRoomOutcomes: 1,
+      durableRoomOutcomeLimit: 120,
       liveRoomGoals: 1,
     });
   });
@@ -2201,6 +2236,19 @@ describe("RubyHighService Phase 1", () => {
         },
       },
       {
+        id: "ruby-high:public-world-room-outcomes:v1",
+        updatedAt: now,
+        data: {
+          version: 1,
+          outcomes: [
+            null,
+            { id: "room:outcome:bad", day: "2026-06-16", grade: "10", facultyId: "ruby", schoolYear: "2025-2026", progress: 3, target: 3, completedAt: now },
+            { day: "bad-day", grade: "10", facultyId: "ruby", schoolYear: "2025-2026", progress: 3, target: 3, completedAt: now },
+            { day: "2026-06-16", grade: "13", facultyId: "ruby", schoolYear: "2025-2026", progress: 3, target: 3, completedAt: now },
+          ],
+        },
+      },
+      {
         id: "ruby-high:live-room-goals:v1",
         updatedAt: now,
         data: {
@@ -2223,6 +2271,7 @@ describe("RubyHighService Phase 1", () => {
       activeRooms: 0,
       recentEvents: 0,
       durableRoomRecords: 0,
+      durableRoomOutcomes: 0,
       publicEventLogSize: 0,
       liveRoomGoals: 0,
       suppressedEvents: 0,
