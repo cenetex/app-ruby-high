@@ -1025,7 +1025,17 @@ export interface PublicWorldTermRecord {
   sparksToNextLevel: number;
   label: string;
   activeRuleLabels: string[];
+  gradeProgress: Partial<Record<Grade, PublicWorldTermGradeProgress>>;
   updatedAt: number;
+}
+
+export interface PublicWorldTermGradeProgress {
+  totalSparks: number;
+  level: number;
+  nextLevelAt: number;
+  sparksToNextLevel: number;
+  label: string;
+  activeRuleLabels: string[];
 }
 
 export interface PublicWorldTeacherAgendaRecord {
@@ -8120,7 +8130,7 @@ export class RubyHighService extends Service {
     const key = this.liveRoomGoalStateKey(grade, facultyId, day);
     let goal = this.liveRoomGoalStates.get(key);
     if (!goal) {
-      const rule = this.liveRoomGoalRule(now);
+      const rule = this.liveRoomGoalRule(grade, now);
       goal = {
         grade,
         facultyId,
@@ -8475,9 +8485,10 @@ export class RubyHighService extends Service {
     return `${day}:${grade}:${facultyId}`;
   }
 
-  private liveRoomGoalRule(now = Date.now()): { target: number; ruleLabel?: string } {
+  private liveRoomGoalRule(grade: Grade, now = Date.now()): { target: number; ruleLabel?: string } {
     const term = this.currentPublicWorldTermRecord(now);
-    if (term.level <= 0) return { target: 3 };
+    const gradeLevel = term.gradeProgress[grade]?.level ?? 0;
+    if (gradeLevel <= 0) return { target: 3 };
     return { target: 2, ruleLabel: "Term Momentum" };
   }
 
@@ -9889,6 +9900,14 @@ function publicWorldTermRuleLabels(level: number): string[] {
   return level > 0 ? ["Term Momentum"] : [];
 }
 
+function publicWorldTermGradeProgress(studySparkTotal: number): PublicWorldTermGradeProgress {
+  const progress = publicWorldTermProgress(studySparkTotal);
+  return {
+    ...progress,
+    activeRuleLabels: publicWorldTermRuleLabels(progress.level),
+  };
+}
+
 function publicWorldTermRecordFromSummary(summary: PublicWorldSummarySnapshot, now: number): PublicWorldTermRecord {
   const schoolYear = /^\d{4}-\d{4}$/.test(summary.schoolYear) ? summary.schoolYear : schoolYearForTimestamp(now);
   const termProgress = summary.termProgress;
@@ -9897,6 +9916,10 @@ function publicWorldTermRecordFromSummary(summary: PublicWorldSummarySnapshot, n
   const nextLevelAt = Math.max(1, publicWorldStoredInteger(termProgress.nextLevelAt, 3));
   const sparksToNextLevel = publicWorldStoredInteger(termProgress.sparksToNextLevel, nextLevelAt);
   const label = publicWorldStoredText(termProgress.label, 80) || publicWorldTermProgress(totalSparks).label;
+  const gradeProgress: Partial<Record<Grade, PublicWorldTermGradeProgress>> = {};
+  for (const grade of GRADES) {
+    gradeProgress[grade] = publicWorldTermGradeProgress(summary.studySparks.byGrade[grade] ?? 0);
+  }
   return {
     id: publicWorldTermRecordId(schoolYear),
     schoolYear,
@@ -9907,6 +9930,7 @@ function publicWorldTermRecordFromSummary(summary: PublicWorldSummarySnapshot, n
     sparksToNextLevel,
     label,
     activeRuleLabels: publicWorldTermRuleLabels(level),
+    gradeProgress,
     updatedAt: now,
   };
 }
@@ -9921,6 +9945,7 @@ function publicWorldTermRecordContentKey(term: PublicWorldTermRecord): string {
     sparksToNextLevel: term.sparksToNextLevel,
     label: term.label,
     activeRuleLabels: term.activeRuleLabels,
+    gradeProgress: term.gradeProgress,
   });
 }
 
@@ -10063,6 +10088,7 @@ function normalizePublicWorldTermRecord(raw: unknown): PublicWorldTermRecord | n
   const sparksToNextLevel = publicWorldStoredInteger(source.sparksToNextLevel, progress.sparksToNextLevel);
   const label = publicWorldStoredText(source.label, 80) || progress.label;
   const activeRuleLabels = publicWorldStoredTextList(source.activeRuleLabels, 8, 80);
+  const gradeProgress = normalizePublicWorldTermGradeProgressMap(source.gradeProgress);
   const updatedAt = publicWorldStoredInteger(source.updatedAt, 0);
   if (updatedAt <= 0) return null;
   return {
@@ -10075,8 +10101,33 @@ function normalizePublicWorldTermRecord(raw: unknown): PublicWorldTermRecord | n
     sparksToNextLevel,
     label,
     activeRuleLabels,
+    gradeProgress,
     updatedAt,
   };
+}
+
+function normalizePublicWorldTermGradeProgressMap(raw: unknown): Partial<Record<Grade, PublicWorldTermGradeProgress>> {
+  const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+  const out: Partial<Record<Grade, PublicWorldTermGradeProgress>> = {};
+  for (const grade of GRADES) {
+    const row = source[grade] && typeof source[grade] === "object" ? source[grade] as Record<string, unknown> : {};
+    const totalSparks = publicWorldStoredInteger(row.totalSparks, 0);
+    const fallback = publicWorldTermGradeProgress(totalSparks);
+    const level = publicWorldStoredInteger(row.level, fallback.level);
+    const nextLevelAt = Math.max(1, publicWorldStoredInteger(row.nextLevelAt, fallback.nextLevelAt));
+    const sparksToNextLevel = publicWorldStoredInteger(row.sparksToNextLevel, fallback.sparksToNextLevel);
+    const label = publicWorldStoredText(row.label, 80) || fallback.label;
+    const activeRuleLabels = publicWorldStoredTextList(row.activeRuleLabels, 8, 80);
+    out[grade] = {
+      totalSparks,
+      level,
+      nextLevelAt,
+      sparksToNextLevel,
+      label,
+      activeRuleLabels: activeRuleLabels.length > 0 ? activeRuleLabels : publicWorldTermRuleLabels(level),
+    };
+  }
+  return out;
 }
 
 function normalizePublicWorldTeacherAgendaRecord(raw: unknown): PublicWorldTeacherAgendaRecord | null {

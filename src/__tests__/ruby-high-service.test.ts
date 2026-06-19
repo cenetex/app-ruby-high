@@ -2335,6 +2335,27 @@ describe("RubyHighService Phase 1", () => {
       level: 1,
       label: "Term Level 1",
     });
+    const freshman = attachTestCharacter(ruby, "test:term-room-freshman");
+    freshman.sessionId = "test:term-room-freshman";
+    freshman.currentGrade = "9";
+    freshman.faculty = "sally-science";
+    freshman.updatedAt = momentumAt;
+    freshman.character!.name = "Freshman Term Student";
+    freshman.character!.createdAt = momentumAt;
+    freshman.character!.publicWorldVisible = true;
+    freshman.character!.dailyClasses = {
+      "sally-science": {
+        ...completedClassRecord("9", "sally-science", "2026-06-18", "A", 300),
+        completedAt: momentumAt,
+        updatedAt: momentumAt,
+      },
+    };
+    expect(ruby.contributeLiveRoomGoal(freshman.sessionId, momentumAt)).toMatchObject({
+      grade: "9",
+      progress: 1,
+      target: 3,
+      complete: false,
+    });
     expect(ruby.contributeLiveRoomGoal(sessions[0]!.sessionId, momentumAt)).toMatchObject({
       progress: 1,
       target: 2,
@@ -2349,7 +2370,8 @@ describe("RubyHighService Phase 1", () => {
     });
 
     const world = ruby.getSchoolWorldSnapshot(10, momentumAt + 1);
-    expect(world.activeRooms[0]?.goal).toMatchObject({
+    const rubyRoom = world.activeRooms.find((room) => room.grade === "10" && room.facultyId === "ruby");
+    expect(rubyRoom?.goal).toMatchObject({
       label: "Ruby live class 2/2 · Term Momentum",
       progress: 2,
       target: 2,
@@ -2387,17 +2409,27 @@ describe("RubyHighService Phase 1", () => {
     const termState = await new StateStore(storePath).loadServiceState("ruby-high:public-world-terms:v1");
     expect(termState?.data).toMatchObject({
       version: 1,
-      terms: [
-        expect.objectContaining({
-          id: expect.stringMatching(/^term:[a-f0-9]{16}$/),
-          schoolYear: "2025-2026",
-          termId: "2025-2026",
-          totalSparks: 4,
-          level: 1,
-          label: "Term Spark 1/3",
-          activeRuleLabels: ["Term Momentum"],
-        }),
-      ],
+    });
+    const persistedTerm = (termState?.data as { terms?: Array<Record<string, unknown>> } | undefined)?.terms?.[0];
+    expect(persistedTerm).toMatchObject({
+      id: expect.stringMatching(/^term:[a-f0-9]{16}$/),
+      schoolYear: "2025-2026",
+      termId: "2025-2026",
+      totalSparks: 4,
+      level: 1,
+      label: "Term Spark 1/3",
+      activeRuleLabels: ["Term Momentum"],
+    });
+    const persistedGradeProgress = persistedTerm?.gradeProgress as Record<string, unknown> | undefined;
+    expect(persistedGradeProgress?.["9"]).toMatchObject({
+      totalSparks: 0,
+      level: 0,
+      activeRuleLabels: [],
+    });
+    expect(persistedGradeProgress?.["10"]).toMatchObject({
+      totalSparks: 4,
+      level: 1,
+      activeRuleLabels: ["Term Momentum"],
     });
     await ruby.stop();
     activeRuby = null;
@@ -2412,6 +2444,12 @@ describe("RubyHighService Phase 1", () => {
           totalSparks: 4,
           level: 1,
           activeRuleLabels: ["Term Momentum"],
+          gradeProgress: expect.objectContaining({
+            "10": expect.objectContaining({
+              level: 1,
+              activeRuleLabels: ["Term Momentum"],
+            }),
+          }),
         }),
       ],
     });
