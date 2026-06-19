@@ -226,6 +226,15 @@ export type BillingProductRowView = {
   buttonDisabled: boolean;
   selected: boolean;
 };
+export type BillingProductsPanelView = {
+  titleText: string;
+  subtitleText: string;
+  cardPackCostLabels: string[];
+  showGetRubyCostLink: boolean;
+  emptyStatusText: string;
+  checkoutStatusText: string;
+  checkoutStatusError: boolean;
+};
 export type AccountComicPageTileView = {
   pageNumber: number;
   title: string;
@@ -1941,6 +1950,41 @@ export function billingProductRowView(
     buttonText: selected ? "Selected" : "Choose",
     buttonDisabled: billingBusy,
     selected,
+  };
+}
+export function billingProductsPanelView(
+  modeInput: unknown,
+  payloadInput: NullableRecord,
+  solanaInput?: NullableRecord,
+  opts?: NullableRecord,
+): BillingProductsPanelView {
+  const mode = modeInput === "card-packs" ? "card-packs" : "hall-passes";
+  const payload = payloadInput && typeof payloadInput === "object" ? payloadInput : {};
+  const solana = solanaInput && typeof solanaInput === "object" ? solanaInput : null;
+  const hallPassesPerBurnedCard = Math.max(1, Math.floor(Number(opts && opts.hallPassesPerBurnedCard || 5)));
+  const hasRubyToken = !!(opts && opts.hasRubyToken);
+  const isCardPacks = mode === "card-packs";
+  return {
+    titleText: isCardPacks ? "Buy Card Packs" : "Buy Hall Passes",
+    subtitleText: isCardPacks
+      ? "Card packs are Solana NFTs. Open a pack to create five face-down Ruby High cards."
+      : "Buy Hall Passes or burn one Card for 5.",
+    cardPackCostLabels: isCardPacks
+      ? [
+        "Pack NFT: " + VIEWER_CONSTANTS.HALL_PASS_CARDS_PER_PACK + " cards",
+        "Burn rate: 1 Card = " + hallPassCostLabel(hallPassesPerBurnedCard),
+      ]
+      : [],
+    showGetRubyCostLink: isCardPacks,
+    emptyStatusText: isCardPacks ? "No card packs are available." : "No Hall Passes are available.",
+    checkoutStatusText: isCardPacks
+      ? (solana && !solana.configured
+        ? "Card pack checkout is not configured on this server."
+        : hasRubyToken ? "" : "RUBY mint configuration is missing for card packs.")
+      : (payload.configured ? "" : "Stripe checkout is not configured on this server."),
+    checkoutStatusError: isCardPacks
+      ? !(solana && solana.configured && hasRubyToken)
+      : !payload.configured,
   };
 }
 

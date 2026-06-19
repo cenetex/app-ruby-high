@@ -57,6 +57,7 @@ const PURE_HELPER_NAMES = [
   "cardPackProductMeta",
   "billingCardPackPaymentChoiceView",
   "billingProductRowView",
+  "billingProductsPanelView",
   "escapeHtml",
   "escape",
   "safeMarkdownHref",

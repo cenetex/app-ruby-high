@@ -3437,18 +3437,19 @@ export function runViewerClient(bootstrap) {
     els.billingProducts.replaceChildren();
     syncBillingWallet(lastTelemetry);
     const mode = billingMode === "card-packs" ? "card-packs" : "hall-passes";
-    if (els.billingTitle) els.billingTitle.textContent = mode === "card-packs" ? "Buy Card Packs" : "Buy Hall Passes";
-    if (els.billingSub) {
-      els.billingSub.textContent = mode === "card-packs"
-        ? "Card packs are Solana NFTs. Open a pack to create five face-down Ruby High cards."
-        : "Buy Hall Passes or burn one Card for 5.";
-    }
     const entitlements = payload && payload.entitlements && typeof payload.entitlements === "object" ? payload.entitlements : null;
     const hostedImages = entitlements && entitlements.hosted_images && typeof entitlements.hosted_images === "object"
       ? entitlements.hosted_images
       : null;
     const cardBurn = payload && payload.cardBurn && typeof payload.cardBurn === "object" ? payload.cardBurn : null;
     const hallPassesPerBurnedCard = positiveWholeNumber(cardBurn && cardBurn.hallPassesPerCard || HALL_PASS_CARD_BURN_HALL_PASS_VALUE, HALL_PASS_CARD_BURN_HALL_PASS_VALUE);
+    const solana = payload && payload.solana && typeof payload.solana === "object" ? payload.solana : null;
+    const panelView = billingProductsPanelView(mode, payload, solana, {
+      hallPassesPerBurnedCard,
+      hasRubyToken: !!currentRubyTokenMintFromSolana(solana),
+    });
+    if (els.billingTitle) els.billingTitle.textContent = panelView.titleText;
+    if (els.billingSub) els.billingSub.textContent = panelView.subtitleText;
     const costs = {
       portrait: hostedImages && hostedImages.portrait ? hostedImages.portrait.cost : payload && payload.imageCosts ? payload.imageCosts.portrait : undefined,
       diploma: hostedImages && hostedImages.diploma ? hostedImages.diploma.cost : payload && payload.imageCosts ? payload.imageCosts.diploma : undefined,
@@ -3470,19 +3471,15 @@ export function runViewerClient(bootstrap) {
       });
       if (mode === "card-packs") {
         els.billingCosts.replaceChildren();
-        [
-          "Pack NFT: " + HALL_PASS_CARDS_PER_PACK + " cards",
-          "Burn rate: 1 Card = " + hallPassCostLabel(hallPassesPerBurnedCard),
-        ].forEach((label) => {
-        const chip = document.createElement("span");
-        chip.className = "cost-chip";
-        chip.textContent = label;
-        els.billingCosts.appendChild(chip);
-      });
-      els.billingCosts.appendChild(buildGetRubyLink("cost-chip get-ruby-link billing-get-ruby-link"));
+        panelView.cardPackCostLabels.forEach((label) => {
+          const chip = document.createElement("span");
+          chip.className = "cost-chip";
+          chip.textContent = label;
+          els.billingCosts.appendChild(chip);
+        });
+        if (panelView.showGetRubyCostLink) els.billingCosts.appendChild(buildGetRubyLink("cost-chip get-ruby-link billing-get-ruby-link"));
+      }
     }
-    }
-    const solana = payload && payload.solana && typeof payload.solana === "object" ? payload.solana : null;
     const solanaProducts = solana && Array.isArray(solana.products) ? solana.products : [];
     const products = Array.isArray(payload && payload.products) ? payload.products : [];
     const shownProducts = mode === "card-packs" ? solanaProducts : products;
@@ -3490,7 +3487,7 @@ export function runViewerClient(bootstrap) {
       els.billingProducts.appendChild(buildHallPassCardBurnChoice(hallPassesPerBurnedCard));
     }
     if (shownProducts.length === 0) {
-      setBillingStatus(mode === "card-packs" ? "No card packs are available." : "No Hall Passes are available.", true);
+      setBillingStatus(panelView.emptyStatusText, true);
       return;
     }
     if (selectedBillingProductId && !shownProducts.some((product) => product.id === selectedBillingProductId)) {
@@ -3528,16 +3525,7 @@ export function runViewerClient(bootstrap) {
           : buildBillingPaymentChoice(payload, product));
       }
     });
-    setBillingStatus(
-      mode === "card-packs"
-        ? (solana && !solana.configured
-          ? "Card pack checkout is not configured on this server."
-          : currentRubyTokenMintFromSolana(solana) ? "" : "RUBY mint configuration is missing for card packs.")
-        : (payload.configured ? "" : "Stripe checkout is not configured on this server."),
-      mode === "card-packs"
-        ? !(solana && solana.configured && currentRubyTokenMintFromSolana(solana))
-        : !payload.configured,
-    );
+    setBillingStatus(panelView.checkoutStatusText, panelView.checkoutStatusError);
   }
 
   function selectBillingProduct(productId) {

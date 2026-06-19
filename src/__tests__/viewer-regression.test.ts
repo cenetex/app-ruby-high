@@ -358,6 +358,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'mode === "card-packs"');
     expectScriptToContain(script, "function billingProductRowView(");
     expectScriptToContain(script, "const view = billingProductRowView(mode, product, solana, {");
+    expectScriptToContain(script, "function billingProductsPanelView(");
+    expectScriptToContain(script, "const panelView = billingProductsPanelView(mode, payload, solana, {");
     expectScriptToContain(script, "buildCardPackPaymentChoice(solana, product)");
     expectScriptToContain(script, "buildBillingPaymentChoice(payload, product)");
     expectScriptToContain(script, "function billingHallPassPaymentChoiceView(");
