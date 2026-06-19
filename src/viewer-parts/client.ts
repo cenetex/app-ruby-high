@@ -1425,6 +1425,11 @@ export function runViewerClient(bootstrap) {
     document,
     container: els.accountTrustList,
   });
+  const accountHistoryRenderer = createAccountHistoryPanelRenderer({
+    document,
+    container: els.accountHistoryList,
+    rowView: accountHistoryRowView,
+  });
   const roomChannelRowsController = createRoomChannelRowsController({
     document,
     teacherSmallAvatarUrl,
@@ -2999,41 +3004,7 @@ export function runViewerClient(bootstrap) {
   function renderAccountHistory() {
     if (!els.accountHistoryList) return;
     const wallet = lastTelemetry && lastTelemetry.wallet && typeof lastTelemetry.wallet === "object" ? lastTelemetry.wallet : {};
-    const transactions = Array.isArray(wallet.transactions) ? wallet.transactions.slice() : [];
-    transactions.sort((a, b) => Number(b.at || 0) - Number(a.at || 0));
-    els.accountHistoryList.replaceChildren();
-    if (transactions.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "account-empty";
-      empty.textContent = "No wallet activity yet.";
-      els.accountHistoryList.appendChild(empty);
-      return;
-    }
-    transactions.slice(0, 18).forEach((tx) => {
-      els.accountHistoryList.appendChild(buildAccountHistoryRow(tx));
-    });
-  }
-
-  function buildAccountHistoryRow(tx) {
-    const view = accountHistoryRowView(tx);
-    const row = document.createElement("div");
-    row.className = view.className;
-    const main = document.createElement("div");
-    main.className = "account-history-main";
-    const title = document.createElement("div");
-    title.className = "account-history-title";
-    title.textContent = view.title;
-    const meta = document.createElement("div");
-    meta.className = "account-history-meta";
-    meta.textContent = view.meta;
-    main.appendChild(title);
-    main.appendChild(meta);
-    const delta = document.createElement("div");
-    delta.className = "account-history-delta";
-    delta.textContent = view.delta;
-    row.appendChild(main);
-    row.appendChild(delta);
-    return row;
+    accountHistoryRenderer.render(wallet.transactions, { limit: 18 });
   }
 
   function welcomeHallPassGrant(t) {

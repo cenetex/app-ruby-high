@@ -297,7 +297,9 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(clientSource, "const view = accountCharacterPanelView(slots, wallet, {");
     expectScriptToContain(clientSource, "const view = accountCharacterCardView(");
     expectScriptToContain(script, "function accountHistoryRowView(tx)");
-    expectScriptToContain(clientSource, "const view = accountHistoryRowView(tx);");
+    expectScriptToContain(script, "function createAccountHistoryPanelRenderer(deps)");
+    expectScriptToContain(clientSource, "const accountHistoryRenderer = createAccountHistoryPanelRenderer({");
+    expectScriptToContain(clientSource, "accountHistoryRenderer.render(wallet.transactions, { limit: 18 });");
     expectScriptToContain(script, '"build":"dev"');
     expectScriptToContain(script, '"privyConfig":{"appId":"privy-app-test","clientId":"privy-client-test","loginMethods":["wallet"]}');
     expectScriptToContain(script, 'const PRIVY_CLIENT_URL = apiBase + "/assets/privy-client.global.js?v=" + encodeURIComponent(buildId)');

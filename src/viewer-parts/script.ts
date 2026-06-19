@@ -1,4 +1,5 @@
 import type { ViewerRenderOptions } from "../viewer.js";
+import { createAccountHistoryPanelRenderer } from "./account-history-panel.js";
 import { createAccountPublicWorldController } from "./account-public-world.js";
 import { createAccountTrustPanelRenderer } from "./account-trust-panel.js";
 import { createViewerApiClient, withViewerTimeoutSignal } from "./api.js";
@@ -211,6 +212,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   ${serializeConstants()}
   ${serializePureHelpers()}
   const withViewerTimeoutSignal = ${withViewerTimeoutSignal.toString()};
+  const createAccountHistoryPanelRenderer = ${createAccountHistoryPanelRenderer.toString()};
   const createAccountPublicWorldController = ${createAccountPublicWorldController.toString()};
   const createAccountTrustPanelRenderer = ${createAccountTrustPanelRenderer.toString()};
   const createViewerApiClient = ${createViewerApiClient.toString()};
