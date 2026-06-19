@@ -2188,6 +2188,126 @@ describe("admin metrics route", () => {
     });
   });
 
+  it("auto-enqueues review drafts only for exhausted generated curriculum pools", async () => {
+    vi.stubEnv("RUBY_HIGH_ADMIN_TOKEN", "admin-test-token");
+    const sessionId = "rh:user:admin-curriculum-auto-exhausted";
+    const state = ruby.getOrCreate(sessionId);
+    state.character = {
+      name: "Auto Mira",
+      playbookId: "overachiever",
+      stats: { head: 3, heart: 2, hustle: 2, honor: 3 },
+      arcAnswer: "I want the school to notice exhausted classes.",
+      personality: "Practical and persistent.",
+      createdAt: Date.UTC(2026, 5, 1),
+      yearbook: [],
+    };
+    state.currentGrade = "10";
+    state.faculty = "ruby";
+    const pack = await getActivePack();
+    const rubyFaculty = pack.faculty.find((faculty) => faculty.id === "ruby")!;
+    const eligibleIds = [
+      ...rubyFaculty.questions,
+      ...(rubyFaculty.sourceCards ?? []),
+    ]
+      .filter((question) =>
+        (question.difficulty === "easy" || question.difficulty === "medium") &&
+        (!question.minGrade || Number(question.minGrade) <= 10)
+      )
+      .map((question) => question.id);
+    state.cardMemory = {};
+    for (const questionId of eligibleIds) {
+      state.cardMemory[cardMemoryKey("ruby", questionId)] = {
+        courseId: "ruby",
+        questionId,
+        phase: "learning",
+        dueAt: Date.UTC(2026, 6, 1),
+        stability: 1,
+        difficulty: 0.5,
+        consecutiveCorrect: 1,
+        correctCount: 1,
+        wrongCount: 0,
+        delayedCorrectCount: 0,
+        lastReviewedAt: Date.UTC(2026, 5, 1),
+        lastResult: "good",
+        lapses: 0,
+      };
+    }
+
+    let response = await appRoute({
+      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
+      authorizationHeader: "Bearer admin-test-token",
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.generationQueue).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        facultyId: "ruby",
+        grade: "10",
+        status: "ready",
+        action: "create-draft",
+        exhaustedSessions: 1,
+        autoEligible: true,
+        autoReason: "Coverage exhaustion can auto-create a review draft.",
+      }),
+    ]));
+
+    response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
+      authorizationHeader: "Bearer admin-test-token",
+      body: { action: "auto-enqueue", limit: 3 },
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      ok: true,
+      dryRun: false,
+      trigger: "coverage-exhaustion",
+      created: 1,
+      reused: 0,
+      drafts: [
+        expect.objectContaining({
+          facultyId: "ruby",
+          grade: "10",
+          mode: "generate",
+          status: "created",
+          generationSource: "deterministic",
+        }),
+      ],
+    });
+    const persistedDrafts = await store.loadDraftPacks();
+    expect(persistedDrafts).toHaveLength(1);
+
+    response = await appRoute({
+      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
+      authorizationHeader: "Bearer admin-test-token",
+    });
+    expect(response.body.generationQueue).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        facultyId: "ruby",
+        grade: "10",
+        status: "queued",
+        action: "review-draft",
+        autoEligible: false,
+        autoReason: "A replenishment draft is already queued for review.",
+        draftId: persistedDrafts[0]!.id,
+      }),
+    ]));
+
+    response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
+      authorizationHeader: "Bearer admin-test-token",
+      body: { action: "auto-enqueue", limit: 3 },
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      trigger: "coverage-exhaustion",
+      created: 0,
+      reused: 0,
+      drafts: [],
+    });
+    expect(await store.loadDraftPacks()).toHaveLength(1);
+  });
+
   it("publishes the token-gated metrics schema with field reliability notes", async () => {
     let response = await appRoute({
       path: "/api/apps/ruby-high/admin/metrics/schema",

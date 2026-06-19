@@ -138,6 +138,8 @@ interface AdminCurriculumGenerationProposal extends AdminCurriculumReplenishment
   status: "ready" | "queued" | "manual-curation" | "unsupported";
   draftId: string | null;
   action: "create-draft" | "review-draft" | "curate-manually" | "unsupported";
+  autoEligible: boolean;
+  autoReason: string;
 }
 
 interface AdminCurriculumReviewDraftSummary {
@@ -160,6 +162,7 @@ interface AdminCurriculumDraftResult {
   ok: true;
   generatedAt: string;
   dryRun: false;
+  trigger: "manual" | "coverage-exhaustion";
   created: number;
   reused: number;
   drafts: Array<{
@@ -405,6 +408,8 @@ function buildAdminCurriculumGenerationQueue(
         status,
         draftId: existing?.id ?? null,
         action,
+        autoEligible: adminCurriculumAutoEnqueueEligible(step, status),
+        autoReason: adminCurriculumAutoEnqueueReason(step, status),
       };
     })
     .sort((a, b) =>
@@ -414,6 +419,29 @@ function buildAdminCurriculumGenerationQueue(
       a.displayName.localeCompare(b.displayName) ||
       a.facultyId.localeCompare(b.facultyId)
     );
+}
+
+function adminCurriculumAutoEnqueueEligible(
+  step: AdminCurriculumReplenishmentStep,
+  status: AdminCurriculumGenerationProposal["status"],
+): boolean {
+  return status === "ready"
+    && step.mode === "generate"
+    && !!step.command
+    && step.exhaustedSessions > 0;
+}
+
+function adminCurriculumAutoEnqueueReason(
+  step: AdminCurriculumReplenishmentStep,
+  status: AdminCurriculumGenerationProposal["status"],
+): string {
+  if (status === "queued") return "A replenishment draft is already queued for review.";
+  if (status === "manual-curation") return "Freshman starter pools require manual curation.";
+  if (status !== "ready") return "This pool is not ready for automatic replenishment.";
+  if (step.mode !== "generate") return "Only generated-mode pools can be auto-enqueued.";
+  if (!step.command) return "Only built-in teacher pools with a generator command can be auto-enqueued.";
+  if (step.exhaustedSessions <= 0) return "Automatic replenishment waits for at least one exhausted active session.";
+  return "Coverage exhaustion can auto-create a review draft.";
 }
 
 function adminCurriculumRequestId(step: Pick<AdminCurriculumReplenishmentStep, "grade" | "facultyId">, day: string): string {
@@ -436,12 +464,15 @@ function statusRank(status: AdminCurriculumGenerationProposal["status"]): number
 
 async function createAdminCurriculumReplenishmentDrafts(
   deps: AdminDeps,
-  opts: { limit?: number; useLlm?: boolean } = {},
+  opts: { limit?: number; useLlm?: boolean; trigger?: "manual" | "coverage-exhaustion" } = {},
 ): Promise<AdminCurriculumDraftResult> {
   const steps = buildAdminCurriculumReplenishmentSteps(deps);
   const existingDrafts = await deps.ruby.listDraftPackRecords();
   const queue = buildAdminCurriculumGenerationQueue(steps, existingDrafts);
-  const runnableSteps = queue.filter((step) => (step.status === "ready" || step.status === "queued") && step.command);
+  const trigger = opts.trigger ?? "manual";
+  const runnableSteps = trigger === "coverage-exhaustion"
+    ? queue.filter((step) => step.autoEligible)
+    : queue.filter((step) => (step.status === "ready" || step.status === "queued") && step.command);
   const defaultLimit = runnableSteps.length || 1;
   const requestedLimit = Math.floor(Number(opts.limit));
   const limitSource = Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : defaultLimit;
@@ -515,6 +546,7 @@ async function createAdminCurriculumReplenishmentDrafts(
     ok: true,
     generatedAt: new Date().toISOString(),
     dryRun: false,
+    trigger,
     created,
     reused,
     drafts,
@@ -1502,7 +1534,8 @@ export async function handleAdminCurriculumReplenishmentRoute(ctx: RouteContext,
     const limit = typeof body === "object" && body && "limit" in body ? Number((body as { limit?: unknown }).limit) : undefined;
     const provider = typeof body === "object" && body ? String((body as { provider?: unknown }).provider ?? "") : "";
     const useLlm = provider === "llm" || !!(typeof body === "object" && body && (body as { useLlm?: unknown }).useLlm);
-    ctx.json(ctx.res, await createAdminCurriculumReplenishmentDrafts(deps, { limit, useLlm }));
+    const trigger = action === "auto-enqueue" ? "coverage-exhaustion" : "manual";
+    ctx.json(ctx.res, await createAdminCurriculumReplenishmentDrafts(deps, { limit, useLlm, trigger }));
     return true;
   }
   ctx.json(ctx.res, await buildAdminCurriculumReplenishmentSnapshot(deps));
@@ -2112,7 +2145,10 @@ export function renderAdminDashboardHtml(): string {
 	    <section class="section">
 	      <div class="section-head">
 	        <h2>Logs</h2>
-	        <button class="secondary" id="curriculum-drafts-create" type="button" disabled>Create review drafts</button>
+	        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+	          <button class="secondary" id="curriculum-drafts-auto" type="button" disabled>Auto enqueue exhausted</button>
+	          <button class="secondary" id="curriculum-drafts-create" type="button" disabled>Create review drafts</button>
+	        </div>
 	      </div>
 	      <div class="tables" id="tables"></div>
 	    </section>
@@ -2170,6 +2206,7 @@ async function postTelegramSnapshot() {
     const overviewRefreshEl = document.getElementById("overview-refresh");
     const clearEl = document.getElementById("clear-token");
     const curriculumDraftsCreateEl = document.getElementById("curriculum-drafts-create");
+    const curriculumDraftsAutoEl = document.getElementById("curriculum-drafts-auto");
     const autoEl = document.getElementById("auto-refresh");
     const statusEl = document.getElementById("status");
     const overviewSummaryEl = document.getElementById("overview-summary");
@@ -2197,6 +2234,7 @@ async function postTelegramSnapshot() {
       latestMetrics = null;
       latestReplenishment = null;
       curriculumDraftsCreateEl.disabled = true;
+      curriculumDraftsAutoEl.disabled = true;
       status("Locked.", "");
       overviewSummaryEl.textContent = "Waiting for metrics.";
       overviewListEl.innerHTML = "";
@@ -2216,6 +2254,9 @@ async function postTelegramSnapshot() {
     });
     curriculumDraftsCreateEl.addEventListener("click", () => {
       createCurriculumDrafts();
+    });
+    curriculumDraftsAutoEl.addEventListener("click", () => {
+      autoEnqueueCurriculumDrafts();
     });
     document.addEventListener("click", (event) => {
       const btn = event.target.closest(".curriculum-export-btn");
@@ -2305,6 +2346,39 @@ async function postTelegramSnapshot() {
       } finally {
         curriculumDraftsCreateEl.textContent = "Create review drafts";
         curriculumDraftsCreateEl.disabled = false;
+      }
+    }
+
+    async function autoEnqueueCurriculumDrafts() {
+      const token = tokenEl.value.trim();
+      if (!token) {
+        status("Locked.", "");
+        return;
+      }
+      curriculumDraftsAutoEl.disabled = true;
+      curriculumDraftsAutoEl.textContent = "Enqueuing...";
+      try {
+        const response = await fetch(replenishmentPath, {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ action: "auto-enqueue", limit: 3 }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok) {
+          throw new Error(data.error || "Auto enqueue failed.");
+        }
+        status("Auto-enqueued " + n(data.created) + " exhausted curriculum drafts.", "");
+        latestReplenishment = await loadReplenishment(token);
+        if (latestMetrics) render(latestMetrics);
+      } catch (err) {
+        status(err && err.message ? err.message : String(err), "is-error");
+      } finally {
+        curriculumDraftsAutoEl.textContent = "Auto enqueue exhausted";
+        const generationQueue = (latestReplenishment && latestReplenishment.generationQueue) || [];
+        curriculumDraftsAutoEl.disabled = generationQueue.filter((step) => step.autoEligible).length === 0;
       }
     }
 
@@ -2442,6 +2516,7 @@ async function postTelegramSnapshot() {
         : "";
       const generationQueue = (latestReplenishment && latestReplenishment.generationQueue) || [];
       curriculumDraftsCreateEl.disabled = generationQueue.filter((step) => step.status === "ready").length === 0;
+      curriculumDraftsAutoEl.disabled = generationQueue.filter((step) => step.autoEligible).length === 0;
       tablesEl.innerHTML = [
         revenueTable,
         curriculumTable(ruby.curriculum),
@@ -2685,7 +2760,9 @@ async function postTelegramSnapshot() {
         const label = "Grade " + esc(row.grade) + " · " + esc(row.displayName || row.facultyId);
         const sub = esc((row.focusSubjects || []).slice(0, 3).join(", ") || row.corpusTitle || "teacher corpus");
         const pressure = n(row.priority) + "<div class=\\"sub\\">" + n(row.lowPoolSessions) + " low · " + n(row.exhaustedSessions) + " exhausted</div>";
-        const status = esc(row.status || "unknown") + "<div class=\\"sub\\">" + esc(row.action || "review") + (row.draftId ? " · " + esc(row.draftId) : "") + "</div>";
+        const auto = row.autoEligible ? " · auto" : "";
+        const reason = row.autoReason ? "<div class=\\"sub\\">" + esc(row.autoReason) + "</div>" : "";
+        const status = esc(row.status || "unknown") + auto + "<div class=\\"sub\\">" + esc(row.action || "review") + (row.draftId ? " · " + esc(row.draftId) : "") + "</div>" + reason;
         return "<tr><td>" + label + "<div class=\\"sub\\">" + sub + "</div></td><td>" + pressure + "</td><td>" + status + "</td></tr>";
       }).join("") + "</tbody></table>";
     }
