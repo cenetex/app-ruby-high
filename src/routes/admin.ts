@@ -163,9 +163,9 @@ interface AdminCurriculumReplenishmentSnapshot {
 interface AdminCurriculumGenerationProposal extends AdminCurriculumReplenishmentStep {
   requestId: string;
   priority: number;
-  status: "ready" | "queued" | "manual-curation" | "unsupported";
+  status: "ready" | "queued" | "satisfied" | "manual-curation" | "unsupported";
   draftId: string | null;
-  action: "create-draft" | "review-draft" | "curate-manually" | "unsupported";
+  action: "create-draft" | "review-draft" | "monitor-coverage" | "curate-manually" | "unsupported";
   autoEligible: boolean;
   autoReason: string;
 }
@@ -467,9 +467,11 @@ function buildAdminCurriculumGenerationQueue(
       const existing = drafts.find((draft) =>
         draft.teachers.some((teacher) => teacher.clientRequestId === requestId)
       );
-      const status: AdminCurriculumGenerationProposal["status"] = existing
-        ? "queued"
-        : step.mode === "manual-curation"
+      const status: AdminCurriculumGenerationProposal["status"] = step.teacherAgenda?.draftStatus === "questions-promoted"
+        ? "satisfied"
+        : existing
+          ? "queued"
+          : step.mode === "manual-curation"
           ? "manual-curation"
           : step.command
             ? "ready"
@@ -478,6 +480,8 @@ function buildAdminCurriculumGenerationQueue(
         ? "create-draft"
         : status === "queued"
           ? "review-draft"
+          : status === "satisfied"
+            ? "monitor-coverage"
           : status === "manual-curation"
             ? "curate-manually"
             : "unsupported";
@@ -516,6 +520,7 @@ function adminCurriculumAutoEnqueueReason(
   status: AdminCurriculumGenerationProposal["status"],
 ): string {
   if (status === "queued") return "A replenishment draft is already queued for review.";
+  if (status === "satisfied") return "Reviewed questions were promoted; monitor coverage before creating another draft.";
   if (status === "manual-curation") return "Freshman starter pools require manual curation.";
   if (status !== "ready") return "This pool is not ready for automatic replenishment.";
   if (step.mode !== "generate") return "Only generated-mode pools can be auto-enqueued.";
@@ -550,8 +555,9 @@ function adminCurriculumGenerationPriority(step: AdminCurriculumReplenishmentSte
 function statusRank(status: AdminCurriculumGenerationProposal["status"]): number {
   if (status === "ready") return 0;
   if (status === "queued") return 1;
-  if (status === "manual-curation") return 2;
-  return 3;
+  if (status === "satisfied") return 2;
+  if (status === "manual-curation") return 3;
+  return 4;
 }
 
 async function createAdminCurriculumReplenishmentDrafts(

@@ -2043,6 +2043,20 @@ describe("admin metrics route", () => {
       path: "/api/apps/ruby-high/admin/curriculum/replenishment",
       authorizationHeader: "Bearer admin-test-token",
     });
+    expect(response.body.generationQueue).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        facultyId: "ruby",
+        grade: "10",
+        status: "queued",
+        action: "review-draft",
+        draftId: persistedDrafts[0]!.id,
+        teacherAgenda: expect.objectContaining({
+          draftId: persistedDrafts[0]!.id,
+          draftStatus: "review-draft-created",
+          draftQuestionCount: 6,
+        }),
+      }),
+    ]));
     expect(response.body.reviewQueue).toEqual([
       expect.objectContaining({
         id: persistedDrafts[0]!.id,
@@ -2286,6 +2300,21 @@ describe("admin metrics route", () => {
       path: "/api/apps/ruby-high/admin/curriculum/replenishment",
       authorizationHeader: "Bearer admin-test-token",
     });
+    expect(response.body.generationQueue).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        facultyId: "ruby",
+        grade: "10",
+        status: "satisfied",
+        action: "monitor-coverage",
+        draftId: persistedDrafts[0]!.id,
+        autoEligible: false,
+        autoReason: "Reviewed questions were promoted; monitor coverage before creating another draft.",
+        teacherAgenda: expect.objectContaining({
+          draftStatus: "questions-promoted",
+          promotedQuestionCount: 6,
+        }),
+      }),
+    ]));
     expect(response.body.reviewQueue).toEqual([
       expect.objectContaining({
         id: persistedDrafts[0]!.id,
@@ -2309,8 +2338,8 @@ describe("admin metrics route", () => {
     });
     expect(response.body).toMatchObject({
       created: 0,
-      reused: 1,
-      drafts: [expect.objectContaining({ status: "existing" })],
+      reused: 0,
+      drafts: [],
     });
     expect(await store.loadDraftPacks()).toHaveLength(1);
   });
