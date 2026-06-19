@@ -1260,6 +1260,41 @@ describe("/pack-library", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("follows allowed material URL redirects and stores the final normalized source", async () => {
+    signInUser("alice");
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) => {
+      if (String(input) === "https://raw.githubusercontent.com/acme/course/main/old.md") {
+        return new Response("", {
+          status: 302,
+          headers: { location: "https://github.com/acme/course/blob/main/new.md" },
+        });
+      }
+      return new Response("# Week 2\n\nReplicate the signal.", {
+        status: 200,
+        headers: { "content-type": "text/markdown" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { draftId, teacherId } = await createDraftTeacher();
+
+    const response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack-drafts/${draftId}/teachers/${teacherId}/materials/from-url`,
+      cookie: "rh_session=alice",
+      clientIp: "203.0.113.22",
+      body: { url: "https://raw.githubusercontent.com/acme/course/main/old.md" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "https://raw.githubusercontent.com/acme/course/main/old.md",
+      "https://raw.githubusercontent.com/acme/course/main/new.md",
+    ]);
+    expect(response.body.teacher.materialSourceUrl).toBe("https://raw.githubusercontent.com/acme/course/main/new.md");
+    expect(response.body.teacher.materials).toContain("Replicate the signal.");
+  });
+
   it("rejects material URL redirects to private-network hosts", async () => {
     signInUser("alice");
     const fetchMock = vi.fn(async (_input: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) => new Response("", {

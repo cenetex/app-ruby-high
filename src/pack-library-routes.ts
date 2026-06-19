@@ -563,10 +563,10 @@ export async function handlePackLibraryRoutes(
     const body = await readBody(ctx);
     try {
       const sourceUrl = normalizeMarkdownSourceUrl(bodyString(body, "url"));
-      const materials = await fetchMarkdownMaterials(sourceUrl);
+      const fetched = await fetchMarkdownMaterials(sourceUrl);
       const updated = updateDraftTeacher(draft, teacherId, {
-        materials,
-        materialSourceUrl: sourceUrl,
+        materials: fetched.text,
+        materialSourceUrl: fetched.finalUrl,
       });
       await deps.ruby.saveDraftPackRecord(updated);
       const teacher = updated.teachers.find((entry) => entry.id === teacherId);
@@ -2874,7 +2874,7 @@ function generationCountToday(teacher: StoredDraftTeacherRecord): number {
   return teacher.generationDay === day ? teacher.generationCount : 0;
 }
 
-async function fetchMarkdownMaterials(url: string): Promise<string> {
+async function fetchMarkdownMaterials(url: string): Promise<{ text: string; finalUrl: string }> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 12_000);
   let currentUrl = url;
@@ -2903,7 +2903,7 @@ async function fetchMarkdownMaterials(url: string): Promise<string> {
       if (text.length > MAX_MATERIAL_CHARS) {
         throw new Error(`Course materials must be ${MAX_MATERIAL_CHARS} characters or less.`);
       }
-      return text;
+      return { text, finalUrl: currentUrl };
     }
     throw new Error("Materials URL redirected too many times.");
   } finally {
