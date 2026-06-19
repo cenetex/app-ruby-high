@@ -11,7 +11,7 @@ import type { AuthAnalyticsSnapshot, AuthService } from "../services/auth-servic
 import type { RubyHighAnalyticsSnapshot, RubyHighService } from "../services/ruby-high-service.js";
 import type { StoredDraftContentPackRecord, StoredDraftTeacherRecord } from "../services/state-store.js";
 import { getActivePack } from "../content/registry.js";
-import type { PackSourceCard } from "../content/types.js";
+import type { ContentPack, PackSourceCard } from "../content/types.js";
 import { APP_ROUTE_PREFIX, X_SOCIAL_PREFIX } from "./constants.js";
 import type { RouteContext } from "./context.js";
 import type { BankedQuestion, Grade } from "../types.js";
@@ -131,6 +131,10 @@ interface AdminCurriculumReviewDraftSummary {
   sourceCardCount: number;
   questionCount: number;
   updatedAt: number;
+  validation: {
+    ok: boolean;
+    errors: string[];
+  };
 }
 
 interface AdminCurriculumDraftResult {
@@ -309,8 +313,9 @@ function buildAdminCurriculumReplenishmentSteps(deps: AdminDeps): AdminCurriculu
 
 async function buildAdminCurriculumReplenishmentSnapshot(deps: AdminDeps): Promise<AdminCurriculumReplenishmentSnapshot> {
   const steps = buildAdminCurriculumReplenishmentSteps(deps);
+  const pack = await getActivePack();
   const reviewQueue = (await deps.ruby.listDraftPackRecords())
-    .map(adminCurriculumReviewDraftSummary)
+    .map((draft) => adminCurriculumReviewDraftSummary(draft, pack))
     .filter((draft): draft is AdminCurriculumReviewDraftSummary => !!draft)
     .sort((a, b) => b.updatedAt - a.updatedAt || a.name.localeCompare(b.name));
   return {
@@ -469,7 +474,10 @@ function adminCurriculumDraftSummary(
   };
 }
 
-function adminCurriculumReviewDraftSummary(draft: StoredDraftContentPackRecord): AdminCurriculumReviewDraftSummary | null {
+function adminCurriculumReviewDraftSummary(
+  draft: StoredDraftContentPackRecord,
+  pack: ContentPack,
+): AdminCurriculumReviewDraftSummary | null {
   if (draft.ownerUserId !== "admin:curriculum" || draft.ownerSessionId !== "admin:curriculum") return null;
   const teacher = draft.teachers.find((entry) => entry.clientRequestId?.startsWith("curriculum-replenishment:"));
   if (!teacher?.clientRequestId) return null;
@@ -485,7 +493,32 @@ function adminCurriculumReviewDraftSummary(draft: StoredDraftContentPackRecord):
     sourceCardCount: draft.teachers.reduce((sum, entry) => sum + entry.sourceCards.length, 0),
     questionCount: draft.teachers.reduce((sum, entry) => sum + entry.questions.length, 0),
     updatedAt: draft.updatedAt,
+    validation: adminCurriculumReviewDraftValidation(teacher, grade, facultyId, pack),
   };
+}
+
+function adminCurriculumReviewDraftValidation(
+  teacher: StoredDraftTeacherRecord,
+  grade: string,
+  facultyId: string,
+  pack: ContentPack,
+): AdminCurriculumReviewDraftSummary["validation"] {
+  const targetFile = BUILT_IN_QUESTION_FILES[facultyId];
+  if (!targetFile || !BUILT_IN_GENERATOR_FACULTY_IDS.has(facultyId)) {
+    return { ok: false, errors: ["Only built-in teacher curriculum drafts can be exported."] };
+  }
+  if (!isGrade(grade)) return { ok: false, errors: ["Draft curriculum request id is invalid."] };
+  if (teacher.questions.length === 0) {
+    return { ok: false, errors: ["Review and generate questions in the draft before exporting."] };
+  }
+  const faculty = pack.faculty.find((entry) => entry.id === facultyId);
+  if (!faculty) return { ok: false, errors: ["Built-in teacher was not found."] };
+  return validateCurriculumCandidateQuestions({
+    facultyId,
+    targetMinGrade: grade,
+    questions: teacher.questions,
+    existingQuestions: faculty.questions,
+  });
 }
 
 async function exportAdminCurriculumDraft(
@@ -2136,13 +2169,18 @@ async function postTelegramSnapshot() {
     function curriculumReviewQueueTable(rows) {
       rows = rows || [];
       if (!rows.length) return "";
-      return "<table><thead><tr><th>Curriculum Review Queue</th><th>Cards</th><th>Action</th></tr></thead><tbody>" + rows.map((row) => {
+      return "<table><thead><tr><th>Curriculum Review Queue</th><th>Cards</th><th>Status</th><th>Action</th></tr></thead><tbody>" + rows.map((row) => {
         const label = "Grade " + esc(row.grade) + " · " + esc(row.facultyId);
         const sub = esc(row.name || row.id) + "<div class=\\"sub\\">request " + esc(row.requestDay || "unknown") + "</div>";
-        const action = row.questionCount > 0
+        const validation = row.validation || { ok: row.questionCount > 0, errors: [] };
+        const errors = (validation.errors || []).slice(0, 2);
+        const status = validation.ok
+          ? "Ready<div class=\\"sub\\">validation passed</div>"
+          : "Needs review" + (errors.length ? "<div class=\\"sub\\">" + errors.map(esc).join("<br>") + "</div>" : "");
+        const action = validation.ok
           ? "<button class=\\"secondary curriculum-export-btn\\" type=\\"button\\" data-draft-id=\\"" + esc(row.id) + "\\">Export</button><div class=\\"sub\\">" + esc(time(row.updatedAt)) + "</div>"
-          : "<span class=\\"sub\\">Generate questions first</span><div class=\\"sub\\">" + esc(time(row.updatedAt)) + "</div>";
-        return "<tr><td>" + label + "<div class=\\"sub\\">" + sub + "</div></td><td>" + n(row.questionCount) + " q / " + n(row.sourceCardCount) + " src</td><td>" + action + "</td></tr>";
+          : "<span class=\\"sub\\">" + (row.questionCount > 0 ? "Fix validation first" : "Generate questions first") + "</span><div class=\\"sub\\">" + esc(time(row.updatedAt)) + "</div>";
+        return "<tr><td>" + label + "<div class=\\"sub\\">" + sub + "</div></td><td>" + n(row.questionCount) + " q / " + n(row.sourceCardCount) + " src</td><td>" + status + "</td><td>" + action + "</td></tr>";
       }).join("") + "</tbody></table>";
     }
     function logTable(rows) {

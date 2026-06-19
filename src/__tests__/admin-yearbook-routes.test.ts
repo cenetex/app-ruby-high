@@ -1859,6 +1859,23 @@ describe("admin metrics route", () => {
     expect(persistedDrafts[0]!.teachers[0]!.sourceCards.length).toBeGreaterThan(0);
 
     response = await appRoute({
+      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
+      authorizationHeader: "Bearer admin-test-token",
+    });
+    expect(response.body.reviewQueue).toEqual([
+      expect.objectContaining({
+        id: persistedDrafts[0]!.id,
+        facultyId: "ruby",
+        grade: "10",
+        questionCount: 0,
+        validation: {
+          ok: false,
+          errors: ["Review and generate questions in the draft before exporting."],
+        },
+      }),
+    ]);
+
+    response = await appRoute({
       method: "POST",
       path: "/api/apps/ruby-high/admin/curriculum/replenishment",
       authorizationHeader: "Bearer admin-test-token",
@@ -1902,6 +1919,19 @@ describe("admin metrics route", () => {
         }],
       }],
     });
+    response = await appRoute({
+      path: "/api/apps/ruby-high/admin/curriculum/replenishment",
+      authorizationHeader: "Bearer admin-test-token",
+    });
+    expect(response.body.reviewQueue[0]).toMatchObject({
+      id: persistedDrafts[0]!.id,
+      questionCount: 1,
+      validation: {
+        ok: false,
+        errors: [expect.stringContaining("duplicates existing built-in question")],
+      },
+    });
+
     response = await appRoute({
       method: "POST",
       path: "/api/apps/ruby-high/admin/curriculum/replenishment",
@@ -1950,6 +1980,10 @@ describe("admin metrics route", () => {
         teacherCount: 1,
         questionCount: 1,
         sourceCardCount: persistedDrafts[0]!.teachers[0]!.sourceCards.length,
+        validation: {
+          ok: true,
+          errors: [],
+        },
       }),
     ]);
 
