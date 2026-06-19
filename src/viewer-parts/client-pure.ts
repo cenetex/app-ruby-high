@@ -1596,6 +1596,32 @@ export function worldFeedRoomPressureLabel(room: unknown, termRules: unknown): s
   return label + ": " + targetText + "room goal";
 }
 
+export function worldFeedCurriculumPressureLabel(room: unknown, curriculumLoops: unknown): string {
+  const record = room && typeof room === "object" ? room as LooseRecord : {};
+  if (record.grade == null) return "";
+  const loopsRecord = curriculumLoops && typeof curriculumLoops === "object" ? curriculumLoops as LooseRecord : null;
+  const byGrade = loopsRecord && loopsRecord.byGrade && typeof loopsRecord.byGrade === "object" ? loopsRecord.byGrade as LooseRecord : null;
+  const gradeLoops = byGrade && byGrade[String(record.grade)] && typeof byGrade[String(record.grade)] === "object"
+    ? byGrade[String(record.grade)] as LooseRecord
+    : null;
+  if (!gradeLoops) return "";
+  const inReview = Math.max(0, Math.floor(Number(gradeLoops.inReview || 0)));
+  const promoted = Math.max(0, Math.floor(Number(gradeLoops.promoted || 0)));
+  const parts: string[] = [];
+  if (inReview > 0) parts.push(inReview + " in review");
+  if (promoted > 0) parts.push(promoted + " promoted");
+  return parts.length > 0 ? "Curriculum: " + parts.join(", ") : "";
+}
+
+export function worldFeedRoomPressureText(room: unknown, summary: unknown): string {
+  const record = summary && typeof summary === "object" ? summary as LooseRecord : {};
+  const pressure = [
+    worldFeedRoomPressureLabel(room, record.termRules),
+    worldFeedCurriculumPressureLabel(room, record.curriculumLoops),
+  ].filter(Boolean);
+  return pressure.join(" · ");
+}
+
 export function worldFeedRoomViews(rooms: unknown, roster: unknown, termRulesOrLimit: unknown = null, limitInput?: unknown): WorldFeedRoomView[] {
   const termRules = typeof termRulesOrLimit === "number" ? null : termRulesOrLimit;
   const limit = typeof termRulesOrLimit === "number" ? termRulesOrLimit : limitInput ?? 5;
@@ -1611,6 +1637,25 @@ export function worldFeedRoomViews(rooms: unknown, roster: unknown, termRulesOrL
         meta: goalLabel || (activeStudents === 1 ? "1 student active" : activeStudents + " students active"),
       };
       const pressureText = worldFeedRoomPressureLabel(record, termRules);
+      if (pressureText) view.pressureText = pressureText;
+      return view;
+    });
+}
+
+export function worldFeedRoomViewsForSummary(rooms: unknown, roster: unknown, summary: unknown, limitInput: unknown = 5): WorldFeedRoomView[] {
+  const limit = Math.max(0, Math.floor(Number(limitInput) || 5));
+  return (Array.isArray(rooms) ? rooms : [])
+    .slice(0, limit)
+    .map((room) => {
+      const record = room && typeof room === "object" ? room as LooseRecord : {};
+      const activeStudents = Math.max(0, Math.floor(Number(record.activeStudents || 0)));
+      const goal = record.goal && typeof record.goal === "object" ? record.goal as LooseRecord : null;
+      const goalLabel = goal && goal.label ? String(goal.label) : "";
+      const view: WorldFeedRoomView = {
+        title: worldFeedRoomTitle(record, roster),
+        meta: goalLabel || (activeStudents === 1 ? "1 student active" : activeStudents + " students active"),
+      };
+      const pressureText = worldFeedRoomPressureText(record, summary);
       if (pressureText) view.pressureText = pressureText;
       return view;
     });
@@ -1640,7 +1685,7 @@ export function worldFeedPanelView(state: unknown, roster: unknown, now: unknown
   const rooms = Array.isArray(record.activeRooms) ? record.activeRooms : [];
   return {
     summary: worldFeedSummaryLabel(record.activeStudents, rooms, record.error, record.summary),
-    rooms: worldFeedRoomViews(rooms, roster, record.summary && typeof record.summary === "object" ? (record.summary as LooseRecord).termRules : null, 5),
+    rooms: worldFeedRoomViewsForSummary(rooms, roster, record.summary, 5),
     events: worldFeedEventViews(record.events, now, 3),
   };
 }

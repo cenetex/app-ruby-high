@@ -291,9 +291,12 @@ outcomes without requiring crypto participation.
    include explicit grade-scoped cohort-term entities with their own sparks,
    active room rule, curriculum-loop counts, and recent loop history; admin
    world health now exposes derived durable/recent cohort-term counts from
-   those embedded entities. Next, decide whether cohort-term entities need
-   their own persistence namespace or can remain embedded in the term record
-   until the next MMO loop proves it.
+   those embedded entities. The typed world-panel view now also renders
+   grade-scoped curriculum-loop pressure on matching room chips, so rooms show
+   both term-rule and teacher-research pressure without adding unchecked client
+   branching. Next, decide whether cohort-term entities need their own
+   persistence namespace or can remain embedded in the term record until the
+   next MMO loop proves it.
 3. [#143](https://github.com/cenetex/app-ruby-high/issues/143): durable room
    outcomes now carry sanitized room titles, aggregate completion summaries,
    Study Spark reward labels, and a recent-outcomes admin health surface.

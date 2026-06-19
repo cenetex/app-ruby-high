@@ -10,9 +10,12 @@ import {
   worldFeedFacultyLabel,
   worldFeedGradeLabel,
   worldFeedPanelView,
+  worldFeedCurriculumPressureLabel,
   worldFeedRoomPressureLabel,
+  worldFeedRoomPressureText,
   worldFeedRoomTitle,
   worldFeedRoomViews,
+  worldFeedRoomViewsForSummary,
   worldFeedSummaryLabel,
   worldFeedTermRuleLabels,
 } from "../viewer-parts/client-pure.js";
@@ -170,6 +173,27 @@ describe("viewer world feed pure helpers", () => {
     })).toBe("");
   });
 
+  it("formats room-selection pressure from grade-scoped curriculum loops", () => {
+    const summary = {
+      termRules: {
+        byGrade: {
+          "10": { label: "Term Momentum", target: 2 },
+        },
+      },
+      curriculumLoops: {
+        byGrade: {
+          "10": { inReview: 1, promoted: 2 },
+          "11": { inReview: 0, promoted: 1 },
+        },
+      },
+    };
+
+    expect(worldFeedCurriculumPressureLabel({ grade: "10" }, summary.curriculumLoops)).toBe("Curriculum: 1 in review, 2 promoted");
+    expect(worldFeedCurriculumPressureLabel({ grade: "11" }, summary.curriculumLoops)).toBe("Curriculum: 1 promoted");
+    expect(worldFeedCurriculumPressureLabel({ grade: "9" }, summary.curriculumLoops)).toBe("");
+    expect(worldFeedRoomPressureText({ grade: "10" }, summary)).toBe("Term Momentum: 2-student room goal · Curriculum: 1 in review, 2 promoted");
+  });
+
   it("builds compact world panel view models for the DOM renderer", () => {
     const now = Date.UTC(2026, 5, 18, 12);
     const roster = [
@@ -193,6 +217,11 @@ describe("viewer world feed pure helpers", () => {
             "10": { label: "Term Momentum", target: 2 },
           },
         },
+        curriculumLoops: {
+          byGrade: {
+            "10": { inReview: 1, promoted: 0 },
+          },
+        },
       },
     };
 
@@ -208,6 +237,14 @@ describe("viewer world feed pure helpers", () => {
         pressureText: "Term Momentum: 2-student room goal",
       },
     ]);
+    expect(worldFeedRoomViewsForSummary(state.activeRooms, roster, state.summary)).toEqual([
+      { title: "Freshman · Ruby", meta: "1 student active" },
+      {
+        title: "Sophomore · Sally Science",
+        meta: "Sally Science live class 2/3",
+        pressureText: "Term Momentum: 2-student room goal · Curriculum: 1 in review",
+      },
+    ]);
     expect(worldFeedEventViews(state.events, now)).toEqual([
       { id: "world:event:a", label: "Ruby started class", age: "1m" },
       { id: "world:event:b", label: "Comic page unlocked", age: "2m" },
@@ -219,7 +256,7 @@ describe("viewer world feed pure helpers", () => {
         {
           title: "Sophomore · Sally Science",
           meta: "Sally Science live class 2/3",
-          pressureText: "Term Momentum: 2-student room goal",
+          pressureText: "Term Momentum: 2-student room goal · Curriculum: 1 in review",
         },
       ],
       events: [

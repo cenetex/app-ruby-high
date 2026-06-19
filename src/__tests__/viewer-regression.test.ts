@@ -123,7 +123,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function worldFeedRoomTitle");
     expectScriptToContain(script, "function worldFeedSummaryLabel");
     expectScriptToContain(script, "function worldFeedRoomPressureLabel");
+    expectScriptToContain(script, "function worldFeedCurriculumPressureLabel");
+    expectScriptToContain(script, "function worldFeedRoomPressureText");
     expectScriptToContain(script, "function worldFeedRoomViews");
+    expectScriptToContain(script, "function worldFeedRoomViewsForSummary");
     expectScriptToContain(script, "function worldFeedEventViews");
     expectScriptToContain(script, "function worldFeedPanelView");
     expectScriptToContain(script, "function worldFeedEventsUrl");
