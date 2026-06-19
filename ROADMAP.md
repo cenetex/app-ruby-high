@@ -229,8 +229,10 @@ outcomes without requiring crypto participation.
    outcomes now carry sanitized room titles, aggregate completion summaries,
    Study Spark reward labels, and a recent-outcomes admin health surface.
    Durable teacher agendas now carry aggregate execution status, reason, next
-   action, and priority score with admin health counts. Next, test replay after
-   restart with JSON/dev and SQLite-compatible state.
+   action, and priority score with admin health counts. JSON/dev and
+   SQLite-backed restart replay tests now prove sanitized events, outcomes, and
+   agendas hydrate without private sessions. Next, expand replay acceptance into
+   richer room/term progression once those entities are added.
 4. [#142](https://github.com/cenetex/app-ruby-high/issues/142): add public-name
    review policy and clearer player-facing public-profile language before the
    richer room loop makes public presence more visible.

@@ -26,8 +26,9 @@ store contributor names, answers, raw session ids, OpenRouter keys, prompt text,
 2. Keep hydration tolerant: unknown versions and malformed entries must be ignored, not thrown.
 3. Keep write records sanitized and bounded before calling `saveServiceState`.
 4. Add or update tests that hydrate from mixed malformed/future records and verify public APIs remain empty or sanitized.
-5. Run `npm test -- ruby-high-service admin-yearbook-routes` and `npm run check:full`.
-6. Watch admin world health after deploy: durable room records, durable room outcomes, teacher agenda ready/queued/watching counts, live-room goals, public replay size, suppressed events, and summary counts.
+5. Add or update restart/replay coverage for both JSON/dev `StateStore` and SQLite-backed service state when durable world rows change.
+6. Run `npm test -- ruby-high-service admin-yearbook-routes` and `npm run check:full`.
+7. Watch admin world health after deploy: durable room records, durable room outcomes, teacher agenda ready/queued/watching counts, live-room goals, public replay size, suppressed events, and summary counts.
 
 ## Rollback
 

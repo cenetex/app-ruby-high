@@ -9,6 +9,7 @@ import {
   WELCOME_HALL_PASS_GRANT,
   WELCOME_HALL_PASS_GRANT_ID,
 } from "../services/ruby-high-service.js";
+import { SqliteStateStore } from "../services/sqlite-state-store.js";
 import { StateStore, type StateStoreLike, type StoredServiceStateRecord } from "../services/state-store.js";
 import { getLoadedPack, MAX_PACKS_PER_OWNER, registerPack, resetActivePack } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
@@ -2398,6 +2399,169 @@ describe("RubyHighService Phase 1", () => {
       ],
     });
   });
+
+  for (const backend of ["json", "sqlite"] as const) {
+    it(`replays durable public-world state after restart from ${backend} store`, async () => {
+      const now = Date.UTC(2026, 5, 16, 12);
+      const schoolYear = "2025-2026";
+      const records: StoredServiceStateRecord[] = [
+        {
+          id: "ruby-high:public-world-events:v1",
+          updatedAt: now,
+          data: {
+            version: 1,
+            events: [
+              {
+                id: "world:event:aaaaaaaaaaaaaaaa",
+                kind: "room.goal-progress",
+                at: now,
+                faculty: "ruby",
+                grade: "10",
+                roomTitle: "Ruby room",
+                goalKind: "live-class",
+                progress: 3,
+                target: 3,
+                complete: true,
+                label: "Ruby filled a live class goal",
+                rewardLabel: "Ruby earned a class-wide Study Spark",
+              },
+            ],
+          },
+        },
+        {
+          id: "ruby-high:public-world-room-outcomes:v1",
+          updatedAt: now,
+          data: {
+            version: 1,
+            outcomes: [
+              {
+                day: "2026-06-16",
+                schoolYear,
+                termId: schoolYear,
+                grade: "10",
+                facultyId: "ruby",
+                displayName: "Ruby",
+                goalKind: "live-class",
+                roomTitle: "Ruby room",
+                summaryLabel: "Ruby live class completed 3/3 with 3 contributors",
+                rewardKind: "study-spark",
+                rewardLabel: "Ruby earned a class-wide Study Spark",
+                progress: 3,
+                target: 3,
+                contributorCount: 3,
+                completedAt: now,
+                createdAt: now,
+              },
+            ],
+          },
+        },
+        {
+          id: "ruby-high:public-world-teacher-agendas:v1",
+          updatedAt: now,
+          data: {
+            version: 1,
+            agendas: [
+              {
+                schoolYear,
+                termId: schoolYear,
+                grade: "10",
+                facultyId: "ruby",
+                displayName: "Ruby",
+                agendaKind: "curriculum-replenishment",
+                mode: "generate",
+                executionStatus: "ready",
+                executionReason: "exhausted-pool",
+                nextAction: "generate-draft",
+                priorityScore: 125,
+                targetDifficulty: "easy",
+                targetNewQuestions: 12,
+                lowPoolSessions: 1,
+                exhaustedSessions: 1,
+                repetitionPressure: 0,
+                focusSubjects: ["systems"],
+                weakSubjects: ["systems"],
+                recentConcepts: ["B-trees"],
+                sourcePacketIds: ["ruby-btrees"],
+                corpusId: "ruby",
+                generatedAt: now,
+                updatedAt: now,
+              },
+            ],
+          },
+        },
+      ];
+      const jsonPath = join(tmpDir, `world-replay-${backend}.json`);
+      const sqlitePath = join(tmpDir, `world-replay-${backend}.db`);
+      let writer: StateStore | SqliteStateStore | null = backend === "json"
+        ? new StateStore(jsonPath, { debounceMs: 0 })
+        : new SqliteStateStore({ path: sqlitePath, ttlSeconds: 0 });
+      for (const record of records) await writer.saveServiceState(record);
+      await writer.flush?.();
+      if (writer instanceof SqliteStateStore) writer.close();
+      writer = null;
+
+      const reader = backend === "json"
+        ? new StateStore(jsonPath, { debounceMs: 0 })
+        : new SqliteStateStore({ path: sqlitePath, ttlSeconds: 0 });
+      let ruby: RubyHighService | null = null;
+      try {
+        ruby = new RubyHighService({} as never, reader);
+        await ruby["hydrate"]();
+        activeRuby = ruby;
+
+        expect(ruby.getSchoolWorldEvents(10, now + 1)).toEqual([
+          expect.objectContaining({
+            kind: "room.goal-progress",
+            complete: true,
+            rewardLabel: "Ruby earned a class-wide Study Spark",
+          }),
+        ]);
+        expect(ruby.worldHealthSnapshot(now + 1)).toMatchObject({
+          activeStudents: 0,
+          publicEventLogSize: 1,
+          recentEvents: 1,
+          durableRoomOutcomes: 1,
+          recentRoomOutcomes: [
+            expect.objectContaining({
+              summaryLabel: "Ruby live class completed 3/3 with 3 contributors",
+              rewardKind: "study-spark",
+            }),
+          ],
+          durableTeacherAgendas: 1,
+          teacherAgendaExecution: {
+            ready: 1,
+            queued: 0,
+            watching: 0,
+          },
+          recentTeacherAgendas: [
+            expect.objectContaining({
+              executionStatus: "ready",
+              nextAction: "generate-draft",
+              priorityScore: 125,
+            }),
+          ],
+          summary: {
+            roomGoalEvents: {
+              total: 1,
+              complete: 1,
+            },
+            studySparks: {
+              total: 1,
+              byGrade: {
+                "10": 1,
+              },
+            },
+          },
+        });
+      } finally {
+        if (ruby) {
+          await ruby.stop();
+          if (activeRuby === ruby) activeRuby = null;
+        }
+        if (reader instanceof SqliteStateStore) reader.close();
+      }
+    });
+  }
 
   it("ignores unknown or malformed durable public-world state during migration rollback", async () => {
     const now = Date.UTC(2026, 5, 16, 12);
