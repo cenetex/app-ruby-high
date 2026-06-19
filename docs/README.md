@@ -9,6 +9,11 @@ Reference docs. The three entry points stay at the repo root:
 ## Distribution
 - [`MARKETING.md`](./MARKETING.md) — the marketing-events pipeline (Amanda Iacone is one row, not the whole funnel)
 
+## Engineering roadmap
+- [`../ROADMAP.md`](../ROADMAP.md) — issue-backed MMO-readiness and revenue roadmap
+- [`issue-implementation-pr-draft-2026-06-18.md`](./issue-implementation-pr-draft-2026-06-18.md) — PR #138 implementation/review notes
+- [`world-state-runbook.md`](./world-state-runbook.md) — durable public-world state migration and rollback runbook
+
 ## NFT / economy
 - [`nft/ECONOMICS_NFTNOMICS_AUDIT.md`](./nft/ECONOMICS_NFTNOMICS_AUDIT.md) — Merit Stars / Hall Passes / pack economy audit
 - [`nft/NFT_FIRST_BELL_SET_DRAFT.md`](./nft/NFT_FIRST_BELL_SET_DRAFT.md) — the First Bell set definition

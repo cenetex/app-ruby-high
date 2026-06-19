@@ -1,28 +1,39 @@
 # Ruby High · Roadmap
 
-## MMO-readiness roadmap — 2026-06-18
+## MMO-readiness roadmap — 2026-06-19
 
-This section is grounded in the current GitHub issue tracker for
-`cenetex/app-ruby-high` plus the deployed Ruby High state as of June 18, 2026.
-The tracker has **no open MMO/multiplayer feature issues yet**; the open issues
-are mostly reliability, security, and maintainability work that should become
-the runway for MMO development rather than a parallel pile of guesses.
+This section is grounded in the open GitHub issue tracker for
+`cenetex/app-ruby-high` plus PR
+[#138](https://github.com/cenetex/app-ruby-high/pull/138). The goal is to keep
+Ruby High's multiplayer direction tied to explicit issues and acceptance gates
+instead of drifting into vibe-only product work.
+
+As of June 19, 2026, #138 is green on GitHub Actions and contains the first
+issue-backed MMO runway: deploy/security hardening, browser smoke, public world
+projection, typed viewer seams, live-room goal contributions, curriculum
+research plumbing, presence/moderation controls, and durable public-world state.
 
 ### Tracker audit
 
 | Issue | Status | Roadmap meaning |
 |---|---:|---|
-| [#122 Return 400 for unknown viewer command types](https://github.com/cenetex/app-ruby-high/issues/122) | Implemented locally; ready for PR/CI | **P0 pre-MMO hardening.** Unknown mutation commands now fail closed with a 400 before mutating state. |
-| [#121 Harden creator materials URL ingestion](https://github.com/cenetex/app-ruby-high/issues/121) | Implemented locally; ready for PR/CI | **P1 security.** Creator/import URL ingestion is constrained by host allowlisting, raw GitHub normalization, private-network rejection, redirect checks, and size limits. |
-| [#120 Make the Privy browser bundle cacheable or smaller](https://github.com/cenetex/app-ruby-high/issues/120) | Implemented locally; ready for PR/CI | **P2 performance.** Versioned Privy bundle requests are immutable-cacheable and the bundle-size guard now protects the lazy account widget payload. |
-| [#119 Harden viewer auth-token handling and CSP](https://github.com/cenetex/app-ruby-high/issues/119) | Implemented locally; ready for PR/CI | **P1 security.** Browser-owned OpenRouter keys default to session scope, legacy local keys migrate down unless persistence is explicit, and inline viewer scripts use hashes instead of broad `unsafe-inline`. |
-| [#118 Add Playwright browser smoke tests](https://github.com/cenetex/app-ruby-high/issues/118) | Implemented; ready to close after CI run | **Tracker cleanup.** Playwright browser smoke exists locally and in a dedicated Actions workflow for viewer/browser PRs. |
-| [#117 Refactor inline viewer client into typed modules](https://github.com/cenetex/app-ruby-high/issues/117) | Open, first slice implemented | **P1 maintainability.** The MMO-facing public world feed now has typed pure helpers; continue extracting UI areas before adding larger multiplayer surfaces. |
-| [#65 Deploy Workflow Failed: deploy-fly](https://github.com/cenetex/app-ruby-high/issues/65) | Open but stale | **Tracker cleanup.** Current deploys and prod smoke pass; confirm the historical run is no longer actionable, then close or replace with a living deploy-health issue. |
+| [#143 MMO: durable room and world state model](https://github.com/cenetex/app-ruby-high/issues/143) | Open, first durable slices in #138 | **P0 MMO data model.** Live-room goals, public event replay, summary counters, moderation suppression state, and rollback docs are durable; next is turning those records into a fuller room/term model. |
+| [#142 MMO: public presence and moderation controls](https://github.com/cenetex/app-ruby-high/issues/142) | Open, MVP in #138 | **P0 safety.** Public presence toggle, per-player hide/report, admin moderation snapshot, report dismissal, global suppression, and action throttles exist; next is stronger public-name/profile policy and operator workflow. |
+| [#141 MMO: teacher curriculum research loop](https://github.com/cenetex/app-ruby-high/issues/141) | Open, first loop in #138 | **P1 content engine.** Teacher corpora metadata, replenishment proposals, validation, review readiness, runtime promotion, weak-subject and repetition signals exist; next is automatic generation from coverage exhaustion plus richer reviewer approval. |
+| [#140 MMO: typed public-world viewer module](https://github.com/cenetex/app-ruby-high/issues/140) | Open, several seams in #138 | **P1 maintainability.** World feed, world panel, lifecycle wiring, race/question/leaderboard/progress models are typed; next is extracting larger public-world action/UI surfaces out of `viewer-parts/client.ts`. |
+| [#139 MMO: live class rooms MVP](https://github.com/cenetex/app-ruby-high/issues/139) | Open, two-client goal path in #138 | **P1 gameplay.** Two guest sessions can contribute to a room goal and observe sanitized public progress; next is richer room rules, visible cooperative rewards, and less dev-helper coverage. |
+| [#122 Return 400 for unknown viewer command types](https://github.com/cenetex/app-ruby-high/issues/122) | Fixed in #138; close after merge | **P0 pre-MMO hardening.** Unknown mutation commands fail closed with a 400 before mutating state. |
+| [#121 Harden creator materials URL ingestion](https://github.com/cenetex/app-ruby-high/issues/121) | Fixed in #138; close after merge | **P1 security.** Creator/import URL ingestion is constrained by host allowlisting, raw GitHub normalization, private-network rejection, redirect checks, and size limits. |
+| [#120 Make the Privy browser bundle cacheable or smaller](https://github.com/cenetex/app-ruby-high/issues/120) | Fixed in #138; close after merge | **P2 performance.** Versioned Privy bundle requests are immutable-cacheable and the bundle-size guard protects the lazy account widget payload. |
+| [#119 Harden viewer auth-token handling and CSP](https://github.com/cenetex/app-ruby-high/issues/119) | Fixed in #138; close after merge | **P1 security.** Browser-owned OpenRouter keys default to session scope, legacy local keys migrate down unless persistence is explicit, and inline viewer scripts use hashes instead of broad `unsafe-inline`. |
+| [#118 Add Playwright browser smoke tests](https://github.com/cenetex/app-ruby-high/issues/118) | Fixed in #138; close after merge | **Tracker cleanup.** Playwright browser smoke exists locally and in a dedicated Actions workflow for viewer/browser PRs. |
+| [#117 Refactor inline viewer client into typed modules](https://github.com/cenetex/app-ruby-high/issues/117) | Open, many slices in #138 | **P1 maintainability.** Continue extracting UI areas before adding larger multiplayer surfaces. |
+| [#65 Deploy Workflow Failed: deploy-fly](https://github.com/cenetex/app-ruby-high/issues/65) | Open but stale | **Tracker cleanup.** Current PR deploy verification is green; close or replace after confirming `main` no longer has that historical failure mode. |
 
 ### Current readiness evidence
 
-- Production deploy is healthy on Fly and post-deploy smoke passes.
+- GitHub Actions are green on PR #138: deploy verify, lockfile, and browser
+  smoke pass; deploy is correctly skipped for the PR branch.
 - Built-in curriculum is expanded to 600 questions: Ruby, Sally Science, and
   Professor Edward each expose 200 questions in prod health/session telemetry.
 - Public world surfaces exist:
@@ -32,39 +43,36 @@ the runway for MMO development rather than a parallel pile of guesses.
 - Route tests cover live stream cursors, heartbeats, reconnects,
   same-millisecond events, client close/write-failure cleanup, per-client live
   stream caps, and sanitized public projections.
+- Browser smoke covers guest boot, full grade 9-12 journey, comic unlock modal,
+  public world-feed stream rollover, two-client live-room progress, and
+  desktop/mobile framing.
 
 ### Phase 0 — Close the tracker gap
 
-Goal: get the issue tracker to tell the truth before inventing new MMO tickets.
+Goal: keep the issue tracker accurate while PR #138 moves toward merge.
 
-- Close or update #118 after confirming the browser smoke suite satisfies the
-  original acceptance criteria.
-- Close or replace #65 after confirming the current `deploy-fly` failure is stale.
-- Land #119-#122 through PR/CI before adding new multiplayer commands; public
-  multiplayer command and import surfaces should fail closed by default.
-- First-class MMO issues now exist for the work below so this roadmap stays tied
-  to GitHub, not memory.
+- Merge #138 only while deploy verify, lockfile, and browser smoke are green.
+- Close #118-#122 after #138 lands and passes on `main`.
+- Close or replace #65 after checking current `deploy-fly` history on `main`.
+- Leave #117 and #139-#143 open as the active MMO runway.
 
 Acceptance gate: open issues distinguish stale/resolved work from active
-blockers, and the tracker contains explicit MMO milestone issues.
+blockers, and every MMO slice maps to #117 or #139-#143.
 
 ### Phase 1 — Multiplayer-safe foundation
 
 Goal: make the current app safe to extend into shared-world play.
 
 - Keep #119 and #121 fixes under regression coverage as public surfaces grow:
-  viewer token storage/CSP and creator URL imports are now guarded locally.
+  viewer token storage/CSP and creator URL imports are now guarded in #138.
 - Continue #117 by extracting the public world/feed client behind typed
-  interfaces. Cursor math, event pruning, event labels, room titles, and compact
-  summary formatting now live in `client-pure.ts`; SSE request sequencing,
-  backoff, cursor replay, snapshots, and event merging now live in
-  `viewer-parts/world-feed.ts`; compact world-panel room/event render models
-  plus race-strip timer/card and blackboard question-prompt render models also
-  live in typed helpers. Honor Roll leaderboard row/header models are now typed
-  too, with the header rendered without string HTML, and the top-bar arc
-  indicator plus classmate/channel-rail arc labels, year meters, and room
-  completion meters are now typed. The next slice should move larger viewer
-  surfaces behind module boundaries before larger multiplayer UI is added.
+  interfaces. Cursor math, event pruning, event labels, room titles, summary
+  formatting, SSE sequencing/backoff/replay, snapshots, event merging,
+  world-panel render models, race-strip models, question prompts, Honor Roll
+  rows, arc indicators, progress labels, and public-world lifecycle wiring now
+  live in typed helpers. The next slice should move public-world actions and
+  larger viewer surfaces behind module boundaries before larger multiplayer UI
+  is added.
 - Keep the public world smoke guard in every deploy.
 
 Acceptance gate: new multiplayer UI can be added without expanding the most
@@ -75,7 +83,8 @@ security boundaries.
 
 Goal: turn the existing public world feed into gameplay.
 
-Build a minimal room loop around the structures that already exist:
+The first minimal room loop exists in #138. Build the player-facing version
+around those structures:
 
 - Grade/faculty rooms show active students, recent class events, and curriculum
   pressure.
@@ -85,6 +94,8 @@ Build a minimal room loop around the structures that already exist:
   consent-aware.
 - The world feed emits room-level progress events that clients can replay with
   existing cursors.
+- Browser tests should move from dev-helper contribution coverage toward a
+  normal answer-flow contribution path once the public UI rules are stable.
 
 Acceptance gate: two anonymous/guest sessions can contribute to the same room
 goal and both clients observe progress through the public world feed without
@@ -94,11 +105,16 @@ private state leakage.
 
 Goal: make question generation a teacher research loop, not one-off expansion.
 
-- Store hand-authored teacher research corpora as durable content inputs.
+- Store hand-authored teacher research corpora as durable content inputs. The
+  current teacher corpus metadata is a start; it should deepen into specific
+  reading lists, research interests, disallowed repetition patterns, and grade
+  lanes.
 - Track per-teacher coverage, repetition, weak pools, and recent generated
-  concepts.
+  concepts. #138 exposes these signals to replenishment planning.
 - Add a generation queue that proposes new questions only when a pool is weak,
-  then validates and promotes candidates through tests/check scripts.
+  then validates and promotes candidates through tests/check scripts. #138 has a
+  proposal queue and runtime promotion; the next step is automatic generation
+  from coverage exhaustion using the teacher corpus rather than blind expansion.
 - Keep first-grade sets curated and narrow; allow higher grades to become more
   expansive.
 
@@ -110,14 +126,15 @@ new content without editing source JSON by hand.
 
 Goal: stop deriving the MMO entirely from private session state.
 
-Introduce explicit durable entities only when Phase 2 proves the loop:
+Phase 2 has proved the first loop enough to introduce explicit durable entities
+incrementally:
 
 - rooms/cohorts/terms
-- room goals and outcomes
+- room goals and outcomes (first slice exists in #138)
 - teacher agendas
-- public world events
-- moderation/report records
-- season or school-year summaries
+- public world events (first slice exists in #138)
+- moderation/report records and suppression state (first slice exists in #138)
+- season or school-year summaries (first slice exists in #138)
 
 Acceptance gate: shared room state survives deploys/restarts, has admin
 visibility, and can be replayed independently of any one student's session.
@@ -126,9 +143,13 @@ visibility, and can be replayed independently of any one student's session.
 
 Goal: make public presence safe and legible.
 
-- Public profile/visibility controls beyond the current social consent bit.
-- Report/hide/admin moderation flows for public names and events.
-- Rate limits for public actions, not just HTTP endpoints.
+- Public profile/visibility controls beyond the old social consent bit. #138
+  separates public-world presence from teacher social/X posting consent while
+  preserving the legacy `socialConsent=false` hide behavior.
+- Report/hide/admin moderation flows for public names and events. #138 covers
+  event hide/report, admin review, dismissal, and durable global suppression.
+- Rate limits for public actions, not just HTTP endpoints. #138 adds a tighter
+  public-world safety action limiter.
 - Product language that explains what becomes public before it happens.
 
 Acceptance gate: a user can understand and control their public presence, and an
@@ -147,19 +168,22 @@ Goal: connect Hall Passes, NFTs, cards, and comics to the shared school world.
 Acceptance gate: multiplayer activity creates visible, collectible, shareable
 outcomes without requiring crypto participation.
 
-### New MMO GitHub issues
+### Next implementation slices
 
-1. [#139 MMO: live class rooms MVP](https://github.com/cenetex/app-ruby-high/issues/139)
-   — shared room goal, room progress events, two-client acceptance test.
-2. [#140 MMO: typed public-world viewer module](https://github.com/cenetex/app-ruby-high/issues/140)
-   — extract feed/client rendering from `viewer-parts/client.ts` behind typed
-   pure helpers.
-3. [#141 MMO: teacher curriculum research loop](https://github.com/cenetex/app-ruby-high/issues/141)
-   — corpora, coverage detection, generation queue, validation/promote path.
-4. [#142 MMO: public presence and moderation controls](https://github.com/cenetex/app-ruby-high/issues/142)
-   — visibility settings, report/hide/admin review.
-5. [#143 MMO: durable room/world state model](https://github.com/cenetex/app-ruby-high/issues/143)
-   — explicit room/term/goal records once live class rooms prove the loop.
+1. [#140](https://github.com/cenetex/app-ruby-high/issues/140) / [#117](https://github.com/cenetex/app-ruby-high/issues/117):
+   extract public-world hide/report action wiring and status messaging from
+   `viewer-parts/client.ts` into a typed module with unit tests.
+2. [#141](https://github.com/cenetex/app-ruby-high/issues/141): make automatic
+   replenishment proposals produce candidate drafts from weak-pool signals and
+   teacher corpora, then keep promotion behind validation/review.
+3. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the
+   browser smoke's dev-only live-room contribution helper with a normal answer
+   flow that contributes sanitized room progress.
+4. [#143](https://github.com/cenetex/app-ruby-high/issues/143): introduce
+   explicit room/term records and migrate current derived room summaries into
+   durable state with rollback coverage.
+5. [#142](https://github.com/cenetex/app-ruby-high/issues/142): add operator
+   affordances around repeated reports, public-name review, and moderator notes.
 
 ---
 
