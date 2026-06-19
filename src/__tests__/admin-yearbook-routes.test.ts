@@ -1684,6 +1684,21 @@ describe("admin metrics route", () => {
           publicEventLogLimit: 400,
           liveRoomGoals: 0,
           suppressedEvents: 0,
+          summary: {
+            schoolYear: expect.any(String),
+            eventCount: 2,
+            byKind: {
+              "comic.page-unlocked": 1,
+              "room.goal-progress": 1,
+            },
+            byGrade: {
+              "10": 2,
+            },
+            roomGoalEvents: {
+              total: 1,
+              complete: 0,
+            },
+          },
         },
         photoPosts: {
           schedulerActive: false,

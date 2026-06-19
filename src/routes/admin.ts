@@ -2289,7 +2289,8 @@ async function postTelegramSnapshot() {
       world = world || {};
       const refresh = world.lastRefreshAt ? "refresh " + time(world.lastRefreshAt) : "not refreshed";
       const newest = world.newestEventAt ? " · newest " + time(world.newestEventAt) : "";
-      return "students / events · rooms " + n(world.activeRooms) + " · goals " + n(world.liveRoomGoals) + " · replay " + n(world.publicEventLogSize) + "/" + n(world.publicEventLogLimit) + " · suppressed " + n(world.suppressedEvents) + " · cache " + n(world.durableEventCacheSize) + "/" + n(world.durableEventCacheLimit) + " · " + refresh + newest;
+      const summary = world.summary || {};
+      return "students / events · year " + esc(summary.schoolYear || "n/a") + " · summary " + n(summary.eventCount) + " · rooms " + n(world.activeRooms) + " · goals " + n(world.liveRoomGoals) + " · replay " + n(world.publicEventLogSize) + "/" + n(world.publicEventLogLimit) + " · suppressed " + n(world.suppressedEvents) + " · cache " + n(world.durableEventCacheSize) + "/" + n(world.durableEventCacheLimit) + " · " + refresh + newest;
     }
     function publicReadMetricValue(limiter) {
       limiter = limiter || {};

@@ -2058,6 +2058,28 @@ describe("RubyHighService Phase 1", () => {
     expect(JSON.stringify(publicEventState)).not.toContain("school:event:public-log");
     expect(JSON.stringify(publicEventState)).not.toContain("teacher:ruby:grade:10");
     expect(JSON.stringify(publicEventState)).not.toContain("Replay Noor");
+    const publicSummaryState = await new StateStore(storePath).loadServiceState("ruby-high:public-world-summary:v1");
+    expect(publicSummaryState?.data).toMatchObject({
+      version: 1,
+      summary: {
+        schoolYear: "2025-2026",
+        eventCount: 2,
+        newestEventAt: now + 1,
+        byKind: {
+          "comic.page-unlocked": 1,
+          "room.goal-progress": 1,
+        },
+        byGrade: {
+          "10": 2,
+        },
+        roomGoalEvents: {
+          total: 1,
+          complete: 0,
+        },
+      },
+    });
+    expect(JSON.stringify(publicSummaryState)).not.toContain("school:event:public-log");
+    expect(JSON.stringify(publicSummaryState)).not.toContain("Replay Noor");
 
     await ruby.stop();
     activeRuby = null;
@@ -2078,6 +2100,14 @@ describe("RubyHighService Phase 1", () => {
       activeStudents: 0,
       publicEventLogSize: 2,
       recentEvents: 2,
+      summary: {
+        schoolYear: "2025-2026",
+        eventCount: 2,
+        byKind: {
+          "comic.page-unlocked": 1,
+          "room.goal-progress": 1,
+        },
+      },
     });
   });
 

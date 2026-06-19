@@ -685,6 +685,20 @@ export interface RubyHighWorldHealthSnapshot {
   publicEventLogLimit: number;
   liveRoomGoals: number;
   suppressedEvents: number;
+  summary: PublicWorldSummarySnapshot;
+}
+
+export interface PublicWorldSummarySnapshot {
+  generatedAt: number;
+  schoolYear: string;
+  eventCount: number;
+  newestEventAt: number | null;
+  byKind: Partial<Record<SchoolWorldEvent["kind"], number>>;
+  byGrade: Partial<Record<Grade, number>>;
+  roomGoalEvents: {
+    total: number;
+    complete: number;
+  };
 }
 
 export type { DailyPhotoPostResult, RubyHighPhotoPostSchedulerSnapshot };
@@ -886,6 +900,7 @@ export interface PublicWorldEventSuppressionResult {
 const PUBLIC_WORLD_EVENT_ID_RE = /^world:event:[a-f0-9]{16}$/i;
 const PUBLIC_WORLD_REPORT_REASON_LIMIT = 240;
 const PUBLIC_WORLD_EVENTS_STATE_ID = "ruby-high:public-world-events:v1";
+const PUBLIC_WORLD_SUMMARY_STATE_ID = "ruby-high:public-world-summary:v1";
 const PUBLIC_WORLD_MODERATION_STATE_ID = "ruby-high:public-world-moderation:v1";
 const LIVE_ROOM_GOALS_STATE_ID = "ruby-high:live-room-goals:v1";
 
@@ -1159,6 +1174,7 @@ export class RubyHighService extends Service {
       this.persistAll(),
       this.persistPhotoPostSchedulerState({ surfaceErrors: true }),
       this.persistPublicWorldEventLog({ surfaceErrors: true }),
+      this.persistPublicWorldSummaryState({ surfaceErrors: true }),
       this.persistPublicWorldModerationState({ surfaceErrors: true }),
       this.persistLiveRoomGoalState({ surfaceErrors: true }),
     ]);
@@ -1767,6 +1783,7 @@ export class RubyHighService extends Service {
       publicEventLogLimit: SCHOOL_WORLD_EVENT_CACHE_LIMIT,
       liveRoomGoals: this.liveRoomGoalStates.size,
       suppressedEvents: this.publicWorldSuppressedEvents.size,
+      summary: this.publicWorldSummarySnapshot(now),
     };
   }
 
@@ -1913,6 +1930,57 @@ export class RubyHighService extends Service {
     return save;
   }
 
+  publicWorldSummarySnapshot(now = Date.now()): PublicWorldSummarySnapshot {
+    const events = this.publicWorldEventLogList(now)
+      .filter((event) => !this.publicWorldSuppressedEvents.has(event.id));
+    const byKind: Partial<Record<SchoolWorldEvent["kind"], number>> = {};
+    const byGrade: Partial<Record<Grade, number>> = {};
+    let roomGoalTotal = 0;
+    let roomGoalComplete = 0;
+    for (const event of events) {
+      byKind[event.kind] = (byKind[event.kind] ?? 0) + 1;
+      if (event.grade) byGrade[event.grade] = (byGrade[event.grade] ?? 0) + 1;
+      if (event.kind === "room.goal-progress") {
+        roomGoalTotal += 1;
+        if (event.complete) roomGoalComplete += 1;
+      }
+    }
+    return {
+      generatedAt: now,
+      schoolYear: schoolYearForTimestamp(now),
+      eventCount: events.length,
+      newestEventAt: events[0]?.at ?? null,
+      byKind,
+      byGrade,
+      roomGoalEvents: {
+        total: roomGoalTotal,
+        complete: roomGoalComplete,
+      },
+    };
+  }
+
+  private publicWorldSummaryStateRecord(now = Date.now()): StoredServiceStateRecord {
+    return {
+      id: PUBLIC_WORLD_SUMMARY_STATE_ID,
+      updatedAt: now,
+      data: {
+        version: 1,
+        summary: this.publicWorldSummarySnapshot(now),
+      },
+    };
+  }
+
+  private persistPublicWorldSummaryState(options: { surfaceErrors?: boolean } = {}, now = Date.now()): Promise<void> {
+    if (!this.store.saveServiceState) return Promise.resolve();
+    const record = this.publicWorldSummaryStateRecord(now);
+    const save = this.store.saveServiceState(record).catch((err) => {
+      log.error("public-world-summary.persist-failed", err);
+      if (options.surfaceErrors) throw err;
+    });
+    if (!options.surfaceErrors) this.trackBackgroundWrite(save);
+    return save;
+  }
+
   private syncPublicWorldEventLog(events: Iterable<SchoolWorldEvent>, now = Date.now()): void {
     let changed = this.prunePublicWorldEventLog(now);
     for (const rawEvent of events) {
@@ -1925,7 +1993,10 @@ export class RubyHighService extends Service {
       }
     }
     if (this.prunePublicWorldEventLog(now)) changed = true;
-    if (changed) void this.persistPublicWorldEventLog({}, now);
+    if (changed) {
+      void this.persistPublicWorldEventLog({}, now);
+      void this.persistPublicWorldSummaryState({}, now);
+    }
   }
 
   private prunePublicWorldEventLog(now = Date.now()): boolean {
@@ -2009,6 +2080,7 @@ export class RubyHighService extends Service {
       if (options.surfaceErrors) throw err;
     });
     if (!options.surfaceErrors) this.trackBackgroundWrite(save);
+    if (!options.surfaceErrors) void this.persistPublicWorldSummaryState({}, now);
     return save;
   }
 
@@ -9017,6 +9089,14 @@ function publicWorldStoredText(value: unknown, maxLength: number): string {
 function publicWorldStoredInteger(value: unknown, fallback: number): number {
   const parsed = Math.floor(Number(value));
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function schoolYearForTimestamp(value: number): string {
+  const date = new Date(Number.isFinite(value) ? value : Date.now());
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth();
+  const start = month >= 7 ? year : year - 1;
+  return `${start}-${start + 1}`;
 }
 
 function normalizePublicWorldReportId(value: unknown): string | null {
