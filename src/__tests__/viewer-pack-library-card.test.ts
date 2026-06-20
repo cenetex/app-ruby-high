@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { packLibraryCardView } from "../viewer-parts/client-pure.js";
+import { packLibraryCardView, packTeacherRowView } from "../viewer-parts/client-pure.js";
 
 describe("pack library card view", () => {
   it("describes active built-in packs without switch actions", () => {
@@ -101,6 +101,61 @@ describe("pack library card view", () => {
         { kind: "edit", className: "pack-action", text: "Edit", disabled: false },
         { kind: "delete", className: "pack-action danger", text: "Delete", disabled: false },
       ],
+    });
+  });
+});
+
+describe("pack teacher row view", () => {
+  it("formats selected teacher rows with avatar images and subjects", () => {
+    expect(packTeacherRowView({
+      id: "teacher-ruby",
+      displayName: "Ruby",
+      shortName: "Ruby",
+      subject: "homeroom",
+      questionCount: 1,
+    }, {
+      selected: true,
+      busy: false,
+      avatarUrl: "/assets/ruby-face.png",
+    })).toEqual({
+      className: "pack-teacher-row is-selected",
+      selectDisabled: false,
+      avatarUrl: "/assets/ruby-face.png",
+      avatarText: "R",
+      titleText: "Ruby",
+      subtitleText: "1 card · homeroom",
+      editDisabled: false,
+      deleteDisabled: false,
+    });
+  });
+
+  it("falls back to initials and disables row actions while busy", () => {
+    expect(packTeacherRowView({
+      id: "teacher-logic",
+      displayName: "",
+      subject: "",
+      questionCount: 0,
+    }, {
+      selected: false,
+      busy: true,
+    })).toEqual({
+      className: "pack-teacher-row",
+      selectDisabled: true,
+      avatarUrl: "",
+      avatarText: "T",
+      titleText: "teacher-logic",
+      subtitleText: "0 cards",
+      editDisabled: true,
+      deleteDisabled: true,
+    });
+  });
+
+  it("uses a safe untitled teacher label for missing teacher records", () => {
+    expect(packTeacherRowView(null)).toMatchObject({
+      className: "pack-teacher-row",
+      avatarText: "?",
+      titleText: "Untitled teacher",
+      subtitleText: "0 cards",
     });
   });
 });

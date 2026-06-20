@@ -7760,13 +7760,6 @@ export function runViewerClient(bootstrap) {
       setPackBusy(false);
     }
   }
-  function packTeacherInitial(teacher) {
-    return String((teacher && (teacher.shortName || teacher.displayName || teacher.id)) || "?").charAt(0).toUpperCase();
-  }
-  function packTeacherSubjectsText(teacher) {
-    const count = teacher && typeof teacher.questionCount === "number" ? teacher.questionCount : 0;
-    return count + " card" + (count === 1 ? "" : "s");
-  }
   function renderPackTeacherEditor() {
     if (!packTeacherListEl || !packTeacherDetailEl) return;
     const teachers = currentDraft && Array.isArray(currentDraft.teachers) ? currentDraft.teachers : [];
@@ -7776,31 +7769,36 @@ export function runViewerClient(bootstrap) {
     }
     packTeacherListEl.innerHTML = "";
     teachers.forEach((teacher) => {
+        const avatarUrl = draftTeacherImageUrl(teacher, "face");
+        const view = packTeacherRowView(teacher, {
+          selected: teacher.id === selectedPackTeacherId,
+          busy: packImportBusy,
+          avatarUrl,
+        });
         const row = document.createElement("div");
-        row.className = "pack-teacher-row" + (teacher.id === selectedPackTeacherId ? " is-selected" : "");
+        row.className = view.className;
         const select = document.createElement("button");
         select.type = "button";
         select.className = "pack-teacher-select";
-        select.disabled = packImportBusy;
+        select.disabled = view.selectDisabled;
         const avatar = document.createElement("span");
         avatar.className = "pack-teacher-avatar";
-        const avatarUrl = draftTeacherImageUrl(teacher, "face");
-        if (avatarUrl) {
+        if (view.avatarUrl) {
           const img = document.createElement("img");
-          img.src = avatarUrl;
+          img.src = view.avatarUrl;
           img.alt = "";
           avatar.appendChild(img);
         } else {
-          avatar.textContent = packTeacherInitial(teacher);
+          avatar.textContent = view.avatarText;
         }
         const copy = document.createElement("span");
         copy.className = "pack-teacher-copy";
         const title = document.createElement("span");
         title.className = "pack-teacher-title";
-        title.textContent = teacher.displayName || teacher.id;
+        title.textContent = view.titleText;
         const subtitle = document.createElement("span");
         subtitle.className = "pack-teacher-subtitle";
-        subtitle.textContent = packTeacherSubjectsText(teacher) + (teacher.subject ? " · " + teacher.subject : "");
+        subtitle.textContent = view.subtitleText;
         copy.appendChild(title);
         copy.appendChild(subtitle);
         select.appendChild(avatar);
@@ -7812,13 +7810,13 @@ export function runViewerClient(bootstrap) {
         edit.type = "button";
         edit.className = "pack-teacher-row-action";
         edit.textContent = "Edit";
-        edit.disabled = packImportBusy;
+        edit.disabled = view.editDisabled;
         edit.addEventListener("click", () => editDraftTeacher(teacher.id));
         const del = document.createElement("button");
         del.type = "button";
         del.className = "pack-teacher-row-action danger";
         del.textContent = "Delete";
-        del.disabled = packImportBusy;
+        del.disabled = view.deleteDisabled;
         del.addEventListener("click", () => deleteDraftTeacher(teacher.id));
         actions.appendChild(edit);
         actions.appendChild(del);

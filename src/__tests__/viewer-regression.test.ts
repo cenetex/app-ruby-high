@@ -1318,6 +1318,9 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "teacherFormVersion += 1");
     expectScriptToContain(script, "mergeTeacherPatchIntoDraft(currentDraft, selectedPackTeacherId, selectedTeacherFormPatch())");
     expectScriptToContain(script, "formVersion !== teacherFormVersion");
+    expectScriptToContain(script, "function packTeacherRowView(teacherInput, opts)");
+    expectScriptToContain(script, "const view = packTeacherRowView(teacher, {");
+    expectScriptToContain(script, "subtitle.textContent = view.subtitleText");
     expectScriptToContain(script, "pack.canDelete");
     expectScriptToContain(script, "if (isDraft) editDraftPack(pack.id)");
     expectScriptToContain(script, "await editDraftPack(pack.draftId)");

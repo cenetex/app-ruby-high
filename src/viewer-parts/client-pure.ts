@@ -190,6 +190,16 @@ export type PackLibraryCardView = {
   stateText: string;
   actions: PackLibraryCardActionView[];
 };
+export type PackTeacherRowView = {
+  className: string;
+  selectDisabled: boolean;
+  avatarUrl: string;
+  avatarText: string;
+  titleText: string;
+  subtitleText: string;
+  editDisabled: boolean;
+  deleteDisabled: boolean;
+};
 export type AccountHallPassCardTileView = {
   className: string;
   faceDown: boolean;
@@ -1170,6 +1180,26 @@ export function packLibraryCardView(packInput: NullableRecord, opts?: NullableRe
         ? active ? "Guest now" : pack.installed ? "Installed" : "Not installed"
         : pack.builtIn ? "Always on" : active ? "Guest now" : "Set guest",
     actions,
+  };
+}
+
+export function packTeacherRowView(teacherInput: NullableRecord, opts?: NullableRecord): PackTeacherRowView {
+  const teacher = teacherInput || {};
+  const busy = !!(opts && opts.busy);
+  const selected = !!(opts && opts.selected);
+  const titleText = String(teacher.displayName || teacher.id || "Untitled teacher");
+  const initialSource = String(teacher.shortName || teacher.displayName || teacher.id || "?");
+  const count = typeof teacher.questionCount === "number" ? teacher.questionCount : 0;
+  const subject = String(teacher.subject || "");
+  return {
+    className: "pack-teacher-row" + (selected ? " is-selected" : ""),
+    selectDisabled: busy,
+    avatarUrl: String((opts && opts.avatarUrl) || ""),
+    avatarText: initialSource.charAt(0).toUpperCase(),
+    titleText,
+    subtitleText: count + " card" + (count === 1 ? "" : "s") + (subject ? " · " + subject : ""),
+    editDisabled: busy,
+    deleteDisabled: busy,
   };
 }
 

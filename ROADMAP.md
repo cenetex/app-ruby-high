@@ -240,8 +240,9 @@ outcomes without requiring crypto participation.
    title/detail/profile/reveal state now comes from a typed pure view model,
    and its Hall Pass profile lookup catalog now serializes as a typed pure
    helper instead of living inside the unchecked client. Creator pack library
-   row class/ARIA/chip/state/action decisions now come from a typed pure view
-   model, leaving the unchecked client to wire DOM events. Welcome Hall Pass
+   row class/ARIA/chip/state/action decisions and pack-editor teacher row
+   selected/avatar/title/subtitle/disabled states now come from typed pure view
+   models, leaving the unchecked client to wire DOM events. Welcome Hall Pass
    popup title/body/action copy now comes from a typed pure view model instead
    of modal-local branching in the unchecked client. Billing Card Burn row
    copy and button state now come from a typed pure view model instead of

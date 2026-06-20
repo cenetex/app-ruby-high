@@ -141,6 +141,7 @@ const PURE_HELPER_NAMES = [
   "accountHallPassCardsPanelView",
   "accountHallPassPackTileView",
   "packLibraryCardView",
+  "packTeacherRowView",
   "hallPassCardIsFaceDown",
   "hallPassCardTitle",
   "hallPassCardStatus",
