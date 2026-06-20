@@ -15,6 +15,7 @@ import { createCareerTokensRenderer } from "./career-tokens.js";
 import { createClassReportRenderer } from "./class-report.js";
 import { createComicReaderRenderer } from "./comic-reader.js";
 import { createCreationCandidateCardRenderer } from "./creation-candidate-card.js";
+import { createCreationControlCardRenderer } from "./creation-control-card.js";
 import { createCreationRowsRenderer } from "./creation-rows.js";
 import { createCreationStatsRenderer } from "./creation-stats.js";
 import { consumeViewerSseStream, parseViewerSseFrames } from "./sse.js";
@@ -255,6 +256,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createClassReportRenderer = ${createClassReportRenderer.toString()};
   const createComicReaderRenderer = ${createComicReaderRenderer.toString()};
   const createCreationCandidateCardRenderer = ${createCreationCandidateCardRenderer.toString()};
+  const createCreationControlCardRenderer = ${createCreationControlCardRenderer.toString()};
   const createCreationRowsRenderer = ${createCreationRowsRenderer.toString()};
   const createCreationStatsRenderer = ${createCreationStatsRenderer.toString()};
   const createViewerTurnController = ${createViewerTurnController.toString()};

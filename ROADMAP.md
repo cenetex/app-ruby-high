@@ -263,7 +263,7 @@ outcomes without requiring crypto participation.
    yearbook archive/collectible/share-action, shared CCG card rendering, and
    career-card/metric/token, school-career card, sealed paper-card,
    student-pool card, report-card, and character-creation candidate-card,
-   stat-chip, and reroll-row rendering now also delegate to typed
+   control-card, stat-chip, and reroll-row rendering now also delegate to typed
    renderers/controllers instead of unchecked client-local DOM branching.
 2. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the
    current minimal room contribution proof with one visible cooperative reward:

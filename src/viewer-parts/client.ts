@@ -1411,6 +1411,9 @@ export function runViewerClient(bootstrap) {
   const creationCandidateCardRenderer = createCreationCandidateCardRenderer({
     document,
   });
+  const creationControlCardRenderer = createCreationControlCardRenderer({
+    document,
+  });
   const creationRowsRenderer = createCreationRowsRenderer({
     document,
   });
@@ -6535,39 +6538,25 @@ export function runViewerClient(bootstrap) {
     const portraitBtn = candidateCardRefs.portraitBtn;
     const saveBtn = candidateCardRefs.saveBtn;
 
-    const controlsCard = document.createElement("div");
-    controlsCard.className = "ccg-card is-career-card is-creation-control-card";
-    const controlsRole = document.createElement("span");
-    controlsRole.className = "ccg-role career";
-    controlsRole.textContent = "roll";
-    controlsCard.appendChild(controlsRole);
-    const controlsBody = document.createElement("div");
-    controlsBody.className = "ccg-body";
-    controlsCard.appendChild(controlsBody);
-    const controlsName = document.createElement("div");
-    controlsName.className = "ccg-name";
-    controlsName.textContent = "Character Roll";
-    controlsBody.appendChild(controlsName);
-    const controlsSub = document.createElement("div");
-    controlsSub.className = "ccg-subtitle";
     const hostedPortrait = hostedImageEntitlement("portrait");
     const hasPhotoDayCredit = characterSlotTelemetry().photoDayCredits > 0;
     const portraitCost = hostedPortrait && hostedPortrait.cost || 1;
-    controlsSub.textContent = hostedPortrait && hostedPortrait.configured && (hasPhotoDayCredit || canSpendHallPasses(portraitCost))
+    const controlsSubtitle = hostedPortrait && hostedPortrait.configured && (hasPhotoDayCredit || canSpendHallPasses(portraitCost))
       ? "Reroll any field. Photo Day credits or Hall Passes can make a custom portrait."
       : localAiEnabled
         ? "Reroll any field. Local AI can refresh the voice."
         : aiEnabled
           ? "Reroll any field. AI can refresh the voice and portrait."
           : "Reroll any field. Connect AI later for a custom portrait.";
-    controlsBody.appendChild(controlsSub);
+    const controlsCardRefs = creationControlCardRenderer.build({
+      subtitle: controlsSubtitle,
+    });
+    const controlsCard = controlsCardRefs.card;
+    const fields = controlsCardRefs.fields;
+    const status = controlsCardRefs.status;
 
     // Control rows: one per component. Each row has a reroll button that
     // re-fires /chat/character/generate with regen=[<field>], keep=<rest>.
-    const fields = document.createElement("div");
-    fields.className = "creation-fields";
-    controlsBody.appendChild(fields);
-
     function makeRow(label, key) {
       return creationRowsRenderer.buildRow(fields, label, key);
     }
@@ -6576,11 +6565,6 @@ export function runViewerClient(bootstrap) {
     const statsRow = makeRow("Stats", "stats");
     const personalityRow = makeRow("Voice", "personality");
     const quoteRow = makeRow("Quote", "flavorQuote");
-
-    // Status line for in-flight rolls / errors.
-    const status = document.createElement("div");
-    status.className = "stat-budget";
-    controlsBody.appendChild(status);
 
     let deckRendered = false;
 

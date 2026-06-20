@@ -317,6 +317,21 @@ describe("viewer regression guardrails", () => {
     expect(creationCandidateSource).not.toContain('candidateActions.className = "ccg-card-actions";');
   });
 
+  it("renders character creation control cards from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createCreationControlCardRenderer(");
+    expectScriptToContain(clientSource, "const creationControlCardRenderer = createCreationControlCardRenderer({");
+    expectScriptToContain(clientSource, "const controlsCardRefs = creationControlCardRenderer.build({");
+    expectScriptToContain(script, 'card.className = "ccg-card is-career-card is-creation-control-card";');
+    const controlsStart = clientSource.indexOf("const controlsSubtitle =");
+    const controlsEnd = clientSource.indexOf("// Control rows:", controlsStart);
+    const controlsSource = clientSource.slice(controlsStart, controlsEnd);
+    expect(controlsSource).not.toContain('controlsCard.className = "ccg-card is-career-card is-creation-control-card";');
+    expect(controlsSource).not.toContain('status.className = "stat-budget";');
+  });
+
   it("builds blackboard question prompts from typed view models", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
