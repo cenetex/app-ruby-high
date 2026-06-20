@@ -347,6 +347,21 @@ describe("viewer regression guardrails", () => {
     expect(introSource).not.toContain('explanation.className = "creation-explanation";');
   });
 
+  it("presents rolled character creation data from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createCreationRollPresenter(");
+    expectScriptToContain(clientSource, "const creationRollPresenter = createCreationRollPresenter({");
+    expectScriptToContain(clientSource, "creationRollPresenter.renderRolled(c, playbooks, {");
+    expectScriptToContain(script, "candidate.subtitle.textContent = (pb.name || c.playbookId || \"Student\")");
+    const renderRolledStart = clientSource.indexOf("function renderRolled(c)");
+    const renderRolledEnd = clientSource.indexOf("async function rollComponents", renderRolledStart);
+    const renderRolledSource = clientSource.slice(renderRolledStart, renderRolledEnd);
+    expect(renderRolledSource).not.toContain("candidateSubtitle.textContent");
+    expect(renderRolledSource).not.toContain("statsRow.val.textContent");
+  });
+
   it("renders graduation ceremony shells from a typed renderer", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");

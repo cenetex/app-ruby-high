@@ -1417,6 +1417,13 @@ export function runViewerClient(bootstrap) {
   const creationIntroRenderer = createCreationIntroRenderer({
     document,
   });
+  const creationRollPresenter = createCreationRollPresenter({
+    renderMarkdownInto,
+    renderCreationStatsInto(parent, stats) {
+      creationStatsRenderer.renderInto(parent, stats);
+    },
+    defaultPortraitFor,
+  });
   const creationRowsRenderer = createCreationRowsRenderer({
     document,
   });
@@ -6593,36 +6600,24 @@ export function runViewerClient(bootstrap) {
       return "Connect AI for a custom portrait.";
     }
 
-    function renderCreationStatsInto(parent, stats) {
-      creationStatsRenderer.renderInto(parent, stats);
-    }
-
     function renderRolled(c) {
-      const pb = playbooks.find((p) => p.id === c.playbookId) || { name: c.playbookId, startingMove: { name: "—", description: "" } };
-      candidateName.textContent = c.name || "—";
-      candidateSubtitle.textContent = (pb.name || c.playbookId || "Student") + " · Freshman candidate";
-      if (pb.accent) {
-        candidateCard.style.borderColor = pb.accent;
-        candidateRole.style.background = pb.accent;
-      }
-      renderCreationStatsInto(candidateStats, c.stats);
-      renderMarkdownInto(candidateQuote, c.flavorQuote ? "“" + c.flavorQuote + "”" : (c.arcAnswer ? "“" + c.arcAnswer + "”" : "—"), { inline: true });
-      candidateMoveTitle.textContent = pb.startingMove && pb.startingMove.name ? pb.startingMove.name : "Starting Move";
-      renderMarkdownInto(candidateMoveContent, pb.startingMove && pb.startingMove.description ? pb.startingMove.description : "No move text yet.", { inline: true });
-      nameRow.val.textContent = c.name;
-      playbookRow.val.textContent = pb.name;
-      const fmt = (n) => (n >= 0 ? "+" : "") + n;
-      statsRow.val.textContent = "HEAD " + fmt(c.stats.head) + " · HEART " + fmt(c.stats.heart) + " · HUSTLE " + fmt(c.stats.hustle) + " · HONOR " + fmt(c.stats.honor);
-      personalityRow.val.textContent = c.personality;
-      renderMarkdownInto(quoteRow.val, c.flavorQuote ? "“" + c.flavorQuote + "”" : (c.arcAnswer ? "“" + c.arcAnswer + "”" : "—"), { inline: true });
-      // Default portrait swaps with playbook unless the player has opted
-      // in to AI gen. AI portrait is keyed to the rolled identity — if
-      // they reroll the playbook AFTER generating an AI portrait, the
-      // AI image probably no longer matches; we drop it back to default.
-      // (The player can always click ✨ again.)
-      if (!aiPortraitDataUrl) {
-        portraitImg.src = defaultPortraitFor(c.playbookId);
-      }
+      creationRollPresenter.renderRolled(c, playbooks, {
+        card: candidateCard,
+        role: candidateRole,
+        portraitImg,
+        name: candidateName,
+        subtitle: candidateSubtitle,
+        stats: candidateStats,
+        quote: candidateQuote,
+        moveTitle: candidateMoveTitle,
+        moveContent: candidateMoveContent,
+      }, {
+        nameRow,
+        playbookRow,
+        statsRow,
+        personalityRow,
+        quoteRow,
+      }, !!aiPortraitDataUrl);
     }
 
     async function rollComponents(components) {
