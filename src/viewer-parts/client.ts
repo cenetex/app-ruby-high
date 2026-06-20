@@ -1416,6 +1416,18 @@ export function runViewerClient(bootstrap) {
     fmtStat,
     renderMarkdownInto,
   });
+  const yearbookShareActionsRenderer = createYearbookShareActionsRenderer({
+    document,
+    absoluteUrl: absoluteViewerUrl,
+    copyText: copyTextToClipboard,
+    openUrl(url) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    },
+    postMetric: postViewerMetricEvent,
+    setTimeout(callback, ms) {
+      return setTimeout(callback, ms);
+    },
+  });
   const comicReaderRenderer = createComicReaderRenderer({
     document,
     pageTitle: comicPageTitle,
@@ -6791,46 +6803,7 @@ export function runViewerClient(bootstrap) {
 
 
   function buildYearbookShareActions(share) {
-    const actions = document.createElement("div");
-    actions.className = "paper-archive-actions";
-    const url = absoluteViewerUrl(share.url);
-
-    const open = document.createElement("button");
-    open.type = "button";
-    open.className = "paper-archive-action";
-    open.textContent = "Open";
-    open.title = "Open yearbook card";
-    open.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      postViewerMetricEvent("yearbook_open", { shareId: share.shareId || "", grade: share.grade || "" });
-      window.open(url, "_blank", "noopener,noreferrer");
-    });
-    actions.appendChild(open);
-
-    const copy = document.createElement("button");
-    copy.type = "button";
-    copy.className = "paper-archive-action";
-    copy.textContent = "Copy";
-    copy.title = "Copy yearbook card link";
-    copy.addEventListener("click", async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const original = copy.textContent;
-      try {
-        await copyTextToClipboard(url);
-        postViewerMetricEvent("yearbook_copy", { shareId: share.shareId || "", grade: share.grade || "" });
-        postViewerMetricEvent("share_initiated", { shareId: share.shareId || "", destination: "copy", kind: "yearbook_card" });
-        copy.textContent = "Copied";
-      } catch {
-        copy.textContent = "Failed";
-      } finally {
-        setTimeout(() => { copy.textContent = original; }, 1200);
-      }
-    });
-    actions.appendChild(copy);
-
-    return actions;
+    return yearbookShareActionsRenderer.build(share);
   }
 
   function absoluteViewerUrl(path) {

@@ -20,6 +20,7 @@ import { createViewerWorldLifecycleController } from "./world-lifecycle.js";
 import { createViewerWorldPanelController } from "./world-panel.js";
 import { createWelcomeHallPassPopupRenderer } from "./welcome-hall-pass-popup.js";
 import { createYearbookArchiveRenderer } from "./yearbook-archive.js";
+import { createYearbookShareActionsRenderer } from "./yearbook-share-actions.js";
 import { createRoomChannelRowsController } from "./room-channel-rows.js";
 import { createLeaderboardPanelRenderer } from "./leaderboard-panel.js";
 import { createPackMintProgressController } from "./pack-mint-progress.js";
@@ -251,6 +252,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createRoomChannelRowsController = ${createRoomChannelRowsController.toString()};
   const createLeaderboardPanelRenderer = ${createLeaderboardPanelRenderer.toString()};
   const createYearbookArchiveRenderer = ${createYearbookArchiveRenderer.toString()};
+  const createYearbookShareActionsRenderer = ${createYearbookShareActionsRenderer.toString()};
   const createPackMintProgressController = ${createPackMintProgressController.toString()};
   const createRaceStripRenderer = ${createRaceStripRenderer.toString()};
   const createArcIndicatorRenderer = ${createArcIndicatorRenderer.toString()};

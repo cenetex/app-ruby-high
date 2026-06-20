@@ -742,12 +742,16 @@ describe("viewer regression guardrails", () => {
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
 
     expectScriptToContain(script, "function createYearbookArchiveRenderer(");
+    expectScriptToContain(script, "function createYearbookShareActionsRenderer(");
     expectScriptToContain(clientSource, "const yearbookArchiveRenderer = createYearbookArchiveRenderer({");
+    expectScriptToContain(clientSource, "const yearbookShareActionsRenderer = createYearbookShareActionsRenderer({");
     expectScriptToContain(clientSource, "return yearbookArchiveRenderer.buildArchive(entries, liveChar, livePb, playbooks);");
     expectScriptToContain(clientSource, "return yearbookArchiveRenderer.buildEntry(entry, liveChar, livePb, playbooks);");
+    expectScriptToContain(clientSource, "return yearbookShareActionsRenderer.build(share);");
     expectScriptToContain(script, "paper-archive-portrait");
     expect(clientSource).not.toContain('archive.className = "paper-archive";');
     expect(clientSource).not.toContain('item.className = "paper-archive-entry";');
+    expect(clientSource).not.toContain('actions.className = "paper-archive-actions";');
   });
 
   it("keeps stream refreshes from holding the Chat/Practice busy lock", () => {
