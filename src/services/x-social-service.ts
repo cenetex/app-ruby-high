@@ -32,6 +32,11 @@ export interface XTokenRecord {
   connectedAt: number;
   updatedAt: number;
   lastPhotoDate?: string;
+  postPausedReason?: string;
+  postPausedAt?: number;
+  postPausedUntil?: number;
+  lastPostFailureStatus?: number;
+  lastPostFailureAt?: number;
 }
 
 export type XMilestoneKind =
@@ -66,6 +71,18 @@ export interface XSocialStatus {
   xScreenName?: string;
   connectedAt?: number;
   hasMediaWrite?: boolean;
+  hasTweetWrite?: boolean;
+  postPausedReason?: string;
+  postPausedAt?: number;
+  postPausedUntil?: number;
+  lastPostFailureStatus?: number;
+  lastPostFailureAt?: number;
+}
+
+interface XPostFailureClassification {
+  logName: string;
+  pauseReason?: string;
+  retryAt?: number;
 }
 
 interface XTokenStore {
@@ -86,6 +103,10 @@ const MAX_MEDIA_BYTES = 5 * 1024 * 1024; // X limit: 5 MB for images
 const X_POSTS_PER_24H = 50;
 const TOKEN_REFRESH_WINDOW_SEC = 300;
 const X_FETCH_TIMEOUT_MS = 15_000;
+const X_POST_RATE_LIMIT_RETRY_MS = 60 * 60 * 1000;
+const X_POST_TRANSIENT_RETRY_MS = 15 * 60 * 1000;
+const X_POST_NETWORK_RETRY_MS = 10 * 60 * 1000;
+const X_POST_ERROR_BODY_MAX = 500;
 function xClientId(): string { return process.env.RUBY_HIGH_X_CLIENT_ID ?? ""; }
 function xClientSecret(): string { return process.env.RUBY_HIGH_X_CLIENT_SECRET ?? ""; }
 
@@ -299,6 +320,38 @@ function todayKey(): string {
 
 function normalizePhotoDate(value: unknown): string | null {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function responseHeader(res: Response, name: string): string | null {
+  try {
+    const headers = (res as Response & { headers?: { get?: (name: string) => string | null } }).headers;
+    return typeof headers?.get === "function" ? headers.get(name) : null;
+  } catch {
+    return null;
+  }
+}
+
+function retryAtFromResponse(res: Response, now = Date.now()): number | null {
+  const retryAfter = responseHeader(res, "retry-after");
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds) && seconds >= 0) return now + Math.max(1, seconds) * 1000;
+    const dateMs = Date.parse(retryAfter);
+    if (Number.isFinite(dateMs) && dateMs > now) return dateMs;
+  }
+
+  const rateLimitReset = responseHeader(res, "x-rate-limit-reset");
+  if (rateLimitReset) {
+    const epochSeconds = Number(rateLimitReset);
+    if (Number.isFinite(epochSeconds) && epochSeconds > 0) return epochSeconds * 1000;
+  }
+
+  return null;
+}
+
+function clippedPostErrorBody(status: number, body: string): string {
+  const clipped = body.trim().slice(0, X_POST_ERROR_BODY_MAX);
+  return clipped || `X rejected tweet with status ${status}`;
 }
 
 export class XSocialService extends Service {
@@ -521,7 +574,15 @@ export class XSocialService extends Service {
       teacherId,
       xScreenName: token?.xScreenName,
       connectedAt: token?.connectedAt,
-      ...(token ? { hasMediaWrite: tokenHasScope(token, "media.write") } : {}),
+      ...(token ? {
+        hasMediaWrite: tokenHasScope(token, "media.write"),
+        hasTweetWrite: tokenHasScope(token, "tweet.write"),
+        ...(token.postPausedReason ? { postPausedReason: token.postPausedReason } : {}),
+        ...(token.postPausedAt ? { postPausedAt: token.postPausedAt } : {}),
+        ...(token.postPausedUntil ? { postPausedUntil: token.postPausedUntil } : {}),
+        ...(token.lastPostFailureStatus ? { lastPostFailureStatus: token.lastPostFailureStatus } : {}),
+        ...(token.lastPostFailureAt ? { lastPostFailureAt: token.lastPostFailureAt } : {}),
+      } : {}),
     };
   }
 
@@ -565,6 +626,11 @@ export class XSocialService extends Service {
       await releasePhotoSlot();
       return null;
     }
+    const postToken = await this.ensurePostAllowed(freshToken);
+    if (!postToken) {
+      await releasePhotoSlot();
+      return null;
+    }
 
     const text = await this.generatePostText(teacher, ctx);
 
@@ -605,7 +671,7 @@ export class XSocialService extends Service {
     if (imageUrl) {
       try {
         const imageBytes = await this.resolveImageToBuffer(imageUrl);
-        mediaId = await this.uploadMedia(freshToken, imageBytes);
+        mediaId = await this.uploadMedia(postToken, imageBytes);
         if (!mediaId) {
           await releasePhotoSlot();
           return null;
@@ -631,7 +697,7 @@ export class XSocialService extends Service {
       return `dry-run:${ctx.kind}`;
     }
 
-    const tweetId = await this.postTweet(freshToken.accessToken, text, mediaId);
+    const tweetId = await this.postTweet(postToken, text, mediaId);
 
     if (tweetId) {
       this.recordPost(teacher.id);
@@ -873,7 +939,130 @@ export class XSocialService extends Service {
     }
   }
 
-  private async postTweet(accessToken: string, text: string, mediaId?: string | null): Promise<string | null> {
+  private async ensurePostAllowed(token: XTokenRecord): Promise<XTokenRecord | null> {
+    let latest = this.tokens.get(token.teacherId) ?? token;
+    if (latest.postPausedReason) {
+      if (!latest.postPausedUntil || latest.postPausedUntil > Date.now()) {
+        log.event("x-social.post-suppressed", {
+          teacherId: latest.teacherId,
+          reason: latest.postPausedReason,
+          ...(latest.postPausedUntil ? { retryAt: latest.postPausedUntil } : {}),
+          ...(latest.lastPostFailureStatus ? { status: latest.lastPostFailureStatus } : {}),
+        });
+        return null;
+      }
+      latest = await this.clearPostPause(latest);
+    }
+
+    if (!tokenHasScope(latest, "tweet.write")) {
+      await this.markPostPaused(latest, "missing-tweet-write-scope");
+      log.event("x-social.post-suppressed", {
+        teacherId: latest.teacherId,
+        reason: "missing-tweet-write-scope",
+      });
+      return null;
+    }
+
+    return latest;
+  }
+
+  private async markPostPaused(
+    token: XTokenRecord,
+    reason: string,
+    opts: { status?: number; retryAt?: number } = {},
+  ): Promise<XTokenRecord> {
+    const now = Date.now();
+    const latest = this.tokens.get(token.teacherId) ?? token;
+    const updated: XTokenRecord = {
+      ...latest,
+      postPausedReason: reason,
+      postPausedAt: now,
+      lastPostFailureAt: now,
+      updatedAt: now,
+    };
+    if (opts.retryAt) updated.postPausedUntil = opts.retryAt;
+    else delete updated.postPausedUntil;
+    if (opts.status) updated.lastPostFailureStatus = opts.status;
+    else delete updated.lastPostFailureStatus;
+
+    this.tokens.set(updated.teacherId, updated);
+    await this.tokenStore.save(updated);
+    return updated;
+  }
+
+  private async recordPostRejection(token: XTokenRecord, status?: number): Promise<XTokenRecord> {
+    const now = Date.now();
+    const latest = this.tokens.get(token.teacherId) ?? token;
+    const updated: XTokenRecord = {
+      ...latest,
+      lastPostFailureAt: now,
+      updatedAt: now,
+    };
+    delete updated.postPausedReason;
+    delete updated.postPausedAt;
+    delete updated.postPausedUntil;
+    if (status) updated.lastPostFailureStatus = status;
+    else delete updated.lastPostFailureStatus;
+
+    this.tokens.set(updated.teacherId, updated);
+    await this.tokenStore.save(updated);
+    return updated;
+  }
+
+  private async clearPostPause(token: XTokenRecord): Promise<XTokenRecord> {
+    const latest = this.tokens.get(token.teacherId) ?? token;
+    if (
+      !latest.postPausedReason &&
+      !latest.postPausedAt &&
+      !latest.postPausedUntil &&
+      !latest.lastPostFailureStatus &&
+      !latest.lastPostFailureAt
+    ) {
+      return latest;
+    }
+    const updated: XTokenRecord = { ...latest, updatedAt: Date.now() };
+    delete updated.postPausedReason;
+    delete updated.postPausedAt;
+    delete updated.postPausedUntil;
+    delete updated.lastPostFailureStatus;
+    delete updated.lastPostFailureAt;
+
+    this.tokens.set(updated.teacherId, updated);
+    await this.tokenStore.save(updated);
+    return updated;
+  }
+
+  private classifyPostFailure(status: number, body: string, res: Response): XPostFailureClassification {
+    const lower = body.toLowerCase();
+    if (
+      (status === 400 || status === 403) &&
+      (lower.includes("duplicate") || lower.includes("already been posted") || lower.includes("already tweeted"))
+    ) {
+      return { logName: "x-social.post-duplicate" };
+    }
+    if (status === 401) return { logName: "x-social.post-auth-failed", pauseReason: "unauthorized" };
+    if (status === 403) return { logName: "x-social.post-forbidden", pauseReason: "forbidden" };
+    if (status === 429) {
+      return {
+        logName: "x-social.post-rate-limited",
+        pauseReason: "rate-limited",
+        retryAt: retryAtFromResponse(res) ?? Date.now() + X_POST_RATE_LIMIT_RETRY_MS,
+      };
+    }
+    if (status >= 500) {
+      return {
+        logName: "x-social.post-transient-failed",
+        pauseReason: "x-unavailable",
+        retryAt: Date.now() + X_POST_TRANSIENT_RETRY_MS,
+      };
+    }
+    return { logName: "x-social.post-rejected" };
+  }
+
+  private async postTweet(token: XTokenRecord, text: string, mediaId?: string | null): Promise<string | null> {
+    const postToken = await this.ensurePostAllowed(token);
+    if (!postToken) return null;
+
     try {
       const body: Record<string, unknown> = { text };
       if (mediaId) {
@@ -882,7 +1071,7 @@ export class XSocialService extends Service {
       const res = await fetch(`${X_API_BASE}/tweets`, {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${accessToken}`,
+          "Authorization": `Bearer ${postToken.accessToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
@@ -890,32 +1079,52 @@ export class XSocialService extends Service {
       });
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
-        log.error("x-social.post-failed", new Error(errText), { status: res.status });
+        const classification = this.classifyPostFailure(res.status, errText, res);
+        log.error(classification.logName, new Error(clippedPostErrorBody(res.status, errText)), {
+          teacherId: postToken.teacherId,
+          status: res.status,
+          ...(classification.pauseReason ? { reason: classification.pauseReason } : {}),
+          ...(classification.retryAt ? { retryAt: classification.retryAt } : {}),
+        });
+        if (classification.pauseReason) {
+          await this.markPostPaused(postToken, classification.pauseReason, {
+            status: res.status,
+            retryAt: classification.retryAt,
+          });
+        } else {
+          await this.recordPostRejection(postToken, res.status);
+        }
         return null;
       }
       const data = (await res.json()) as { data: { id: string } };
+      await this.clearPostPause(postToken);
       return data.data.id;
     } catch (err) {
-      log.error("x-social.post-failed", err, {});
+      const retryAt = Date.now() + X_POST_NETWORK_RETRY_MS;
+      log.error("x-social.post-network-failed", err, { teacherId: postToken.teacherId, retryAt });
+      await this.markPostPaused(postToken, "network", { retryAt });
       return null;
     }
   }
 
   private checkPostRateLimit(teacherId: string): boolean {
     const now = Date.now();
-    let entry = this.postCounts.get(teacherId);
+    const entry = this.postCounts.get(teacherId);
     if (!entry || now >= entry.resetAt) {
-      this.postCounts.set(teacherId, { count: 1, resetAt: now + 24 * 60 * 60 * 1000 });
       return true;
     }
     if (entry.count >= X_POSTS_PER_24H) return false;
-    entry.count += 1;
     return true;
   }
 
   private recordPost(teacherId: string): void {
-    // The 24h post slot is reserved immediately before the API call.
-    void teacherId;
+    const now = Date.now();
+    const entry = this.postCounts.get(teacherId);
+    if (!entry || now >= entry.resetAt) {
+      this.postCounts.set(teacherId, { count: 1, resetAt: now + 24 * 60 * 60 * 1000 });
+      return;
+    }
+    entry.count += 1;
   }
 
   private photoAlreadyPostedToday(teacherId: string): boolean {
@@ -1007,7 +1216,7 @@ export class XSocialService extends Service {
       case "diploma-earned":
         return `${name} just earned their diploma from Ruby High. Another milestone! #RubyHigh`;
       case "class-photo":
-        return `Class photo day at Ruby High! #RubyHigh`;
+        return `Class photo day at Ruby High with ${name || "today's homeroom"} — ${todayKey()}. #RubyHigh`;
       default:
         return `${name} hit a new milestone at Ruby High! #RubyHigh`;
     }
@@ -1043,7 +1252,7 @@ export class XSocialService extends Service {
       return "dry-run:reflection";
     }
 
-    const tweetId = await this.postTweet(freshToken.accessToken, text);
+    const tweetId = await this.postTweet(freshToken, text);
     if (tweetId) {
       log.event("x-social.posted", { teacherId: teacher.id, xScreenName: token.xScreenName, kind: "reflection", tweetId });
     }
@@ -1185,7 +1394,7 @@ export class XSocialService extends Service {
       if (text.length > 280) text = text.slice(0, 277) + "...";
     }
 
-    const tweetId = await this.postTweet(freshToken.accessToken, text);
+    const tweetId = await this.postTweet(freshToken, text);
     if (tweetId) {
       log.event("x-social.posted", { teacherId: teacher.id, xScreenName: token.xScreenName, kind: "report-card", tweetId });
     }

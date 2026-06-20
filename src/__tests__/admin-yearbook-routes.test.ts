@@ -1485,6 +1485,9 @@ describe("admin metrics route", () => {
     expect(response.body).toContain("Reconnect for image posts - missing media.write");
     expect(response.body).toContain("reconnect for images");
     expect(response.body).toContain("Image posts enabled");
+    expect(response.body).toContain("Reconnect for text posts - missing tweet.write");
+    expect(response.body).toContain("posting paused");
+    expect(response.body).toContain("Text posts enabled");
     expect(response.body).toContain("Merit Stars");
     expect(response.body).toContain("Hall Passes");
     expect(response.body).toContain("Solana packs");

@@ -3204,6 +3204,18 @@ async function postTelegramSnapshot() {
       statusEl.className = "status " + (className || "");
     }
 
+    function xPostStatusCopy(connection) {
+      if (!connection) return "";
+      if (connection.postPausedReason) {
+        const suffix = connection.postPausedUntil
+          ? " until " + new Date(connection.postPausedUntil).toLocaleString()
+          : " - reconnect required";
+        return "Posting paused: " + connection.postPausedReason + suffix;
+      }
+      if (connection.hasTweetWrite === false) return "Reconnect for text posts - missing tweet.write";
+      return "Text posts enabled";
+    }
+
     // ── X Social ──────────────────────────────────────────────────────────
     const xPanel = document.getElementById("x-social-panel");
     const socialTeacherSelect = document.getElementById("social-teacher-select");
@@ -3214,7 +3226,7 @@ async function postTelegramSnapshot() {
       if (!socialTeacherSelect) return;
       const previous = socialTeacherSelect.value;
       socialTeacherSelect.innerHTML = connectedTeachers.length
-        ? connectedTeachers.map((t) => '<option value="' + escHtml(t.teacherId) + '">' + escHtml(t.teacherId) + (t.xScreenName ? " @" + escHtml(t.xScreenName) : "") + (t.hasMediaWrite === false ? " - reconnect for images" : "") + '</option>').join("")
+        ? connectedTeachers.map((t) => '<option value="' + escHtml(t.teacherId) + '">' + escHtml(t.teacherId) + (t.xScreenName ? " @" + escHtml(t.xScreenName) : "") + (t.postPausedReason ? " - posting paused" : t.hasTweetWrite === false ? " - reconnect for posts" : t.hasMediaWrite === false ? " - reconnect for images" : "") + '</option>').join("")
         : '<option value="">No X teacher</option>';
       if (previous && connectedTeachers.some((t) => t.teacherId === previous)) {
         socialTeacherSelect.value = previous;
@@ -3258,7 +3270,9 @@ async function postTelegramSnapshot() {
           if (c) {
             const mediaCopy = c.hasMediaWrite === false ? "Reconnect for image posts - missing media.write" : "Image posts enabled";
             const mediaClass = c.hasMediaWrite === false ? "bad" : "good";
-            return '<div class="metric"><div class="label">' + id + '</div><div class="value good" style="font-size:18px;">\u2714 Connected</div><div class="sub">@' + escHtml(c.xScreenName || "") + '</div><div class="sub ' + mediaClass + '">' + mediaCopy + '</div><div style="display:flex;gap:6px;margin-top:8px;"><button class="x-social-btn" style="flex:1;" data-action="post" data-teacher="' + id + '">Post</button><button class="secondary x-social-btn" style="flex:1;" data-action="disconnect" data-teacher="' + id + '">Disconnect</button></div></div>';
+            const postCopy = xPostStatusCopy(c);
+            const postClass = c.postPausedReason || c.hasTweetWrite === false ? "bad" : "good";
+            return '<div class="metric"><div class="label">' + id + '</div><div class="value good" style="font-size:18px;">\u2714 Connected</div><div class="sub">@' + escHtml(c.xScreenName || "") + '</div><div class="sub ' + postClass + '">' + escHtml(postCopy) + '</div><div class="sub ' + mediaClass + '">' + mediaCopy + '</div><div style="display:flex;gap:6px;margin-top:8px;"><button class="x-social-btn" style="flex:1;" data-action="post" data-teacher="' + id + '">Post</button><button class="secondary x-social-btn" style="flex:1;" data-action="disconnect" data-teacher="' + id + '">Disconnect</button></div></div>';
           }
           return '<div class="metric"><div class="label">' + id + '</div><div class="value" style="font-size:18px;color:var(--muted);">\u2014</div><div class="sub">Not connected</div><button style="margin-top:8px;width:100%;" class="x-social-btn" data-action="connect" data-teacher="' + id + '">Connect</button></div>';
         }).join("");

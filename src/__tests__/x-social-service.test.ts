@@ -30,6 +30,10 @@ beforeEach(async () => {
   vi.stubEnv("RUBY_HIGH_X_ACCESS_TOKEN", "");
   vi.stubEnv("RUBY_HIGH_X_ACCESS_SECRET", "");
   vi.stubEnv("RUBY_HIGH_STATE_PATH", TEST_STATE_DIR);
+  vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "");
+  vi.stubEnv("RUBY_HIGH_LLM_API_KEY", "");
+  vi.stubEnv("RUBY_HIGH_LOCAL_LLM_API_KEY", "");
+  vi.stubEnv("RUBY_HIGH_LLM_BASE_URL", "");
   mockFetch.mockReset();
 });
 
@@ -40,6 +44,26 @@ const RUBY_TEACHER: TeacherCharacter = {
   defaultModel: "test-model",
   systemPrompt: "You are Ruby, a warm and mischievous teacher.",
 };
+
+async function connectRuby(svc: XSocialService, scope = "tweet.read tweet.write users.read offline.access media.write"): Promise<void> {
+  const { state } = svc.beginConnect("ruby");
+  mockFetch
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        access_token: "tok",
+        refresh_token: "ref",
+        expires_in: 7200,
+        scope,
+      }),
+    })
+    .mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: { id: "1", username: "ruby" } }),
+    });
+  await svc.handleCallback("code", state);
+  mockFetch.mockClear();
+}
 
 describe("generatePkce", () => {
   it("produces verifier and challenge", () => {
@@ -231,6 +255,109 @@ describe("XSocialService", () => {
         arcAnswer: "To prove them wrong",
       });
       expect(result).toBe("tweet-123");
+    });
+
+    it("pauses future posts after X rejects a teacher token", async () => {
+      await connectRuby(svc);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        text: async () => JSON.stringify({ title: "Forbidden", detail: "Client is not permitted to post tweets." }),
+      });
+
+      const result = await svc.maybePostMilestone(RUBY_TEACHER, {
+        kind: "class-passed",
+        characterName: "Reach Kid",
+        letterGrade: "A",
+      });
+      expect(result).toBeNull();
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(svc.getStatus("ruby")).toMatchObject({
+        connected: true,
+        hasTweetWrite: true,
+        postPausedReason: "forbidden",
+        lastPostFailureStatus: 403,
+      });
+
+      const restarted = new XSocialService();
+      await restarted.start();
+      expect(restarted.getStatus("ruby")).toMatchObject({
+        connected: true,
+        postPausedReason: "forbidden",
+        lastPostFailureStatus: 403,
+      });
+
+      const second = await restarted.maybePostMilestone(RUBY_TEACHER, {
+        kind: "class-passed",
+        characterName: "Second Reach Kid",
+        letterGrade: "B",
+      });
+      expect(second).toBeNull();
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect((restarted as any).postCounts.get("ruby")).toBeUndefined();
+    });
+
+    it("backs off repeated posts while X rate limits the account", async () => {
+      await connectRuby(svc);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        headers: { get: (name: string) => name.toLowerCase() === "retry-after" ? "120" : null },
+        text: async () => "Too Many Requests",
+      });
+
+      const result = await svc.maybePostMilestone(RUBY_TEACHER, {
+        kind: "class-passed",
+        characterName: "Rate Limit Kid",
+        letterGrade: "A",
+      });
+      expect(result).toBeNull();
+      const status = svc.getStatus("ruby");
+      expect(status).toMatchObject({
+        postPausedReason: "rate-limited",
+        lastPostFailureStatus: 429,
+      });
+      expect(status.postPausedUntil).toBeGreaterThan(Date.now() + 100_000);
+      expect(status.postPausedUntil).toBeLessThan(Date.now() + 130_000);
+
+      const callsAfterRateLimit = mockFetch.mock.calls.length;
+      const second = await svc.maybePostMilestone(RUBY_TEACHER, {
+        kind: "class-passed",
+        characterName: "Still Rate Limited",
+        letterGrade: "B",
+      });
+      expect(second).toBeNull();
+      expect(mockFetch.mock.calls).toHaveLength(callsAfterRateLimit);
+      expect((svc as any).postCounts.get("ruby")).toBeUndefined();
+    });
+
+    it("does not pause all future posts for duplicate-content rejections", async () => {
+      await connectRuby(svc);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        text: async () => "You are not allowed to create a Tweet with duplicate content.",
+      });
+
+      await expect(svc.maybePostMilestone(RUBY_TEACHER, {
+        kind: "class-passed",
+        characterName: "Duplicate Kid",
+        letterGrade: "A",
+      })).resolves.toBeNull();
+      expect(svc.getStatus("ruby").postPausedReason).toBeUndefined();
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { id: "tweet-after-duplicate" } }),
+      });
+      await expect(svc.maybePostMilestone(RUBY_TEACHER, {
+        kind: "class-passed",
+        characterName: "Fresh Copy Kid",
+        letterGrade: "A",
+      })).resolves.toBe("tweet-after-duplicate");
     });
   });
 
