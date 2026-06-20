@@ -50,11 +50,10 @@ describe("character creation flow", () => {
       expect(CLIENT_SOURCE).not.toContain("Lock this student in to start today");
     });
 
-    it("renderSheetCreation scope auto-commits instead of showing accept button", () => {
+    it("renderSheetCreation scope uses a save button without the old accept button", () => {
       const creationFn = CLIENT_SOURCE.slice(
         CLIENT_SOURCE.indexOf("function renderSheetCreation"),
       );
-      // Auto-commit: the create-character command fires inside rollComponents.
       expect(creationFn).toContain('type: "create-character"');
       // No separate acceptBtn event listener in this scope.
       expect(creationFn).not.toContain("acceptBtn");
@@ -62,24 +61,25 @@ describe("character creation flow", () => {
     });
   });
 
-  describe("auto-commit on initial roll", () => {
-    it("calls create-character command after the initial full roll in client source", () => {
-      // The auto-commit block fires command({ type: "create-character" ... })
-      // after the initial rollComponents() full roll succeeds.
-      expect(CLIENT_SOURCE).toContain('type: "create-character"');
-      // Must be inside an if (isFullRoll) block — that's the auto-commit guard.
-      const afterRoll = CLIENT_SOURCE.slice(
-        CLIENT_SOURCE.indexOf("First roll lands"),
+  describe("manual save after initial roll", () => {
+    it("does not create the character from rollComponents", () => {
+      const rollFn = CLIENT_SOURCE.slice(
+        CLIENT_SOURCE.indexOf("async function rollComponents"),
+        CLIENT_SOURCE.indexOf("// Wire per-row reroll buttons."),
       );
-      expect(afterRoll).toContain("if (isFullRoll)");
-      expect(afterRoll).toContain('type: "create-character"');
+      expect(rollFn).toContain("renderRolled(rolled)");
+      expect(rollFn).toContain("revealForm()");
+      expect(rollFn).not.toContain('type: "create-character"');
+      expect(rollFn).not.toContain("saveCharacter({ auto");
     });
 
-    it("auto-commit logic is present in the rendered viewer script", () => {
+    it("initial roll logic and manual save are present in the rendered viewer script", () => {
       const script = renderedViewerScript();
       expectScriptToContain(script, '"create-character"');
       // The initial rollComponents() call should still exist.
       expectScriptToContain(script, "rollComponents()");
+      expectScriptToContain(script, "Save Character");
+      expectScriptNotToContain(script, "saveCharacter({ auto");
     });
 
     it("does not leave a stale acceptBtn handler in the rendered viewer", () => {
@@ -122,16 +122,16 @@ describe("character creation flow", () => {
       expectScriptToContain(script, "Character Roll");
     });
 
-    it("does not render a separate confirmation step after roll", () => {
+    it("renders one post-roll save action without the old confirmation copy", () => {
       const script = renderedViewerScript();
 
-      // The auto-commit path means no separate accept step.
       expectScriptToContain(script, '"create-character"');
+      expectScriptToContain(script, "Save Character");
       // The old saving-character status text from the accept handler is gone.
       expectScriptNotToContain(script, '"Saving character"');
     });
 
-    it("renders a Save Character fallback button for retry after failed auto-commit", () => {
+    it("renders a Save Character button for the final student choice", () => {
       const script = renderedViewerScript();
       expectScriptToContain(script, "Save Character");
     });

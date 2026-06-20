@@ -118,7 +118,7 @@ export async function createCharacter(page: Page) {
     await expect(saveCharacter).toBeEnabled({ timeout: 5000 });
     await saveCharacter.click();
   } catch {
-    // No Save Character button — auto-commit might have happened.
+    // No Save Character button — the test may already have a character.
   }
 
   // Creation can render inline or in the sheet. If the sheet remains open,

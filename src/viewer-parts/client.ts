@@ -5928,8 +5928,6 @@ export function runViewerClient(bootstrap) {
     // is gone in this PR.
     const inFlight = { all: false, name: false, personality: false, arcAnswer: false, flavorQuote: false, stats: false, playbook: false, portrait: false, saving: false };
     let aiPortraitDataUrl = null; // when set, replaces the default at save-time
-    let autoSaveAttempted = false;
-
     const OFFLINE_NAMES = ["Iris", "Nova", "Vee", "Mara", "Jules", "Theo", "Rin", "Cass", "Ari", "Nico", "Sol", "Mina"];
     const OFFLINE_VOICES = [
       "Quietly intense, observant, and allergic to obvious answers.",
@@ -5991,6 +5989,7 @@ export function runViewerClient(bootstrap) {
       status.classList.toggle("is-invalid", !!invalid);
     }
     function applyDisabled() {
+      saveBtn.hidden = !rolled;
       saveBtn.disabled = !rolled || inFlight.all || inFlight.saving;
       [nameRow, playbookRow, statsRow, personalityRow, quoteRow].forEach(({ reroll }) => {
         const k = reroll.dataset.key;
@@ -6079,10 +6078,6 @@ export function runViewerClient(bootstrap) {
           renderRolled(rolled);
           revealForm();
           setStatus("Offline mode — AI chat and custom portrait are disabled until you enable AI.");
-          if (isFullRoll && !autoSaveAttempted) {
-            autoSaveAttempted = true;
-            await saveCharacter({ auto: true });
-          }
           return;
         }
         const body = isFullRoll
@@ -6103,10 +6098,6 @@ export function runViewerClient(bootstrap) {
         // First roll lands → swap from loading-state to form.
         revealForm();
         setStatus("");
-        if (isFullRoll && !autoSaveAttempted) {
-          autoSaveAttempted = true;
-          await saveCharacter({ auto: true });
-        }
       } catch (err) {
         revealForm();
         setStatus(err && err.message ? err.message : "Roll failed — try again.", true);
@@ -6201,8 +6192,8 @@ export function runViewerClient(bootstrap) {
       }
     });
 
-    async function saveCharacter(opts) {
-      if (!rolled || inFlight.saving || (!opts?.auto && inFlight.all)) return;
+    async function saveCharacter() {
+      if (!rolled || inFlight.saving || inFlight.all) return;
       inFlight.saving = true;
       saveBtn.disabled = true;
       setStatus("Saving...");

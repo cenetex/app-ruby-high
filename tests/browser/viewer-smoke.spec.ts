@@ -11,6 +11,13 @@ test("rolls a first student without showing the old Lock it in action", async ({
   if (await rollAStudent.isVisible().catch(() => false)) {
     await expect(rollAStudent).toBeEnabled();
     await rollAStudent.click();
+    await expect(page.locator("#sheet-card").getByText("Character Roll", { exact: true })).toBeVisible({ timeout: 45_000 });
+    await expect(page.locator("#sheet-card .creation-reroll").first()).toBeVisible();
+    const saveCharacter = page.locator("#sheet-card").getByRole("button", { name: "Save Character" });
+    await expect(saveCharacter).toBeVisible();
+    await expect(saveCharacter).toBeEnabled();
+    await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
+    await saveCharacter.click();
   }
 
   await expect(page.getByRole("button", { name: "Lock it in" })).toHaveCount(0);
