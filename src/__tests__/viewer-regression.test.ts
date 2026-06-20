@@ -282,7 +282,10 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="account-history-list"');
     expect(html).toContain('id="account-comics"');
     expectScriptToContain(script, "function welcomeHallPassPopupView(");
-    expectScriptToContain(clientSource, "const view = welcomeHallPassPopupView(grant, {");
+    expectScriptToContain(script, "function createWelcomeHallPassPopupRenderer(");
+    expectScriptToContain(clientSource, "const welcomeHallPassPopupRenderer = createWelcomeHallPassPopupRenderer({");
+    expectScriptToContain(clientSource, "welcomeHallPassPopupRenderer.show(grant, opts);");
+    expect(clientSource).not.toContain('overlay.className = "welcome-hall-pass-popup";');
     expectScriptToContain(script, "function accountAiPanelView(aiInput, opts)");
     expectScriptToContain(clientSource, "const view = accountAiPanelView(ai, {");
     expectScriptToContain(script, "function accountWalletPanelView(walletInput, slotsInput, opts)");

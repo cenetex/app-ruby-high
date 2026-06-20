@@ -1320,6 +1320,24 @@ export function runViewerClient(bootstrap) {
     container: els.accountHistoryList,
     rowView: accountHistoryRowView,
   });
+  const welcomeHallPassPopupRenderer = createWelcomeHallPassPopupRenderer({
+    document,
+    artUrl: WELCOME_HALL_PASS_ART_URL,
+    viewFor: welcomeHallPassPopupView,
+    portraitConfigured() {
+      const portraitEntitlement = hostedImageEntitlement("portrait");
+      return !!getStoredApiKey() || !!(portraitEntitlement && portraitEntitlement.configured);
+    },
+    hasCharacter() {
+      return !!(lastTelemetry && lastTelemetry.character);
+    },
+    markSeen: markWelcomeHallPassPopupSeen,
+    setOpen(open) {
+      welcomeHallPassPopupOpen = !!open;
+    },
+    openAccount: openPrivyAccount,
+    openCharacterCreation,
+  });
   const accountCardReaderRenderer = createAccountCardReaderRenderer({
     document,
     cardBackArtUrl: CARD_BACK_ART_URL,
@@ -2594,82 +2612,7 @@ export function runViewerClient(bootstrap) {
   }
 
   function showWelcomeHallPassPopup(grant, opts) {
-    welcomeHallPassPopupOpen = true;
-    const fromBilling = opts && opts.source === "billing";
-    const portraitEntitlement = hostedImageEntitlement("portrait");
-    const portraitConfigured = !!getStoredApiKey() || !!(portraitEntitlement && portraitEntitlement.configured);
-    const view = welcomeHallPassPopupView(grant, {
-      fromBilling,
-      portraitConfigured,
-      hasCharacter: lastTelemetry && lastTelemetry.character,
-    });
-    const overlay = document.createElement("div");
-    overlay.className = "welcome-hall-pass-popup";
-    overlay.setAttribute("role", "dialog");
-    overlay.setAttribute("aria-modal", "true");
-
-    const panel = document.createElement("div");
-    panel.className = "welcome-hall-pass-panel";
-    const art = document.createElement("img");
-    art.className = "welcome-hall-pass-art";
-    art.alt = "";
-    art.hidden = true;
-    art.addEventListener("load", () => {
-      art.hidden = false;
-      panel.classList.add("has-art");
-    });
-    art.addEventListener("error", () => {
-      art.remove();
-    }, { once: true });
-    art.src = WELCOME_HALL_PASS_ART_URL;
-    const copy = document.createElement("div");
-    copy.className = "welcome-hall-pass-copy";
-    const title = document.createElement("h2");
-    title.textContent = view.titleText;
-    const body = document.createElement("p");
-    body.textContent = view.bodyText;
-    const actions = document.createElement("div");
-    actions.className = "welcome-hall-pass-actions";
-    const later = document.createElement("button");
-    later.type = "button";
-    later.className = "secondary";
-    later.textContent = "Later";
-    const create = document.createElement("button");
-    create.type = "button";
-    create.textContent = view.primaryText;
-    if (view.showLater) actions.appendChild(later);
-    actions.appendChild(create);
-    copy.appendChild(title);
-    copy.appendChild(body);
-    copy.appendChild(actions);
-    panel.appendChild(art);
-    panel.appendChild(copy);
-    overlay.appendChild(panel);
-
-    const close = () => {
-      markWelcomeHallPassPopupSeen(grant);
-      welcomeHallPassPopupOpen = false;
-      document.removeEventListener("keydown", onKey);
-      overlay.remove();
-    };
-    const onKey = (event) => {
-      if (event.key === "Escape") close();
-    };
-    later.addEventListener("click", close);
-    create.addEventListener("click", () => {
-      close();
-      if (fromBilling) return;
-      if (lastTelemetry && lastTelemetry.character) {
-        void openPrivyAccount();
-      } else {
-        openCharacterCreation();
-      }
-    });
-    overlay.addEventListener("click", (event) => {
-      if (event.target === overlay) close();
-    });
-    document.addEventListener("keydown", onKey);
-    document.body.appendChild(overlay);
+    welcomeHallPassPopupRenderer.show(grant, opts);
   }
 
   // accountHistoryRowView is in client-pure.

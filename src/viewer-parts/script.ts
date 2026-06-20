@@ -14,6 +14,7 @@ import { createViewerWorldController } from "./world-controller.js";
 import { createViewerWorldFeedClient } from "./world-feed.js";
 import { createViewerWorldLifecycleController } from "./world-lifecycle.js";
 import { createViewerWorldPanelController } from "./world-panel.js";
+import { createWelcomeHallPassPopupRenderer } from "./welcome-hall-pass-popup.js";
 import { createRoomChannelRowsController } from "./room-channel-rows.js";
 import { createLeaderboardPanelRenderer } from "./leaderboard-panel.js";
 import { createPackMintProgressController } from "./pack-mint-progress.js";
@@ -236,6 +237,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createViewerWorldFeedClient = ${createViewerWorldFeedClient.toString()};
   const createViewerWorldLifecycleController = ${createViewerWorldLifecycleController.toString()};
   const createViewerWorldPanelController = ${createViewerWorldPanelController.toString()};
+  const createWelcomeHallPassPopupRenderer = ${createWelcomeHallPassPopupRenderer.toString()};
   const createViewerWorldController = ${createViewerWorldController.toString()};
   const createRoomChannelRowsController = ${createRoomChannelRowsController.toString()};
   const createLeaderboardPanelRenderer = ${createLeaderboardPanelRenderer.toString()};
