@@ -1472,10 +1472,6 @@ export function runViewerClient(bootstrap) {
     recentRelationshipEvents,
     mashTickStory,
   });
-  const teacherRollControlsRenderer = createTeacherRollControlsRenderer({
-    document,
-    assets: PREGENERATED_TEACHER_ASSETS,
-  });
   const reportCardRenderer = createReportCardRenderer({
     document,
     essayLetter,
@@ -6799,6 +6795,10 @@ export function runViewerClient(bootstrap) {
     { id: "sally-science", name: "Sally Science", subject: "Science Lab", description: "Evidence-first, experimental, and happiest when a wrong answer exposes a better hypothesis.", quote: "Be wrong with reasons. Then we can work." },
     { id: "professor-edward", name: "Professor Edward", subject: "Literature", description: "Precise, patient, and tuned to the half-truth inside every messy interpretation.", quote: "Read the sentence again. It has not finished with you." },
   ];
+  const teacherRollControlsRenderer = createTeacherRollControlsRenderer({
+    document,
+    assets: PREGENERATED_TEACHER_ASSETS,
+  });
   const TEACHER_ROLL_NAMES = ["Ruby", "Sally Science", "Professor Edward", "Mara Vale", "Dr. Mina Quill", "Theo Signal", "Cass Vector", "Nico Frame"];
   const TEACHER_ROLL_STYLES = [
     { subject: "Critical Systems", description: "Calm, surgical, and excellent at turning abstract systems into questions students can actually answer.", quote: "A system is only invisible until it breaks." },

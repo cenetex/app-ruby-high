@@ -279,6 +279,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(clientSource, "const teacherRollControlsRenderer = createTeacherRollControlsRenderer({");
     expectScriptToContain(clientSource, "return teacherRollControlsRenderer.build({");
     expectScriptToContain(script, 'controlsCard.className = "ccg-card is-career-card is-creation-control-card";');
+    expect(clientSource.indexOf("const teacherRollControlsRenderer = createTeacherRollControlsRenderer({"))
+      .toBeGreaterThan(clientSource.indexOf("const PREGENERATED_TEACHER_ASSETS = ["));
     const controlsStart = clientSource.indexOf("function buildTeacherRollControls()");
     const controlsEnd = clientSource.indexOf("function renderNewTeacherCreation()", controlsStart);
     const controlsSource = clientSource.slice(controlsStart, controlsEnd);
