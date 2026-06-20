@@ -7115,12 +7115,12 @@ export function runViewerClient(bootstrap) {
     const card = document.createElement("div");
     const isDraft = !!opts.draft;
     const isSearch = !!opts.search;
-    const canSwitch = !isDraft && !isSearch && !pack.active;
-    card.className = "pack-card-item" + (pack.active ? " is-active" : "") + (canSwitch ? " is-clickable" : "");
-    if (canSwitch) {
+    const view = packLibraryCardView(pack, { draft: isDraft, search: isSearch, busy: packImportBusy });
+    card.className = view.className;
+    if (view.interactive) {
       card.setAttribute("role", "button");
-      card.tabIndex = packImportBusy ? -1 : 0;
-      card.setAttribute("aria-label", (pack.active ? "Guest " : "Set guest ") + (pack.name || "Untitled Pack"));
+      card.tabIndex = view.tabIndex;
+      card.setAttribute("aria-label", view.ariaLabel);
       card.addEventListener("click", () => {
         activateLibraryPack(pack);
       });
@@ -7135,10 +7135,10 @@ export function runViewerClient(bootstrap) {
     const titleWrap = document.createElement("div");
     const name = document.createElement("div");
     name.className = "pack-card-name";
-    name.textContent = pack.name || "Untitled Pack";
+    name.textContent = view.name;
     const desc = document.createElement("div");
     desc.className = "pack-card-desc";
-    desc.textContent = pack.description || (opts.draft ? "Draft content pack." : "Ruby High content pack.");
+    desc.textContent = view.description;
     titleWrap.appendChild(name);
     titleWrap.appendChild(desc);
     head.appendChild(titleWrap);
@@ -7146,13 +7146,7 @@ export function runViewerClient(bootstrap) {
 
     const meta = document.createElement("div");
     meta.className = "pack-card-meta";
-    [
-      pack.source === "official" ? "official" : pack.source === "creator" ? "creator" : pack.builtIn ? "built-in" : pack.status || "pack",
-      pack.readOnly ? "read only" : pack.owner ? "yours" : "",
-      isSearch && pack.installed ? "installed" : "",
-      (pack.facultyCount || pack.teacherCount || 0) + " teachers",
-      (pack.questionCount || 0) + " cards",
-    ].filter(Boolean).forEach((text) => {
+    view.chips.forEach((text) => {
       const chip = document.createElement("span");
       chip.className = "pack-chip";
       chip.textContent = text;
@@ -7162,69 +7156,44 @@ export function runViewerClient(bootstrap) {
 
     const actions = document.createElement("div");
     actions.className = "pack-card-actions";
-    if (!isDraft) {
+    if (view.stateText) {
       const state = document.createElement("div");
       state.className = "pack-row-state";
-      state.textContent = isSearch
-        ? pack.active ? "Guest now" : pack.installed ? "Installed" : "Not installed"
-        : pack.builtIn ? "Always on" : pack.active ? "Guest now" : "Set guest";
+      state.textContent = view.stateText;
       actions.appendChild(state);
     }
 
-    if (isSearch) {
-      const installBtn = document.createElement("button");
-      installBtn.type = "button";
-      installBtn.className = "pack-action";
-      installBtn.textContent = pack.installed ? (pack.active ? "Guest" : "Set Guest") : "Install";
-      installBtn.disabled = packImportBusy || pack.active;
-      installBtn.addEventListener("click", (event) => {
+    view.actions.forEach((action) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = action.className;
+      btn.textContent = action.text;
+      btn.disabled = action.disabled;
+      btn.addEventListener("click", (event) => {
         event.stopPropagation();
-        if (pack.installed) {
+        if (action.kind === "search-primary" && pack.installed) {
           activateLibraryPack(pack);
-        } else {
+          return;
+        }
+        if (action.kind === "search-primary") {
           installCreatorPack(pack);
+          return;
+        }
+        if (action.kind === "edit") {
+          if (isDraft) editDraftPack(pack.id);
+          else editPublishedPack(pack);
+          return;
+        }
+        if (action.kind === "uninstall") {
+          uninstallLibraryPack(pack);
+          return;
+        }
+        if (action.kind === "delete") {
+          deleteLibraryPack(pack, { draft: isDraft });
         }
       });
-      actions.appendChild(installBtn);
-    }
-
-    if (isDraft || pack.canEdit) {
-      const editBtn = document.createElement("button");
-      editBtn.type = "button";
-      editBtn.className = "pack-action";
-      editBtn.textContent = "Edit";
-      editBtn.disabled = packImportBusy;
-      editBtn.addEventListener("click", (event) => {
-        event.stopPropagation();
-        if (isDraft) editDraftPack(pack.id);
-        else editPublishedPack(pack);
-      });
-      actions.appendChild(editBtn);
-    }
-    if (!isDraft && pack.canUninstall) {
-      const uninstallBtn = document.createElement("button");
-      uninstallBtn.type = "button";
-      uninstallBtn.className = "pack-action";
-      uninstallBtn.textContent = "Uninstall";
-      uninstallBtn.disabled = packImportBusy;
-      uninstallBtn.addEventListener("click", (event) => {
-        event.stopPropagation();
-        uninstallLibraryPack(pack);
-      });
-      actions.appendChild(uninstallBtn);
-    }
-    if (pack.canDelete) {
-      const deleteBtn = document.createElement("button");
-      deleteBtn.type = "button";
-      deleteBtn.className = "pack-action danger";
-      deleteBtn.textContent = "Delete";
-      deleteBtn.disabled = packImportBusy;
-      deleteBtn.addEventListener("click", (event) => {
-        event.stopPropagation();
-        deleteLibraryPack(pack, { draft: isDraft });
-      });
-      actions.appendChild(deleteBtn);
-    }
+      actions.appendChild(btn);
+    });
     card.appendChild(actions);
     return card;
   }

@@ -172,6 +172,24 @@ export type AccountHallPassPackTileView = {
   openTitle: string;
   walletReady: boolean;
 };
+export type PackLibraryCardActionKind = "search-primary" | "edit" | "uninstall" | "delete";
+export type PackLibraryCardActionView = {
+  kind: PackLibraryCardActionKind;
+  className: string;
+  text: string;
+  disabled: boolean;
+};
+export type PackLibraryCardView = {
+  className: string;
+  interactive: boolean;
+  tabIndex: 0 | -1;
+  ariaLabel: string;
+  name: string;
+  description: string;
+  chips: string[];
+  stateText: string;
+  actions: PackLibraryCardActionView[];
+};
 export type AccountHallPassCardTileView = {
   className: string;
   faceDown: boolean;
@@ -1099,6 +1117,59 @@ export function accountHallPassPackTileView(packInput: NullableRecord, opts?: Nu
       ? "Open this Ruby High pack and create its Cards."
       : "Connect a Solana wallet before opening this Ruby High pack.",
     walletReady,
+  };
+}
+
+export function packLibraryCardView(packInput: NullableRecord, opts?: NullableRecord): PackLibraryCardView {
+  const pack = packInput || {};
+  const isDraft = !!(opts && opts.draft);
+  const isSearch = !!(opts && opts.search);
+  const busy = !!(opts && opts.busy);
+  const active = !!pack.active;
+  const canSwitch = !isDraft && !isSearch && !active;
+  const name = String(pack.name || "Untitled Pack");
+  const source = String(pack.source || "");
+  const teacherCount = Math.floor(Number(pack.facultyCount || pack.teacherCount || 0)) || 0;
+  const questionCount = Math.floor(Number(pack.questionCount || 0)) || 0;
+  const chips = [
+    source === "official" ? "official" : source === "creator" ? "creator" : pack.builtIn ? "built-in" : String(pack.status || "pack"),
+    pack.readOnly ? "read only" : pack.owner ? "yours" : "",
+    isSearch && pack.installed ? "installed" : "",
+    teacherCount + " teachers",
+    questionCount + " cards",
+  ].filter(Boolean) as string[];
+  const actions: PackLibraryCardActionView[] = [];
+  if (isSearch) {
+    actions.push({
+      kind: "search-primary",
+      className: "pack-action",
+      text: pack.installed ? (active ? "Guest" : "Set Guest") : "Install",
+      disabled: busy || active,
+    });
+  }
+  if (isDraft || pack.canEdit) {
+    actions.push({ kind: "edit", className: "pack-action", text: "Edit", disabled: busy });
+  }
+  if (!isDraft && pack.canUninstall) {
+    actions.push({ kind: "uninstall", className: "pack-action", text: "Uninstall", disabled: busy });
+  }
+  if (pack.canDelete) {
+    actions.push({ kind: "delete", className: "pack-action danger", text: "Delete", disabled: busy });
+  }
+  return {
+    className: "pack-card-item" + (active ? " is-active" : "") + (canSwitch ? " is-clickable" : ""),
+    interactive: canSwitch,
+    tabIndex: busy ? -1 : 0,
+    ariaLabel: (active ? "Guest " : "Set guest ") + name,
+    name,
+    description: String(pack.description || (isDraft ? "Draft content pack." : "Ruby High content pack.")),
+    chips,
+    stateText: isDraft
+      ? ""
+      : isSearch
+        ? active ? "Guest now" : pack.installed ? "Installed" : "Not installed"
+        : pack.builtIn ? "Always on" : active ? "Guest now" : "Set guest",
+    actions,
   };
 }
 
