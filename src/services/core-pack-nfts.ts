@@ -726,13 +726,13 @@ export async function verifyCorePackNftMint(input: CorePackNftVerifyInput): Prom
   }
   if (!asset) {
     const detail = lastError instanceof Error ? lastError.message : "";
-    throw new Error(detail ? `Pack NFT was not found on-chain yet. Try again after confirmation. ${detail}` : "Pack NFT was not found on-chain yet. Try again after confirmation.");
+    throw new Error(detail ? `Solana pack was not found on-chain yet. Try again after confirmation. ${detail}` : "Solana pack was not found on-chain yet. Try again after confirmation.");
   }
   if (String(asset.owner) !== ownerWalletAddress) {
-    throw new Error("Pack NFT owner does not match the connected wallet.");
+    throw new Error("Solana pack owner does not match the connected wallet.");
   }
   if (String(asset.uri) !== expectedUri) {
-    throw new Error("Pack NFT metadata does not match this checkout.");
+    throw new Error("Solana pack metadata does not match this checkout.");
   }
   const updateAuthority = asset.updateAuthority as { __kind?: string; fields?: unknown[]; type?: string; address?: unknown };
   const collectionAddress = updateAuthority.type === "Collection" && updateAuthority.address
@@ -741,7 +741,7 @@ export async function verifyCorePackNftMint(input: CorePackNftVerifyInput): Prom
       ? String(updateAuthority.fields[0] ?? "")
       : "";
   if (collectionAddress !== config.collectionAddress) {
-    throw new Error("Pack NFT is not in the Ruby High collection.");
+    throw new Error("Solana pack is not in the Ruby High collection.");
   }
   const parsed = await corePackInfoFromMetadataOrJson(
     expectedUri,
@@ -946,7 +946,7 @@ function readCoreMintConfig(): {
 } {
   const status = corePackNftStatus();
   if (!status.configured || !status.collectionAddress) {
-    throw new Error(status.reason || "Pack NFT minting is not configured.");
+    throw new Error(status.reason || "Solana pack minting is not configured.");
   }
   return {
     authoritySecret: parseSecretKeyBytes(cleanEnv(process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY)),

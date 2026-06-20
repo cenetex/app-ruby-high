@@ -9,7 +9,7 @@ describe("welcomeHallPassPopupView", () => {
       hasCharacter: false,
     })).toEqual({
       titleText: "5 Hall Passes added",
-      bodyText: "Roll your first student now, or save your Hall Passes for AI Access, images, and extra character slots.",
+      bodyText: "Roll your first student now, or save your Hall Passes for images, cards, and extra character slots.",
       showLater: true,
       primaryText: "Create Character",
     });
@@ -21,7 +21,7 @@ describe("welcomeHallPassPopupView", () => {
       hasCharacter: false,
     })).toEqual({
       titleText: "12 Hall Passes added",
-      bodyText: "Roll your first student and try a custom portrait, or save your Hall Passes for AI Access and extra character slots.",
+      bodyText: "Roll your first student and try a custom portrait, or save your Hall Passes for extra character slots.",
       showLater: true,
       primaryText: "Create Character",
     });
@@ -41,7 +41,7 @@ describe("welcomeHallPassPopupView", () => {
       portraitConfigured: true,
     })).toEqual({
       titleText: "5 Hall Passes added",
-      bodyText: "The front office stamped your starter passes. Spend them on hosted AI or images, or keep playing classes free.",
+      bodyText: "The front office stamped your starter passes. Spend them on images, slots, and cards, or keep playing classes free.",
       showLater: false,
       primaryText: "Continue",
     });

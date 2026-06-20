@@ -45,7 +45,7 @@ describe("billingProductRowView", () => {
       tokenAmount: 2500,
     })).toEqual({
       titleText: "2 Packs",
-      metaText: "-5,000 RUBY · +2 Packs NFT · 10 cards",
+      metaText: "Solana payment: 5,000 RUBY · +2 Packs · 10 cards",
       buttonText: "Choose",
       buttonDisabled: false,
       selected: false,

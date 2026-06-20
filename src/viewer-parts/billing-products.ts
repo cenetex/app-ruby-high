@@ -26,7 +26,6 @@ export interface BillingProductsRendererDeps {
     authed: boolean;
     billingBusy: boolean;
   }): BillingCardBurnChoiceView;
-  getRubyLink(className: string): HTMLElement;
   isPrivyConfigured(): boolean;
   canPackCheckout(solana: unknown): boolean;
   onSelectProduct(productId: unknown): void;
@@ -127,9 +126,6 @@ export function createBillingProductsRenderer(deps: BillingProductsRendererDeps)
         note.className = "billing-payment-note";
         note.textContent = view.noteText;
         panel.appendChild(note);
-      }
-      if (view.showGetRubyLink) {
-        panel.appendChild(deps.getRubyLink("billing-get-ruby-link billing-payment-note-link"));
       }
       return panel;
     },

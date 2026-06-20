@@ -11,11 +11,8 @@ import {
 } from "../services/ruby-high-service.js";
 import {
   courseSlotCost,
-  hostedAiAccessCost,
-  hostedAiAccessDurationMs,
   hostedEntitlementStatus,
   hostedImageCost,
-  hostedOpenRouterConfigured,
   moreQuestionsCount,
   questionGenerationCost,
 } from "../hosted-entitlements.js";
@@ -30,8 +27,6 @@ import type { RouteContext } from "./context.js";
 
 export {
   courseSlotCost,
-  hostedAiAccessCost,
-  hostedAiAccessDurationMs,
   hostedImageCost,
   moreQuestionsCount,
   questionGenerationCost,
@@ -255,7 +250,7 @@ export function billingProducts(): BillingProduct[] {
     hallPasses,
     unitAmount,
     currency,
-    description: `${hallPasses} Ruby High Hall Pass${hallPasses === 1 ? "" : "es"} for hosted AI and creator features.`,
+    description: `${hallPasses} Ruby High Hall Pass${hallPasses === 1 ? "" : "es"} for images, cards, and creator features.`,
   });
   return [
     product(5, readPositiveIntEnv("RUBY_HIGH_HALL_PASS_5_CENTS", 199)),
@@ -576,7 +571,7 @@ async function verifySolanaPayment(
     throw new Error("Solana transaction is missing this Ruby High payment reference.");
   }
   if (expectedPackAssetAddress && !solanaTransactionHasAccount(transaction, expectedPackAssetAddress)) {
-    throw new Error("Solana transaction is missing this Ruby High pack NFT.");
+    throw new Error("Solana transaction is missing this Ruby High pack.");
   }
   const received = solanaTreasuryTokenDelta(transaction, config);
   const required = BigInt(product.tokenAmountBaseUnits);
@@ -1184,14 +1179,6 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       cardBurn: {
         hallPassesPerCard: HALL_PASS_CARD_BURN_HALL_PASS_VALUE,
       },
-      hostedAiAccess: {
-        configured: entitlements.hosted_ai.configured,
-        cost: hostedAiAccessCost(),
-        durationMs: hostedAiAccessDurationMs(),
-        active: entitlements.hosted_ai.active,
-        expiresAt: entitlements.hosted_ai.expiresAt,
-        remainingMs: entitlements.hosted_ai.remainingMs,
-      },
       entitlements,
     });
     return true;
@@ -1205,7 +1192,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     }
     const packNfts = publicCorePackNftStatus();
     if (!packNfts.configured) {
-      ctx.error(ctx.res, packNfts.reason || "Pack NFT minting is not configured.", 503);
+      ctx.error(ctx.res, packNfts.reason || "Solana pack creation is not configured.", 503);
       return true;
     }
     const stateKey = authenticatedStateKey(ctx, deps);
@@ -1280,7 +1267,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     }
     const packNfts = publicCorePackNftStatus();
     if (!packNfts.configured) {
-      ctx.error(ctx.res, packNfts.reason || "Pack NFT minting is not configured.", 503);
+      ctx.error(ctx.res, packNfts.reason || "Solana pack creation is not configured.", 503);
       return true;
     }
     const stateKey = authenticatedStateKey(ctx, deps);
@@ -1348,7 +1335,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     }
     const packNfts = publicCorePackNftStatus();
     if (!packNfts.configured) {
-      ctx.error(ctx.res, packNfts.reason || "Pack NFT minting is not configured.", 503);
+      ctx.error(ctx.res, packNfts.reason || "Solana pack creation is not configured.", 503);
       return true;
     }
     const stateKey = authenticatedStateKey(ctx, deps);
@@ -1375,7 +1362,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       return true;
     }
     if (!ownerWalletAddress) {
-      ctx.error(ctx.res, "Solana wallet address is required to mint the pack NFT.", 400);
+      ctx.error(ctx.res, "Solana wallet address is required to create the pack.", 400);
       return true;
     }
     const idempotencyKey = solanaTransactionKey(signature);
@@ -1419,7 +1406,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       return true;
     }
     if (!packAssetAddress || !packMetadataUri) {
-      ctx.error(ctx.res, "Pack NFT checkout details are missing. Refresh Ruby High and try again.", 400);
+      ctx.error(ctx.res, "Solana pack checkout details are missing. Refresh Ruby High and try again.", 400);
       return true;
     }
     try {
@@ -1558,41 +1545,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
   }
 
   if (ctx.method === "POST" && ctx.pathname === `${BILLING_PREFIX}/ai-pass`) {
-    if (!hostedOpenRouterConfigured()) {
-      ctx.error(ctx.res, "Hosted AI is not configured on this server.", 503);
-      return true;
-    }
-    const token = deps.auth.parseSessionToken(ctx.cookieHeader);
-    const record = deps.auth.resolve(token);
-    if (!token || !record) {
-      ctx.error(ctx.res, "Not authenticated.", 401);
-      return true;
-    }
-    const stateKey = deps.auth.stateKeyForRecord(record);
-    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
-    const burns = hallPassBurnsFromBody(body);
-    try {
-      if (burns.length > 0) await verifyHallPassBurns(burns);
-      const activation = deps.ruby.activateHostedAiAccess(stateKey, {
-        hallPassCost: hostedAiAccessCost(),
-        durationMs: hostedAiAccessDurationMs(),
-        ...(burns.length > 0 ? { burns } : {}),
-      });
-      await deps.ruby.flushSession(stateKey);
-      const entitlements = hostedEntitlementStatus({ ruby: deps.ruby, sessionId: stateKey });
-      ctx.json(ctx.res, {
-        ok: true,
-        applied: activation.applied,
-        hallPassCost: activation.hallPassCost,
-        hallPasses: activation.state.wallet.hallPasses,
-        expiresAt: activation.expiresAt,
-        hosted_ai: entitlements.hosted_ai,
-        entitlements,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      ctx.error(ctx.res, message, message.startsWith("Not enough Cards") || message.startsWith("Not enough Hall Passes") ? 402 : 500);
-    }
+    ctx.error(ctx.res, "AI is sponsored on this server when configured; chat spends Merit Stars instead.", 410);
     return true;
   }
 

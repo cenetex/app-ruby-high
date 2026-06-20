@@ -44,7 +44,7 @@
  *      (not forced Social cards), then blocks further progress with a signup
  *      gate once the daily class is complete.
  *
- *   10. Public world snapshot + SSE replay expose the multiplayer feed
+ *   10. School activity snapshot + SSE replay expose the multiplayer feed
  *       shape without leaking private school-event identifiers.
  *
  * Usage:
@@ -351,11 +351,19 @@ async function check5GuestSession() {
     const r = await fetchWithTimeout(`${base}/api/apps/ruby-high/auth/guest`, { method: "POST" });
     if (r.status !== 200) return fail(name, `expected 200, got ${r.status}`);
     const body = await readJson(r);
-    if (!body || body.session !== true || body.ai !== false || body.label !== "Guest") {
+    if (!body || body.session !== true || typeof body.ai !== "boolean" || body.label !== "Guest") {
       return fail(name, `unexpected guest body: ${JSON.stringify(body).slice(0, 200)}`);
     }
     const entitlementError = entitlementShapeError(body.entitlements);
     if (entitlementError) return fail(name, entitlementError);
+    const hostedAiActive = body.entitlements.hosted_ai.active === true;
+    const localAiActive = body.local_ai === true;
+    if (body.ai === true && !hostedAiActive && !localAiActive) {
+      return fail(name, `guest AI reported true without hosted/local AI: ${JSON.stringify(body).slice(0, 200)}`);
+    }
+    if ((hostedAiActive || localAiActive) && body.ai !== true) {
+      return fail(name, `guest AI missing despite active AI entitlement: ${JSON.stringify(body).slice(0, 200)}`);
+    }
     const setCookie = firstSetCookie(r.headers);
     const cookie = setCookie.split(";")[0];
     if (!/^rh_session=/.test(cookie)) {
@@ -382,9 +390,6 @@ async function check6BillingEntitlements() {
     }
     if (!productsBody.imageCosts || typeof productsBody.imageCosts.portrait !== "number" || typeof productsBody.imageCosts.diploma !== "number") {
       return fail(name, `billing/products missing image costs: ${JSON.stringify(productsBody).slice(0, 240)}`);
-    }
-    if (!productsBody.hostedAiAccess || typeof productsBody.hostedAiAccess.configured !== "boolean") {
-      return fail(name, `billing/products missing hosted AI status: ${JSON.stringify(productsBody).slice(0, 240)}`);
     }
     const productsEntitlementError = entitlementShapeError(productsBody.entitlements);
     if (productsEntitlementError) return fail(name, `billing/products ${productsEntitlementError}`);
@@ -571,22 +576,22 @@ function containsPrivateWorldIdentifier(text) {
 }
 
 async function check10PublicWorldFeed() {
-  const name = "public world feed";
+  const name = "school activity feed";
   try {
     const snapshotRes = await fetchWithTimeout(`${base}/api/apps/ruby-high/world?limit=5`);
     const snapshotText = await readText(snapshotRes.clone());
-    if (snapshotRes.status !== 200) return fail(name, `world snapshot expected 200, got ${snapshotRes.status}: ${snapshotText.slice(0, 200)}`);
+    if (snapshotRes.status !== 200) return fail(name, `school activity snapshot expected 200, got ${snapshotRes.status}: ${snapshotText.slice(0, 200)}`);
     const cacheControl = snapshotRes.headers.get("cache-control") || "";
     if (!/\bno-store\b/i.test(cacheControl)) {
-      return fail(name, `world snapshot should be no-store, got cache-control=${cacheControl || "missing"}`);
+      return fail(name, `school activity snapshot should be no-store, got cache-control=${cacheControl || "missing"}`);
     }
     if (containsPrivateWorldIdentifier(snapshotText)) {
-      return fail(name, `world snapshot leaked an internal identifier: ${snapshotText.slice(0, 240)}`);
+      return fail(name, `school activity snapshot leaked an internal identifier: ${snapshotText.slice(0, 240)}`);
     }
     const snapshotBody = await readJson(snapshotRes);
     const snapshot = snapshotBody?.world;
     if (!snapshotBody?.ok || !snapshot || typeof snapshot.generatedAt !== "number" || typeof snapshot.activeStudents !== "number") {
-      return fail(name, `world snapshot missing public envelope: ${JSON.stringify(snapshotBody).slice(0, 240)}`);
+      return fail(name, `school activity snapshot missing public envelope: ${JSON.stringify(snapshotBody).slice(0, 240)}`);
     }
     if (!Array.isArray(snapshot.activeRooms) || !snapshot.cohorts || typeof snapshot.cohorts !== "object" || Array.isArray(snapshot.cohorts)) {
       return fail(name, `world snapshot missing activeRooms or grade-keyed cohorts: ${JSON.stringify(snapshot).slice(0, 240)}`);
@@ -600,10 +605,10 @@ async function check10PublicWorldFeed() {
 
     const eventsRes = await fetchWithTimeout(`${base}/api/apps/ruby-high/world/events?limit=3&since=0`);
     const eventsText = await readText(eventsRes);
-    if (eventsRes.status !== 200) return fail(name, `world events expected 200, got ${eventsRes.status}: ${eventsText.slice(0, 200)}`);
+    if (eventsRes.status !== 200) return fail(name, `school activity events expected 200, got ${eventsRes.status}: ${eventsText.slice(0, 200)}`);
     const contentType = eventsRes.headers.get("content-type") || "";
     if (!/\btext\/event-stream\b/i.test(contentType)) {
-      return fail(name, `world events should be text/event-stream, got ${contentType || "missing"}`);
+      return fail(name, `school activity events should be text/event-stream, got ${contentType || "missing"}`);
     }
     const eventsCache = eventsRes.headers.get("cache-control") || "";
     if (!/\bno-store\b/i.test(eventsCache)) {

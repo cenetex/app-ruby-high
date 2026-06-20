@@ -43,7 +43,7 @@ export function createChatMessageRenderer(deps: ChatMessageRendererDeps): ChatMe
   }
 
   function roleTag(kind: string): HTMLElement | null {
-    if (kind !== "teacher" && kind !== "you" && kind !== "student") return null;
+    if (kind !== "teacher" && kind !== "you" && kind !== "student" && kind !== "player") return null;
     const tag = deps.document.createElement("span");
     tag.className = "role-tag " + (kind === "teacher" ? "bot" : kind);
     tag.textContent = kind === "teacher" ? "Teacher" : kind === "you" ? "you" : "Student";

@@ -78,10 +78,10 @@ function hallPassPaymentView(overrides?: Partial<BillingHallPassPaymentChoiceVie
 function cardPackPaymentView(overrides?: Partial<BillingCardPackPaymentChoiceView>): BillingCardPackPaymentChoiceView {
   return {
     titleText: "Buy Ruby High Pack",
-    metaText: "-100 RUBY · +1 Pack NFT",
+    metaText: "Solana payment: 100 RUBY · +1 Pack",
     buttonText: "Buy Pack",
     buttonDisabled: false,
-    buttonTitle: "Pay with RUBY and mint a pack NFT.",
+    buttonTitle: "Pay with Solana wallet.",
     noteText: "",
     showGetRubyLink: false,
     ...overrides,
@@ -122,7 +122,6 @@ describe("billing products renderer", () => {
       hallPassPaymentChoiceView: () => hallPassPaymentView(),
       cardPackPaymentChoiceView: () => cardPackPaymentView(),
       cardBurnChoiceView: () => burnView(),
-      getRubyLink: () => new FakeElement("a") as unknown as HTMLElement,
       isPrivyConfigured: () => true,
       canPackCheckout: () => true,
       onSelectProduct(id) {
@@ -164,17 +163,11 @@ describe("billing products renderer", () => {
         expect(opts).toEqual({ cryptoUnavailable: false, canPackCheckout: false, billingBusy: false });
         return cardPackPaymentView({
           buttonDisabled: true,
-          noteText: "RUBY token setup is incomplete. Get $RUBY, then choose a pack.",
-          showGetRubyLink: true,
+          noteText: "Solana pack checkout is incomplete. Try again later.",
+          showGetRubyLink: false,
         });
       },
       cardBurnChoiceView: () => burnView(),
-      getRubyLink(className) {
-        const link = new FakeElement("a");
-        link.className = className;
-        link.textContent = "Get $RUBY";
-        return link as unknown as HTMLElement;
-      },
       isPrivyConfigured: () => true,
       canPackCheckout: () => false,
       onSelectProduct: vi.fn(),
@@ -201,12 +194,10 @@ describe("billing products renderer", () => {
     }) as unknown as FakeElement;
     expect(textTree(pack)).toEqual([
       "Buy Ruby High Pack",
-      "-100 RUBY · +1 Pack NFT",
+      "Solana payment: 100 RUBY · +1 Pack",
       "Buy Pack",
-      "RUBY token setup is incomplete. Get $RUBY, then choose a pack.",
-      "Get $RUBY",
+      "Solana pack checkout is incomplete. Try again later.",
     ]);
-    expect(pack.children[4]!.className).toBe("billing-get-ruby-link billing-payment-note-link");
     pack.children[2]!.children[0]!.click();
     expect(calls).toEqual(["stripe:pass-5", "solana:pack-1"]);
   });
@@ -228,7 +219,6 @@ describe("billing products renderer", () => {
         });
         return burnView();
       },
-      getRubyLink: () => new FakeElement("a") as unknown as HTMLElement,
       isPrivyConfigured: () => true,
       canPackCheckout: () => true,
       onSelectProduct: vi.fn(),

@@ -47,8 +47,6 @@ export function runViewerClient(bootstrap) {
   // helpers (statLabel, letterGradeForScore, makeVisitorId, getVisitorId,
   // attachVisitorHeader, …) are declared in the surrounding IIFE by
   // viewer-parts/script.ts → client-pure.ts. They're in scope here.
-  const DEFAULT_RUBY_TOKEN_MINT = "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump";
-  const JUPITER_SOL_TO_RUBY_SWAP_PREFIX = "https://jup.ag/swap/SOL-";
   function subjectProgressForFaculty(fid) {
     const roster = (lastTelemetry && lastTelemetry.faculty_roster) || [];
     return roster.find((f) => f.id === fid) || null;
@@ -134,7 +132,7 @@ export function runViewerClient(bootstrap) {
     const live = !!(round && !round.resolved && cur);
     const postClass = postClassState(t);
     els.nextBtn.title = live
-      ? (teacherChatEnabled() ? "Ask for a hint" : "Answer the board to continue")
+      ? (teacherChatEnabled() ? "Ask for a hint. Costs 1 Merit Star." : "Answer the board to continue")
       : postClass.report && guestSignupRequired(t)
         ? "Sign up to continue past today's class"
       : cur && currentRevealCompletedClass(t)
@@ -145,9 +143,11 @@ export function runViewerClient(bootstrap) {
         ? "Start a short homeroom reflection"
         : postClass.report
         ? "Start practice"
-        : t && t.graduation_ready && !cur
+      : t && t.graduation_ready && !cur
         ? "Open the graduation ceremony"
-        : "Advance the room";
+        : teacherChatEnabled()
+          ? "Advance the room. Costs 1 Merit Star when it starts a chat."
+          : "Advance the room";
   }
   function teachingFacultyIdsForSummary() {
     const gateIds = lastTelemetry && lastTelemetry.graduation_gate && Array.isArray(lastTelemetry.graduation_gate.requiredFacultyIds)
@@ -518,15 +518,10 @@ export function runViewerClient(bootstrap) {
     accountWorkspace: document.querySelector(".account-workspace"),
     accountTabs: Array.from(document.querySelectorAll("[data-account-tab]")),
     accountPanels: Array.from(document.querySelectorAll("[data-account-panel]")),
-    accountAiStatus: $("account-ai-status"),
-    accountAiMeta: $("account-ai-meta"),
-    accountAiUsePass: $("account-ai-use-pass"),
-    accountAiAction: $("account-ai-action"),
     accountWalletBalance: $("account-wallet-balance"),
     accountWalletMeta: $("account-wallet-meta"),
     accountBuyPasses: $("account-buy-passes"),
     accountBuyCardPacks: $("account-buy-card-packs"),
-    accountGetRuby: $("account-get-ruby"),
     accountMintCards: $("account-mint-cards"),
     accountCardSummary: $("account-card-summary"),
     accountHallPassCards: $("account-hall-pass-cards"),
@@ -560,12 +555,6 @@ export function runViewerClient(bootstrap) {
     appConfirmCancel: $("app-confirm-cancel"),
     leaderboardPanel: $("leaderboard-panel"),
     leaderboardBody: $("leaderboard-body"),
-    worldPanel: $("world-panel"),
-    worldPanelSub: $("world-panel-sub"),
-    worldPanelRooms: $("world-panel-rooms"),
-    worldPanelEvents: $("world-panel-events"),
-    worldPanelRefresh: $("world-panel-refresh"),
-
     appConfirmOk: $("app-confirm-ok"),
   };
 
@@ -671,7 +660,6 @@ export function runViewerClient(bootstrap) {
   let lastPrivyRateLimitedAt = 0;
   const PRIVY_REFRESH_MIN_INTERVAL_MS = 60 * 1000;
   const PRIVY_RATE_LIMIT_BACKOFF_MS = 5 * 60 * 1000;
-  const WORLD_FEED_EVENT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
   let privyState = {
     configured: !!privyConfig,
     authenticated: false,
@@ -936,6 +924,19 @@ export function runViewerClient(bootstrap) {
     const ch = lastTelemetry && lastTelemetry.character;
     return playerDisplayName() + ":" + (ch && ch.portraitDataUrl ? ch.portraitDataUrl.length : 0);
   }
+  function chatHistorySignature(facultyId, msgs) {
+    const rows = (Array.isArray(msgs) ? msgs : []).map((m) => [
+      m && m.role,
+      m && m.at,
+      m && m.faculty,
+      m && m.content,
+      m && m.authorName,
+      m && m.isSelf ? "self" : "other",
+      m && m.tool,
+      m && m.result && m.result.ok ? "ok" : "",
+    ].join("\x1f"));
+    return facultyId + ":" + playerMessageIdentitySig() + ":" + rows.join("\x1e");
+  }
   // clipPlayerContext is in client-pure.
   function facultyDisplayName(facultyId) {
     const fid = facultyId || (lastTelemetry && lastTelemetry.faculty);
@@ -1097,7 +1098,6 @@ export function runViewerClient(bootstrap) {
     els.blackboardPanel.hidden = false;
     els.stream.hidden = false;
     els.composerZone.hidden = false;
-    renderWorldPanel();
   }
   function resetBlackboard() {
     activeQuestionId = null;
@@ -1161,62 +1161,6 @@ export function runViewerClient(bootstrap) {
 
   function apiFetch(url, init) {
     return apiClient.apiFetch(url, init);
-  }
-
-  const worldController = createViewerWorldController({
-    document,
-    window,
-    elements: {
-      panel: els.worldPanel,
-      sub: els.worldPanelSub,
-      rooms: els.worldPanelRooms,
-      events: els.worldPanelEvents,
-      refreshButton: els.worldPanelRefresh,
-    },
-    apiBase,
-    maxEventAgeMs: WORLD_FEED_EVENT_MAX_AGE_MS,
-    authKeys: [AUTH_KEY, AUTH_LABEL, AUTH_PERSIST],
-    now() {
-      return Date.now();
-    },
-    apiFetch,
-    command,
-    consumeSse: consumeViewerSseStream,
-    buildEventsUrl: worldFeedEventsUrl,
-    pruneEvents: pruneWorldFeedEventList,
-    mergeEvents: mergeWorldFeedEventList,
-    getRoster() {
-      return lastTelemetry && Array.isArray(lastTelemetry.faculty_roster) ? lastTelemetry.faculty_roster : [];
-    },
-    isSuppressed() {
-      return leaderboardViewOpen;
-    },
-    panelView: worldFeedPanelView,
-    notify(message, ok) {
-      showCongrats(message, ok, ok ? 2400 : 4200);
-    },
-    deriveAuth,
-    initializePrivyFromStoredSession,
-    postViewerMetricEvent,
-    setTimeout(fn, delayMs) {
-      return setTimeout(fn, delayMs);
-    },
-    clearTimeout(handle) {
-      clearTimeout(handle);
-    },
-  });
-
-  function renderWorldPanel() {
-    worldController.render();
-  }
-  async function loadWorldFeed(opts) {
-    await worldController.load(opts || {});
-  }
-  function pauseWorldFeedPoll() {
-    worldController.pausePoll();
-  }
-  function resumeWorldFeedPoll(delayMs) {
-    worldController.resumePoll(delayMs || 0);
   }
 
   function postViewerMetricEvent(type, payload) {
@@ -1287,7 +1231,6 @@ export function runViewerClient(bootstrap) {
     hallPassPaymentChoiceView: billingHallPassPaymentChoiceView,
     cardPackPaymentChoiceView: billingCardPackPaymentChoiceView,
     cardBurnChoiceView: billingCardBurnChoiceView,
-    getRubyLink: buildGetRubyLink,
     isPrivyConfigured() {
       return !!privyState.configured;
     },
@@ -1478,7 +1421,6 @@ export function runViewerClient(bootstrap) {
     summary: els.accountCardSummary,
     buyButton: els.accountBuyCardPacks,
     mintButton: els.accountMintCards,
-    getRubyLink: els.accountGetRuby,
     panelView: accountHallPassCardsPanelView,
     packTileView: accountHallPassPackTileView,
     cardTileView: accountHallPassCardTileView,
@@ -1488,7 +1430,6 @@ export function runViewerClient(bootstrap) {
     cardArtUrl(card, faceDown) {
       return faceDown ? CARD_BACK_ART_URL : hallPassCardArtUrl(card);
     },
-    configureGetRubyLink,
     appendSolanaProofLink,
     ensureSolanaWallet: ensureSolanaWalletFromAccount,
     openPack: openHallPassPackFromAccount,
@@ -1923,7 +1864,7 @@ export function runViewerClient(bootstrap) {
     const message = err && err.message ? String(err.message) : String(err || "error");
     if (/user rejected|rejected|canceled|cancelled/i.test(message)) return "Wallet request canceled.";
     if (/Need\s+[\d,.]+\s+RUBY|needs?\s+[\d,.]+\s+RUBY|not enough\s+RUBY/i.test(message)) {
-      return message.replace(/^Card pack checkout\s*·\s*/i, "") + " Get $RUBY in the connected wallet, then try again.";
+      return message.replace(/^Card pack checkout\s*·\s*/i, "") + " Add funds in the connected Solana wallet, then try again.";
     }
     if (/needs more SOL|insufficient funds|insufficient lamports|Attempt to debit|0x1\b|needs at least|balance is .*needs/i.test(message)) {
       return "This mint needs more SOL for Solana rent and fees. Your card was not changed.";
@@ -2004,7 +1945,7 @@ export function runViewerClient(bootstrap) {
     const spendKind = usePhotoDayCredit ? "photo-day credit" : "Hall Pass";
     const isCharacterPortrait = action === "Custom character portrait";
     const detail = isCharacterPortrait
-      ? "Keep editing while it runs. “Lock it in” unlocks once the request finishes."
+      ? "Keep editing while it runs. Ruby saves the student after the request finishes."
       : "Keep editing while it runs. Save and Close unlock once it finishes or you cancel.";
     const confirmText = isCharacterPortrait ? "Generate portrait" : "Generate image";
     if (usePhotoDayCredit) {
@@ -2031,8 +1972,8 @@ export function runViewerClient(bootstrap) {
     const open = await confirmInApp({
       kicker: "Hall Passes",
       title: opts && opts.title ? opts.title : "No Hall Passes yet",
-      copy: opts && opts.copy ? opts.copy : "Hosted AI needs Hall Passes. Buy Hall Passes or burn a Card first.",
-      detail: opts && opts.detail ? opts.detail : "The classroom loop still works without hosted AI.",
+      copy: opts && opts.copy ? opts.copy : "This action needs Hall Passes. Buy Hall Passes or burn a Card first.",
+      detail: opts && opts.detail ? opts.detail : "The classroom loop still works while you keep playing.",
       confirmText: "Open Hall Passes",
       cancelText: "Keep playing",
       focus: "confirm",
@@ -2104,11 +2045,9 @@ export function runViewerClient(bootstrap) {
     const cardCount = walletCardCount(t || lastTelemetry);
     const packCount = walletPackCount(t || lastTelemetry);
     const hallPasses = walletNumbers(t || lastTelemetry).hallPasses;
-    const ai = hostedAiTelemetry(t || lastTelemetry);
     els.billingWallet.textContent = formatWholeNumber(hallPasses) + " Hall Pass" + (hallPasses === 1 ? "" : "es")
       + " · " + formatWholeNumber(packCount) + " Pack" + (packCount === 1 ? "" : "s")
-      + " · " + formatWholeNumber(cardCount) + " Card" + (cardCount === 1 ? "" : "s")
-      + (ai.active ? " · AI active " + formatRelativeExpiry(ai.expiresAt) : "");
+      + " · " + formatWholeNumber(cardCount) + " Card" + (cardCount === 1 ? "" : "s");
     renderAccountWallet();
   }
 
@@ -2132,38 +2071,10 @@ export function runViewerClient(bootstrap) {
       ? billingProductsCache.solana
       : null;
     if (!solana) return { loaded: false, ready: true, reason: "" };
-    if (!solana.configured) return { loaded: true, ready: false, reason: "Card pack checkout is not configured on this server." };
+    if (!solana.configured) return { loaded: true, ready: false, reason: "Solana pack checkout is not configured on this server." };
     const mint = currentRubyTokenMintFromSolana(solana);
-    if (!mint) return { loaded: true, ready: false, reason: "RUBY mint configuration is missing." };
+    if (!mint) return { loaded: true, ready: false, reason: "Solana pack checkout is missing token configuration." };
     return { loaded: true, ready: true, reason: "" };
-  }
-
-  function currentRubyTokenMint() {
-    const solana = billingProductsCache && billingProductsCache.solana && typeof billingProductsCache.solana === "object"
-      ? billingProductsCache.solana
-      : null;
-    const mint = solana && typeof solana.mint === "string" ? solana.mint.trim() : "";
-    return mint || DEFAULT_RUBY_TOKEN_MINT;
-  }
-
-  function rubyTokenSwapLink() {
-    return JUPITER_SOL_TO_RUBY_SWAP_PREFIX + encodeURIComponent(currentRubyTokenMint());
-  }
-
-  function configureGetRubyLink(link) {
-    if (!link) return;
-    link.href = rubyTokenSwapLink();
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = "Get $RUBY";
-    link.title = "Get $RUBY on Jupiter before buying Ruby High card packs.";
-  }
-
-  function buildGetRubyLink(className) {
-    const link = document.createElement("a");
-    link.className = className || "get-ruby-link";
-    configureGetRubyLink(link);
-    return link;
   }
 
   function hostedAiTelemetry(t) {
@@ -2174,8 +2085,9 @@ export function runViewerClient(bootstrap) {
     const expiresAt = ai && ai.expiresAt != null ? Number(ai.expiresAt) : 0;
     const cost = ai && ai.cost != null ? Number(ai.cost) : 1;
     const durationMs = ai && ai.durationMs != null ? Number(ai.durationMs) : 604_800_000;
+    const hasExpiry = Number.isFinite(expiresAt) && expiresAt > 0;
     return {
-      active: !!(ai && ai.active && expiresAt > Date.now()),
+      active: !!(ai && ai.active && (!hasExpiry || expiresAt > Date.now())),
       expiresAt: Number.isFinite(expiresAt) ? expiresAt : 0,
       configured: !!(ai && ai.configured),
       affordable: !!(ai && ai.affordable),
@@ -2229,7 +2141,6 @@ export function runViewerClient(bootstrap) {
 
   function renderAccountPage() {
     renderAccountPaneState();
-    renderAccountAi();
     renderAccountWallet();
     renderAccountHallPassCards();
     renderAccountCharacters();
@@ -2249,7 +2160,7 @@ export function runViewerClient(bootstrap) {
     packSyncBusy = true;
     packSyncWalletAddress = ownerWalletAddress;
     packSyncAt = now;
-    if (!quiet && els.accountCardSummary) els.accountCardSummary.textContent = "Checking wallet for pack NFTs...";
+    if (!quiet && els.accountCardSummary) els.accountCardSummary.textContent = "Checking wallet for Solana packs...";
     try {
       const r = await apiFetch(apiBase + "/nft/sync-packs", {
         method: "POST",
@@ -2268,7 +2179,7 @@ export function runViewerClient(bootstrap) {
           if (importedCount > 0) pieces.push("imported " + formatWholeNumber(importedCount));
           if (restoredCount > 0) pieces.push("restored " + formatWholeNumber(restoredCount));
           if (removedCount > 0) pieces.push("removed " + formatWholeNumber(removedCount));
-          setPrivyStatus("Wallet pack sync " + pieces.join(", ") + " pack NFT" + (importedCount + removedCount + restoredCount === 1 ? "" : "s") + ".", false);
+          setPrivyStatus("Wallet pack sync " + pieces.join(", ") + " Solana pack" + (importedCount + removedCount + restoredCount === 1 ? "" : "s") + ".", false);
         }
         await fetchSession();
         renderAccountPage();
@@ -2281,29 +2192,6 @@ export function runViewerClient(bootstrap) {
     } finally {
       packSyncBusy = false;
     }
-  }
-
-  function renderAccountAi() {
-    if (!els.accountAiStatus || !els.accountAiUsePass || !els.accountAiAction) return;
-    const ai = hostedAiTelemetry(lastTelemetry);
-    const cost = positiveWholeNumber(ai.cost || 1, 1);
-    const view = accountAiPanelView(ai, {
-      authed,
-      billingBusy,
-      localAiEnabled,
-      hostedAiActive,
-      hasBrowserKey: !!getStoredApiKey(),
-      aiEnabled,
-      canUseHallPass: canSpendHallPasses(cost),
-      teacherServerAi: activeTeacherUsesServerAi(),
-    });
-    els.accountAiStatus.textContent = view.status;
-    if (els.accountAiMeta) els.accountAiMeta.textContent = view.meta;
-    els.accountAiUsePass.textContent = view.primaryLabel;
-    els.accountAiUsePass.title = view.primaryTitle;
-    els.accountAiUsePass.disabled = view.primaryDisabled;
-    els.accountAiAction.textContent = view.secondaryLabel;
-    els.accountAiAction.disabled = view.secondaryDisabled;
   }
 
   function renderAccountWallet() {
@@ -2804,15 +2692,6 @@ export function runViewerClient(bootstrap) {
     throw lastError || new Error("Card mint confirmation failed.");
   }
 
-  function handleAccountAiAction() {
-    if (!authed || localAiEnabled) return;
-    if (getStoredApiKey() && aiEnabled) {
-      void logout();
-      return;
-    }
-    window.location.href = "/api/apps/ruby-high/auth/start";
-  }
-
   function renderBillingProducts(payload) {
     if (!els.billingProducts) return;
     els.billingProducts.replaceChildren();
@@ -2839,7 +2718,6 @@ export function runViewerClient(bootstrap) {
     if (els.billingCosts) {
       els.billingCosts.replaceChildren();
       [
-        ["AI Access", payload && payload.hostedAiAccess ? payload.hostedAiAccess.cost : undefined],
         ["Portrait", costs.portrait],
         ["Diploma art", costs.diploma],
         ["Course publish", creator.courseSlotCost],
@@ -2858,7 +2736,6 @@ export function runViewerClient(bootstrap) {
           chip.textContent = label;
           els.billingCosts.appendChild(chip);
         });
-        if (panelView.showGetRubyCostLink) els.billingCosts.appendChild(buildGetRubyLink("cost-chip get-ruby-link billing-get-ruby-link"));
       }
     }
     const solanaProducts = solana && Array.isArray(solana.products) ? solana.products : [];
@@ -3075,8 +2952,8 @@ export function runViewerClient(bootstrap) {
         recipient: data.recipient,
         mint: data.mint,
         reference: data.reference,
-        prompt: "Your wallet should show a RUBY debit and Ruby High pack NFT create. The network fee is paid by this wallet.",
-        copy: "Ruby High will ask your wallet to pay RUBY and create one authorized pack NFT. This should not ask for broad approvals.",
+        prompt: "Your wallet should show a Solana pack payment and Ruby High pack creation. The network fee is paid by this wallet.",
+        copy: "Ruby High will ask your wallet to confirm one Solana pack purchase and create one authorized pack. This should not ask for broad approvals.",
         confirmText: "Open wallet",
       });
       if (!approved) {
@@ -3342,82 +3219,6 @@ export function runViewerClient(bootstrap) {
     throw lastError || new Error("Card burn could not be confirmed.");
   }
 
-  function accountAiAccessSuccessText(data) {
-    const hostedAi = data && data.hosted_ai && typeof data.hosted_ai === "object"
-      ? data.hosted_ai
-      : data && data.entitlements && data.entitlements.hosted_ai && typeof data.entitlements.hosted_ai === "object"
-        ? data.entitlements.hosted_ai
-        : null;
-    return "AI access is on for " + formatDuration(hostedAi && hostedAi.durationMs || 604_800_000) + ".";
-  }
-
-  async function activateAiPass(opts) {
-    if (billingBusy) return;
-    const fromAccount = !!(opts && opts.source === "account");
-    billingBusy = true;
-    renderAccountPage();
-    if (billingProductsCache) renderBillingProducts(billingProductsCache);
-    try {
-      const aiStatus = hostedAiTelemetry(lastTelemetry || {});
-      if (aiStatus.active) {
-        const message = "AI access is already active.";
-        setBillingStatus(message, false);
-        if (fromAccount) setPrivyStatus(message, false);
-        return;
-      }
-      const aiCost = aiStatus.cost;
-      const useHallPass = canSpendHallPasses(aiCost);
-      if (!useHallPass) {
-        await promptForHallPasses({
-          title: "Need Hall Passes",
-          copy: "AI Access needs " + hallPassCostLabel(aiCost) + ". Buy Hall Passes or burn a Card first.",
-          detail: "Card burns now live on the Buy Hall Passes page.",
-        });
-        const message = "Buy Hall Passes or burn a Card first.";
-        setBillingStatus(message, true);
-        if (fromAccount) setPrivyStatus(message, true);
-        return;
-      }
-      if (fromAccount) setPrivyStatus("Using Hall Pass for AI access...", false);
-      setBillingStatus("Using Hall Pass for AI access...", false);
-      let data = null;
-      let lastError = null;
-      for (let attempt = 0; attempt < 4; attempt += 1) {
-        if (attempt > 0) await waitForSolanaConfirmation(1500 + attempt * 500);
-        const r = await apiFetch(apiBase + "/billing/ai-pass", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          timeoutMs: 12000,
-          body: JSON.stringify({}),
-        });
-        data = await r.json().catch(() => ({}));
-        if (r.ok && data && data.ok) {
-          lastError = null;
-          break;
-        }
-        lastError = new Error(data.error || "AI pass " + r.status);
-        if (!/not found yet|try again|rpc/i.test(lastError.message) || attempt === 3) throw lastError;
-        setBillingStatus("Waiting for card burn confirmation...", false);
-        if (fromAccount) setPrivyStatus("Waiting for card burn confirmation...", false);
-      }
-      if (lastError) throw lastError;
-      const message = data.applied ? accountAiAccessSuccessText(data) : "AI access is already active.";
-      setBillingStatus(message, false);
-      if (fromAccount) setPrivyStatus(message, false);
-      await fetchSession();
-      await deriveAuth();
-      renderAccountPage();
-      if (billingProductsCache) renderBillingProducts(billingProductsCache);
-    } catch (err) {
-      const message = "AI access failed · " + (err && err.message ? err.message : "error");
-      setBillingStatus(message, true);
-      if (fromAccount) setPrivyStatus(message, true);
-    } finally {
-      billingBusy = false;
-      renderAccountPage();
-      if (billingProductsCache) renderBillingProducts(billingProductsCache);
-    }
-  }
 
   function consumeBillingReturnFlag() {
     try {
@@ -3634,10 +3435,7 @@ export function runViewerClient(bootstrap) {
         if (els.blackboardEmptyAction) els.blackboardEmptyAction.hidden = true;
       } else if (!lastTelemetry?.character) {
         els.blackboardEmptyText.textContent = "Create your first Ruby High student.";
-        if (els.blackboardEmptyAction) {
-          els.blackboardEmptyAction.textContent = "Lock it in";
-          els.blackboardEmptyAction.hidden = false;
-        }
+        if (els.blackboardEmptyAction) els.blackboardEmptyAction.hidden = true;
       } else if (lastTelemetry && lastTelemetry.graduation_ready) {
         els.blackboardEmptyText.textContent = "Requirements complete. Pick a level-up reward to seal the year.";
         if (els.blackboardEmptyAction) els.blackboardEmptyAction.hidden = true;
@@ -4380,7 +4178,6 @@ export function runViewerClient(bootstrap) {
     hideBlackboard();
     els.loungeStage.hidden = true;
     els.stream.hidden = true;
-    if (els.worldPanel) els.worldPanel.hidden = true;
     els.leaderboardPanel.hidden = false;
     els.leaderboardBody.innerHTML = '<div class="leaderboard-loading">Loading…</div>';
     try {
@@ -4396,7 +4193,6 @@ export function runViewerClient(bootstrap) {
   function hideBlackboard() {
     els.blackboardPanel.hidden = true;
     els.composerZone.hidden = true;
-    if (els.worldPanel) els.worldPanel.hidden = true;
   }
 
   function renderLeaderboard(data) {
@@ -4876,7 +4672,6 @@ export function runViewerClient(bootstrap) {
       loadHistory(t.faculty);
     }
     applyViewMode(deriveViewMode(t));
-    renderWorldPanel();
     // Morning announcements — shown once per day on first visit.
     // Fires after the first telemetry tick, before class content renders.
     showMorningAnnouncements(t);
@@ -6201,15 +5996,34 @@ export function runViewerClient(bootstrap) {
         const k = reroll.dataset.key;
         reroll.disabled = !rolled || inFlight.all || !!inFlight[k];
       });
+      const portraitHallPassNeeded = hostedPortraitHallPassNeeded();
       const portraitReason = portraitGenerationStatusReason();
       portraitBtn.hidden = !portraitGenerationVisible();
-      portraitBtn.disabled = !rolled || inFlight.portrait || !!portraitReason;
-      portraitBtn.title = portraitReason || "";
+      portraitBtn.disabled = !rolled || inFlight.portrait || (!!portraitReason && !portraitHallPassNeeded);
+      portraitBtn.title = portraitHallPassNeeded
+        ? "Hall Pass needed. Open Hall Passes to claim a free starter pass."
+        : portraitReason || "";
+      if (rolled && portraitHallPassNeeded && !inFlight.portrait) {
+        portraitStatus.textContent = "Hall Pass needed.";
+        portraitStatus.classList.add("is-invalid");
+      } else if (portraitStatus.textContent === "Hall Pass needed.") {
+        portraitStatus.textContent = "";
+        portraitStatus.classList.remove("is-invalid");
+      }
     }
 
     function portraitGenerationVisible() {
       const entitlement = hostedImageEntitlement("portrait");
       return !!getStoredApiKey() || !!(entitlement && entitlement.configured);
+    }
+
+    function hostedPortraitHallPassNeeded() {
+      if (getStoredApiKey()) return false;
+      const entitlement = hostedImageEntitlement("portrait");
+      if (!entitlement || !entitlement.configured) return false;
+      if (characterSlotTelemetry().photoDayCredits > 0) return false;
+      const cost = Math.max(1, Math.floor(Number(entitlement.cost || 1)));
+      return !canSpendHallPasses(cost);
     }
 
     function portraitGenerationStatusReason() {
@@ -6294,10 +6108,8 @@ export function runViewerClient(bootstrap) {
           await saveCharacter({ auto: true });
         }
       } catch (err) {
-        if (status.isConnected) {
-          setStatus(err && err.message ? err.message : "Roll failed — try again.", true);
-        }
         revealForm();
+        setStatus(err && err.message ? err.message : "Roll failed — try again.", true);
       } finally {
         if (isFullRoll) {
           inFlight.all = false;
@@ -6325,6 +6137,18 @@ export function runViewerClient(bootstrap) {
     // ships with the create-character command. On failure, leaves the
     // default in place and shows an inline error.
     portraitBtn.addEventListener("click", async () => {
+      if (hostedPortraitHallPassNeeded()) {
+        const entitlement = hostedImageEntitlement("portrait") || {};
+        const cost = Math.max(1, Math.floor(Number(entitlement.cost || 1)));
+        portraitStatus.textContent = "Hall Pass needed.";
+        portraitStatus.classList.add("is-invalid");
+        await promptForHallPasses({
+          title: "Hall Pass needed",
+          copy: "Custom character portrait needs " + hallPassCostLabel(cost) + ". Claim your free starter Hall Passes or add more.",
+          detail: "Rolling and saving your student stays free.",
+        });
+        return;
+      }
       const portraitReason = portraitGenerationStatusReason();
       if (portraitReason) {
         portraitStatus.textContent = portraitReason;
@@ -7935,7 +7759,7 @@ export function runViewerClient(bootstrap) {
     if (!hostedCourseGenerationConfigured()) {
       return localAiEnabled
         ? "Hosted image generation is required for course portraits."
-        : "Connect AI or activate AI Access before generating a course.";
+        : "Connect AI before generating a course.";
     }
     return "";
   }
@@ -9161,7 +8985,7 @@ export function runViewerClient(bootstrap) {
         };
       }
       const msgs = data.history || [];
-      const sig = facultyId + ":" + playerMessageIdentitySig() + ":" + msgs.length;
+      const sig = chatHistorySignature(facultyId, msgs);
       if (sig === renderedHistorySig) return;
       renderedHistorySig = sig;
       els.stream.innerHTML = "";
@@ -9169,7 +8993,15 @@ export function runViewerClient(bootstrap) {
       const teacherName = fac ? fac.displayName : facultyId;
       const teacherAccent = fac ? fac.accent : "#d22a2a";
       msgs.forEach((m) => {
-        if (m.role === "user") appendMsg({ kind: "you", name: playerDisplayName(), body: m.content, color: "var(--accent)" });
+        if (m.role === "user") {
+          const isSelf = !!m.isSelf;
+          appendMsg({
+            kind: isSelf ? "you" : "player",
+            name: isSelf ? playerDisplayName() : (m.authorName || "Student"),
+            body: m.content,
+            color: isSelf ? "var(--accent)" : "#3aa3e0",
+          });
+        }
         else if (m.role === "assistant" && m.content) {
           const info = teacherInfo(m.faculty || facultyId);
           appendMsg({ kind: "teacher", name: info.name || teacherName, body: m.content, color: info.accent || teacherAccent, facultyId: info.facultyId || facultyId });
@@ -9397,7 +9229,7 @@ export function runViewerClient(bootstrap) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           timeoutMs: STREAM_CONNECT_TIMEOUT_MS,
-          body: JSON.stringify({ faculty: targetFaculty, message: text }),
+          body: JSON.stringify({ faculty: targetFaculty, message: text, clientTurnSeq: streamGuard.streamSeq }),
         });
       }
       await consumeSseStream(r, streamGuard);
@@ -9704,8 +9536,6 @@ export function runViewerClient(bootstrap) {
   if (els.accountCreateCharacter) els.accountCreateCharacter.addEventListener("click", openCharacterCreationFromAccount);
   if (els.accountUnlockSlot) els.accountUnlockSlot.addEventListener("click", unlockCharacterSlotFromAccount);
   if (els.accountPublicWorldToggle) els.accountPublicWorldToggle.addEventListener("click", togglePublicWorldFromAccount);
-  if (els.accountAiUsePass) els.accountAiUsePass.addEventListener("click", () => activateAiPass({ source: "account" }));
-  if (els.accountAiAction) els.accountAiAction.addEventListener("click", handleAccountAiAction);
   if (els.blackboardEmptyAction) els.blackboardEmptyAction.addEventListener("click", handleBlackboardEmptyAction);
   if (els.billingClose) els.billingClose.addEventListener("click", closeBilling);
   if (els.billingOverlay) els.billingOverlay.addEventListener("click", (e) => {
@@ -9793,11 +9623,9 @@ export function runViewerClient(bootstrap) {
       ref: referralRef || "",
     });
     await fetchSession();
-    void loadWorldFeed({ initial: true });
     await applySharedPackFromUrl(sharedPackId);
   }
   void bootInitialSession();
-  worldController.attach();
   initializePrivyFromStoredSession();
   // Adaptive poll: tick every second during an active race so NPC picks
   // land in real time; back off to 4s when idle to save bandwidth.

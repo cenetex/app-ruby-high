@@ -24,11 +24,6 @@ import { createCreationRowsRenderer } from "./creation-rows.js";
 import { createCreationStatsRenderer } from "./creation-stats.js";
 import { consumeViewerSseStream, parseViewerSseFrames } from "./sse.js";
 import { createViewerTurnController } from "./turn-controller.js";
-import { createViewerWorldActionsController } from "./world-actions.js";
-import { createViewerWorldController } from "./world-controller.js";
-import { createViewerWorldFeedClient } from "./world-feed.js";
-import { createViewerWorldLifecycleController } from "./world-lifecycle.js";
-import { createViewerWorldPanelController } from "./world-panel.js";
 import { createWelcomeHallPassPopupRenderer } from "./welcome-hall-pass-popup.js";
 import { createYearbookArchiveRenderer } from "./yearbook-archive.js";
 import { createYearbookShareActionsRenderer } from "./yearbook-share-actions.js";
@@ -133,7 +128,6 @@ const PURE_HELPER_NAMES = [
   "accountCharacterCardView",
   "accountEmptyCharacterSlotView",
   "accountCharacterPanelView",
-  "accountAiPanelView",
   "accountWalletPanelView",
   "normalizeAccountPane",
   "accountPaneItemView",
@@ -165,25 +159,7 @@ const PURE_HELPER_NAMES = [
   "essayScoreText",
   "essayLetter",
   "clipEssayText",
-  "normalizedWorldFeedEventAt",
-  "pruneWorldFeedEventList",
-  "mergeWorldFeedEventList",
-  "worldFeedEventDisplayLabel",
-  "worldFeedEventAgeLabel",
   "worldFeedGradeLabel",
-  "worldFeedFacultyLabel",
-  "worldFeedRoomTitle",
-  "worldFeedSummaryLabel",
-  "worldFeedTermRuleLabels",
-  "worldFeedRoomPressureLabel",
-  "worldFeedCurriculumPressureLabel",
-  "worldFeedRoomBonusPressureLabel",
-  "worldFeedRoomPressureText",
-  "worldFeedRoomViews",
-  "worldFeedRoomViewsForSummary",
-  "worldFeedEventViews",
-  "worldFeedPanelView",
-  "worldFeedEventsUrl",
   "raceStripView",
   "raceStripPickText",
   "questionPromptView",
@@ -282,12 +258,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createCreationRowsRenderer = ${createCreationRowsRenderer.toString()};
   const createCreationStatsRenderer = ${createCreationStatsRenderer.toString()};
   const createViewerTurnController = ${createViewerTurnController.toString()};
-  const createViewerWorldActionsController = ${createViewerWorldActionsController.toString()};
-  const createViewerWorldFeedClient = ${createViewerWorldFeedClient.toString()};
-  const createViewerWorldLifecycleController = ${createViewerWorldLifecycleController.toString()};
-  const createViewerWorldPanelController = ${createViewerWorldPanelController.toString()};
   const createWelcomeHallPassPopupRenderer = ${createWelcomeHallPassPopupRenderer.toString()};
-  const createViewerWorldController = ${createViewerWorldController.toString()};
   const createRoomChannelRowsController = ${createRoomChannelRowsController.toString()};
   const createLeaderboardPanelRenderer = ${createLeaderboardPanelRenderer.toString()};
   const createYearbookArchiveRenderer = ${createYearbookArchiveRenderer.toString()};

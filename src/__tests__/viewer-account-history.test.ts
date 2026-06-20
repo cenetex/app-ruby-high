@@ -45,6 +45,22 @@ describe("account history row view", () => {
     });
   });
 
+  it("renders Merit Star chat spends as debits", () => {
+    const view = accountHistoryRowView({
+      kind: "merit-star-spend",
+      meritStars: -1,
+      source: "chat",
+      at: Date.UTC(2026, 5, 19, 12),
+    });
+
+    expect(view).toMatchObject({
+      className: "account-history-row is-debit",
+      title: "Chat message",
+      meta: "Chat · Jun 19, 2026",
+      delta: "-1 Merit Star",
+    });
+  });
+
   it("uses card counts for pack opens and card burns", () => {
     expect(walletTransactionTitle({
       kind: "hall-pass-grant",

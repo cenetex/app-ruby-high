@@ -45,14 +45,9 @@ describe("character creation flow", () => {
       expect(CLIENT_SOURCE).not.toContain("acceptBtn");
     });
 
-    it("renderSheetCreation scope no longer contains Lock it in confirmation button", () => {
-      // Scope to the renderSheetCreation function — "Lock it in" may still
-      // appear elsewhere (e.g. on the blackboard empty-action button).
-      const creationFn = CLIENT_SOURCE.slice(
-        CLIENT_SOURCE.indexOf("function renderSheetCreation"),
-      );
-      expect(creationFn).not.toContain('"Lock it in"');
-      expect(creationFn).not.toContain("Lock this student in to start today");
+    it("client source no longer contains Lock it in creation copy", () => {
+      expect(CLIENT_SOURCE).not.toContain("Lock it in");
+      expect(CLIENT_SOURCE).not.toContain("Lock this student in to start today");
     });
 
     it("renderSheetCreation scope auto-commits instead of showing accept button", () => {
@@ -103,13 +98,8 @@ describe("character creation flow", () => {
       const catchBlock = rollFn.slice(rollFn.indexOf("} catch (err) {"));
       // revealForm must be called so the loading spinner does not stick.
       expect(catchBlock).toContain("revealForm()");
-      // revealForm must appear AFTER the isConnected guard closes, not inside it.
-      const afterGuard = catchBlock.slice(
-        catchBlock.indexOf("if (status.isConnected)"),
-      );
-      const guardClose = afterGuard.indexOf("}\n") + 2;
-      const afterGuardClose = afterGuard.slice(guardClose);
-      expect(afterGuardClose.trimStart()).toMatch(/^revealForm\(\)/);
+      expect(catchBlock).not.toContain("status.isConnected");
+      expect(catchBlock).toMatch(/revealForm\(\);\s*setStatus\(/);
     });
   });
 
@@ -146,6 +136,15 @@ describe("character creation flow", () => {
       expectScriptToContain(script, "Save Character");
     });
 
+    it("routes unaffordable AI portrait requests to the Hall Pass flow", () => {
+      const script = renderedViewerScript();
+      expectScriptToContain(script, "function hostedPortraitHallPassNeeded()");
+      expectScriptToContain(script, "Hall Pass needed.");
+      expectScriptToContain(script, "Custom character portrait needs");
+      expectScriptToContain(script, "Rolling and saving your student stays free.");
+      expectScriptToContain(script, "openBilling({ mode: \"hall-passes\" })");
+    });
+
     it("character roll sheet contains reroll controls per field", () => {
       const script = renderedViewerScript();
 
@@ -156,4 +155,3 @@ describe("character creation flow", () => {
     });
   });
 });
-

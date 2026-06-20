@@ -617,7 +617,7 @@ export const VIEWER_CSS = `
     grid-row: 1;
     grid-column: 1;
     display: grid;
-    grid-template-rows: auto auto auto 1fr auto;
+    grid-template-rows: auto auto 1fr auto;
     height: 100dvh;
     overflow: hidden;
     background: var(--bg-deep);
@@ -1444,31 +1444,6 @@ export const VIEWER_CSS = `
     color: #ffe08a;
     font-size: 12px;
     font-weight: 800;
-  }
-  .billing-costs .get-ruby-link {
-    text-decoration: none;
-    background: rgba(255, 75, 75, 0.14);
-    border-color: rgba(255, 224, 138, 0.5);
-  }
-  .billing-get-ruby-link {
-    display: inline-block;
-    width: fit-content;
-    text-decoration: none;
-    font-size: 12px;
-    font-weight: 800;
-    padding: 6px 9px;
-    border-radius: 999px;
-    background: rgba(255, 75, 75, 0.14);
-    border: 1px solid rgba(255, 224, 138, 0.5);
-    color: #ffe08a;
-  }
-  .billing-get-ruby-link:hover {
-    background: rgba(255, 75, 75, 0.22);
-    color: #fff4c8;
-  }
-  .billing-costs .get-ruby-link:hover {
-    background: rgba(255, 75, 75, 0.22);
-    color: #fff4c8;
   }
   .billing-products {
     display: grid;
@@ -2344,188 +2319,9 @@ export const VIEWER_CSS = `
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  /* ── school world feed ─────────────────────────────────────────────────── */
-  .world-panel {
-    grid-row: 3;
-    min-height: 0;
-    max-height: 116px;
-    overflow: hidden;
-    display: grid;
-    grid-template-columns: minmax(170px, 0.8fr) minmax(130px, 0.75fr) minmax(220px, 1.45fr);
-    align-items: stretch;
-    gap: 10px;
-    padding: 10px calc(var(--safe-right) + 12px) 10px calc(var(--safe-left) + 12px);
-    border-bottom: 1px solid var(--line);
-    background: rgba(21, 23, 31, 0.94);
-  }
-  .world-panel[hidden] {
-    display: none;
-  }
-  .world-panel-head {
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .world-panel-copy {
-    min-width: 0;
-    flex: 1 1 auto;
-  }
-  .world-panel-title {
-    color: var(--text);
-    font-size: 13px;
-    font-weight: 850;
-    line-height: 1.2;
-  }
-  .world-panel-sub {
-    margin-top: 2px;
-    color: var(--text-mute);
-    font-size: 11px;
-    line-height: 1.25;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .world-panel-refresh {
-    appearance: none;
-    flex: 0 0 auto;
-    width: 34px;
-    height: 34px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: var(--bg-elev);
-    color: var(--text-soft);
-    display: grid;
-    place-items: center;
-    cursor: pointer;
-  }
-  .world-panel-refresh svg {
-    width: 16px;
-    height: 16px;
-  }
-  .world-panel-refresh:hover {
-    color: var(--text);
-    border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
-  }
-  .world-panel-rooms {
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .world-panel-rooms::-webkit-scrollbar {
-    display: none;
-  }
-  .world-room-chip {
-    flex: 0 0 auto;
-    max-width: 152px;
-    border: 1px solid rgba(255,255,255,0.09);
-    border-radius: 8px;
-    background: rgba(255,255,255,0.04);
-    padding: 7px 9px;
-    color: var(--text-soft);
-    font-size: 11px;
-    line-height: 1.25;
-  }
-  .world-room-chip strong {
-    display: block;
-    color: var(--text);
-    font-size: 12px;
-    font-weight: 800;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .world-room-pressure {
-    display: block;
-    margin-top: 3px;
-    color: var(--accent);
-    font-size: 10px;
-    font-style: normal;
-    font-weight: 800;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .world-panel-events {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 5px;
-    overflow: hidden;
-  }
-  .world-event-row {
-    min-width: 0;
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
-    align-items: center;
-    gap: 8px;
-    color: var(--text-soft);
-    font-size: 11px;
-    line-height: 1.25;
-  }
-  .world-event-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 999px;
-    background: var(--accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
-  }
-  .world-event-label {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .world-event-time {
-    color: var(--text-fade);
-    font-size: 10px;
-    white-space: nowrap;
-  }
-  .world-event-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-  }
-  .world-event-action {
-    width: 18px;
-    height: 18px;
-    border-radius: 999px;
-    border: 1px solid rgba(255,255,255,0.14);
-    background: rgba(255,255,255,0.04);
-    color: var(--text-fade);
-    font-size: 12px;
-    font-weight: 900;
-    line-height: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    cursor: pointer;
-  }
-  .world-event-action:hover {
-    color: var(--text);
-    border-color: color-mix(in srgb, var(--accent) 45%, rgba(255,255,255,0.14));
-  }
-  .world-event-action.is-report:hover {
-    color: #ffdf8b;
-    border-color: rgba(255, 223, 139, 0.55);
-  }
-  .world-event-action:disabled {
-    cursor: wait;
-    opacity: 0.55;
-  }
-  .world-panel-empty {
-    color: var(--text-mute);
-    font-size: 11px;
-  }
-
   /* ── chat stream ───────────────────────────────────────────────────────── */
   .stream {
-    grid-row: 4;
+    grid-row: 3;
     overflow-y: auto;
     overflow-x: hidden;
     padding: 12px calc(var(--safe-right) + 12px) 14px calc(var(--safe-left) + 12px);
@@ -2605,6 +2401,7 @@ export const VIEWER_CSS = `
   }
   .msg .head .role-tag.bot { background: #5865f2; color: #fff; }
   .msg .head .role-tag.student { background: #3aa3e0; color: #fff; }
+  .msg .head .role-tag.player { background: #3aa3e0; color: #fff; }
   .msg .head .role-tag.you { background: var(--accent); color: #fff; }
   .msg .head .role-tag.social { background: rgba(184,228,255,0.18); color: #b8e4ff; }
   .msg .head .stamp {
@@ -3611,14 +3408,12 @@ export const VIEWER_CSS = `
     letter-spacing: 0.08em;
   }
   .account-section-sub,
-  .account-ai-meta,
   .account-wallet-meta {
     margin-top: 4px;
     color: var(--text-mute);
     font-size: 12px;
     line-height: 1.35;
   }
-  .account-ai-status,
   .account-wallet-balance,
   .account-public-world-status {
     margin-top: 8px;
@@ -3682,7 +3477,6 @@ export const VIEWER_CSS = `
   }
   .account-card .sheet-actions button,
   .account-section-head button,
-  .account-section-head .account-token-link,
   .account-history-row button {
     appearance: none;
     border: none;
@@ -3694,18 +3488,6 @@ export const VIEWER_CSS = `
     font-weight: 850;
     padding: 8px 13px;
     min-height: 34px;
-  }
-  .account-section-head .account-token-link {
-    display: inline-flex;
-    align-items: center;
-    text-decoration: none;
-    background: rgba(255, 224, 138, 0.12);
-    border: 1px solid rgba(255, 224, 138, 0.38);
-    color: #ffe08a;
-  }
-  .account-section-head .account-token-link:hover {
-    background: rgba(255, 224, 138, 0.2);
-    color: #fff5cc;
   }
   .account-section-head button.secondary,
   .account-card .sheet-actions button.secondary {
@@ -4382,8 +4164,6 @@ export const VIEWER_CSS = `
   }
   #privy-login-widget:disabled,
   #privy-signout:disabled,
-  #account-ai-use-pass:disabled,
-  #account-ai-action:disabled,
   #account-use-pass:disabled,
   #account-buy-passes:disabled,
   #account-buy-card-packs:disabled,
@@ -6550,7 +6330,7 @@ export const VIEWER_CSS = `
 
   /* ── composer ──────────────────────────────────────────────────────────── */
   .composer-zone {
-    grid-row: 5;
+    grid-row: 4;
     border-top: 1px solid var(--line);
     background: rgba(21, 23, 31, 0.96);
     backdrop-filter: blur(14px);
@@ -7198,10 +6978,10 @@ export const VIEWER_CSS = `
       --composer-min: 50px;
     }
     main.workspace {
-      grid-template-rows: auto minmax(0, auto) auto minmax(72px, 1fr) auto;
+      grid-template-rows: auto minmax(0, auto) minmax(72px, 1fr) auto;
     }
     .shell[data-mode="round-live"] main.workspace {
-      grid-template-rows: auto minmax(0, auto) auto minmax(56px, 1fr) auto;
+      grid-template-rows: auto minmax(0, auto) minmax(56px, 1fr) auto;
     }
     .top-bar {
       gap: 6px;
@@ -7332,48 +7112,6 @@ export const VIEWER_CSS = `
     .stream {
       padding: 8px calc(var(--safe-right) + 10px) 10px calc(var(--safe-left) + 10px);
       scroll-padding-bottom: calc(var(--composer-min) + var(--safe-bot) + 14px);
-    }
-    .world-panel {
-      max-height: 76px;
-      grid-template-columns: minmax(0, 1fr);
-      gap: 6px;
-      padding: 6px calc(var(--safe-right) + 9px) 6px calc(var(--safe-left) + 9px);
-    }
-    .world-panel-head {
-      min-height: 28px;
-      gap: 8px;
-    }
-    .world-panel-title {
-      font-size: 12px;
-    }
-    .world-panel-sub {
-      font-size: 10px;
-    }
-    .world-panel-refresh {
-      width: 32px;
-      height: 32px;
-    }
-    .world-panel-events {
-      display: none;
-    }
-    .world-room-chip {
-      max-width: 136px;
-      padding: 5px 7px;
-      font-size: 10px;
-      line-height: 1.18;
-    }
-    .world-room-chip strong {
-      font-size: 11px;
-    }
-    .shell[data-mode="round-live"] .world-panel {
-      max-height: 52px;
-      grid-template-columns: minmax(0, 1fr);
-      gap: 0;
-      padding-top: 5px;
-      padding-bottom: 5px;
-    }
-    .shell[data-mode="round-live"] .world-panel-rooms {
-      display: none;
     }
     .msg {
       grid-template-columns: 32px minmax(0, 1fr);

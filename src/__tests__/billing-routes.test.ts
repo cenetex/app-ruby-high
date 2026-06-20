@@ -263,7 +263,7 @@ describe("billing products", () => {
     expect(lastResponse?.body.questionGenerationCost).toBe(1);
     expect(lastResponse?.body.moreQuestionsCount).toBe(6);
     expect(lastResponse?.body.cardBurn).toEqual({ hallPassesPerCard: 5 });
-    expect(lastResponse?.body.hostedAiAccess).toMatchObject({ configured: false, cost: 1, durationMs: 604_800_000 });
+    expect(lastResponse?.body.hostedAiAccess).toBeUndefined();
     expect(lastResponse?.body.entitlements).toMatchObject({
       hallPasses: 0,
       hosted_ai: { configured: false, active: false, affordable: false, canActivate: false },
@@ -294,14 +294,14 @@ describe("billing products", () => {
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body.entitlements).toMatchObject({
       hallPasses: 2,
-      hosted_ai: { configured: true, active: false, affordable: true, canActivate: true, cost: 1 },
+      hosted_ai: { configured: true, active: true, affordable: true, canActivate: false, cost: 0 },
       hosted_images: {
         portrait: { configured: true, cost: 1, affordable: true, canUseHosted: true },
         diploma: { configured: true, cost: 3, affordable: false, canUseHosted: false },
       },
       creator: { courseSlotCost: 3, questionGenerationCost: 1, moreQuestionsCount: 6 },
     });
-    expect(lastResponse?.body.hostedAiAccess).toMatchObject({ configured: true, active: false, cost: 1 });
+    expect(lastResponse?.body.hostedAiAccess).toBeUndefined();
   });
 
   it("claims the welcome Hall Pass grant from the Hall Pass page once", async () => {
@@ -376,8 +376,8 @@ describe("billing products", () => {
   });
 });
 
-describe("AI Access", () => {
-  it("spends one Hall Pass to enable hosted AI for one week", async () => {
+describe("Sponsored AI", () => {
+  it("retires the old AI pass purchase endpoint", async () => {
     process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
     const stateKey = signInUser("ai-pass-alice");
     ruby.grantHallPasses(stateKey, {
@@ -392,30 +392,9 @@ describe("AI Access", () => {
       cookie: "rh_session=ai-pass-alice",
     }), deps());
 
-    expect(lastResponse?.status).toBe(200);
-    expect(lastResponse?.body).toMatchObject({ ok: true, applied: true, hallPassCost: 1, hallPasses: 1 });
-    expect(lastResponse?.body.entitlements).toMatchObject({
-      hallPasses: 1,
-      hosted_ai: { configured: true, active: true, affordable: true, canActivate: false },
-      hosted_images: {
-        portrait: { configured: true, affordable: true },
-        diploma: { configured: true, affordable: false },
-      },
-    });
-    const firstExpiry = Number(lastResponse?.body.expiresAt);
-    expect(firstExpiry).toBeGreaterThan(Date.now());
-    expect(ruby.getOrCreate(stateKey).wallet.hostedAiAccessExpiresAt).toBe(firstExpiry);
-
-    await handleBillingRoutes(makeCtx({
-      method: "POST",
-      path: "/api/apps/ruby-high/billing/ai-pass",
-      cookie: "rh_session=ai-pass-alice",
-    }), deps());
-
-    expect(lastResponse?.body).toMatchObject({ ok: true, applied: false, hallPassCost: 1, hallPasses: 1 });
-    expect(lastResponse?.body.hosted_ai).toMatchObject({ configured: true, active: true });
-    expect(lastResponse?.body.expiresAt).toBe(firstExpiry);
-    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(1);
+    expect(lastResponse?.status).toBe(410);
+    expect(lastResponse?.body.error).toContain("AI is sponsored");
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(2);
   });
 
   it("returns authenticated hosted entitlement status", async () => {
@@ -438,7 +417,7 @@ describe("AI Access", () => {
     expect(lastResponse?.body).toMatchObject({
       ok: true,
       hallPasses: 3,
-      hosted_ai: { configured: true, active: false, affordable: true, canActivate: true },
+      hosted_ai: { configured: true, active: true, affordable: true, canActivate: false },
       entitlements: {
         hallPasses: 3,
         hosted_images: {
@@ -449,7 +428,7 @@ describe("AI Access", () => {
     });
   });
 
-  it("rejects hosted AI activation without enough Hall Passes", async () => {
+  it("does not require Hall Passes for sponsored AI availability", async () => {
     process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
     const stateKey = signInUser("ai-pass-empty");
     emptyWelcomeHallPasses(stateKey);
@@ -460,8 +439,9 @@ describe("AI Access", () => {
       cookie: "rh_session=ai-pass-empty",
     }), deps());
 
-    expect(lastResponse?.status).toBe(402);
-    expect(lastResponse?.body.error).toContain("Not enough Hall Passes");
+    expect(lastResponse?.status).toBe(410);
+    expect(lastResponse?.body.error).toContain("AI is sponsored");
+    expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(0);
   });
 });
 

@@ -161,23 +161,6 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       </div>
     </section>
 
-    <section class="world-panel" id="world-panel" hidden aria-live="polite">
-      <div class="world-panel-head">
-        <div class="world-panel-copy">
-          <div class="world-panel-title">School World</div>
-          <div class="world-panel-sub" id="world-panel-sub">Syncing halls...</div>
-        </div>
-        <button class="world-panel-refresh" id="world-panel-refresh" type="button" title="Refresh world" aria-label="Refresh world">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M21 12a9 9 0 0 1-15.5 6.3"/><path d="M3 12A9 9 0 0 1 18.5 5.7"/><path d="M18 3v5h-5"/><path d="M6 21v-5h5"/>
-          </svg>
-        </button>
-      </div>
-      <div class="world-panel-rooms" id="world-panel-rooms"></div>
-      <div class="world-panel-events" id="world-panel-events"></div>
-    </section>
-
-
     <section class="stream" id="stream"></section>
 
     <section class="composer-zone" id="composer-zone">
@@ -235,7 +218,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <div class="sheet-overlay is-mandatory" id="signin-overlay" aria-hidden="true">
   <div class="sheet-card signin-card">
     <h2>Welcome to Ruby High</h2>
-    <p class="sub">Play free, use Hall Passes for hosted AI, or bring your own AI key.</p>
+    <p class="sub">Play free, spend Stars on chat, and use Hall Passes for images, slots, and cards.</p>
     <div class="sheet-actions" style="justify-content: center;">
       <button id="signin-guest" class="primary-link" type="button">Continue without AI</button>
       <button id="signin-privy" class="secondary-link" type="button" hidden>Sign in</button>
@@ -285,17 +268,17 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <section class="account-section account-public-world-section">
           <div class="account-section-head">
             <div>
-              <div class="account-section-title">Public World</div>
+              <div class="account-section-title">School Presence</div>
               <div class="account-section-sub" id="account-public-world-summary"></div>
             </div>
             <div class="account-section-actions">
-              <button type="button" class="secondary" id="account-public-world-toggle">Hide</button>
+              <button type="button" class="secondary" id="account-public-world-toggle">Join</button>
             </div>
           </div>
           <div class="account-public-world-status" id="account-public-world-status"></div>
           <div class="account-public-world-rules">
             <div><strong>Shown</strong><span>Student name, grade, playbook, stats, completed class grades, yearbook count, and safe portrait URL.</span></div>
-            <div><strong>Private</strong><span>Answers, chat text, session id, wallets, AI keys, receipts, and account identity stay off the public world feed.</span></div>
+            <div><strong>Private</strong><span>Answers, chat text, session id, wallets, AI keys, receipts, and account identity stay off shared school activity.</span></div>
           </div>
         </section>
       </div>
@@ -312,17 +295,8 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           <div class="account-wallet-balance" id="account-wallet-balance">0 Merit Stars · 0 Hall Passes</div>
           <div class="account-wallet-meta" id="account-wallet-meta"></div>
           <div class="account-wallet-rules">
-            <div><strong>Hall Passes</strong><span>Hosted AI, images, and creator tools.</span></div>
-            <div><strong>Wallet ledger</strong><span>Purchases and NFT actions settle here.</span></div>
-          </div>
-        </section>
-        <section class="account-section account-ai-section">
-          <div class="account-section-title">AI Access</div>
-          <div class="account-ai-status" id="account-ai-status">Checking...</div>
-          <div class="account-ai-meta" id="account-ai-meta"></div>
-          <div class="sheet-actions">
-            <button type="button" id="account-ai-use-pass">Use Hall Pass</button>
-            <button type="button" class="secondary" id="account-ai-action">Connect AI key</button>
+            <div><strong>Hall Passes</strong><span>Images, creator tools, and extra student slots.</span></div>
+            <div><strong>Wallet ledger</strong><span>Purchases and Solana card actions settle here.</span></div>
           </div>
         </section>
       </div>
@@ -334,7 +308,6 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
               <div class="account-section-sub" id="account-card-summary"></div>
             </div>
             <div class="account-section-actions">
-              <a class="account-token-link" id="account-get-ruby" href="https://jup.ag/swap/SOL-ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump" target="_blank" rel="noopener noreferrer">Get $RUBY</a>
               <button type="button" id="account-buy-card-packs">Buy Card Packs</button>
               <button type="button" class="secondary" id="account-mint-cards">Reveal Card</button>
             </div>

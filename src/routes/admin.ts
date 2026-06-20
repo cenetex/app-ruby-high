@@ -1449,7 +1449,7 @@ function buildAdminMetricsSchema(): {
         path: "auth.users",
         label: "Identity records",
         source: "AuthUserRecord store",
-        semantics: "Total stored auth identity records across guest, AI key, and Privy providers.",
+        semantics: "Total stored auth identity records across guest, BYOK OpenRouter, and Privy providers.",
         reliability: "legacy",
         caveat: "Legacy guest records can be cookie-bound; v4 visitor metrics are the traffic source.",
       },
@@ -1480,7 +1480,7 @@ function buildAdminMetricsSchema(): {
         path: "auth.providers",
         label: "Provider mix",
         source: "AuthUserRecord.provider",
-        semantics: "Counts identity records by guest, AI key, and Privy.",
+        semantics: "Counts identity records by guest, BYOK OpenRouter, and Privy.",
         reliability: "authoritative",
         caveat: "Authoritative for records, not people.",
       },
@@ -1705,25 +1705,25 @@ function buildAdminMetricsSchema(): {
       },
       {
         path: "ruby.world",
-        label: "Public world health",
-        source: "RubyHighService public school-world projection, durable event cache, and public-world service state",
-        semantics: "Current public-world presence, recent visible event count/newest event time, durable event cache pressure, durable room/outcome counts, teacher-agenda ready/queued/watching counts, live-room goal state count, suppressed-event count, and last external-store refresh age.",
+        label: "School activity health",
+        source: "RubyHighService shared school activity projection, durable event cache, and school activity service state",
+        semantics: "Current School Presence participants, recent visible event count/newest event time, durable event cache pressure, durable room/outcome counts, teacher-agenda ready/queued/watching counts, live-room goal state count, suppressed-event count, and last external-store refresh age.",
         reliability: "proxy",
-        caveat: "Refresh age is process-local and reflects the most recent public-world store hydration in this app instance.",
+        caveat: "Refresh age is process-local and reflects the most recent shared activity store hydration in this app instance.",
       },
       {
         path: "ops.publicReadLimiter",
-        label: "Public read limiter",
+        label: "School activity read limiter",
         source: "In-process /world, /world/events, and /cohort token bucket",
-        semantics: "Currently tracked public read rate-limit buckets and the periodic GC cadence for visitor/IP keys.",
+        semantics: "Currently tracked school activity read rate-limit buckets and the periodic GC cadence for visitor/IP keys.",
         reliability: "volatile",
         caveat: "Resets on deploy or restart and is per process. IDs are not exposed; use tracked key count to spot visitor-key churn.",
       },
       {
         path: "ops.worldLiveStreams",
-        label: "Live world streams",
+        label: "School activity streams",
         source: "In-process /world/events?live=1 reservation map",
-        semantics: "Currently open school-world SSE streams, per-client pressure, cumulative accepted/rejected streams, close reasons, handler errors, and write-failure phase counts.",
+        semantics: "Currently open shared school activity SSE streams, per-client pressure, cumulative accepted/rejected streams, close reasons, handler errors, and write-failure phase counts.",
         reliability: "volatile",
         caveat: "Resets on deploy or restart and is per process. Use it for capacity smoke checks, not historical traffic reporting.",
       },
@@ -2227,6 +2227,9 @@ export function renderAdminDashboardHtml(): string {
       background: var(--panel);
       padding: 14px;
     }
+    .metric.is-wide {
+      grid-column: span 2;
+    }
     .label {
       color: var(--muted);
       font-size: 12px;
@@ -2345,6 +2348,7 @@ export function renderAdminDashboardHtml(): string {
       .hero-grid { grid-template-columns: 1fr; }
       .overview-list { grid-template-columns: 1fr; }
       .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .metric.is-wide { grid-column: span 1; }
       .charts { grid-template-columns: 1fr; }
       .tables { grid-template-columns: 1fr; }
     }
@@ -2385,16 +2389,20 @@ export function renderAdminDashboardHtml(): string {
       <div class="charts" id="charts"></div>
     </section>
     <section class="section">
-      <h2>Auth</h2>
+      <h2>Identity</h2>
       <div class="grid" id="auth-grid"></div>
     </section>
     <section class="section">
-      <h2>Play</h2>
+      <h2>Classroom</h2>
       <div class="grid" id="play-grid"></div>
     </section>
     <section class="section">
-      <h2>Creator</h2>
-      <div class="grid" id="creator-grid"></div>
+      <h2>Economy</h2>
+      <div class="grid" id="economy-grid"></div>
+    </section>
+    <section class="section">
+      <h2>Operations</h2>
+      <div class="grid" id="ops-grid"></div>
     </section>
     <section class="section">
       <h2>X Social</h2>
@@ -2506,7 +2514,8 @@ async function postTelegramSnapshot() {
     const chartsEl = document.getElementById("charts");
     const authGrid = document.getElementById("auth-grid");
     const playGrid = document.getElementById("play-grid");
-    const creatorGrid = document.getElementById("creator-grid");
+    const economyGrid = document.getElementById("economy-grid");
+    const opsGrid = document.getElementById("ops-grid");
     const tablesEl = document.getElementById("tables");
     let timer = null;
     let latestMetrics = null;
@@ -2533,7 +2542,8 @@ async function postTelegramSnapshot() {
       chartsEl.innerHTML = "";
       authGrid.innerHTML = "";
       playGrid.innerHTML = "";
-      creatorGrid.innerHTML = "";
+      economyGrid.innerHTML = "";
+      opsGrid.innerHTML = "";
       tablesEl.innerHTML = "";
       connectedTeachers = [];
       renderSocialTeacherSelect();
@@ -2812,7 +2822,7 @@ async function postTelegramSnapshot() {
         metric("Identity records", n(auth.users), n(auth.createdLast24h) + " new records - not unique people"),
         metric("Sessions", n(auth.activeSessions), n(auth.pendingAuth) + " pending auth"),
         metric("Identity D1", pct(auth.d1Retention && auth.d1Retention.rate), n(auth.d1Retention && auth.d1Retention.returnedUsers) + " / " + n(auth.d1Retention && auth.d1Retention.eligibleUsers) + " cookie-bound"),
-        metric("Providers", n(auth.providers && auth.providers.guest) + " / " + n(auth.providers && auth.providers.openrouter) + " / " + n(auth.providers && auth.providers.privy), "guest / AI key / Privy"),
+        metric("Providers", n(auth.providers && auth.providers.guest) + " / " + n(auth.providers && auth.providers.openrouter) + " / " + n(auth.providers && auth.providers.privy), "guest / BYOK OpenRouter / Privy"),
       ].join("");
       playGrid.innerHTML = [
         metric("Saved sessions", n(ruby.sessions), n(ruby.updatedLast24h) + " updated in 24h"),
@@ -2821,25 +2831,32 @@ async function postTelegramSnapshot() {
         metric("Characters", n(ruby.characters), n(ruby.graduatedCharacters) + " graduated - " + n(ruby.completedGrades) + " grades sealed"),
         metric("Questions", n(ruby.questions && ruby.questions.total), n(ruby.questions && ruby.questions.correct) + " correct - " + pct(ruby.questions && ruby.questions.accuracy) + " accuracy"),
         metric("Curriculum", n(ruby.curriculum && ruby.curriculum.lowPools && ruby.curriculum.lowPools.length), n(ruby.curriculum && ruby.curriculum.rows && ruby.curriculum.rows.length) + " grade/teacher pools"),
+        metric("Active rounds", n(ruby.activeRounds), n(ruby.essayReports) + " essay reports"),
         metric("Photo posts", photoPostMetricValue(ruby.photoPosts), photoPostMetricSub(ruby.photoPosts)),
       ].join("");
       const commerce = events.commerce || {};
       const funnel = events.conversionFunnel || {};
+      const wallet = ruby.wallet || {};
+      const llm = events.llm || {};
       const revenueStr = commerce.amountCents != null ? "\$" + (commerce.amountCents / 100).toFixed(2) : "n/a";
-      creatorGrid.innerHTML = [
+      economyGrid.innerHTML = [
+        metric("Merit Stars", n(wallet.meritStars), signedNumber(commerce.meritStarsDelta) + " net Merit Stars · chat spends"),
+        metric("Hall Passes", n(wallet.hallPasses), signedNumber(commerce.hallPassesDelta) + " net Hall Passes · images, cards, tools"),
         metric("Revenue", revenueStr, n(commerce.payingSessions) + " payers - " + n(commerce.events) + " txns"),
+        metric("Solana packs", solanaMetricValue(commerce), solanaMetricSub(commerce)),
         metric("Funnel V→C→P", n(funnel.totalVisitors) + "→" + n(funnel.charactersCreated) + "→" + n(funnel.payers), pct(funnel.visitorToCharacterRate) + " / " + pct(funnel.characterToPayerRate)),
-        metric("Active rounds", n(ruby.activeRounds), n(ruby.essayReports) + " essay reports"),
-        metric("World health", worldHealthMetricValue(ruby.world), worldHealthMetricSub(ruby.world)),
-        metric("Public reads", publicReadMetricValue(ops.publicReadLimiter), publicReadMetricSub(ops.publicReadLimiter)),
-        metric("World streams", worldStreamMetricValue(ops.worldLiveStreams), worldStreamMetricSub(ops.worldLiveStreams)),
-        metric("LLM calls", n(events.llm && events.llm.calls), n(events.llm && events.llm.errors) + " errors"),
+      ].join("");
+      opsGrid.innerHTML = [
+        metric("School activity", schoolActivityMetricValue(ruby.world), schoolActivityMetricSub(ruby.world), "is-wide"),
+        metric("Activity reads", publicReadMetricValue(ops.publicReadLimiter), publicReadMetricSub(ops.publicReadLimiter)),
+        metric("Activity streams", worldStreamMetricValue(ops.worldLiveStreams), worldStreamMetricSub(ops.worldLiveStreams)),
+        metric("Sponsored LLM", n(llm.calls), n(llm.successes) + " ok · " + n(llm.errors) + " errors · text sponsored, images metered"),
         metric("Durable errors", n(events.errors && events.errors.total), n((logs.counters || []).length) + " process counters"),
       ].join("");
       const commerceTbl = events.commerce || {};
       const revenueBySource = commerceTbl.revenueBySource || {};
       const revenueTable = Object.keys(revenueBySource).length > 0
-        ? table("Revenue by Source", revenueBySource)
+        ? moneyTable("Commerce by Source", revenueBySource)
         : "";
       const generationQueue = (latestReplenishment && latestReplenishment.generationQueue) || [];
       curriculumDraftsCreateEl.disabled = generationQueue.filter((step) => step.status === "ready").length === 0;
@@ -3011,8 +3028,8 @@ async function postTelegramSnapshot() {
       return "<div class=\\"chart\\"><div class=\\"chart-head\\"><div class=\\"chart-title\\">" + esc(title) + "</div><div class=\\"legend\\">" + legend + "</div></div>" + svg + "<div class=\\"axis\\"><span>" + esc(first) + "</span><span>" + esc(last) + "</span></div></div>";
     }
 
-    function metric(label, value, sub) {
-      return "<div class=\\"metric\\"><div class=\\"label\\">" + esc(label) + "</div><span class=\\"value\\">" + esc(String(value)) + "</span><div class=\\"sub\\">" + esc(String(sub || "")) + "</div></div>";
+    function metric(label, value, sub, className) {
+      return "<div class=\\"metric" + (className ? " " + esc(className) : "") + "\\"><div class=\\"label\\">" + esc(label) + "</div><span class=\\"value\\">" + esc(String(value)) + "</span><div class=\\"sub\\">" + esc(String(sub || "")) + "</div></div>";
     }
     function photoPostMetricValue(photoPosts) {
       photoPosts = photoPosts || {};
@@ -3039,11 +3056,11 @@ async function postTelegramSnapshot() {
       streams = streams || {};
       return "active / clients · cap " + n(streams.limitPerClient) + " · accepted " + n(streams.accepted) + " · rejected " + n(streams.rejected) + " · write fails " + n(streams.writeFailures);
     }
-    function worldHealthMetricValue(world) {
+    function schoolActivityMetricValue(world) {
       world = world || {};
       return n(world.activeStudents) + " / " + n(world.recentEvents);
     }
-    function worldHealthMetricSub(world) {
+    function schoolActivityMetricSub(world) {
       world = world || {};
       const refresh = world.lastRefreshAt ? "refresh " + time(world.lastRefreshAt) : "not refreshed";
       const newest = world.newestEventAt ? " · newest " + time(world.newestEventAt) : "";
@@ -3063,10 +3080,29 @@ async function postTelegramSnapshot() {
       const gc = limiter.lastGcAt ? "last GC " + time(limiter.lastGcAt) : "GC pending";
       return "tracked visitor/IP buckets · " + gc + " · every " + n(limiter.gcIntervalMs) + "ms";
     }
+    function solanaMetricValue(commerce) {
+      const bySource = (commerce && commerce.revenueBySource) || {};
+      const hasSolana = Object.prototype.hasOwnProperty.call(bySource, "solana");
+      const cents = Number(bySource.solana || 0);
+      if (cents > 0) return money(cents);
+      return hasSolana ? "tracked" : "none";
+    }
+    function solanaMetricSub(commerce) {
+      commerce = commerce || {};
+      const bySource = commerce.revenueBySource || {};
+      const sources = Object.keys(bySource).filter(Boolean).sort();
+      const sourceText = sources.length ? "sources " + sources.slice(0, 4).join(", ") : "no source totals yet";
+      return "Solana pack checkout source · token settlement on-chain · " + sourceText;
+    }
     function table(title, rows) {
       const entries = Object.entries(rows);
       if (!entries.length) return "<div class=\\"empty\\">" + esc(title) + "</div>";
       return "<table><thead><tr><th>" + esc(title) + "</th><th>Count</th></tr></thead><tbody>" + entries.map(([key, value]) => "<tr><td>" + esc(key) + "</td><td>" + n(value) + "</td></tr>").join("") + "</tbody></table>";
+    }
+    function moneyTable(title, rows) {
+      const entries = Object.entries(rows);
+      if (!entries.length) return "<div class=\\"empty\\">" + esc(title) + "</div>";
+      return "<table><thead><tr><th>" + esc(title) + "</th><th>USD value</th></tr></thead><tbody>" + entries.map(([key, value]) => "<tr><td>" + esc(key) + "</td><td>" + money(value) + "</td></tr>").join("") + "</tbody></table>";
     }
     function curriculumTable(curriculum) {
       const rows = (curriculum && curriculum.lowPools) || [];
@@ -3131,6 +3167,15 @@ async function postTelegramSnapshot() {
     function n(value) {
       const number = Number(value || 0);
       return Number.isFinite(number) ? new Intl.NumberFormat().format(number) : "0";
+    }
+    function signedNumber(value) {
+      const number = Number(value || 0);
+      if (!Number.isFinite(number) || number === 0) return "0";
+      return (number > 0 ? "+" : "-") + n(Math.abs(number));
+    }
+    function money(value) {
+      const cents = Number(value || 0);
+      return Number.isFinite(cents) ? "$" + (cents / 100).toFixed(2) : "$0.00";
     }
     function pct(value) {
       if (value === null || value === undefined) return "n/a";

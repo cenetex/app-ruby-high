@@ -22,7 +22,7 @@
  * | CHAT_LIMITER       | chat-routes.ts |       60 |  1/sec | POST /chat, /chat/event, /chat/student-chime, /chat/opinion-submit, /chat/character/generate, /chat/reset |
  * | PORTRAIT_LIMITER   | chat-routes.ts |        8 | 1/30s  | POST /chat/character/portrait, /chat/character/diploma |
  * | COMMAND_LIMITER    | routes.ts      |      120 |  2/sec | POST /command (game-state mutation surface) |
- * | PUBLIC_WORLD_ACTION_LIMITER | routes/commands.ts | 6 | 1/min | POST /command hide/report public world event |
+ * | PUBLIC_WORLD_ACTION_LIMITER | routes/commands.ts | 6 | 1/min | POST /command school activity safety action |
  * | PUBLIC_READ_LIMITER | routes.ts      |      120 |  2/sec | GET /world, /world/events, /cohort/:grade |
  * | PACK_REVIEW_LIMITER | pack-library-routes.ts | 8 | 1/min | POST /pack/:id/review |
  * | NFT_MUTATION_LIMITER | routes/nft.ts |       30 | 1/10s | POST /nft/sync-packs, /nft/open-pack, card mint/burn endpoints |

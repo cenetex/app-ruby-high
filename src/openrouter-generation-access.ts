@@ -30,16 +30,16 @@ export function resolveOpenRouterGenerationCredential(args: {
   const browserKey = readBrowserOpenRouterApiKey(args.apiKeyHeader);
   if (browserKey) return { apiKey: browserKey, hosted: false, source: "browser" };
   const hostedKey = hostedOpenRouterApiKey();
-  if (hostedKey && args.ruby.hostedAiAccessExpiresAt(args.sessionId)) {
+  if (hostedKey) {
     return { apiKey: hostedKey, hosted: true, source: "hosted" };
   }
   return nullCredential();
 }
 
 /** Resolve a text LLM credential for chat, grading, and source-card MC
- *  generation. Browser BYOK and local providers are free to use; the server
- *  OpenRouter key is only exposed while the session has an active hosted AI
- *  day window. */
+ *  generation. Browser BYOK and local providers are free to use; a configured
+ *  server OpenRouter key sponsors hosted text AI, while chat routes meter
+ *  player messages with Merit Stars. */
 export function resolveTextLlmCredential(args: {
   apiKeyHeader?: string | null;
   ruby: RubyHighService;

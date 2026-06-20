@@ -101,14 +101,6 @@ export function createViewerWorldPanelController(deps: ViewerWorldPanelControlle
     if (event.id) {
       const actions = deps.document.createElement("span");
       actions.className = "world-event-actions";
-      const hide = deps.document.createElement("button");
-      hide.className = "world-event-action";
-      hide.type = "button";
-      hide.title = "Hide this world event";
-      hide.setAttribute("aria-label", "Hide this world event");
-      hide.dataset.worldEventAction = "hide";
-      hide.dataset.worldEventId = event.id;
-      hide.textContent = "×";
       const report = deps.document.createElement("button");
       report.className = "world-event-action is-report";
       report.type = "button";
@@ -117,7 +109,6 @@ export function createViewerWorldPanelController(deps: ViewerWorldPanelControlle
       report.dataset.worldEventAction = "report";
       report.dataset.worldEventId = event.id;
       report.textContent = "!";
-      actions.appendChild(hide);
       actions.appendChild(report);
       row.appendChild(actions);
     }

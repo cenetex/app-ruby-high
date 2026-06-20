@@ -454,7 +454,7 @@ export interface ComicCollection {
 // ── Durable School Events ─────────────────────────────────────────────────
 //
 // Chat history is dialogue. School events are the engine-owned facts that
-// actually changed in the school world. Keep these compact because they are
+// actually changed in shared school activity. Keep these compact because they are
 // persisted on the session and echoed to the viewer/model as recent context.
 export type SchoolEvent =
   | RelationshipTickSchoolEvent
@@ -497,6 +497,8 @@ export interface ComicPageUnlockedSchoolEvent extends BaseSchoolEvent {
 }
 
 export type RubyHighWalletTransactionKind =
+  | "merit-star-grant"
+  | "merit-star-spend"
   | "hall-pass-grant"
   | "hall-pass-spend"
   | "hall-pass-refund"
@@ -604,7 +606,7 @@ export interface RubyHighWalletTransaction {
   hallPasses?: number;
   /** Positive for refunds, negative for spends. */
   photoDayCredits?: number;
-  source?: "stripe" | "solana" | "iap" | "revenuecat" | "hosted-image" | "hosted-ai" | "question-generation" | "character-slot" | "course-slot" | "photo-day" | "hall-pass-pack" | "hall-pass-card" | "admin" | "system";
+  source?: "stripe" | "solana" | "iap" | "revenuecat" | "chat" | "hosted-image" | "hosted-ai" | "question-generation" | "character-slot" | "course-slot" | "photo-day" | "hall-pass-pack" | "hall-pass-card" | "admin" | "system";
   description?: string;
   /** Revenue amount in cents (USD). Set by billing routes at grant time. */
   amountCents?: number;
@@ -612,7 +614,7 @@ export interface RubyHighWalletTransaction {
 }
 
 export interface RubyHighWallet {
-  /** Earned by play. Mirrors visible session score for now. */
+  /** Spendable earned currency. Score points are historical; this balance can be spent. */
   meritStars: number;
   /** Paid/entitlement currency for hosted creative generation. */
   hallPasses: number;
@@ -703,11 +705,11 @@ export interface QuizState {
   characterSlots?: CharacterSlotEntitlements;
   /** Cross-character collection of found First Bell comic pages. */
   comicCollection: ComicCollection;
-  /** Engine-owned facts that changed in the school world. This is the durable
+  /** Engine-owned facts that changed in shared school activity. This is the durable
    *  counterpart to volatile chat room events; AI can react to these but must
    *  not invent or mutate them. */
   schoolEvents: SchoolEvent[];
-  /** Per-player public world safety controls. Hidden event ids are filtered
+  /** Per-player school activity safety controls. Hidden event ids are filtered
    *  from this player's feed immediately; reports are kept on the session for
    *  moderation/admin review surfaces. */
   publicWorldHiddenEventIds?: string[];
@@ -964,9 +966,9 @@ export interface PlayerCharacter {
   /** When true, allows teacher X posts about this character's milestones.
    *  Defaults to true for new characters; can be toggled via command. */
   socialConsent?: boolean;
-  /** Controls whether this character may appear in aggregate public world
-   *  rooms/feed. Defaults to true; legacy socialConsent=false still hides
-   *  the character from public world surfaces as a conservative fallback. */
+  /** Controls whether this character may appear in aggregate school activity
+   *  rooms/feed. Defaults to true; legacy socialConsent=false still removes
+   *  the character from shared activity surfaces as a conservative fallback. */
   publicWorldVisible?: boolean;
   /** UTC date (YYYY-MM-DD) of the last text-only X post for this character.
    *  Enforces one text post per student per day. */
@@ -1119,7 +1121,7 @@ export interface StudentPoolEntry {
   /** When true, allows teacher X posts about this character's milestones.
    *  Defaults to true for new characters; can be toggled via command. */
   socialConsent?: boolean;
-  /** Controls whether this archived character can appear in public world
+  /** Controls whether this archived character can appear in school activity
    *  surfaces when it is used as a public student entry. */
   publicWorldVisible?: boolean;
   /** UTC date (YYYY-MM-DD) of the last text-only X post for this character.

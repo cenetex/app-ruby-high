@@ -147,11 +147,10 @@ describe("viewer world panel controller", () => {
     expect(harness.events.children).toHaveLength(1);
     expect(harness.events.children[0]?.className).toBe("world-event-row");
     expect(harness.events.children[0]?.dataset.worldEventId).toBe("world:event:a");
-    expect(textTree(harness.events)).toEqual(["Ruby started class", "1m", "×", "!"]);
+    expect(textTree(harness.events)).toEqual(["Ruby started class", "1m", "!"]);
     const actions = harness.events.children[0]?.children[3];
     expect(actions?.className).toBe("world-event-actions");
-    expect(actions?.children[0]?.dataset).toEqual({ worldEventAction: "hide", worldEventId: "world:event:a" });
-    expect(actions?.children[1]?.dataset).toEqual({ worldEventAction: "report", worldEventId: "world:event:a" });
+    expect(actions?.children[0]?.dataset).toEqual({ worldEventAction: "report", worldEventId: "world:event:a" });
   });
 
   it("hides the panel until loaded or when the caller suppresses it", () => {

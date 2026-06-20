@@ -1,15 +1,30 @@
 import { expect, test } from "@playwright/test";
 import { closeBlockingSheetIfVisible, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
 
+test("rolls a first student without showing the old Lock it in action", async ({ page }) => {
+  const { errors } = await openViewer(page);
+  await dismissAnnouncements(page);
+
+  await expect(page.getByRole("button", { name: "Lock it in" })).toHaveCount(0);
+
+  const rollAStudent = page.getByRole("button", { name: /roll a student/i });
+  if (await rollAStudent.isVisible().catch(() => false)) {
+    await expect(rollAStudent).toBeEnabled();
+    await rollAStudent.click();
+  }
+
+  await expect(page.getByRole("button", { name: "Lock it in" })).toHaveCount(0);
+  await expect(page.locator("#sheet-overlay")).not.toHaveClass(/is-open/, { timeout: 45_000 });
+  await expect(page.locator(".answer:not([disabled])").first()).toBeVisible({ timeout: 15_000 });
+
+  expect(errors).toEqual([]);
+});
+
 test("boots as a guest, creates a character, answers a card, and opens account tabs", async ({ page }) => {
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);
 
-  const lockButton = page.getByRole("button", { name: "Lock it in" });
-  await expect(lockButton).toBeEnabled();
-  await lockButton.click();
-
-  await expect(lockButton).not.toBeVisible();
+  await createCharacter(page);
   const firstAnswer = page.locator(".answer:not([disabled])").first();
   await expect(firstAnswer).toBeVisible();
   await firstAnswer.click();
@@ -28,22 +43,37 @@ test("boots as a guest, creates a character, answers a card, and opens account t
   expect(errors).toEqual([]);
 });
 
-test("keeps the public world feed healthy across a live stream rollover", async ({ page }) => {
+test("keeps the public world projection healthy while the viewer idles", async ({ page }) => {
   test.setTimeout(80_000);
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);
-  const panel = page.locator("#world-panel");
-  const sub = page.locator("#world-panel-sub");
+  const readWorld = async () => page.evaluate(async () => {
+    const resp = await fetch("/api/apps/ruby-high/world?limit=20", { credentials: "same-origin" });
+    const body = await resp.json();
+    if (!resp.ok) {
+      throw new Error(`world fetch failed: ${JSON.stringify(body)}`);
+    }
+    return body.world;
+  });
 
-  await expect(panel).toBeVisible();
-  await expect(sub).toContainText(/live|room/i);
-  await expect(sub).not.toContainText(/paused|catching up|unavailable/i);
+  await expect.poll(async () => {
+    const world = await readWorld();
+      return {
+        activeStudents: typeof world.activeStudents,
+        activeRooms: Array.isArray(world.activeRooms),
+        recentEvents: Array.isArray(world.recentEvents),
+      };
+  }).toEqual({ activeStudents: "number", activeRooms: true, recentEvents: true });
 
   await page.waitForTimeout(28_000);
 
-  await expect(panel).toBeVisible();
-  await expect(sub).toContainText(/live|room/i);
-  await expect(sub).not.toContainText(/paused|catching up|unavailable/i);
+  const world = await readWorld();
+  expect(world).toMatchObject({
+    activeStudents: expect.any(Number),
+    activeRooms: expect.any(Array),
+    recentEvents: expect.any(Array),
+    summary: expect.any(Object),
+  });
   expect(errors).toEqual([]);
 });
 
@@ -121,14 +151,10 @@ test("shows shared live-room Study Spark progress across browser clients", async
     await closeBlockingSheetIfVisible(pageB);
     await closeBlockingSheetIfVisible(pageC);
 
-    const refreshA = pageA.locator("#world-panel-refresh");
-    const refreshB = pageB.locator("#world-panel-refresh");
-    await expect(refreshA).toBeVisible();
-    await expect(refreshB).toBeVisible();
-    await refreshA.click();
-    await refreshB.click();
-    await expect(pageA.locator("#world-panel-sub")).toContainText("Study Spark", { timeout: 15_000 });
-    await expect(pageB.locator("#world-panel-sub")).toContainText("Study Spark", { timeout: 15_000 });
+    await expect.poll(async () => {
+      const world = await readWorld(pageA);
+      return world.summary?.studySparks?.total ?? 0;
+    }).toBeGreaterThanOrEqual(1);
 
     const worldA = await readWorld(pageA);
     const worldB = await readWorld(pageB);

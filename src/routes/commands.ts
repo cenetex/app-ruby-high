@@ -155,7 +155,7 @@ export async function handleCommandRoute(args: {
       const retryAfter = PUBLIC_WORLD_ACTION_LIMITER.retryAfterSeconds(safetyKey);
       const res = ctx.res as { setHeader?: (name: string, value: string) => void };
       res.setHeader?.("Retry-After", String(Math.max(1, retryAfter)));
-      ctx.error(ctx.res, "Too many public world safety actions — slow down a moment.", 429);
+      ctx.error(ctx.res, "Too many school activity safety actions — slow down a moment.", 429);
       return true;
     }
   }
@@ -352,12 +352,12 @@ export async function handleCommandRoute(args: {
         if (!review.ok) {
           throw new Error(
             review.reason === "reserved"
-              ? "Choose a student name that is not a reserved staff or system name before joining the public world."
+              ? "Choose a student name that is not a reserved staff or system name before joining school rooms."
               : review.reason === "contact"
-                ? "Remove contact info, handles, or links from the student name before joining the public world."
+                ? "Remove contact info, handles, or links from the student name before joining school rooms."
                 : review.reason === "unsafe"
-                  ? "Choose a school-appropriate student name before joining the public world."
-                  : "Name your student before joining the public world.",
+                  ? "Choose a school-appropriate student name before joining school rooms."
+                  : "Name your student before joining school rooms.",
           );
         }
       }

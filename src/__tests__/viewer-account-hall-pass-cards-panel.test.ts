@@ -98,7 +98,7 @@ function packView(pack: unknown, overrides?: Partial<AccountHallPassPackTileView
     imageKind: active ? "active" : "opened",
     title: active ? "Pack " + record.id : "Opened " + record.id,
     detail: "5 cards",
-    proofLabel: active ? "View pack NFT" : "Pack proof",
+    proofLabel: active ? "View Solana pack" : "Pack proof",
     openVisible: active,
     openText: "Open Pack",
     openDisabled: false,
@@ -136,9 +136,7 @@ describe("account Hall Pass cards panel renderer", () => {
     const summary = new FakeElement("div");
     const buyButton = new FakeElement("button");
     const mintButton = new FakeElement("button");
-    const getRubyLink = new FakeElement("a");
     const calls = {
-      getRuby: 0,
       proof: [] as unknown[][],
       wallet: 0,
       openPack: [] as unknown[],
@@ -154,7 +152,6 @@ describe("account Hall Pass cards panel renderer", () => {
       summary: summary as unknown as HTMLElement,
       buyButton: buyButton as unknown as HTMLButtonElement,
       mintButton: mintButton as unknown as HTMLButtonElement,
-      getRubyLink: getRubyLink as unknown as HTMLElement,
       panelView(packs, cards, pendingMints, opts) {
         expect(packs).toEqual([openedPack, activePack]);
         expect(cards).toEqual([olderCard, shownCard]);
@@ -178,9 +175,6 @@ describe("account Hall Pass cards panel renderer", () => {
       },
       cardArtUrl(card, faceDown) {
         return faceDown ? "/assets/card-back.png" : "/assets/" + String((card as { id: string }).id) + ".png";
-      },
-      configureGetRubyLink() {
-        calls.getRuby += 1;
       },
       appendSolanaProofLink(parent, address, label) {
         calls.proof.push([parent.className, address, label]);
@@ -213,7 +207,6 @@ describe("account Hall Pass cards panel renderer", () => {
     expect(buyButton.title).toBe("Buy Ruby High card packs.");
     expect(mintButton.hidden).toBe(false);
     expect(mintButton.textContent).toBe("Reveal Card");
-    expect(calls.getRuby).toBe(1);
     expect(container.children.map((child) => child.className)).toEqual([
       "account-pack-tile is-active",
       "account-pack-tile is-opened",
@@ -232,7 +225,7 @@ describe("account Hall Pass cards panel renderer", () => {
       "In-app Card",
     ]);
     expect(calls.proof).toEqual([
-      ["account-pack-tile-copy", "asset-active", "View pack NFT"],
+      ["account-pack-tile-copy", "asset-active", "View Solana pack"],
       ["account-pack-tile-copy", "asset-opened", "Pack proof"],
     ]);
     expect(container.children[0]!.children[1]!.children[1]!.click()).toMatchObject({
@@ -256,7 +249,6 @@ describe("account Hall Pass cards panel renderer", () => {
       cardTileView: cardView,
       packArtUrl: (kind) => "/assets/" + kind + "-pack.png",
       cardArtUrl: () => "",
-      configureGetRubyLink() {},
       appendSolanaProofLink() {},
       ensureSolanaWallet() {
         walletCalls += 1;
@@ -297,7 +289,6 @@ describe("account Hall Pass cards panel renderer", () => {
       cardTileView: (card) => cardView(card, { faceDown: false }),
       packArtUrl: (kind) => "/assets/" + kind + "-pack.png",
       cardArtUrl: () => "",
-      configureGetRubyLink() {},
       appendSolanaProofLink() {},
       ensureSolanaWallet() {},
       openPack() {},
@@ -339,7 +330,6 @@ describe("account Hall Pass cards panel renderer", () => {
       cardTileView: cardView,
       packArtUrl: () => "",
       cardArtUrl: () => "",
-      configureGetRubyLink() {},
       appendSolanaProofLink() {},
       ensureSolanaWallet() {},
       openPack() {},

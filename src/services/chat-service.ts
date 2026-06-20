@@ -29,6 +29,10 @@ export interface ChatMessage {
   toolCalls?: ToolCall[];
   /** Faculty id that authored / was active when this message landed. */
   faculty?: string;
+  /** Session that authored a player message. The room key itself is global. */
+  authorSessionToken?: string;
+  /** Display name for the player that authored a user message. */
+  authorName?: string;
   /** Local timestamp for UI ordering. */
   at: number;
 }
@@ -46,8 +50,10 @@ type ToolDispatchResult = {
 };
 
 export interface ChatHistoryKey {
+  /** The actor's session token. Used for player-message attribution, not room isolation. */
   sessionToken: string;
   faculty: string;
+  authorName?: string;
 }
 
 /**
@@ -127,6 +133,9 @@ export interface SendOpts {
   faculty: string;
   /** Optional. If provided, appended as a user message before the model runs. */
   userMessage?: string;
+  /** Display name for the userMessage author. Chatrooms are global, so
+   *  user-role messages need explicit attribution. */
+  authorName?: string;
   /** Optional. If provided, appended as a system note before the model runs.
    *  Use this to drive a teacher turn from a state event (channel-enter,
    *  answer-graded, etc.) without the student saying anything. */
@@ -238,7 +247,14 @@ export class ChatService extends Service {
     const content = text.trim();
     if (!content) return;
     const history = this.ensure(key);
-    history.push({ role: "user", content, faculty: key.faculty, at });
+    history.push({
+      role: "user",
+      content,
+      faculty: key.faculty,
+      authorSessionToken: key.sessionToken,
+      authorName: cleanAuthorName(key.authorName),
+      at,
+    });
     this.trim(key);
   }
 
@@ -329,7 +345,14 @@ export class ChatService extends Service {
         ? opts.systemEventNote.trim()
         : undefined;
     if (opts.userMessage && opts.userMessage.trim().length > 0) {
-      history.push({ role: "user", content: opts.userMessage, faculty: bucketFaculty, at: Date.now() });
+      history.push({
+        role: "user",
+        content: opts.userMessage,
+        faculty: bucketFaculty,
+        authorSessionToken: opts.sessionToken,
+        authorName: cleanAuthorName(opts.authorName),
+        at: Date.now(),
+      });
       this.trim(key);
     }
     if (history.length === 0 && !turnDirective) {
@@ -818,8 +841,13 @@ export class ChatService extends Service {
   }
 
   private keyOf(key: ChatHistoryKey): string {
-    return `${key.sessionToken}::${key.faculty}`;
+    return `room::${key.faculty}`;
   }
+}
+
+function cleanAuthorName(value: string | undefined | null): string | undefined {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text || undefined;
 }
 
 function normalizeHistoryForProvider(list: ChatMessage[], limit: number): ChatMessage[] {
@@ -1031,7 +1059,7 @@ function facultyDisplayNameForPrompt(state: QuizState, facultyId?: string): stri
 
 function formatDialogueLineForAvatar(state: QuizState, message: ChatMessage): string {
   const speaker = message.role === "user"
-    ? (state.character?.name ?? "Player avatar")
+    ? (message.authorName ?? state.character?.name ?? "Player avatar")
     : facultyDisplayNameForPrompt(state, message.faculty);
   const verb = message.role === "user" ? "said" : "replied";
   return `  - ${speaker} ${verb} "${clipForPrompt(message.content.trim(), 180)}"`;
@@ -1722,6 +1750,9 @@ function toOpenRouterMessage(m: ChatMessage): unknown {
         function: { name: tc.function.name, arguments: tc.function.arguments },
       })),
     };
+  }
+  if (m.role === "user" && m.authorName) {
+    return { role: "user", content: `${m.authorName}: ${m.content}` };
   }
   return { role: m.role, content: m.content };
 }

@@ -1095,9 +1095,9 @@ function packPayload(pack: RubyHighHallPassPack): Record<string, unknown> {
 function publicPackSyncErrorMessage(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   if (/getProgramAccounts|410|forbidden|rpc/i.test(raw)) {
-    return "Solana RPC could not sync wallet pack NFTs. Check the configured Ruby High Solana RPC.";
+    return "Solana RPC could not sync wallet packs. Check the configured Ruby High Solana RPC.";
   }
-  return raw || "Pack NFT sync failed.";
+  return raw || "Solana pack sync failed.";
 }
 
 function cleanClientBuild(value: unknown): string {

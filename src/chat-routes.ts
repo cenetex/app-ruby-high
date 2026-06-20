@@ -3,6 +3,7 @@ import type { IAgentRuntime } from "./runtime.js";
 import { AuthService, type AuthRecord } from "./services/auth-service.js";
 import { ChatService, type AvatarPromptContext, type ChatMessage, type ChatStreamEvent, type ToolCall } from "./services/chat-service.js";
 import {
+  CHAT_MERIT_STAR_COST,
   HALL_PASS_CARD_BURN_HALL_PASS_VALUE,
   RubyHighService,
   type HallPassCardBurnInput,
@@ -147,12 +148,23 @@ function fillMissingOpinionResponders(
   return mutated;
 }
 
-export function publicChatHistory(messages: ChatMessage[]): Array<Record<string, unknown>> {
+export function publicChatHistory(
+  messages: ChatMessage[],
+  viewerSessionToken: string | null = null,
+): Array<Record<string, unknown>> {
   const out: Array<Record<string, unknown>> = [];
   const pendingTools = new Map<string, { call: ToolCall; faculty?: string }>();
   for (const m of messages) {
     if (m.role === "user") {
-      out.push({ role: "user", content: m.content, faculty: m.faculty, at: m.at });
+      const isSelf = !!viewerSessionToken && m.authorSessionToken === viewerSessionToken;
+      out.push({
+        role: "user",
+        content: m.content,
+        faculty: m.faculty,
+        at: m.at,
+        authorName: m.authorName ?? (isSelf ? "You" : "Student"),
+        isSelf,
+      });
       continue;
     }
     if (m.role === "assistant") {
@@ -198,6 +210,68 @@ function safeJsonObject(text: string): Record<string, unknown> {
       : {};
   } catch {
     return {};
+  }
+}
+
+function playerChatAuthorName(ruby: RubyHighService, sessionId: string): string {
+  const raw = ruby.getOrCreate(sessionId).character?.name;
+  const name = typeof raw === "string" ? raw.trim() : "";
+  return name || "Student";
+}
+
+function chatChargeIdPart(value: unknown): string {
+  if (typeof value === "number" && Number.isFinite(value)) return String(Math.floor(value));
+  if (typeof value === "string") return value.trim().replace(/[^a-zA-Z0-9:_-]+/g, "-").slice(0, 80);
+  return "";
+}
+
+function fallbackChatChargeId(input: { sessionId: string; route: string; faculty: string; text?: string; at: number }): string {
+  const digest = createHash("sha256")
+    .update(`${input.sessionId}:${input.route}:${input.faculty}:${input.text ?? ""}:${input.at}`)
+    .digest("hex")
+    .slice(0, 14);
+  return `${input.at}:${digest}`;
+}
+
+function chargePlayerChatTurn(
+  ruby: RubyHighService,
+  sessionId: string,
+  input: {
+    route: string;
+    faculty: string;
+    clientTurnSeq?: unknown;
+    trigger?: string;
+    intent?: string;
+    text?: string;
+  },
+): { ok: true } | { ok: false; message: string } {
+  const at = Date.now();
+  const clientTurnSeq = chatChargeIdPart(input.clientTurnSeq);
+  const requestId = clientTurnSeq || fallbackChatChargeId({
+    sessionId,
+    route: input.route,
+    faculty: input.faculty,
+    text: input.text,
+    at,
+  });
+  try {
+    ruby.spendMeritStars(sessionId, {
+      amount: CHAT_MERIT_STAR_COST,
+      idempotencyKey: `chat:${sessionId}:${input.route}:${input.faculty}:${requestId}`,
+      source: "chat",
+      description: "Classroom chat",
+      at,
+      metadata: {
+        route: input.route,
+        faculty: input.faculty,
+        ...(input.trigger ? { trigger: input.trigger } : {}),
+        ...(input.intent ? { intent: input.intent } : {}),
+        ...(clientTurnSeq ? { clientTurnSeq } : {}),
+      },
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -1278,8 +1352,8 @@ const AUTH_PREFIX = "/api/apps/ruby-high/auth";
 const DEFAULT_AUTH_REDIRECT = "/api/apps/ruby-high/viewer";
 
 /** Resolve the text LLM credential for this session. Browser BYOK and local
- *  LLMs are free; server-hosted OpenRouter text AI requires active AI Access
- *  on the Ruby High wallet. */
+ *  LLMs are free; a configured server OpenRouter key sponsors text AI while
+ *  chat routes meter player messages with Merit Stars. */
 function readApiKey(ctx: ChatRouteContext, ruby: RubyHighService, sessionId: string): string | null {
   return resolveTextLlmCredential({
     apiKeyHeader: ctx.apiKeyHeader,
@@ -2074,7 +2148,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ? fallbackFaculty
       : requested;
     const messages = chat.history({ sessionToken: token, faculty });
-    // History is bucketed by the cookie; the X-Openrouter-Key header decides
+    // History is bucketed by room/faculty; the X-Openrouter-Key header decides
     // whether the client is "authed" for chat actions. Both can be present
     // independently — a fresh tab might have a cookie from a prior session
     // and want history but not have a key yet (or vice versa).
@@ -2084,7 +2158,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       local_ai: isLocalLlmProvider(),
       hosted_ai: entitlements.hosted_ai,
       entitlements,
-      history: publicChatHistory(messages),
+      history: publicChatHistory(messages, token),
     });
     return true;
   }
@@ -2104,9 +2178,10 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
 
     const sessionId = getSessionId(runtime, ctx.cookieHeader);
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
-      | { faculty?: string; message?: string; model?: string }
+      | { faculty?: string; message?: string; model?: string; clientTurnSeq?: unknown }
       | null;
     const faculty = canonicalFacultyForRoute(ruby, sessionId, body?.faculty);
+    const authorName = playerChatAuthorName(ruby, sessionId);
     const guestAccess = guestAccessForRecord(ruby, stateKey, record);
     if (rejectGuestViolation(ctx, guestAccessViolation({ guestAccess, facultyId: faculty }))) return true;
     if (!apiKey && chat.requiresBrowserApiKey(sessionId, faculty)) {
@@ -2116,6 +2191,16 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const message = (body?.message ?? "").trim();
     if (!message) {
       ctx.error(ctx.res, "Missing 'message'.", 400);
+      return true;
+    }
+    const charge = chargePlayerChatTurn(ruby, sessionId, {
+      route: "typed",
+      faculty,
+      clientTurnSeq: body?.clientTurnSeq,
+      text: message,
+    });
+    if (!charge.ok) {
+      ctx.error(ctx.res, charge.message, 402);
       return true;
     }
 
@@ -2129,6 +2214,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         agentSessionId: sessionId,
         faculty,
         userMessage: message,
+        authorName,
         model: body?.model,
         disableTools: schedulerOwnsBoard(bank),
         toolAccessGuard: guestToolAccessGuard(ruby, stateKey, guestAccess),
@@ -2163,6 +2249,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       | null;
     const sessionId = getSessionId(runtime, ctx.cookieHeader);
     const faculty = canonicalFacultyForRoute(ruby, sessionId, body?.faculty);
+    const authorName = playerChatAuthorName(ruby, sessionId);
     const guestAccess = guestAccessForRecord(ruby, stateKey, record);
     if (rejectGuestViolation(ctx, guestAccessViolation({ guestAccess, facultyId: faculty }))) return true;
     const state = ruby.getOrCreate(sessionId);
@@ -2174,6 +2261,16 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     try {
       if (isStaleChatEvent()) {
         send("done", { type: "done", finishReason: "stale-turn" });
+        return true;
+      }
+      const charge = chargePlayerChatTurn(ruby, sessionId, {
+        route: "room-turn",
+        faculty,
+        clientTurnSeq: body?.clientTurnSeq,
+        intent,
+      });
+      if (!charge.ok) {
+        send("error", { type: "error", message: charge.message });
         return true;
       }
       let playerLine: string;
@@ -2214,7 +2311,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         return true;
       }
       send("player-line", { text: playerLine, intent, replace: true });
-      chat.appendPlayerMessage({ sessionToken: token, faculty: historyFaculty }, playerLine);
+      chat.appendPlayerMessage({ sessionToken: token, faculty: historyFaculty, authorName }, playerLine);
 
       if (isStaleChatEvent()) {
         send("done", { type: "done", finishReason: "stale-turn" });
@@ -2315,6 +2412,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           faculty: "lounge",
           speakerFacultyId: speaker,
           bucketKey: "lounge",
+          authorName,
           disableTools: true,
           extraSystemContext: loungeSystem,
           systemEventNote: "The student just spoke in the lounge. Reply to them directly in character in 1-2 short sentences, then keep the faculty-room scene moving.",
@@ -2335,6 +2433,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         sessionToken: token,
         agentSessionId: sessionId,
         faculty,
+        authorName,
         disableTools: plan.disableToolsForTurn,
         allowOpinionTool: true,  // opinion rounds are the spine now
         systemEventNote: plan.directive,
@@ -2384,6 +2483,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             sessionToken: token,
             agentSessionId: sessionId,
             faculty,
+            authorName,
             systemEventNote: noQuestionDirective,
             allowOpinionTool: true,
             isStale: isStaleChatEvent,
@@ -2476,6 +2576,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       | null;
     const sessionId = getSessionId(runtime, ctx.cookieHeader);
     const faculty = canonicalFacultyForRoute(ruby, sessionId, body?.faculty);
+    const authorName = playerChatAuthorName(ruby, sessionId);
     const guestAccess = guestAccessForRecord(ruby, stateKey, record);
     if (rejectGuestViolation(ctx, guestAccessViolation({ guestAccess, facultyId: faculty }))) return true;
     if (!apiKey && chat.requiresBrowserApiKey(sessionId, faculty)) {
@@ -2485,6 +2586,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const trigger = String(body?.trigger ?? "manual");
     const grade = body?.context?.grade;
     const contextIntent = cleanPlayerChatIntent(body?.context?.intent);
+    const manualPlayerLine = trigger === "manual" ? cleanText(body?.context?.playerLine) : undefined;
     const isStaleChatEvent = chatEventTurnGuard(sessionId, faculty, body?.clientTurnSeq);
 
     const { send, end } = openSse(ctx.res);
@@ -2492,6 +2594,21 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       send("done", { type: "done", finishReason: "stale-turn" });
       end();
       return true;
+    }
+    if (manualPlayerLine) {
+      const charge = chargePlayerChatTurn(ruby, sessionId, {
+        route: "manual-event",
+        faculty,
+        clientTurnSeq: body?.clientTurnSeq,
+        trigger,
+        intent: contextIntent,
+        text: manualPlayerLine,
+      });
+      if (!charge.ok) {
+        send("error", { type: "error", message: charge.message });
+        end();
+        return true;
+      }
     }
 
     // ── Teachers' Lounge: round-robin active faculty in a shared bucket. ───
@@ -2501,7 +2618,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const order = trigger === "lounge-enter"
         ? teacherIds
         : [pickNextLoungeSpeaker(chat, token, teacherIds)];
-      const playerLine = trigger === "manual" ? cleanText(body?.context?.playerLine) : undefined;
+      const playerLine = manualPlayerLine;
       const loungeSystem = loungeSystemContext(loungeState, teacherIds);
 
       // For lounge-enter, log the event so each speaker's first-turn
@@ -2536,6 +2653,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             speakerFacultyId: speaker,
             bucketKey: "lounge",
             userMessage: playerLine,
+            authorName,
             disableTools: true,
             extraSystemContext: loungeSystem,
             systemEventNote: turnDirective,
@@ -2568,7 +2686,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const manualAdvanceIntent = trigger === "manual" && contextIntent === "advance";
     const classReportBlocksBoard = classReportControlsBoard && !manualAdvanceIntent;
     const schedulerControlsBoard = !classReportBlocksBoard && schedulerOwnsBoard(bank);
-    const playerLine = trigger === "manual" ? cleanText(body?.context?.playerLine) : undefined;
+    const playerLine = manualPlayerLine;
     let directive = "";
     let disableToolsForTurn = shouldDisableTools({ trigger, schedulerControlsBoard, classReportBlocksBoard });
     let extraSystemContext: string | undefined;
@@ -2691,6 +2809,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         agentSessionId: sessionId,
         faculty,
         userMessage: playerLine,
+        authorName,
         disableTools: disableToolsForTurn,
         allowOpinionTool,
         extraSystemContext,
@@ -2747,6 +2866,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             sessionToken: token,
             agentSessionId,
             faculty,
+            authorName,
             systemEventNote: noQuestionDirective,
             allowOpinionTool: true,
             isStale: isStaleChatEvent,
@@ -2797,6 +2917,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const guestAccess = guestAccessForRecord(ruby, stateKey, record);
     if (rejectGuestViolation(ctx, guestAccessViolation({ guestAccess, facultyId: faculty }))) return true;
     const playerName = state.character?.name;
+    const authorName = typeof playerName === "string" && playerName.trim()
+      ? playerName.trim()
+      : playerChatAuthorName(ruby, sessionId);
     let classmateNames: string[] = [];
     if (state.currentGrade && state.faculty) {
       const r = state.npcRosters[state.currentGrade] ?? [];
@@ -2824,7 +2947,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     }
     const playerText = body?.playerText?.trim() || undefined;
     if (playerText && faculty && body?.recordPlayerText) {
-      chat.appendPlayerMessage({ sessionToken: token, faculty }, playerText);
+      chat.appendPlayerMessage({ sessionToken: token, faculty, authorName }, playerText);
     }
     if (playerText && faculty) {
       chat.appendEvent(
@@ -3586,12 +3709,28 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   }
 
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/generate`) {
-    const cred = requireAuth(ctx, auth, ruby);
+    const cred = requireSession(ctx, auth, ruby);
     if (!cred) {
-      ctx.error(ctx.res, "Connect AI first to roll a character.", 401);
+      ctx.error(ctx.res, "Start a Ruby High session before rolling a character.", 401);
       return true;
     }
-    const { token, apiKey } = cred;
+    const { token, stateKey } = cred;
+    const freeRollCredential = resolveTextLlmCredential({
+      ruby,
+      sessionId: stateKey,
+    });
+    const fallbackCredential = freeRollCredential.apiKey
+      ? freeRollCredential
+      : resolveTextLlmCredential({
+          apiKeyHeader: ctx.apiKeyHeader,
+          ruby,
+          sessionId: stateKey,
+        });
+    const apiKey = fallbackCredential.apiKey;
+    if (!apiKey) {
+      ctx.error(ctx.res, "Basic AI character rolling is not configured.", 503);
+      return true;
+    }
     // Body: { regen?: CharacterComponent[], keep?: Partial<RolledCharacter> }
     // No body / empty body → full roll (current behaviour).
     const body = (await ctx.readJsonBody().catch(() => ({}))) as

@@ -107,10 +107,22 @@ function hostedAiExpiresAt(input: EntitlementInput, now: number): number | null 
 
 export function hostedAiEntitlementStatus(input: EntitlementInput = {}): HostedAiEntitlementStatus {
   const now = typeof input.now === "number" && Number.isFinite(input.now) ? input.now : Date.now();
+  const configured = hostedOpenRouterConfigured();
+  if (configured) {
+    return {
+      configured: true,
+      active: true,
+      expiresAt: null,
+      remainingMs: 0,
+      cost: 0,
+      durationMs: 0,
+      affordable: true,
+      canActivate: false,
+    };
+  }
   const cost = hostedAiAccessCost();
   const expiresAt = hostedAiExpiresAt(input, now);
   const remainingMs = expiresAt ? Math.max(0, expiresAt - now) : 0;
-  const configured = hostedOpenRouterConfigured();
   const active = remainingMs > 0;
   const affordable = hallPassBalance(input) >= cost;
   return {

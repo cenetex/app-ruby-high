@@ -38,7 +38,7 @@ describe("account trust panel view", () => {
         href: "https://solscan.io/account/TreasuryWallet111111111111111111111111111111",
       },
       {
-        label: "RUBY token",
+        label: "Pack payment token",
         value: "RubyMi...2222",
         href: "https://solscan.io/account/RubyMint2222222222222222222222222222222222222",
       },
@@ -64,7 +64,7 @@ describe("account trust panel view", () => {
       { label: "Current build", value: "dev", href: "" },
       { label: "Connected wallet", value: "Not connected", href: "" },
       { label: "Treasury", value: "Shown before wallet payment", href: "" },
-      { label: "RUBY token", value: "Shown before wallet payment", href: "" },
+      { label: "Pack payment token", value: "Shown before wallet payment", href: "" },
       { label: "Pack collection", value: "Loading configuration", href: "" },
       { label: "Card collection", value: "Loading configuration", href: "" },
     ]);

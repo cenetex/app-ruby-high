@@ -19,25 +19,25 @@ describe("billingProductsPanelView", () => {
     });
   });
 
-  it("describes card-pack checkout, burn rate, and RUBY readiness", () => {
+  it("describes Solana card-pack checkout and burn rate", () => {
     expect(billingProductsPanelView("card-packs", {}, { configured: true }, {
       hallPassesPerBurnedCard: 7,
       hasRubyToken: true,
     })).toEqual({
       titleText: "Buy Card Packs",
-      subtitleText: "Card packs are Solana NFTs. Open a pack to create five face-down Ruby High cards.",
+      subtitleText: "Card packs are Solana collectibles. Open a pack to create five face-down Ruby High cards.",
       cardPackCostLabels: [
-        "Pack NFT: 5 cards",
+        "Solana pack: 5 cards",
         "Burn rate: 1 Card = 7 Hall Passes",
       ],
-      showGetRubyCostLink: true,
+      showGetRubyCostLink: false,
       emptyStatusText: "No card packs are available.",
       checkoutStatusText: "",
       checkoutStatusError: false,
     });
   });
 
-  it("keeps card-pack configuration failures distinct from missing RUBY mint failures", () => {
+  it("keeps card-pack configuration failures distinct from missing token configuration", () => {
     expect(billingProductsPanelView("card-packs", {}, { configured: false }, {
       hasRubyToken: true,
     })).toMatchObject({
@@ -48,7 +48,7 @@ describe("billingProductsPanelView", () => {
     expect(billingProductsPanelView("card-packs", {}, { configured: true }, {
       hasRubyToken: false,
     })).toMatchObject({
-      checkoutStatusText: "RUBY mint configuration is missing for card packs.",
+      checkoutStatusText: "Solana pack checkout is missing token configuration.",
       checkoutStatusError: true,
     });
   });

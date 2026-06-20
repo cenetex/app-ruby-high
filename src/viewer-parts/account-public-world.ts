@@ -59,10 +59,10 @@ export function createAccountPublicWorldController(deps: AccountPublicWorldContr
         publicWorldVisible: view.nextVisible,
       });
       if (data && data.session) {
-        deps.notify(view.nextVisible ? "Public world presence enabled" : "Public world presence hidden", true);
+        deps.notify(view.nextVisible ? "School presence enabled" : "School presence removed", true);
         deps.onUpdated();
       } else {
-        deps.setStatus("Could not update public world presence.", true);
+        deps.setStatus("Could not update school presence.", true);
       }
     } finally {
       deps.setBusy(false);

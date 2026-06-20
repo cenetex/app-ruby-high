@@ -117,6 +117,19 @@ describe("chat message renderer", () => {
     expect(avatar.textContent).toBe("N");
   });
 
+  it("renders other human players with the student role tag", () => {
+    const { renderer: r } = renderer();
+    const wrap = r.buildMessage({
+      kind: "player",
+      name: "Avery",
+      body: "shared room check",
+      color: "#3aa3e0",
+    }).wrap as unknown as FakeElement;
+
+    expect(wrap.className).toBe("msg player");
+    expect(textTree(wrap)).toEqual(["A", "Avery", "Student", expect.any(String), "md:shared room check"]);
+  });
+
   it("renders system, tool, and empty-state rows", () => {
     const { renderer: r } = renderer();
     const cta = vi.fn();

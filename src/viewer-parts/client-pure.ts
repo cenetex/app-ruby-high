@@ -637,10 +637,10 @@ export function welcomeHallPassPopupView(
   return {
     titleText: formatWholeNumber(amount) + " Hall Passes added",
     bodyText: fromBilling
-      ? "The front office stamped your starter passes. Spend them on hosted AI or images, or keep playing classes free."
+      ? "The front office stamped your starter passes. Spend them on images, slots, and cards, or keep playing classes free."
       : portraitConfigured
-        ? "Roll your first student and try a custom portrait, or save your Hall Passes for AI Access and extra character slots."
-        : "Roll your first student now, or save your Hall Passes for AI Access, images, and extra character slots.",
+        ? "Roll your first student and try a custom portrait, or save your Hall Passes for extra character slots."
+        : "Roll your first student now, or save your Hall Passes for images, cards, and extra character slots.",
     showLater: !fromBilling,
     primaryText: fromBilling ? "Continue" : hasCharacter ? "Open Account" : "Create Character",
   };
@@ -704,31 +704,31 @@ export function accountPublicWorldView(character: unknown, opts?: { authed?: unk
   const busy = !!(opts && opts.busy);
   const nextVisible = !visible;
   const summaryText = !hasCharacter
-    ? "Create a student before joining the shared school map."
+    ? "Create a student before joining shared school activity."
     : visible
-    ? "Your active student can appear in public rooms and activity."
+    ? "Your active student can appear in school rooms and activity."
     : blockedBySocialConsent
-    ? "A legacy privacy setting is hiding this student from public rooms and activity."
+    ? "A legacy privacy setting is keeping this student out of shared school activity."
     : hasPublicName && !publicNameReviewOk
     ? nameReview.reason === "reserved"
-      ? "Choose a student name that is not a staff or system name before joining public rooms."
+      ? "Choose a student name that is not a staff or system name before joining school rooms."
       : nameReview.reason === "contact"
-        ? "Remove contact info, handles, or links from this student name before joining public rooms."
-        : "Choose a school-appropriate student name before joining public rooms."
+        ? "Remove contact info, handles, or links from this student name before joining school rooms."
+        : "Choose a school-appropriate student name before joining school rooms."
     : hasPublicName
-    ? "Your active student is hidden from public rooms and activity."
-    : "Name your student before they can appear publicly.";
+    ? "Your active student is not appearing in school rooms and activity."
+    : "Name your student before they can join shared school activity.";
   const toggleTitle = !hasCharacter
     ? "Create a student first"
     : !hasPublicName
-    ? "Public world requires a real student name"
+    ? "School presence requires a real student name"
     : !publicNameReviewOk
-    ? "Review this student name before joining the public world"
+    ? "Review this student name before joining school rooms"
     : blockedBySocialConsent
-    ? "Legacy social sharing is off, so public world stays hidden"
+    ? "Legacy social sharing is off for this student"
     : visible
-    ? "Hide this student from public rooms and activity"
-    : "Allow this student to appear in public rooms and activity";
+    ? "Remove this student from school rooms and activity"
+    : "Allow this student to appear in school rooms and activity";
   return {
     hasCharacter,
     hasPublicName,
@@ -737,9 +737,9 @@ export function accountPublicWorldView(character: unknown, opts?: { authed?: unk
     blockedBySocialConsent,
     visible,
     summaryText,
-    statusText: visible ? "Visible in the public world" : "Hidden from the public world",
+    statusText: visible ? "Visible in school activity" : "Not in school activity",
     statusClass: visible ? "is-visible" : "",
-    toggleText: visible ? "Hide" : "Show",
+    toggleText: visible ? "Leave" : "Join",
     toggleDisabled: !authed || busy || !hasCharacter || !hasPublicName || !publicNameReviewOk || blockedBySocialConsent,
     toggleTitle,
     nextVisible,
@@ -770,6 +770,8 @@ export function walletTransactionCardCount(tx: NullableRecord): number {
 
 export function walletTransactionTitle(tx: NullableRecord): string {
   if (!tx || !tx.kind) return "Wallet update";
+  if (tx.kind === "merit-star-grant") return "Merit Star grant";
+  if (tx.kind === "merit-star-spend") return "Chat message";
   if (tx.kind === "hall-pass-grant") return walletTransactionCardCount(tx) > 0 ? "Pack opened" : "Hall Pass grant";
   if (tx.kind === "hall-pass-spend") return walletTransactionCardCount(tx) < 0 ? "Card burn" : "Hall Pass spend";
   if (tx.kind === "hall-pass-refund") return "Hall Pass refund";
@@ -803,17 +805,20 @@ export function walletTransactionSource(tx: NullableRecord): string {
 }
 
 export function accountHistoryRowView(tx: NullableRecord): AccountHistoryRowView {
+  const meritStarAmount = Number((tx && tx.meritStars) || 0);
   const amount = Number((tx && tx.hallPasses) || 0);
   const photoDayAmount = Number((tx && tx.photoDayCredits) || 0);
   const cardAmount = walletTransactionCardCount(tx);
   const isPackPurchase = !!(tx && tx.kind === "hall-pass-pack-mint");
-  const visibleAmount = amount || photoDayAmount || cardAmount;
+  const visibleAmount = meritStarAmount || amount || photoDayAmount || cardAmount;
   const className = "account-history-row"
     + (isPackPurchase ? " is-swap" : visibleAmount > 0 ? " is-credit" : visibleAmount < 0 ? " is-debit" : "");
   const delta = isPackPurchase
     ? walletTransactionPackDeltaText(tx)
     : cardAmount !== 0
     ? (cardAmount > 0 ? "+" : "") + formatWholeNumber(cardAmount) + " Card" + (Math.abs(cardAmount) === 1 ? "" : "s")
+    : meritStarAmount !== 0
+      ? (meritStarAmount > 0 ? "+" : "") + formatWholeNumber(meritStarAmount) + " Merit Star" + (Math.abs(meritStarAmount) === 1 ? "" : "s")
     : amount !== 0
       ? (amount > 0 ? "+" : "") + formatWholeNumber(amount) + " Hall Pass" + (Math.abs(amount) === 1 ? "" : "es")
       : photoDayAmount !== 0
@@ -921,10 +926,10 @@ export function accountAiPanelView(aiInput: NullableRecord, opts?: NullableRecor
   const canUseHallPass = !!(opts && opts.canUseHallPass);
   const teacherServerAi = !!(opts && opts.teacherServerAi);
   let status = "Offline mode";
-  let meta = "Spend " + costLabel + " for " + durationLabel + " of hosted AI, or connect your own AI key.";
+  let meta = "Server AI is sponsored when configured; chat still spends Merit Stars.";
   let primaryLabel = "Use Hall Pass";
   let primaryTitle = canUseHallPass
-    ? "Spend " + costLabel + " for " + durationLabel + " of AI access."
+    ? "Hall Passes are used for images, cards, and creator tools."
     : "Need " + costLabel + ". Buy Hall Passes or burn a Card first.";
   const aiActive = !!ai.active;
   let primaryDisabled = !authed || billingBusy || localAiEnabled || aiActive || !ai.configured || !canUseHallPass;
@@ -938,18 +943,18 @@ export function accountAiPanelView(aiInput: NullableRecord, opts?: NullableRecor
     secondaryLabel = "Connect AI key";
   } else if (hasBrowserKey && aiEnabled) {
     status = "AI key connected";
-    meta = "Teacher chat and character text rerolls use your browser key. Hall Passes are still available for hosted play.";
+    meta = "Teacher chat and character text rerolls use your browser key. Hall Passes are still available for images, cards, and creator tools.";
   } else if (aiActive || hostedAiActive) {
-    status = "AI Access active";
-    meta = "Hosted AI remains active for " + (formatRelativeExpiry(ai.expiresAt) || "this session") + ".";
+    status = "Sponsored AI active";
+    meta = "Server AI is available. Chat messages spend Merit Stars.";
     primaryLabel = "Active";
     primaryTitle = "";
   } else if (teacherServerAi) {
     status = "Teacher AI connected";
-    meta = "This server can speak for teachers. Use a Hall Pass or connect your own AI key for browser-owned AI features.";
+    meta = "This server can speak for teachers. Connect your own AI key for browser-owned AI features.";
   } else if (!ai.configured) {
-    meta = "Hosted AI is not configured on this server. Connect your own AI key.";
-    primaryTitle = "Hosted AI is not configured on this server.";
+    meta = "Server AI is not configured here. Connect your own AI key.";
+    primaryTitle = "Server AI is not configured on this server.";
   }
   return {
     status,
@@ -974,9 +979,9 @@ export function accountWalletPanelView(walletInput: NullableRecord, slotsInput?:
     balanceText: "⭐ " + formatWholeNumber(meritStars) + " · 🎫 " + formatWholeNumber(hallPasses),
     metaText: photoDayCredits > 0
       ? photoDayCredits + " Photo Day " + (photoDayCredits === 1 ? "credit" : "credits")
-      : "Use Hall Passes for AI, images, and slots. Buy more or burn a Card on the Buy Hall Passes page.",
+      : "Use Hall Passes for images, creator tools, cards, and slots. Buy more or burn a Card on the Buy Hall Passes page.",
     buyPassesText: billingBusy && billingMode === "hall-passes" ? "Loading..." : "Buy Hall Passes",
-    buyPassesTitle: "Buy Hall Passes for hosted AI, creator slots, and image generation.",
+    buyPassesTitle: "Buy Hall Passes for images, creator slots, and card features.",
     buyPassesDisabled: !(opts && opts.authed) || billingBusy,
   };
 }
@@ -1031,7 +1036,7 @@ export function accountTrustPanelView(payloadInput: NullableRecord, connectedWal
         href: solanaAccountLink(treasury),
       },
       {
-        label: "RUBY token",
+        label: "Pack payment token",
         value: tokenMint ? shortWallet(tokenMint) : "Shown before wallet payment",
         href: solanaAccountLink(tokenMint),
       },
@@ -1129,10 +1134,10 @@ export function accountHallPassPackTileView(packInput: NullableRecord, opts?: Nu
     imageAlt: status === "active" ? "Ruby High Pack" : "Opened Ruby High Pack",
     imageKind: status === "active" ? "active" : "opened",
     title: packCount === 1 ? "Ruby High Pack" : "Ruby High " + packCount + "-Pack",
-    detail: (status === "active" ? "On-chain Core NFT" : "Opened pack record")
+    detail: (status === "active" ? "On-chain Solana pack" : "Opened pack record")
       + " · " + formatWholeNumber(cardCount)
       + " cards · #" + String(pack.serial || "").padStart(6, "0"),
-    proofLabel: status === "active" ? "View pack NFT" : "Pack proof",
+    proofLabel: status === "active" ? "View Solana pack" : "Pack proof",
     openVisible: status === "active",
     openText: walletReady
       ? (billingBusy ? "Opening..." : "Open Pack")
@@ -1625,7 +1630,7 @@ export function clipEssayText(value: unknown, max: number): string {
   return text.slice(0, Math.max(0, max - 1)).trim() + "…";
 }
 
-// ── public world feed helpers ──────────────────────────────────────
+// ── shared school feed helpers ─────────────────────────────────────
 // This is the first typed extraction from the MMO-facing viewer surface.
 // Keep replay/cursor/event-list math here so the giant serialized client only
 // owns DOM state and rendering.
@@ -2192,11 +2197,11 @@ export function cardPackTokenSymbol(product: NullableRecord, solana: NullableRec
 }
 export function cardPackDebitLabel(product: NullableRecord, solana: NullableRecord): string {
   const amount = product && product.tokenAmount != null ? product.tokenAmount : solana && solana.tokenAmount;
-  return "-" + formatTokenDisplayAmount(amount) + " " + cardPackTokenSymbol(product, solana);
+  return "Solana payment: " + formatTokenDisplayAmount(amount) + " " + cardPackTokenSymbol(product, solana);
 }
 export function cardPackCreditLabel(product: NullableRecord): string {
   const count = product && Number.isFinite(Number(product.packCount)) ? Number(product.packCount) : 1;
-  return "+" + packCountLabel(count) + " NFT";
+  return "+" + packCountLabel(count);
 }
 export function cardPackPaymentDeltaLabel(product: NullableRecord, solana: NullableRecord): string {
   return cardPackDebitLabel(product, solana) + " · " + cardPackCreditLabel(product);
@@ -2223,14 +2228,14 @@ export function billingCardPackPaymentChoiceView(
     buttonTitle: cryptoUnavailable
       ? "Card pack checkout needs Privy wallet configuration."
       : !canPackCheckout
-        ? "RUBY token setup is incomplete. Get $RUBY, then try again."
-        : "Pay with " + cardPackTokenSymbol(product, solana) + " and mint a pack NFT.",
+        ? "Solana pack checkout is unavailable. Try again later."
+        : "Pay with Solana wallet.",
     noteText: cryptoUnavailable
       ? "Card pack checkout is not configured in this preview."
       : !canPackCheckout
-        ? "RUBY token setup is incomplete. Get $RUBY, then choose a pack."
+        ? "Solana pack checkout is incomplete. Try again later."
         : "",
-    showGetRubyLink: !cryptoUnavailable && !canPackCheckout,
+    showGetRubyLink: false,
   };
 }
 export function billingProductRowView(
@@ -2273,20 +2278,20 @@ export function billingProductsPanelView(
   return {
     titleText: isCardPacks ? "Buy Card Packs" : "Buy Hall Passes",
     subtitleText: isCardPacks
-      ? "Card packs are Solana NFTs. Open a pack to create five face-down Ruby High cards."
+      ? "Card packs are Solana collectibles. Open a pack to create five face-down Ruby High cards."
       : "Buy Hall Passes or burn one Card for 5.",
     cardPackCostLabels: isCardPacks
       ? [
-        "Pack NFT: " + VIEWER_CONSTANTS.HALL_PASS_CARDS_PER_PACK + " cards",
+        "Solana pack: " + VIEWER_CONSTANTS.HALL_PASS_CARDS_PER_PACK + " cards",
         "Burn rate: 1 Card = " + hallPassCostLabel(hallPassesPerBurnedCard),
       ]
       : [],
-    showGetRubyCostLink: isCardPacks,
+    showGetRubyCostLink: false,
     emptyStatusText: isCardPacks ? "No card packs are available." : "No Hall Passes are available.",
     checkoutStatusText: isCardPacks
       ? (solana && !solana.configured
         ? "Card pack checkout is not configured on this server."
-        : hasRubyToken ? "" : "RUBY mint configuration is missing for card packs.")
+        : hasRubyToken ? "" : "Solana pack checkout is missing token configuration.")
       : (payload.configured ? "" : "Stripe checkout is not configured on this server."),
     checkoutStatusError: isCardPacks
       ? !(solana && solana.configured && hasRubyToken)

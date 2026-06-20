@@ -18,10 +18,10 @@ describe("billingCardPackPaymentChoiceView", () => {
       billingBusy: false,
     })).toEqual({
       titleText: "Buy Ruby High 2-Pack",
-      metaText: "-5,000 RUBY · +2 Packs NFT · 10 cards",
+      metaText: "Solana payment: 5,000 RUBY · +2 Packs · 10 cards",
       buttonText: "Buy Pack",
       buttonDisabled: false,
-      buttonTitle: "Pay with RUBY and mint a pack NFT.",
+      buttonTitle: "Pay with Solana wallet.",
       noteText: "",
       showGetRubyLink: false,
     });
@@ -43,7 +43,7 @@ describe("billingCardPackPaymentChoiceView", () => {
     });
   });
 
-  it("points players to RUBY setup when token checkout is incomplete", () => {
+  it("explains when Solana pack checkout is incomplete", () => {
     expect(billingCardPackPaymentChoiceView({
       symbol: "RUBY",
       tokenAmount: 100,
@@ -56,9 +56,9 @@ describe("billingCardPackPaymentChoiceView", () => {
     })).toMatchObject({
       buttonText: "Buy Pack",
       buttonDisabled: true,
-      buttonTitle: "RUBY token setup is incomplete. Get $RUBY, then try again.",
-      noteText: "RUBY token setup is incomplete. Get $RUBY, then choose a pack.",
-      showGetRubyLink: true,
+      buttonTitle: "Solana pack checkout is unavailable. Try again later.",
+      noteText: "Solana pack checkout is incomplete. Try again later.",
+      showGetRubyLink: false,
     });
   });
 
@@ -73,10 +73,10 @@ describe("billingCardPackPaymentChoiceView", () => {
       canPackCheckout: true,
       billingBusy: true,
     })).toMatchObject({
-      metaText: "-12.5 DUST · +1 Pack NFT · 5 cards",
+      metaText: "Solana payment: 12.5 DUST · +1 Pack · 5 cards",
       buttonText: "Buy Pack",
       buttonDisabled: true,
-      buttonTitle: "Pay with DUST and mint a pack NFT.",
+      buttonTitle: "Pay with Solana wallet.",
       noteText: "",
     });
   });

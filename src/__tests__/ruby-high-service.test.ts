@@ -198,6 +198,47 @@ describe("Hall Pass wallet", () => {
     })).toThrow(/Not enough Hall Passes/);
   });
 
+  it("spends Merit Stars idempotently", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:merit-stars";
+
+    const grant = ruby.grantMeritStars(sid, {
+      amount: 3,
+      idempotencyKey: "test:stars:grant",
+      source: "admin",
+    });
+    expect(grant.applied).toBe(true);
+    expect(grant.state.wallet.meritStars).toBe(3);
+
+    const spend = ruby.spendMeritStars(sid, {
+      amount: 1,
+      idempotencyKey: "chat:test:turn-1",
+      source: "chat",
+      description: "Classroom chat",
+    });
+    expect(spend.applied).toBe(true);
+    expect(spend.state.wallet.meritStars).toBe(2);
+    expect(spend.transaction).toMatchObject({
+      kind: "merit-star-spend",
+      meritStars: -1,
+      source: "chat",
+    });
+
+    const repeatSpend = ruby.spendMeritStars(sid, {
+      amount: 1,
+      idempotencyKey: "chat:test:turn-1",
+      source: "chat",
+    });
+    expect(repeatSpend.applied).toBe(false);
+    expect(repeatSpend.state.wallet.meritStars).toBe(2);
+
+    expect(() => ruby.spendMeritStars(sid, {
+      amount: 3,
+      idempotencyKey: "chat:test:too-many",
+      source: "chat",
+    })).toThrow(/Not enough Merit Stars/);
+  });
+
   it("records owner-signed NFT card burns as exact card spends", async () => {
     const { ruby } = await makeServices();
     const sid = "rh:user:nft-burn";
@@ -226,7 +267,7 @@ describe("Hall Pass wallet", () => {
       }],
       idempotencyKey: "hosted-ai:nft-burn",
       source: "hosted-ai",
-      description: "AI Access",
+      description: "Server AI",
     });
 
     expect(spend.applied).toBe(true);
@@ -363,7 +404,7 @@ describe("Hall Pass wallet", () => {
     });
   });
 
-  it("credits burned card value before spending for hosted AI access", async () => {
+  it("credits burned card value before spending for legacy hosted AI activation", async () => {
     const { ruby } = await makeServices();
     const sid = "rh:user:nft-burn-hosted-ai";
     const ownerWalletAddress = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";

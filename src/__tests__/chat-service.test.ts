@@ -216,6 +216,32 @@ afterEach(async () => {
 });
 
 describe("ChatService.send — message composition", () => {
+  it("uses one server-global history and event bucket per classroom", async () => {
+    const { chat } = await makeServices();
+
+    chat.appendPlayerMessage(
+      { sessionToken: "student-a", faculty: "ruby", authorName: "Avery" },
+      "Can everyone see this homeroom question?",
+    );
+    chat.appendEvent(
+      { sessionToken: "student-a", faculty: "ruby" },
+      { kind: "note", text: "Avery joined the shared room." },
+    );
+
+    expect(chat.history({ sessionToken: "student-b", faculty: "ruby" })).toMatchObject([
+      {
+        role: "user",
+        content: "Can everyone see this homeroom question?",
+        authorSessionToken: "student-a",
+        authorName: "Avery",
+      },
+    ]);
+    expect(chat.events_for_test({ sessionToken: "student-b", faculty: "ruby" })).toMatchObject([
+      { kind: "note", text: "Avery joined the shared room." },
+    ]);
+    expect(chat.history({ sessionToken: "student-b", faculty: "sally-science" })).toEqual([]);
+  });
+
   it("includes the teacher's system prompt as the first message", async () => {
     mockOpenRouter(buildSseChunk([{ content: "ok", finish: "stop" }]));
     const { chat } = await makeServices();
@@ -1176,10 +1202,34 @@ describe("ChatService.send — message composition", () => {
     expect(JSON.stringify(history)).not.toContain("\"correct\":\"D\"");
   });
 
+  it("marks shared player history as self only for the authoring session", () => {
+    const messages = [
+      {
+        role: "user",
+        content: "The shared room can hear me.",
+        faculty: "ruby",
+        at: 1,
+        authorSessionToken: "speaker-token",
+        authorName: "Avery",
+      },
+    ] as any;
+
+    expect(publicChatHistory(messages, "speaker-token")[0]).toMatchObject({
+      role: "user",
+      authorName: "Avery",
+      isSelf: true,
+    });
+    expect(publicChatHistory(messages, "listener-token")[0]).toMatchObject({
+      role: "user",
+      authorName: "Avery",
+      isSelf: false,
+    });
+  });
+
   it("drops legacy incomplete tool-call groups before composing", async () => {
     mockOpenRouter(buildSseChunk([{ content: "ok", finish: "stop" }]));
     const { chat } = await makeServices();
-    (chat as any).histories.set("t1::ruby", [
+    (chat as any).histories.set("room::ruby", [
       { role: "user", content: "old user", faculty: "ruby", at: 1 },
       {
         role: "assistant",
@@ -1219,7 +1269,7 @@ describe("ChatService.send — message composition", () => {
       faculty: "ruby",
       at: i + 1,
     }));
-    (chat as any).histories.set("t1::ruby", [
+    (chat as any).histories.set("room::ruby", [
       ...filler,
       {
         role: "assistant",

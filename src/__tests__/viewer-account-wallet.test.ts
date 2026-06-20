@@ -11,9 +11,9 @@ describe("account wallet panel view", () => {
       billingBusy: false,
     })).toEqual({
       balanceText: "⭐ 1,234 · 🎫 7",
-      metaText: "Use Hall Passes for AI, images, and slots. Buy more or burn a Card on the Buy Hall Passes page.",
+      metaText: "Use Hall Passes for images, creator tools, cards, and slots. Buy more or burn a Card on the Buy Hall Passes page.",
       buyPassesText: "Buy Hall Passes",
-      buyPassesTitle: "Buy Hall Passes for hosted AI, creator slots, and image generation.",
+      buyPassesTitle: "Buy Hall Passes for images, creator slots, and card features.",
       buyPassesDisabled: false,
     });
   });

@@ -304,6 +304,7 @@ const PHOTO_POST_RETRY_DELAY_MS = 15 * 60 * 1000;
 const PHOTO_POST_SCHEDULER_INTERVAL_MS = 60 * 1000;
 export const HALL_PASS_CARDS_PER_PACK = 5;
 export const HALL_PASS_CARD_BURN_HALL_PASS_VALUE = 5;
+export const CHAT_MERIT_STAR_COST = 1;
 export const DEFAULT_CHARACTER_SLOT_COUNT = 1;
 export const CHARACTER_SLOT_HALL_PASS_COST = 1;
 export const CHARACTER_SLOT_PHOTO_DAY_CREDITS = 1;
@@ -492,6 +493,21 @@ export interface HallPassMutationInput {
   metadata?: RubyHighWalletTransaction["metadata"];
   at?: number;
   amountCents?: number;
+}
+
+export interface MeritStarMutationInput {
+  amount: number;
+  idempotencyKey: string;
+  source?: RubyHighWalletTransaction["source"];
+  description?: string;
+  metadata?: RubyHighWalletTransaction["metadata"];
+  at?: number;
+}
+
+export interface MeritStarMutationResult {
+  state: QuizState;
+  applied: boolean;
+  transaction: RubyHighWalletTransaction;
 }
 
 export interface HallPassCardGrantInput {
@@ -3145,12 +3161,12 @@ export class RubyHighService extends Service {
     const durationMs = normalizePositiveInteger(input.durationMs, "Hosted AI duration");
     const requiredBurnCards = hallPassCardsRequiredForCost(hallPassCost);
     if (input.burns && input.burns.length > 0 && input.burns.length !== requiredBurnCards) {
-      throw new Error(`Hosted AI Access needs ${requiredBurnCards} burned Card${requiredBurnCards === 1 ? "" : "s"}.`);
+      throw new Error(`Server AI needs ${requiredBurnCards} burned Card${requiredBurnCards === 1 ? "" : "s"}.`);
     }
     const spendInput = {
       idempotencyKey: `hosted-ai:access:${sessionId}:${now}`,
       source: "hosted-ai" as const,
-      description: "AI Access",
+      description: "Server AI",
       at: now,
       metadata: {
         durationMs,
@@ -3161,7 +3177,7 @@ export class RubyHighService extends Service {
         burns: input.burns,
         idempotencyKey: `${spendInput.idempotencyKey}:card-credit`,
         source: spendInput.source,
-        description: "AI Access card burn credit",
+        description: "Server AI card burn credit",
         at: spendInput.at,
         metadata: spendInput.metadata,
       });
@@ -3242,7 +3258,7 @@ export class RubyHighService extends Service {
     if (existing) {
       return { state, applied: false, transaction: existing, ...(existingPack ? { pack: existingPack } : {}) };
     }
-    if (existingPack) throw new Error("Pack NFT is already recorded.");
+    if (existingPack) throw new Error("Solana pack is already recorded.");
     const packCount = normalizePositiveInteger(input.packCount, "Pack count");
     const cardCount = Math.max(
       normalizePositiveInteger(input.cardCount, "Card count"),
@@ -3773,6 +3789,55 @@ export class RubyHighService extends Service {
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return { state, applied: true, transaction, card };
+  }
+
+  grantMeritStars(sessionId: string, input: MeritStarMutationInput): MeritStarMutationResult {
+    return this.applyMeritStarTransaction(sessionId, "merit-star-grant", input);
+  }
+
+  spendMeritStars(sessionId: string, input: MeritStarMutationInput): MeritStarMutationResult {
+    return this.applyMeritStarTransaction(sessionId, "merit-star-spend", input);
+  }
+
+  private applyMeritStarTransaction(
+    sessionId: string,
+    kind: Extract<RubyHighWalletTransactionKind, "merit-star-grant" | "merit-star-spend">,
+    input: MeritStarMutationInput,
+  ): MeritStarMutationResult {
+    const state = this.getOrCreate(sessionId);
+    const amount = normalizePositiveInteger(input.amount, "Merit Star amount");
+    const id = input.idempotencyKey.trim();
+    if (!id) throw new Error("Merit Star transaction idempotency key is required.");
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const existing = state.wallet.operationLedger?.[id] ?? state.wallet.transactions?.find((tx) => tx.id === id);
+    if (existing) return { state, applied: false, transaction: existing };
+
+    const current = Math.max(0, Math.floor(Number(state.wallet.meritStars ?? state.score.points ?? 0)));
+    if (kind === "merit-star-spend" && current < amount) {
+      throw new Error(`Not enough Merit Stars. Need ${amount}, have ${current}.`);
+    }
+    const transaction: RubyHighWalletTransaction = {
+      id,
+      kind,
+      at: typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now(),
+      meritStars: kind === "merit-star-spend" ? -amount : amount,
+      source: input.source ?? "system",
+      ...(input.description ? { description: input.description } : {}),
+      ...(input.metadata ? { metadata: input.metadata } : {}),
+    };
+    state.wallet.meritStars = kind === "merit-star-spend" ? current - amount : current + amount;
+    recordWalletTransaction(state, transaction);
+    this.recordMetricEvent("commerce", {
+      sessionId,
+      source: transaction.source ?? "wallet",
+      feature: transaction.kind,
+      status: "success",
+      meritStarsDelta: transaction.meritStars ?? 0,
+      metadata: { transactionId: transaction.id },
+    });
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return { state, applied: true, transaction };
   }
 
   private applyHallPassTransaction(
@@ -9029,6 +9094,7 @@ function normalizedWalletSource(value: unknown): NonNullable<RubyHighWalletTrans
     "solana",
     "iap",
     "revenuecat",
+    "chat",
     "hosted-image",
     "hosted-ai",
     "question-generation",
@@ -9526,6 +9592,8 @@ function attachHallPassCardMetadata(
 function normalizeWalletTransaction(raw: unknown): RubyHighWalletTransaction | null {
   if (!raw || typeof raw !== "object") return null;
   const kinds: RubyHighWalletTransactionKind[] = [
+    "merit-star-grant",
+    "merit-star-spend",
     "hall-pass-grant",
     "hall-pass-spend",
     "hall-pass-refund",

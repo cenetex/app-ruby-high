@@ -808,7 +808,7 @@ describe("/pack-library", () => {
     expect(response.body.packs.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("keeps account-level hosted AI access when setting a guest pack override", async () => {
+  it("keeps account-level hosted AI state when setting a guest pack override", async () => {
     vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "sk-hosted");
     const aliceSessionId = signInUser("alice");
     ruby.claimWelcomeHallPasses(aliceSessionId);

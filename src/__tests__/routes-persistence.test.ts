@@ -529,7 +529,7 @@ describe("command route persistence and scheduler misses", () => {
       const show = makeCommandCtx(ruby, { type: "set-public-presence", publicWorldVisible: true }, undefined, null, auth, cookie);
       expect(await handleAppRoutes(show.ctx)).toBe(true);
       expect(show.response?.status).toBe(400);
-      expect(show.response?.body.error).toBe("Choose a student name that is not a reserved staff or system name before joining the public world.");
+      expect(show.response?.body.error).toBe("Choose a student name that is not a reserved staff or system name before joining school rooms.");
       expect(state.character!.publicWorldVisible).toBe(false);
 
       const world = ruby.getSchoolWorldSnapshot(10, now);
@@ -631,7 +631,7 @@ describe("command route persistence and scheduler misses", () => {
     }
   });
 
-  it("rate limits repeated public world safety actions per player", async () => {
+  it("rate limits repeated school activity safety actions per player", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(Date.UTC(2026, 5, 15, 13));
     setActivePack(singleQuestionPack());
@@ -655,7 +655,7 @@ describe("command route persistence and scheduler misses", () => {
       }, undefined, null, auth, cookie);
       expect(await handleAppRoutes(limited.ctx)).toBe(true);
       expect(limited.response?.status).toBe(429);
-      expect(limited.response?.body.error).toBe("Too many public world safety actions — slow down a moment.");
+      expect(limited.response?.body.error).toBe("Too many school activity safety actions — slow down a moment.");
       expect(limited.getHeader("Retry-After")).toBe("60");
     } finally {
       await auth.stop();
@@ -728,7 +728,7 @@ describe("command route persistence and scheduler misses", () => {
     expect(harness.response?.body.session.telemetry.current.id).toBe(first.current!.id);
   });
 
-  it("does not use the hosted OpenRouter key for MC generation without an active AI pass", async () => {
+  it("uses the sponsored hosted OpenRouter key for MC generation when configured", async () => {
     vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "sk-hosted");
     const pack = sourceCardPack();
     const faculty = await FacultyService.start({} as never);
@@ -757,12 +757,12 @@ describe("command route persistence and scheduler misses", () => {
     const handled = await handleAppRoutes(harness.ctx);
 
     expect(handled).toBe(true);
-    expect(harness.response?.status).toBe(400);
-    expect(harness.response?.body.error).toContain("Connect AI");
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(harness.response?.status).toBe(200);
+    expect(harness.response?.body.message).toBe("Multiple choice generated");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("allows MC generation with the hosted key after AI Access is active", async () => {
+  it("allows MC generation with the hosted key after server AI is active", async () => {
     vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "sk-hosted");
     const pack = sourceCardPack();
     const faculty = await FacultyService.start({} as never);

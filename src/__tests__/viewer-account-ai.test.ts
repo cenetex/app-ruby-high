@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { accountAiPanelView } from "../viewer-parts/client-pure.js";
 
 describe("account AI panel view", () => {
-  it("offers hosted AI when configured and affordable", () => {
+  it("describes sponsored server AI when configured", () => {
     const view = accountAiPanelView({
       configured: true,
       cost: 2,
@@ -14,16 +14,16 @@ describe("account AI panel view", () => {
 
     expect(view).toMatchObject({
       status: "Offline mode",
-      meta: "Spend 2 Hall Passes for 1 day of hosted AI, or connect your own AI key.",
+      meta: "Server AI is sponsored when configured; chat still spends Merit Stars.",
       primaryLabel: "Use Hall Pass",
-      primaryTitle: "Spend 2 Hall Passes for 1 day of AI access.",
+      primaryTitle: "Hall Passes are used for images, cards, and creator tools.",
       primaryDisabled: false,
       secondaryLabel: "Connect AI key",
       secondaryDisabled: false,
     });
   });
 
-  it("explains insufficient Hall Passes and hosted AI configuration gaps", () => {
+  it("explains insufficient Hall Passes and server AI configuration gaps", () => {
     expect(accountAiPanelView({
       configured: true,
       cost: 3,
@@ -37,8 +37,8 @@ describe("account AI panel view", () => {
     });
 
     expect(accountAiPanelView({ configured: false }, { authed: true, canUseHallPass: true })).toMatchObject({
-      meta: "Hosted AI is not configured on this server. Connect your own AI key.",
-      primaryTitle: "Hosted AI is not configured on this server.",
+      meta: "Server AI is not configured here. Connect your own AI key.",
+      primaryTitle: "Server AI is not configured on this server.",
       primaryDisabled: true,
     });
   });
@@ -72,7 +72,8 @@ describe("account AI panel view", () => {
       authed: true,
       canUseHallPass: true,
     })).toMatchObject({
-      status: "AI Access active",
+      status: "Sponsored AI active",
+      meta: "Server AI is available. Chat messages spend Merit Stars.",
       primaryLabel: "Active",
       primaryTitle: "",
       primaryDisabled: true,
@@ -84,7 +85,7 @@ describe("account AI panel view", () => {
       teacherServerAi: true,
     })).toMatchObject({
       status: "Teacher AI connected",
-      meta: "This server can speak for teachers. Use a Hall Pass or connect your own AI key for browser-owned AI features.",
+      meta: "This server can speak for teachers. Connect your own AI key for browser-owned AI features.",
     });
   });
 });

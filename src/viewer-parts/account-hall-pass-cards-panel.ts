@@ -12,7 +12,6 @@ export interface AccountHallPassCardsPanelRendererDeps {
   summary?: HTMLElement | null;
   buyButton?: HTMLButtonElement | null;
   mintButton?: HTMLButtonElement | null;
-  getRubyLink?: HTMLElement | null;
   panelView(
     packs: unknown,
     cards: unknown,
@@ -32,7 +31,6 @@ export interface AccountHallPassCardsPanelRendererDeps {
   cardTileView(card: unknown): AccountHallPassCardTileView;
   packArtUrl(kind: "active" | "opened"): string;
   cardArtUrl(card: unknown, faceDown: boolean): string;
-  configureGetRubyLink(link?: HTMLElement | null): void;
   appendSolanaProofLink(parent: HTMLElement, address: unknown, label: string): void;
   ensureSolanaWallet(): void | Promise<void>;
   openPack(packId: unknown): void | Promise<void>;
@@ -226,7 +224,6 @@ export function createAccountHallPassCardsPanelRenderer(
         deps.buyButton.textContent = view.buyText;
         deps.buyButton.title = view.buyTitle;
       }
-      deps.configureGetRubyLink(deps.getRubyLink);
       if (deps.mintButton) {
         deps.mintButton.hidden = view.mintHidden;
         deps.mintButton.disabled = view.mintDisabled;

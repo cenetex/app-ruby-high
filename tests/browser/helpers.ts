@@ -94,11 +94,10 @@ export async function dismissAnnouncements(page: Page) {
 
 /**
  * Trigger character creation by clicking whichever affordance is visible
- * (Lock it in, Roll a student, or Save Character). Returns after the creation
+ * (Roll a student, or Save Character). Returns after the creation
  * controls have committed and the classroom is visible.
  */
 export async function createCharacter(page: Page) {
-  const lockItIn = page.getByRole("button", { name: "Lock it in" });
   const rollAStudent = page.getByRole("button", { name: /roll a student/i });
   const saveCharacter = page.locator("#sheet-card").getByRole("button", { name: "Save Character" });
 
@@ -108,20 +107,9 @@ export async function createCharacter(page: Page) {
     if (msg.type() === "error") errors.push(msg.text());
   });
 
-  const lockVisible = await lockItIn.isVisible().catch(() => false);
   const rollVisible = await rollAStudent.isVisible().catch(() => false);
 
-  if (lockVisible) {
-    try {
-      await expect(lockItIn).toBeEnabled({ timeout: 45000 });
-      await lockItIn.click();
-    } catch {
-      // Button never enabled — fall through to roll-a-student.
-      if (rollVisible) {
-        await rollAStudent.click();
-      }
-    }
-  } else if (rollVisible) {
+  if (rollVisible) {
     await rollAStudent.click();
   }
 

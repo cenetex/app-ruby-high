@@ -97,8 +97,8 @@ No hosted account or OpenRouter key is needed for these:
 - `GET /api/apps/ruby-high/admin/overview` returns a token-gated LLM-generated operator overview built only from aggregate metrics. It requires the normal server LLM credential.
 - `GET /api/apps/ruby-high/yearbook/:shareId/:grade` renders a static public yearbook card for a sealed grade. Sealed year cards expose Open/Copy controls in the viewer. `?format=json` returns card data and `?format=svg` returns the social image. `?format=png` is intentionally 501 until server-side raster rendering is configured.
 - `GET /api/apps/ruby-high/cohort/:grade` renders the classroom cohort leaderboard for the current grade, scoped to active sessions at that year level.
-- `GET /api/apps/ruby-high/world` returns the privacy-filtered multiplayer read model: active classrooms, public honor-roll cohorts, recent public school events, and low curriculum pools. `?limit=` caps recent events.
-- `GET /api/apps/ruby-high/world/events` streams the same public world model as SSE frames; `?live=1` keeps the stream open briefly for viewer refreshes and future multiplayer clients.
+- `GET /api/apps/ruby-high/world` returns the privacy-filtered shared school activity model: active classrooms, honor-roll cohorts, recent school events, and low curriculum pools. `?limit=` caps recent events.
+- `GET /api/apps/ruby-high/world/events` streams the same shared school activity model as SSE frames; `?live=1` keeps the stream open briefly for viewer refreshes and future multiplayer clients.
 
 ## Service Wiring
 
@@ -128,7 +128,7 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_LLM_MODEL` | `ruby-high-local` in local mode | Model id sent to the local endpoint. Many single-model servers ignore it, but OpenAI-compatible servers require the field. |
 | `RUBY_HIGH_LLM_API_KEY` | `local` in local mode | Optional bearer token for local servers configured with an API key. |
 | `RUBY_HIGH_STUDENT_MODEL` | `google/gemini-3.5-flash` | Model used for NPC opinion responses. |
-| `RUBY_HIGH_OPENROUTER_API_KEY` | — | Optional server-side OpenRouter key for hosted AI Access and hosted portrait/diploma generation. Server-hosted text AI is available only while the signed-in session has active AI Access. Browser-owned OpenRouter keys remain BYOK and do not spend Hall Passes. |
+| `RUBY_HIGH_OPENROUTER_API_KEY` | — | Optional server-side OpenRouter key for sponsored text AI plus hosted portrait/diploma generation. Server-hosted text chat is globally available when configured and player chat spends Merit Stars; browser-owned OpenRouter keys remain BYOK and do not spend Hall Passes. |
 | `RUBY_HIGH_OPENROUTER_REFERER` | `https://ruby-high.local` | Sent in OpenRouter request headers. |
 | `RUBY_HIGH_OPENROUTER_TITLE` | `Ruby High` | Sent in OpenRouter request headers. |
 | `RUBY_HIGH_STRIPE_SECRET_KEY` | — | Enables web Hall Pass purchases via Stripe Checkout. |
@@ -155,9 +155,9 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS` | `2800000` | `$RUBY` price for the 3-pack / 20 Hall Pass tier (~7% volume discount vs 1-pack). |
 | `RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS` | `4500000` | `$RUBY` price for the 5-pack / 50 Hall Pass tier (~10% volume discount vs 1-pack). |
 | `RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS` | `8500000` | `$RUBY` price for the 10-pack / 100 Hall Pass tier (~15% volume discount vs 1-pack). |
-| `RUBY_HIGH_HOSTED_AI_HALL_PASS_COST` | `1` | Hall Pass cost to activate server-hosted text AI for one timed window. |
-| `RUBY_HIGH_HOSTED_AI_DURATION_HOURS` | `168` | Hosted AI Access duration. Ignored when `RUBY_HIGH_HOSTED_AI_DURATION_MS` is set. |
-| `RUBY_HIGH_HOSTED_AI_DURATION_MS` | — | Optional exact hosted AI pass duration override. |
+| `RUBY_HIGH_HOSTED_AI_HALL_PASS_COST` | `1` | Legacy only. Server-hosted text AI no longer sells timed activation windows. |
+| `RUBY_HIGH_HOSTED_AI_DURATION_HOURS` | `168` | Legacy only. Server-hosted text AI is sponsored when `RUBY_HIGH_OPENROUTER_API_KEY` is configured. |
+| `RUBY_HIGH_HOSTED_AI_DURATION_MS` | — | Legacy only. Server-hosted text AI is sponsored when `RUBY_HIGH_OPENROUTER_API_KEY` is configured. |
 | `RUBY_HIGH_QUESTION_GENERATION_HALL_PASS_COST` | `1` | Hall Pass cost for server-hosted Generate More Questions when the browser has no OpenRouter key. |
 | `RUBY_HIGH_MORE_QUESTIONS_COUNT` | `6` | Default number of cards requested by Generate More Questions. |
 | `RUBY_HIGH_PORTRAIT_HALL_PASS_COST` | `1` | Hall Pass cost for server-hosted custom portraits. |
@@ -176,24 +176,24 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 
 The `/health` route is readiness: it returns 200 only after services have booted, so the platform should not route first-load traffic while Ruby High is hydrating. `/livez` is a process-liveness probe. The server trusts `x-forwarded-*` headers from the first hop for proto, host, and client IP.
 
-No OpenRouter key is required on the server for normal play: each user can authenticate with their own key via PKCE, or use a Privy account for persistent identity/wallet ownership when Privy is configured. `RUBY_HIGH_OPENROUTER_API_KEY` enables hosted text AI only for sessions that spend a Hall Pass on AI Access, and enables hosted image generation with per-image Hall Pass costs. Edit Pack creates OpenRouter-backed local teacher drafts; Ruby High does not list, import, grant, or call external avatar/agent backends.
+No OpenRouter key is required on the server for normal play: each user can authenticate with their own key via PKCE, or use a Privy account for persistent identity/wallet ownership when Privy is configured. `RUBY_HIGH_OPENROUTER_API_KEY` sponsors server-hosted text AI for signed-in players, while player-authored chat spends Merit Stars. The same key enables hosted image generation with per-image Hall Pass costs. Edit Pack creates OpenRouter-backed local teacher drafts; Ruby High does not list, import, grant, or call external avatar/agent backends.
 
 ## Billing and Hall Passes
 
 Ruby High now has two currencies:
 
 - **Merit Stars** are earned by play and mirror the visible session-score payout.
-- **Hall Passes** are paid/entitlement currency for hosted AI windows, creator course slots, extra student slots, and hosted image generation. Stripe Checkout, Solana pack purchase + card burn, and RevenueCat in-app purchases all credit Hall Passes.
+- **Hall Passes** are paid/entitlement currency for hosted image generation, creator course slots, extra student slots, and card features. Stripe Checkout, Solana pack purchase + card burn, and RevenueCat in-app purchases all credit Hall Passes.
 
 Web purchases use Stripe Checkout for Hall Passes only:
 
-- `GET /api/apps/ruby-high/billing/products` returns Hall Pass top-ups, AI Access cost/duration, hosted image costs, and the separate Solana pack-NFT quote surface.
-- `POST /api/apps/ruby-high/billing/ai-pass` spends Hall Passes to activate server-hosted text AI for the signed-in Ruby High cookie session. A second call while active returns the existing expiry and does not spend again.
+- `GET /api/apps/ruby-high/billing/products` returns Hall Pass top-ups, hosted image costs, and the separate Solana pack quote surface.
+- `POST /api/apps/ruby-high/billing/ai-pass` is retired and returns `410`; server-hosted text AI is sponsored when configured, and player chat spends Merit Stars.
 - Publishing a draft course reserves a creator course slot for 3 Hall Passes. BYOK/local course generation does not spend Hall Passes.
 - Generate More Questions is free with browser OpenRouter or local LLM access; when it uses the server-hosted OpenRouter key, it spends 1 Hall Pass per run.
 - Unlocking an extra student slot costs 1 Hall Pass and grants a Photo Day credit; hosted character portraits consume that credit before spending a Hall Pass.
 - `POST /api/apps/ruby-high/billing/checkout` creates a Stripe Checkout Session for Hall Passes for the signed-in Ruby High cookie session.
-- `POST /api/apps/ruby-high/billing/stripe/webhook` verifies Stripe signatures and grants Hall Passes idempotently from Checkout metadata. Stripe does not sell card packs or NFTs.
+- `POST /api/apps/ruby-high/billing/stripe/webhook` verifies Stripe signatures and grants Hall Passes idempotently from Checkout metadata. Stripe does not sell card packs or Solana collectibles.
 - `POST /api/apps/ruby-high/billing/card-burn` verifies owner-signed card burns and credits 5 Hall Passes per burned card. Hosted features then spend Hall Passes normally.
 
 Stripe webhook events to send: `checkout.session.completed` and, if using asynchronous payment methods, `checkout.session.async_payment_succeeded`.
@@ -235,7 +235,7 @@ npm run test:browser
 npm run eval:voice
 ```
 
-`check:full` runs typecheck, the Vitest suite, and the offline SPA build. `test:browser` is the opt-in Playwright smoke target; it builds and launches the dev server, boots the viewer in Chromium, exercises guest play, account tabs, responsive framing, public-world feed rollover, comic unlock modals, and the Privy bundle load path. The `browser-smoke` GitHub Actions workflow runs the same target manually and on PRs that touch viewer/browser files. `eval:voice` builds the package and runs the faculty-voice smoke harness; without an OpenRouter key it still verifies the local reference set and exits successfully unless `RUBY_HIGH_EVAL_REQUIRE_API=1`.
+`check:full` runs typecheck, the Vitest suite, and the offline SPA build. `test:browser` is the opt-in Playwright smoke target; it builds and launches the dev server, boots the viewer in Chromium, exercises guest play, account tabs, responsive framing, school activity feed rollover, comic unlock modals, and the Privy bundle load path. The `browser-smoke` GitHub Actions workflow runs the same target manually and on PRs that touch viewer/browser files. `eval:voice` builds the package and runs the faculty-voice smoke harness; without an OpenRouter key it still verifies the local reference set and exits successfully unless `RUBY_HIGH_EVAL_REQUIRE_API=1`.
 
 The suite covers the daily-class progression mechanic, the cohort, mentor mode, advantage roll, the phase machine, opinion grading with praise-gate detection, the chat layer, both store backends, the rate limiter, source-card distractor generation, pack routes, yearbook/admin/cohort routes, and the content-pack registry.
 
