@@ -999,6 +999,11 @@ describe("Streak + grade advancement", () => {
     }
 
     ruby.getOrCreate(sid);
+    expect(() => ruby.completeGraduation(sid, { kind: "photo" })).toThrow(/Take the graduation photo/);
+    ruby.setPendingGraduationPhotoImage(sid, {
+      grade: "9",
+      imageUrl: "/api/apps/ruby-high/assets/generated/graduation-photo.png",
+    });
     ruby.completeGraduation(sid, { kind: "photo" });
     const entry = ruby.getOrCreate(sid).character!.yearbook[0]!;
     expect(entry.graduationReward).toEqual({ kind: "photo" });
@@ -1006,6 +1011,7 @@ describe("Streak + grade advancement", () => {
       kind: "graduation-photo",
       grade: "9",
       title: "9th Grade Graduation Photo",
+      imageUrl: "/api/apps/ruby-high/assets/generated/graduation-photo.png",
       teacher: { id: "sally-science", name: "Sally" },
       student: { id: "noor", name: "Noor" },
     });

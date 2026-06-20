@@ -120,6 +120,39 @@ function grantChatStars(stateKey: string, amount = 3): void {
   });
 }
 
+function attachReadyFreshmanForGraduation(stateKey: string): void {
+  ruby.selectGrade(stateKey, "9");
+  const state = ruby.getOrCreate(stateKey);
+  const now = Date.now();
+  state.character = {
+    name: "Pip",
+    playbookId: "overachiever",
+    stats: { head: 2, heart: 1, hustle: 0, honor: -1 },
+    arcAnswer: "I want to make the whole year make sense.",
+    personality: "Careful, bright, and always checking the rubric.",
+    portraitDataUrl: "/api/apps/ruby-high/assets/students/indra-full.png",
+    yearbook: [],
+    createdAt: now,
+    streak: { grade: "9", count: 1, lastDate: "2026-06-20" },
+    dailyClasses: {
+      "9:ruby:2000-01-01": {
+        grade: "9",
+        facultyId: "ruby",
+        date: "2000-01-01",
+        status: "complete",
+        questionCount: 3,
+        correctCount: 3,
+        scoreTotal: 300,
+        scoreMax: 300,
+        letterGrade: "A",
+        completedAt: now,
+        updatedAt: now,
+      },
+    },
+  };
+  ruby.getOrCreate(stateKey);
+}
+
 function buildSseChunk(text: string): Uint8Array {
   return new TextEncoder().encode([
     `data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`,
@@ -907,6 +940,81 @@ describe("hosted image Hall Passes", () => {
       },
     });
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(1);
+  });
+
+  it("spends a Hall Pass to generate the pending graduation photo before sealing the reward", async () => {
+    process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
+    const token = "hosted-graduation-photo";
+    const record = {
+      userId: "hosted-graduation-photo-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Hosted Graduation Photo",
+    };
+    auth.injectSessionForTest(token, record);
+    const stateKey = auth.stateKeyForRecord(record);
+    ruby.grantHallPasses(stateKey, {
+      amount: 1,
+      idempotencyKey: "test:graduation-photo-fund",
+      source: "admin",
+    });
+    attachReadyFreshmanForGraduation(stateKey);
+    (globalThis.fetch as any).mockImplementation(async (_url: string, init?: RequestInit) => {
+      capturedChatRequest = {
+        body: JSON.parse(String(init?.body || "{}")),
+      };
+      return new Response(JSON.stringify({
+        choices: [{
+          message: {
+            images: [{ image_url: { url: "data:image/png;base64,GRADPHOTO" } }],
+          },
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/character/graduation-photo"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        body: {
+          requestId: "graduation-photo-1",
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toMatchObject({
+      ok: true,
+      graduationPhotoImageUrl: "data:image/png;base64,GRADPHOTO",
+      grade: "9",
+      hallPassCost: 1,
+      hallPasses: 0,
+      teacher: { id: "ruby", name: "Ruby" },
+      student: { id: "lyra", name: "Lyra" },
+    });
+    const content = capturedChatRequest?.body.messages?.[0]?.content;
+    expect(Array.isArray(content) ? content.filter((part: any) => part.type === "image_url") : []).toHaveLength(3);
+    expect(ruby.getOrCreate(stateKey).character?.pendingGraduation?.photoImageUrl).toBe("data:image/png;base64,GRADPHOTO");
+    expect(ruby.hallPassBalance(stateKey)).toBe(0);
+    expect(ruby.getOrCreate(stateKey).wallet.transactions?.some((tx) =>
+      tx.kind === "hall-pass-spend" &&
+      tx.source === "hosted-image" &&
+      tx.metadata?.route === "graduation-photo" &&
+      tx.metadata?.requestId === "graduation-photo-1" &&
+      tx.metadata?.status === "completed"
+    )).toBe(true);
+
+    ruby.completeGraduation(stateKey, { kind: "photo" });
+    const entry = ruby.getOrCreate(stateKey).character?.yearbook[0];
+    expect(entry?.photo).toMatchObject({
+      imageUrl: "data:image/png;base64,GRADPHOTO",
+      teacher: { id: "ruby", name: "Ruby" },
+      student: { id: "lyra", name: "Lyra" },
+    });
   });
 
   it("uses a Photo Day credit before Hall Passes for hosted character portraits", async () => {

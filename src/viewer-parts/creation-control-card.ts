@@ -1,6 +1,7 @@
 export interface CreationControlCardRefs {
   card: HTMLElement;
   fields: HTMLElement;
+  rollBtn: HTMLButtonElement;
   status: HTMLElement;
 }
 
@@ -47,11 +48,20 @@ export function createCreationControlCardRenderer(
       fields.className = "creation-fields";
       body.appendChild(fields);
 
+      const actions = deps.document.createElement("div");
+      actions.className = "ccg-card-actions creation-roll-actions";
+      const rollBtn = deps.document.createElement("button");
+      rollBtn.type = "button";
+      rollBtn.className = "primary creation-full-roll";
+      rollBtn.textContent = "Roll a student";
+      actions.appendChild(rollBtn);
+      body.appendChild(actions);
+
       const status = deps.document.createElement("div");
       status.className = "stat-budget";
       body.appendChild(status);
 
-      return { card, fields, status };
+      return { card, fields, rollBtn: rollBtn as HTMLButtonElement, status };
     },
   };
 }

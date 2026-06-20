@@ -743,6 +743,8 @@ export interface GraduationReady {
   grade: Grade;
   readyAt: number;
   summary: { correct: number; total: number };
+  photoImageUrl?: string;
+  photoImageGeneratedAt?: number;
 }
 
 export interface PublicWorldEventReport {
@@ -775,6 +777,7 @@ export interface GraduationPhotoCollectible {
   grade: Grade;
   title: string;
   description: string;
+  imageUrl?: string;
   issuedAt: number;
   teacher: {
     id: string;

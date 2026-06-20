@@ -5976,6 +5976,14 @@ export const VIEWER_CSS = `
     object-fit: cover;
     border-radius: 4px;
   }
+  .paper-archive-photo-image {
+    display: block;
+    width: 74px;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.08);
+  }
   .paper-archive-diploma-title,
   .paper-archive-photo-title {
     color: var(--text);

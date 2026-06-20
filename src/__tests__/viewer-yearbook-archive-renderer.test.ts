@@ -76,6 +76,7 @@ describe("yearbook archive renderer", () => {
           diploma: { title: "Ruby High Diploma", imageUrl: "/diploma.png", issuedAt: "2026-06-02" },
           photo: {
             title: "Grade 10 Photo",
+            imageUrl: "/group-photo.png",
             teacher: { name: "Ruby", imageUrl: "/ruby.png" },
             student: { name: "Noor" },
           },
@@ -117,7 +118,6 @@ describe("yearbook archive renderer", () => {
       "md:\u201cI found the signal.\u201d",
       "Ruby High Diploma",
       "collectible \u00b7 date:2026-06-02",
-      "N",
       "Grade 10 Photo",
       "Ruby \u00b7 Noor",
     ]);
@@ -126,8 +126,10 @@ describe("yearbook archive renderer", () => {
     expect((diploma.children[0] as FakeElement).src).toBe("/diploma.png");
     const photo = entry.children[4] as FakeElement;
     expect(photo.className).toBe("paper-archive-photo");
-    const teacherFace = ((photo.children[0] as FakeElement).children[0] as FakeElement).children[0] as FakeElement;
-    expect(teacherFace.src).toBe("/ruby.png");
+    const groupPhoto = photo.children[0] as FakeElement;
+    expect(groupPhoto.className).toBe("paper-archive-photo-image");
+    expect(groupPhoto.src).toBe("/group-photo.png");
+    expect(groupPhoto.alt).toBe("Grade 10 Photo");
     const portrait = entry.children[5] as FakeElement;
     expect(portrait.className).toBe("paper-archive-portrait");
     expect((portrait.children[0] as FakeElement).alt).toBe("Noor photo");

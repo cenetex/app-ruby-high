@@ -84,7 +84,7 @@ function getPortraitS3Client(): S3Client | null {
   return portraitS3Client;
 }
 
-export async function maybeUploadPortrait(dataUrl: string, kind: "portrait" | "diploma"): Promise<string> {
+export async function maybeUploadPortrait(dataUrl: string, kind: "portrait" | "diploma" | "graduation-photo"): Promise<string> {
   const bucket = process.env.RUBY_HIGH_PORTRAITS_BUCKET;
   const client = getPortraitS3Client();
   if (!bucket || !client) return dataUrl;
@@ -235,6 +235,46 @@ export async function renderClassPhoto(args: {
   });
   const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
   if (!url) throw new Error("Class photo generation returned no image.");
+  return url;
+}
+
+export async function renderGraduationPhoto(args: {
+  apiKey: string;
+  gradeLabel: string;
+  player: { name: string; imageUrl: string };
+  teacher: { name: string; imageUrl: string };
+  classmate: { name: string; imageUrl: string };
+}): Promise<string> {
+  const contentParts: Array<Record<string, unknown>> = [
+    { type: "image_url", image_url: { url: args.player.imageUrl } },
+    { type: "image_url", image_url: { url: args.teacher.imageUrl } },
+    { type: "image_url", image_url: { url: args.classmate.imageUrl } },
+    {
+      type: "text",
+      text: [
+        `Create a Ruby High ${args.gradeLabel} graduation photo with exactly these three people: ${args.player.name} (student), ${args.teacher.name} (teacher), and ${args.classmate.name} (classmate).`,
+        "Use the three reference images in that order. Preserve each person's recognizable outfit, hair, silhouette, and art style.",
+        "",
+        "COMPOSITION: wide horizontal yearbook photo, 16:9. The teacher stands centered slightly behind; the two students stand left and right in front. Everyone is visible from head to at least knees, facing camera, friendly but in-character.",
+        "SETTING: Ruby High classroom photo-day backdrop, warm school lighting, subtle chalkboard or hallway details. No text, no logos, no captions, no watermarks.",
+        "STYLE: JRPG/anime-influenced school portrait, bold black 5px outlines, vibrant flat colors, subtle cel shading, polished yearbook keepsake.",
+      ].join("\n"),
+    },
+  ];
+
+  const body = await openRouterJson<PortraitResponse>({
+    apiKey: args.apiKey,
+    label: "graduation-photo",
+    timeoutMs: PORTRAIT_TIMEOUT_MS * 2,
+    body: {
+      model: PORTRAIT_MODEL,
+      modalities: ["image", "text"],
+      messages: [{ role: "user", content: contentParts }],
+      max_tokens: PORTRAIT_MAX_TOKENS,
+    },
+  });
+  const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+  if (!url) throw new Error("Graduation photo generation returned no image.");
   return url;
 }
 

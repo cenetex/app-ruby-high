@@ -50,6 +50,7 @@ import {
   maybeUploadPortrait,
   renderCharacterPortrait,
   renderDiplomaImage,
+  renderGraduationPhoto,
   renderTeacherPortrait,
   rollRandomCharacter,
   type CharacterComponent,
@@ -1362,7 +1363,7 @@ function readApiKey(ctx: ChatRouteContext, ruby: RubyHighService, sessionId: str
   }).apiKey;
 }
 
-type HostedImageChargeRoute = "character-portrait" | "teacher-portrait" | "diploma" | "yearbook-card";
+type HostedImageChargeRoute = "character-portrait" | "teacher-portrait" | "diploma" | "yearbook-card" | "graduation-photo";
 
 class HostedImageChargeError extends Error {
   constructor(message: string, readonly status: number) {
@@ -1420,6 +1421,7 @@ async function prepareHostedImageCharge(args: {
   costKind: "portrait" | "diploma";
   body: Record<string, unknown> | null | undefined;
   description: string;
+  imageLabel?: string;
   fingerprintPayload: Record<string, unknown>;
 }): Promise<HostedImageCharge> {
   if (!args.hosted) {
@@ -1491,9 +1493,10 @@ async function prepareHostedImageCharge(args: {
     args.ruby.photoDayCreditBalance(args.sessionId) > 0;
   const burns = hallPassBurnsFromBody(args.body);
   const requiredBurnCards = hallPassCardsRequiredForHostedImageCost(hallPassCost);
+  const imageLabel = args.imageLabel || (args.costKind === "diploma" ? "diploma image" : "portrait");
   if (!usePhotoDayCredit && !imageEntitlement.affordable && burns.length <= 0) {
     throw new HostedImageChargeError(
-      `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} or ${requiredBurnCards} burned Card${requiredBurnCards === 1 ? "" : "s"} for a hosted ${args.costKind === "diploma" ? "diploma image" : "portrait"}.`,
+      `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} or ${requiredBurnCards} burned Card${requiredBurnCards === 1 ? "" : "s"} for a hosted ${imageLabel}.`,
       402,
     );
   }
@@ -3464,6 +3467,141 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     return true;
   }
 
+  // Graduation photo — generated before the player seals the photo reward.
+  // It composes the active student, top teacher, and top classmate, then
+  // stores the image on the pending ceremony for complete-graduation.
+  if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/graduation-photo`) {
+    const token = auth.parseSessionToken(ctx.cookieHeader);
+    const record = auth.resolve(token);
+    const imageCredential = resolveOpenRouterImageCredential({
+      apiKeyHeader: ctx.apiKeyHeader,
+    });
+    const apiKey = imageCredential.apiKey;
+    if (!token || !record) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    if (!apiKey) {
+      ctx.error(
+        ctx.res,
+        isLocalLlmProvider()
+          ? "Local text AI is enabled, but graduation photo generation still requires a hosted image model."
+          : "Connect AI first.",
+        isLocalLlmProvider() ? 501 : 401,
+      );
+      return true;
+    }
+    const rlKey = rateLimitKey(ctx, token);
+    if (!PORTRAIT_LIMITER.take(rlKey)) {
+      reject429(ctx, PORTRAIT_LIMITER.retryAfterSeconds(rlKey));
+      return true;
+    }
+    const sessionId = auth.stateKeyForRecord(record);
+    let scene: ReturnType<RubyHighService["graduationPhotoScene"]>;
+    try {
+      scene = ruby.graduationPhotoScene(sessionId);
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 400);
+      return true;
+    }
+    const state = ruby.getOrCreate(sessionId);
+    const cachedUrl = state.character?.pendingGraduation?.grade === scene.grade
+      ? state.character.pendingGraduation.photoImageUrl
+      : null;
+    if (cachedUrl) {
+      ctx.json(ctx.res, {
+        ok: true,
+        graduationPhotoImageUrl: cachedUrl,
+        grade: scene.grade,
+        teacher: scene.teacher,
+        student: scene.student,
+      });
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown> | null;
+    let charge: HostedImageCharge;
+    try {
+      charge = await prepareHostedImageCharge({
+        ruby,
+        sessionId,
+        hosted: imageCredential.hosted,
+        route: "graduation-photo",
+        costKind: "portrait",
+        body,
+        description: "Graduation photo",
+        imageLabel: "graduation photo",
+        fingerprintPayload: {
+          grade: scene.grade,
+          characterName: scene.characterName,
+          characterImageUrl: scene.characterImageUrl,
+          teacherId: scene.teacher.id,
+          teacherImageUrl: scene.teacher.imageUrl,
+          studentId: scene.student.id,
+          studentImageUrl: scene.student.imageUrl,
+        },
+      });
+    } catch (err) {
+      rejectHostedImageChargeError(ctx, err);
+      return true;
+    }
+    if (charge.replayUrl) {
+      ruby.setPendingGraduationPhotoImage(sessionId, {
+        grade: scene.grade,
+        imageUrl: charge.replayUrl,
+      });
+      await ruby.flushSession(sessionId);
+      ctx.json(ctx.res, {
+        ok: true,
+        graduationPhotoImageUrl: charge.replayUrl,
+        grade: scene.grade,
+        teacher: scene.teacher,
+        student: scene.student,
+        hallPassCost: charge.hallPassCost,
+        hallPasses: charge.hallPasses,
+        entitlements: hostedEntitlementStatus({ ruby, sessionId }),
+      });
+      return true;
+    }
+    let url: string;
+    try {
+      const dataUrl = await renderGraduationPhoto({
+        apiKey,
+        gradeLabel: GRADE_LABELS[scene.grade] ?? `Grade ${scene.grade}`,
+        player: { name: scene.characterName, imageUrl: scene.characterImageUrl },
+        teacher: scene.teacher,
+        classmate: scene.student,
+      });
+      url = await maybeUploadPortrait(dataUrl, "graduation-photo");
+      ruby.setPendingGraduationPhotoImage(sessionId, {
+        grade: scene.grade,
+        imageUrl: url,
+      });
+    } catch (err) {
+      await refundHostedImageCharge({
+        ruby,
+        sessionId,
+        charge,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
+      return true;
+    }
+    const hallPasses = await completeHostedImageCharge({ ruby, sessionId, charge, imageUrl: url });
+    ctx.json(ctx.res, {
+      ok: true,
+      graduationPhotoImageUrl: url,
+      grade: scene.grade,
+      teacher: scene.teacher,
+      student: scene.student,
+      ...(imageCredential.hosted ? {
+        hallPassCost: charge.hallPassCost,
+        hallPasses,
+        entitlements: hostedEntitlementStatus({ ruby, sessionId }),
+      } : {}),
+    });
+    return true;
+  }
+
   // Diploma image — fired by the viewer when graduation lands. Reads the
   // character's subjectScores server-side to pick the subject-themed
   // accessory. Same rate-limiter as portrait gen (8 burst, 1/30s).
@@ -3780,6 +3918,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const c = await rollRandomCharacter({ apiKey, regen, keep });
       ctx.json(ctx.res, { ok: true, character: c });
     } catch (err) {
+      log.error("character-roll.failed", err, {
+        sessionId: stateKey,
+        regen: regen?.join(",") ?? "all",
+        hostedTextAi: fallbackCredential.hosted === true,
+        source: fallbackCredential.source,
+      });
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
     }
     return true;

@@ -194,17 +194,28 @@ export function createYearbookArchiveRenderer(deps: YearbookArchiveRendererDeps)
     buildGraduationPhoto(photo): HTMLElement {
       const wrap = deps.document.createElement("div");
       wrap.className = "paper-archive-photo";
-      const faces = deps.document.createElement("div");
-      faces.className = "paper-archive-photo-faces";
-      [recordValue(photo, "teacher"), recordValue(photo, "student")].forEach((person) => {
-        faces.appendChild(buildPersonFace(person));
-      });
-      wrap.appendChild(faces);
+      const imageUrl = recordValue(photo, "imageUrl");
+      const titleText = stringValue(recordValue(photo, "title"), "Graduation Photo");
+      if (imageUrl) {
+        const img = deps.document.createElement("img");
+        img.className = "paper-archive-photo-image";
+        img.alt = titleText;
+        img.loading = "lazy";
+        img.src = String(imageUrl);
+        wrap.appendChild(img);
+      } else {
+        const faces = deps.document.createElement("div");
+        faces.className = "paper-archive-photo-faces";
+        [recordValue(photo, "teacher"), recordValue(photo, "student")].forEach((person) => {
+          faces.appendChild(buildPersonFace(person));
+        });
+        wrap.appendChild(faces);
+      }
       const copy = deps.document.createElement("div");
       copy.className = "paper-archive-photo-copy";
       const title = deps.document.createElement("div");
       title.className = "paper-archive-photo-title";
-      title.textContent = stringValue(recordValue(photo, "title"), "Graduation Photo");
+      title.textContent = titleText;
       const meta = deps.document.createElement("div");
       meta.className = "paper-archive-photo-meta";
       const teacherName = stringValue(recordValue(recordValue(photo, "teacher"), "name"), "top teacher");

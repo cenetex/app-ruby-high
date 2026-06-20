@@ -244,7 +244,7 @@ export function classAverage(record: DailyClassRecord): number | undefined {
 
 export function normalizeStoredImageRef(
   value: string | undefined | null,
-  fieldName: "portraitDataUrl" | "diplomaImageDataUrl",
+  fieldName: "portraitDataUrl" | "diplomaImageDataUrl" | "graduationPhotoImageUrl",
 ): string | undefined {
   if (value == null) return undefined;
   const text = value.trim();

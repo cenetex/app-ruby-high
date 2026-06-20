@@ -1945,10 +1945,13 @@ export function runViewerClient(bootstrap) {
     const spendLabel = usePhotoDayCredit ? "1 Photo Day credit" : hallPassCostLabel(cost);
     const spendKind = usePhotoDayCredit ? "photo-day credit" : "Hall Pass";
     const isCharacterPortrait = action === "Custom character portrait";
+    const isGraduationPhoto = action === "Take graduation photo";
     const detail = isCharacterPortrait
       ? "Keep editing while it runs. Ruby saves the student after the request finishes."
+      : isGraduationPhoto
+        ? "Ruby will add the finished group photo to this yearbook reward."
       : "Keep editing while it runs. Save and Close unlock once it finishes or you cancel.";
-    const confirmText = isCharacterPortrait ? "Generate portrait" : "Generate image";
+    const confirmText = isCharacterPortrait ? "Generate portrait" : isGraduationPhoto ? "Take photo" : "Generate image";
     if (usePhotoDayCredit) {
       return confirmInApp({
         kicker: "Hosted image",
@@ -5351,18 +5354,62 @@ export function runViewerClient(bootstrap) {
         controls.status.textContent = "Ceremony in progress…";
         controls.status.classList.remove("is-invalid");
       };
-      const submitReward = async (reward, btn, controls) => {
-        setBusy(btn, "Sealing…", controls);
-        const data = await command({ type: "complete-graduation", reward });
-        if (data && data.session) {
-          showCongrats(next ? "You're a " + targetLabel + " now!" : "You graduated.", true);
-          await fetchSession();
-          if (sheetOverlayOpen) renderSheet();
-          return;
-        }
-        controls.status.textContent = "Ceremony failed — pick again.";
-        controls.status.classList.add("is-invalid");
+      const resetCeremonyControls = (controls) => {
         controls.buttons.forEach((b) => { b.disabled = false; });
+      };
+      const setCeremonyError = (controls, message) => {
+        controls.status.textContent = message || "Ceremony failed — pick again.";
+        controls.status.classList.add("is-invalid");
+        resetCeremonyControls(controls);
+      };
+      const takeGraduationPhoto = async (btn, controls) => {
+        setBusy(btn, "Taking photo…", controls);
+        if (!(await confirmHostedCreditSpend("Take graduation photo", "portrait"))) {
+          resetCeremonyControls(controls);
+          return false;
+        }
+        const photoEntitlement = hostedImageEntitlement("portrait") || {};
+        const photoCost = photoEntitlement.cost || 1;
+        if (usingHostedImageGeneration("portrait") && !canSpendHallPasses(photoCost)) {
+          resetCeremonyControls(controls);
+          return false;
+        }
+        const r = await apiFetch("/api/apps/ruby-high/chat/character/graduation-photo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            requestId: imageRequestId("graduation-photo"),
+          }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          throw new Error(responseErrorText(data) || "photo " + r.status);
+        }
+        if (typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements, data.characterSlots);
+        return true;
+      };
+      const submitReward = async (reward, btn, controls) => {
+        try {
+          if (reward && reward.kind === "photo") {
+            const taken = await takeGraduationPhoto(btn, controls);
+            if (!taken) return;
+          } else {
+            setBusy(btn, "Sealing…", controls);
+          }
+          btn.textContent = "Sealing…";
+          controls.status.textContent = "Ceremony in progress…";
+          controls.status.classList.remove("is-invalid");
+          const data = await command({ type: "complete-graduation", reward });
+          if (data && data.session) {
+            showCongrats(next ? "You're a " + targetLabel + " now!" : "You graduated.", true);
+            await fetchSession();
+            if (sheetOverlayOpen) renderSheet();
+            return;
+          }
+          setCeremonyError(controls, "Ceremony failed — pick again.");
+        } catch (err) {
+          setCeremonyError(controls, err && err.message ? err.message : "Photo failed — pick again.");
+        }
       };
 
       // Build the eligible pool. Stats already at the +3 cap are excluded
@@ -5395,8 +5442,8 @@ export function runViewerClient(bootstrap) {
       });
 
       const photoChoice = {
-        label: "Photo",
-        detail: "Snap with your top teacher and classmate.",
+        label: "Take photo",
+        detail: hostedImageCostLabel("portrait") + " · student, teacher, classmate.",
         reward: { kind: "photo" },
       };
       const seed = (c.pendingGraduation && c.pendingGraduation.readyAt)
@@ -5899,6 +5946,7 @@ export function runViewerClient(bootstrap) {
     });
     const controlsCard = controlsCardRefs.card;
     const fields = controlsCardRefs.fields;
+    const rollBtn = controlsCardRefs.rollBtn;
     const status = controlsCardRefs.status;
 
     // Control rows: one per component. Each row has a reroll button that
@@ -5989,7 +6037,45 @@ export function runViewerClient(bootstrap) {
       status.textContent = text || "";
       status.classList.toggle("is-invalid", !!invalid);
     }
+    function sleep(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+    function isTransientRollStatus(statusCode) {
+      return statusCode === 408 || statusCode === 502 || statusCode === 503 || statusCode === 504;
+    }
+    function rollErrorMessage(err, fallbackStatus) {
+      if (err && err.error != null) return String(err.error);
+      return "request " + fallbackStatus;
+    }
+    async function fetchCharacterRoll(body, retryTransient) {
+      const waits = retryTransient ? [0, 900, 1800] : [0];
+      let lastMessage = "";
+      for (let attempt = 0; attempt < waits.length; attempt += 1) {
+        if (waits[attempt] > 0) {
+          setStatus("Ruby is rerolling after a gateway hiccup...");
+          await sleep(waits[attempt]);
+        }
+        const r = await apiFetch("/api/apps/ruby-high/chat/character/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (r.ok) return await r.json();
+        const err = await r.json().catch(() => ({ error: "request " + r.status }));
+        lastMessage = rollErrorMessage(err, r.status);
+        if (!isTransientRollStatus(r.status) || attempt === waits.length - 1) {
+          throw new Error(lastMessage);
+        }
+      }
+      throw new Error(lastMessage || "Roll failed - try again.");
+    }
     function applyDisabled() {
+      rollBtn.disabled = inFlight.all || inFlight.saving;
+      rollBtn.textContent = inFlight.all
+        ? "Rolling..."
+        : rolled
+          ? "Reroll student"
+          : "Roll a student";
       saveBtn.hidden = !rolled;
       saveBtn.disabled = !rolled || inFlight.all || inFlight.saving;
       [nameRow, playbookRow, statsRow, personalityRow, quoteRow].forEach(({ reroll }) => {
@@ -6071,7 +6157,7 @@ export function runViewerClient(bootstrap) {
         // generating an AI portrait, the AI image no longer matches —
         // drop it so the default takes over. The player can re-fire ✨
         // if they want a new AI portrait against the new identity.
-        if (!isFullRoll && (components.includes("playbook") || components.includes("name"))) {
+        if (isFullRoll || (!isFullRoll && (components.includes("playbook") || components.includes("name")))) {
           aiPortraitDataUrl = null;
         }
         if (!aiEnabled) {
@@ -6084,16 +6170,7 @@ export function runViewerClient(bootstrap) {
         const body = isFullRoll
           ? {}
           : { regen: components, keep: rolled || {} };
-        const r = await apiFetch("/api/apps/ruby-high/chat/character/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (!r.ok) {
-          const err = await r.json().catch(() => ({ error: r.status }));
-          throw new Error(err.error || "request " + r.status);
-        }
-        const data = await r.json();
+        const data = await fetchCharacterRoll(body, true);
         rolled = data.character;
         renderRolled(rolled);
         // First roll lands → swap from loading-state to form.
@@ -6122,6 +6199,11 @@ export function runViewerClient(bootstrap) {
         // touch arcAnswer — fine. The visible field is what matters.
         rollComponents([key]);
       });
+    });
+
+    rollBtn.addEventListener("click", () => {
+      if (inFlight.all || inFlight.saving) return;
+      void rollComponents();
     });
 
     // ✨ Generate AI portrait — fires /chat/character/portrait. On

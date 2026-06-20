@@ -414,8 +414,35 @@ function teacherPortraitUrl(facultyId: string, assetTeacherId?: string, profileI
   return undefined;
 }
 
+function teacherFullPortraitUrl(facultyId: string, assetTeacherId?: string, profileImageUrl?: string): string | undefined {
+  if (profileImageUrl) return profileImageUrl;
+  const assetId = assetTeacherId || facultyId;
+  if (assetId === RUBY_FACULTY.id || assetId === "sally-science" || assetId === "professor-edward") {
+    return `${RUBY_HIGH_ASSET_PREFIX}/teachers/${assetId}-full.png`;
+  }
+  return undefined;
+}
+
 function studentPortraitUrl(studentId: string): string {
   return `${RUBY_HIGH_ASSET_PREFIX}/students/${studentId}-face.png`;
+}
+
+function studentFullPortraitUrl(studentId: string): string {
+  return `${RUBY_HIGH_ASSET_PREFIX}/students/${studentId}-full.png`;
+}
+
+const PLAYBOOK_DEFAULT_PORTRAIT: Record<string, string> = {
+  overachiever: "indra",
+  slacker: "sami",
+  heart: "mika",
+  outsider: "noor",
+  "class-clown": "ravi",
+  lifer: "lyra",
+};
+
+function defaultPlayerPortraitUrl(playbookId: string | undefined): string {
+  const studentId = PLAYBOOK_DEFAULT_PORTRAIT[playbookId || ""] || "indra";
+  return studentFullPortraitUrl(studentId);
 }
 
 export interface CourseProgress {
@@ -910,6 +937,22 @@ export interface SchoolSnapshot {
   photoPool: SchoolSnapshotPhoto[];
   classPhotoHistory: SchoolSnapshotClassPhoto[];
   dailyMemories: DailyMemories;
+}
+
+export interface GraduationPhotoScene {
+  grade: Grade;
+  characterName: string;
+  characterImageUrl: string;
+  teacher: {
+    id: string;
+    name: string;
+    imageUrl: string;
+  };
+  student: {
+    id: string;
+    name: string;
+    imageUrl: string;
+  };
 }
 
 export type SchoolWorldStudent = PublicWorldStudent;
@@ -3033,6 +3076,60 @@ export class RubyHighService extends Service {
       if (hit) return hit;
     }
     return null;
+  }
+
+  graduationPhotoScene(sessionId: string): GraduationPhotoScene {
+    const state = this.getOrCreate(sessionId);
+    const ch = state.character;
+    const pending = ch?.pendingGraduation;
+    if (!ch || !pending || !state.currentGrade || pending.grade !== state.currentGrade) {
+      throw new Error("No graduation ceremony is ready.");
+    }
+    const status = this.gradeCompletionStatus(state);
+    if (!status || !status.ready || status.grade !== pending.grade) {
+      throw new Error("Graduation requirements are not complete.");
+    }
+    const teacher = this.topGraduationTeacherFor(state, pending.grade);
+    const faculty = facultyByIdForSession(state, teacher.id);
+    const teacherImageUrl = teacherFullPortraitUrl(teacher.id, faculty?.assetTeacherId, faculty?.profileImageUrl)
+      || teacher.imageUrl
+      || teacherPortraitUrl(teacher.id, faculty?.assetTeacherId, faculty?.profileImageUrl)
+      || teacherFullPortraitUrl(RUBY_FACULTY.id)
+      || "";
+    const student = this.topSocialStudentFor(ch);
+    return {
+      grade: pending.grade,
+      characterName: ch.name,
+      characterImageUrl: ch.portraitDataUrl || defaultPlayerPortraitUrl(ch.playbookId),
+      teacher: {
+        id: teacher.id,
+        name: teacher.name,
+        imageUrl: teacherImageUrl,
+      },
+      student: {
+        id: student.id,
+        name: student.name,
+        imageUrl: studentFullPortraitUrl(student.id) || student.imageUrl || studentPortraitUrl(student.id),
+      },
+    };
+  }
+
+  setPendingGraduationPhotoImage(sessionId: string, input: { grade: Grade; imageUrl: string; generatedAt?: number }): QuizState {
+    const state = this.getOrCreate(sessionId);
+    const ch = state.character;
+    const pending = ch?.pendingGraduation;
+    if (!ch || !pending || pending.grade !== input.grade) {
+      throw new Error("No matching graduation ceremony is ready.");
+    }
+    const imageUrl = normalizeStoredImageRef(input.imageUrl, "graduationPhotoImageUrl");
+    if (!imageUrl) throw new Error("graduationPhotoImageUrl is required.");
+    pending.photoImageUrl = imageUrl;
+    pending.photoImageGeneratedAt = typeof input.generatedAt === "number" && Number.isFinite(input.generatedAt)
+      ? Math.floor(input.generatedAt)
+      : Date.now();
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return state;
   }
 
   hallPassBalance(sessionId: string): number {
@@ -6218,7 +6315,7 @@ export class RubyHighService extends Service {
       verdictQuote: bestVerdict,
     });
     const photo = normalizedReward.kind === "photo"
-      ? this.graduationPhotoCollectibleFor(state, ch, grade, completedAt)
+      ? this.graduationPhotoCollectibleFor(state, ch, grade, completedAt, pending.photoImageUrl)
       : null;
 
     ch.yearbook = characterYearbookEntries(ch);
@@ -6330,6 +6427,7 @@ export class RubyHighService extends Service {
     ch: PlayerCharacter,
     grade: Grade,
     completedAt: number,
+    imageUrl?: string,
   ): GraduationPhotoCollectible {
     const teacher = this.topGraduationTeacherFor(state, grade);
     const student = this.topSocialStudentFor(ch);
@@ -6346,6 +6444,7 @@ export class RubyHighService extends Service {
       grade,
       title: `${label} Graduation Photo`,
       description: `${ch.name} with ${teacher.name} and ${student.name} at Ruby High.`,
+      ...(imageUrl ? { imageUrl } : {}),
       issuedAt: completedAt,
       teacher,
       student,
@@ -6468,7 +6567,12 @@ export class RubyHighService extends Service {
       if (!facultyIds.has(reward.facultyId)) throw new Error("Pick a valid class affinity.");
       return { kind: "affinity", facultyId: reward.facultyId };
     }
-    if (reward.kind === "photo") return { kind: "photo" };
+    if (reward.kind === "photo") {
+      if (!ch.pendingGraduation?.photoImageUrl) {
+        throw new Error("Take the graduation photo before sealing the photo reward.");
+      }
+      return { kind: "photo" };
+    }
     throw new Error(`Unknown graduation reward: ${(reward as { kind?: string }).kind ?? "?"}`);
   }
 
