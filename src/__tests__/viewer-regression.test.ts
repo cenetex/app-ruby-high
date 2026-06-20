@@ -195,6 +195,22 @@ describe("viewer regression guardrails", () => {
     expect(buildCharacterSource).not.toContain('actionsRow.className = "ccg-card-actions";');
   });
 
+  it("builds career cards and metric rows from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createCareerCardRenderer(");
+    expectScriptToContain(clientSource, "const careerCardRenderer = createCareerCardRenderer({");
+    expectScriptToContain(clientSource, "return careerCardRenderer.buildProfileCard(spec);");
+    expectScriptToContain(clientSource, "return careerCardRenderer.buildMetrics(rows);");
+    expectScriptToContain(script, 'row.className = "career-metric" + (m.met ? " is-met" : "");');
+    const profileCareerStart = clientSource.indexOf("function buildProfileCareerCard(spec)");
+    const profileCareerEnd = clientSource.indexOf("function buildCareerTokens", profileCareerStart);
+    const profileCareerSource = clientSource.slice(profileCareerStart, profileCareerEnd);
+    expect(profileCareerSource).not.toContain('card.className = "ccg-card is-career-card";');
+    expect(profileCareerSource).not.toContain('metrics.className = "career-metrics";');
+  });
+
   it("builds blackboard question prompts from typed view models", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");

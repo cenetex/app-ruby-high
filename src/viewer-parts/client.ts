@@ -1400,6 +1400,10 @@ export function runViewerClient(bootstrap) {
     renderMarkdownInto,
     appendProgression,
   });
+  const careerCardRenderer = createCareerCardRenderer({
+    document,
+    appendProgression,
+  });
   const classReportRenderer = createClassReportRenderer({
     document,
     teacherShortName,
@@ -5582,53 +5586,10 @@ export function runViewerClient(bootstrap) {
     });
   }
   function buildProfileCareerCard(spec) {
-    const card = document.createElement("div");
-    card.className = "ccg-card is-career-card";
-
-    const role = document.createElement("span");
-    role.className = "ccg-role career";
-    role.textContent = spec.badgeLabel || "career";
-    card.appendChild(role);
-
-    const body = document.createElement("div");
-    body.className = "ccg-body";
-
-    const nameEl = document.createElement("div");
-    nameEl.className = "ccg-name";
-    nameEl.textContent = spec.name || "School Career";
-    body.appendChild(nameEl);
-
-    const sub = document.createElement("div");
-    sub.className = "ccg-subtitle";
-    sub.textContent = spec.subtitle || "";
-    body.appendChild(sub);
-
-    body.appendChild(buildCareerMetrics(spec.metrics || []));
-    appendProgression(body, spec.progression);
-    card.appendChild(body);
-    return card;
+    return careerCardRenderer.buildProfileCard(spec);
   }
   function buildCareerMetrics(rows) {
-    const metrics = document.createElement("div");
-    metrics.className = "career-metrics";
-    rows.forEach((m) => {
-      const row = document.createElement("div");
-      row.className = "career-metric" + (m.met ? " is-met" : "");
-      const k = document.createElement("span");
-      k.className = "k";
-      k.textContent = m.label;
-      const v = document.createElement("span");
-      v.className = "v";
-      v.textContent = m.value;
-      const d = document.createElement("span");
-      d.className = "detail";
-      d.textContent = m.detail;
-      row.appendChild(k);
-      row.appendChild(v);
-      row.appendChild(d);
-      metrics.appendChild(row);
-    });
-    return metrics;
+    return careerCardRenderer.buildMetrics(rows);
   }
   function buildCareerTokens(spec) {
     const wrap = document.createElement("div");
