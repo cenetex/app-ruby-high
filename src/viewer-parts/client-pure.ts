@@ -200,6 +200,21 @@ export type PackTeacherRowView = {
   editDisabled: boolean;
   deleteDisabled: boolean;
 };
+export type PackTeacherDetailView = {
+  nameText: string;
+  metaText: string;
+  descriptionText: string;
+};
+export type PackQuestionRowView = {
+  id: string;
+  promptText: string;
+  detailText: string;
+  deleteText: string;
+};
+export type PackQuestionListView = {
+  emptyText: string;
+  rows: PackQuestionRowView[];
+};
 export type AccountHallPassCardTileView = {
   className: string;
   faceDown: boolean;
@@ -1200,6 +1215,47 @@ export function packTeacherRowView(teacherInput: NullableRecord, opts?: Nullable
     subtitleText: count + " card" + (count === 1 ? "" : "s") + (subject ? " · " + subject : ""),
     editDisabled: busy,
     deleteDisabled: busy,
+  };
+}
+
+export function packTeacherDetailView(teacherInput: NullableRecord): PackTeacherDetailView {
+  const teacher = teacherInput || null;
+  if (!teacher) {
+    return {
+      nameText: "No teacher selected",
+      metaText: "Add a teacher to configure this pack.",
+      descriptionText: "",
+    };
+  }
+  const count = typeof teacher.questionCount === "number" ? teacher.questionCount : 0;
+  return {
+    nameText: String(teacher.displayName || teacher.id || "No teacher selected"),
+    metaText: count + " cards" + (teacher.materialSourceUrl ? " · linked source" : ""),
+    descriptionText: String(teacher.description || ""),
+  };
+}
+
+export function packQuestionRowView(questionInput: NullableRecord): PackQuestionRowView {
+  const question = questionInput || {};
+  return {
+    id: String(question.id || ""),
+    promptText: String(question.prompt || "Untitled question"),
+    detailText: String(question.subject || "open study")
+      + " · "
+      + String(question.difficulty || "medium")
+      + (question.answer ? " · " + String(question.answer) : ""),
+    deleteText: "Delete",
+  };
+}
+
+export function packQuestionListView(teacherInput: NullableRecord): PackQuestionListView {
+  const teacher = teacherInput || null;
+  if (!teacher) return { emptyText: "Select or add a teacher.", rows: [] };
+  const questions = Array.isArray(teacher.questions) ? teacher.questions : [];
+  if (questions.length === 0) return { emptyText: "No generated questions yet.", rows: [] };
+  return {
+    emptyText: "",
+    rows: questions.map((question) => packQuestionRowView(question)),
   };
 }
 

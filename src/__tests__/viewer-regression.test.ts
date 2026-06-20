@@ -1321,6 +1321,11 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function packTeacherRowView(teacherInput, opts)");
     expectScriptToContain(script, "const view = packTeacherRowView(teacher, {");
     expectScriptToContain(script, "subtitle.textContent = view.subtitleText");
+    expectScriptToContain(script, "function packTeacherDetailView(teacherInput)");
+    expectScriptToContain(script, "const view = packTeacherDetailView(selected)");
+    expectScriptToContain(script, "function packQuestionListView(teacherInput)");
+    expectScriptToContain(script, "const view = packQuestionListView(teacher)");
+    expectScriptToContain(script, "prompt.textContent = question.promptText");
     expectScriptToContain(script, "pack.canDelete");
     expectScriptToContain(script, "if (isDraft) editDraftPack(pack.id)");
     expectScriptToContain(script, "await editDraftPack(pack.draftId)");

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { packLibraryCardView, packTeacherRowView } from "../viewer-parts/client-pure.js";
+import {
+  packLibraryCardView,
+  packQuestionListView,
+  packQuestionRowView,
+  packTeacherDetailView,
+  packTeacherRowView,
+} from "../viewer-parts/client-pure.js";
 
 describe("pack library card view", () => {
   it("describes active built-in packs without switch actions", () => {
@@ -156,6 +162,84 @@ describe("pack teacher row view", () => {
       avatarText: "?",
       titleText: "Untitled teacher",
       subtitleText: "0 cards",
+    });
+  });
+});
+
+describe("pack teacher detail view", () => {
+  it("formats the selected teacher detail header", () => {
+    expect(packTeacherDetailView({
+      id: "teacher-ruby",
+      displayName: "Ruby",
+      questionCount: 7,
+      materialSourceUrl: "https://example.test/ruby.md",
+      description: "Homeroom ethics and school-world systems.",
+    })).toEqual({
+      nameText: "Ruby",
+      metaText: "7 cards · linked source",
+      descriptionText: "Homeroom ethics and school-world systems.",
+    });
+  });
+
+  it("uses a safe empty detail state when no teacher is selected", () => {
+    expect(packTeacherDetailView(null)).toEqual({
+      nameText: "No teacher selected",
+      metaText: "Add a teacher to configure this pack.",
+      descriptionText: "",
+    });
+  });
+});
+
+describe("pack question list view", () => {
+  it("formats generated question rows", () => {
+    expect(packQuestionRowView({
+      id: "q-1",
+      prompt: "When should a shared ledger override optimistic UI?",
+      subject: "multiplayer ethics",
+      difficulty: "hard",
+      answer: "when both sides commit",
+    })).toEqual({
+      id: "q-1",
+      promptText: "When should a shared ledger override optimistic UI?",
+      detailText: "multiplayer ethics · hard · when both sides commit",
+      deleteText: "Delete",
+    });
+  });
+
+  it("summarizes the empty teacher and empty question states", () => {
+    expect(packQuestionListView(null)).toEqual({
+      emptyText: "Select or add a teacher.",
+      rows: [],
+    });
+
+    expect(packQuestionListView({ questions: [] })).toEqual({
+      emptyText: "No generated questions yet.",
+      rows: [],
+    });
+  });
+
+  it("maps teacher questions into row views", () => {
+    expect(packQuestionListView({
+      questions: [
+        { id: "q-1", prompt: "", subject: "", difficulty: "", answer: "" },
+        { id: "q-2", prompt: "Explain trust boundaries.", subject: "security", difficulty: "medium" },
+      ],
+    })).toEqual({
+      emptyText: "",
+      rows: [
+        {
+          id: "q-1",
+          promptText: "Untitled question",
+          detailText: "open study · medium",
+          deleteText: "Delete",
+        },
+        {
+          id: "q-2",
+          promptText: "Explain trust boundaries.",
+          detailText: "security · medium",
+          deleteText: "Delete",
+        },
+      ],
     });
   });
 });

@@ -7769,61 +7769,61 @@ export function runViewerClient(bootstrap) {
     }
     packTeacherListEl.innerHTML = "";
     teachers.forEach((teacher) => {
-        const avatarUrl = draftTeacherImageUrl(teacher, "face");
-        const view = packTeacherRowView(teacher, {
-          selected: teacher.id === selectedPackTeacherId,
-          busy: packImportBusy,
-          avatarUrl,
-        });
-        const row = document.createElement("div");
-        row.className = view.className;
-        const select = document.createElement("button");
-        select.type = "button";
-        select.className = "pack-teacher-select";
-        select.disabled = view.selectDisabled;
-        const avatar = document.createElement("span");
-        avatar.className = "pack-teacher-avatar";
-        if (view.avatarUrl) {
-          const img = document.createElement("img");
-          img.src = view.avatarUrl;
-          img.alt = "";
-          avatar.appendChild(img);
-        } else {
-          avatar.textContent = view.avatarText;
-        }
-        const copy = document.createElement("span");
-        copy.className = "pack-teacher-copy";
-        const title = document.createElement("span");
-        title.className = "pack-teacher-title";
-        title.textContent = view.titleText;
-        const subtitle = document.createElement("span");
-        subtitle.className = "pack-teacher-subtitle";
-        subtitle.textContent = view.subtitleText;
-        copy.appendChild(title);
-        copy.appendChild(subtitle);
-        select.appendChild(avatar);
-        select.appendChild(copy);
-        select.addEventListener("click", () => selectDraftTeacher(teacher.id));
-        const actions = document.createElement("div");
-        actions.className = "pack-teacher-actions";
-        const edit = document.createElement("button");
-        edit.type = "button";
-        edit.className = "pack-teacher-row-action";
-        edit.textContent = "Edit";
-        edit.disabled = view.editDisabled;
-        edit.addEventListener("click", () => editDraftTeacher(teacher.id));
-        const del = document.createElement("button");
-        del.type = "button";
-        del.className = "pack-teacher-row-action danger";
-        del.textContent = "Delete";
-        del.disabled = view.deleteDisabled;
-        del.addEventListener("click", () => deleteDraftTeacher(teacher.id));
-        actions.appendChild(edit);
-        actions.appendChild(del);
-        row.appendChild(select);
-        row.appendChild(actions);
-        packTeacherListEl.appendChild(row);
+      const avatarUrl = draftTeacherImageUrl(teacher, "face");
+      const view = packTeacherRowView(teacher, {
+        selected: teacher.id === selectedPackTeacherId,
+        busy: packImportBusy,
+        avatarUrl,
       });
+      const row = document.createElement("div");
+      row.className = view.className;
+      const select = document.createElement("button");
+      select.type = "button";
+      select.className = "pack-teacher-select";
+      select.disabled = view.selectDisabled;
+      const avatar = document.createElement("span");
+      avatar.className = "pack-teacher-avatar";
+      if (view.avatarUrl) {
+        const img = document.createElement("img");
+        img.src = view.avatarUrl;
+        img.alt = "";
+        avatar.appendChild(img);
+      } else {
+        avatar.textContent = view.avatarText;
+      }
+      const copy = document.createElement("span");
+      copy.className = "pack-teacher-copy";
+      const title = document.createElement("span");
+      title.className = "pack-teacher-title";
+      title.textContent = view.titleText;
+      const subtitle = document.createElement("span");
+      subtitle.className = "pack-teacher-subtitle";
+      subtitle.textContent = view.subtitleText;
+      copy.appendChild(title);
+      copy.appendChild(subtitle);
+      select.appendChild(avatar);
+      select.appendChild(copy);
+      select.addEventListener("click", () => selectDraftTeacher(teacher.id));
+      const actions = document.createElement("div");
+      actions.className = "pack-teacher-actions";
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "pack-teacher-row-action";
+      edit.textContent = "Edit";
+      edit.disabled = view.editDisabled;
+      edit.addEventListener("click", () => editDraftTeacher(teacher.id));
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "pack-teacher-row-action danger";
+      del.textContent = "Delete";
+      del.disabled = view.deleteDisabled;
+      del.addEventListener("click", () => deleteDraftTeacher(teacher.id));
+      actions.appendChild(edit);
+      actions.appendChild(del);
+      row.appendChild(select);
+      row.appendChild(actions);
+      packTeacherListEl.appendChild(row);
+    });
     renderSelectedPackTeacher(teachers);
   }
   function selectDraftTeacher(teacherId, opts) {
@@ -7875,27 +7875,24 @@ export function runViewerClient(bootstrap) {
     packTeacherDetailEl.hidden = false;
     setPackEditorTabsHidden(false);
     const selected = teachers.find((teacher) => teacher.id === selectedPackTeacherId) || null;
+    const view = packTeacherDetailView(selected);
     const head = document.createElement("div");
     head.className = "pack-teacher-detail-head";
     const copy = document.createElement("div");
     const name = document.createElement("div");
     name.className = "pack-teacher-detail-name";
-    name.textContent = selected ? (selected.displayName || selected.id) : "No teacher selected";
+    name.textContent = view.nameText;
     const meta = document.createElement("div");
     meta.className = "pack-teacher-detail-meta";
-    if (selected) {
-      meta.textContent = (selected.questionCount || 0) + " cards" + (selected.materialSourceUrl ? " · linked source" : "");
-    } else {
-      meta.textContent = "Add a teacher to configure this pack.";
-    }
+    meta.textContent = view.metaText;
     copy.appendChild(name);
     copy.appendChild(meta);
     head.appendChild(copy);
     packTeacherDetailEl.appendChild(head);
-    if (selected && selected.description) {
+    if (view.descriptionText) {
       const bio = document.createElement("div");
       bio.className = "pack-teacher-detail-meta";
-      bio.textContent = selected.description;
+      bio.textContent = view.descriptionText;
       packTeacherDetailEl.appendChild(bio);
     }
     fillTeacherDraftForm(selected);
@@ -8086,31 +8083,30 @@ export function runViewerClient(bootstrap) {
   function renderQuestionList(teacher) {
     if (!teacherQuestionListEl) return;
     teacherQuestionListEl.innerHTML = "";
-    const questions = teacher && Array.isArray(teacher.questions) ? teacher.questions : [];
-    if (!teacher) {
-      teacherQuestionListEl.innerHTML = '<div class="sub">Select or add a teacher.</div>';
+    const view = packQuestionListView(teacher);
+    if (view.emptyText) {
+      const empty = document.createElement("div");
+      empty.className = "sub";
+      empty.textContent = view.emptyText;
+      teacherQuestionListEl.appendChild(empty);
       return;
     }
-    if (questions.length === 0) {
-      teacherQuestionListEl.innerHTML = '<div class="sub">No generated questions yet.</div>';
-      return;
-    }
-    questions.forEach((question) => {
+    view.rows.forEach((question) => {
       const row = document.createElement("div");
       row.className = "pack-question-row";
       const body = document.createElement("div");
       const prompt = document.createElement("div");
       prompt.className = "pack-question-prompt";
-      prompt.textContent = question.prompt || "Untitled question";
+      prompt.textContent = question.promptText;
       const answer = document.createElement("div");
       answer.className = "pack-question-answer";
-      answer.textContent = (question.subject || "open study") + " · " + (question.difficulty || "medium") + (question.answer ? " · " + question.answer : "");
+      answer.textContent = question.detailText;
       body.appendChild(prompt);
       body.appendChild(answer);
       const del = document.createElement("button");
       del.type = "button";
       del.className = "pack-action";
-      del.textContent = "Delete";
+      del.textContent = question.deleteText;
       del.addEventListener("click", () => deleteDraftQuestion(question.id));
       row.appendChild(body);
       row.appendChild(del);
