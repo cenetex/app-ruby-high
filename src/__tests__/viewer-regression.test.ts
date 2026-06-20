@@ -1030,16 +1030,23 @@ describe("viewer regression guardrails", () => {
 
   it("builds the class report with full-body teacher standee art and a score metric", () => {
     const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
 
     expectScriptToContain(script, "function buildClassReportCard");
+    expectScriptToContain(script, "function createClassReportRenderer(");
+    expectScriptToContain(clientSource, "const classReportRenderer = createClassReportRenderer({");
+    expectScriptToContain(clientSource, "return classReportRenderer.buildCard(faculty, currentGrade, progress);");
+    expectScriptToContain(clientSource, "return classReportRenderer.buildNextStep(lastTelemetry);");
     expectScriptToContain(script, "function shouldShowClassReport");
     expectScriptToContain(script, "let dismissedClassReportKey = null");
     expectScriptToContain(script, "key !== dismissedClassReportKey");
     expectScriptToContain(script, "dismissedClassReportKey = reportKey");
     expectScriptToContain(script, "class-report-teacher-art");
     expectScriptToContain(script, 'teacherAssetUrl(artAssetId, "full-sticker")');
-    expectScriptToContain(script, 'addMetric("score"');
+    expectScriptToContain(script, 'addMetric(metrics, "score"');
     expectScriptToContain(script, '"grade score"');
+    expect(clientSource).not.toContain('wrap.className = "class-report-card"');
+    expect(clientSource).not.toContain('item.className = "class-report-metric"');
     expect(script).not.toContain('addMetric("score / grade"');
     expect(script).not.toContain('addMetric("questions"');
   });

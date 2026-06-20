@@ -1395,6 +1395,18 @@ export function runViewerClient(bootstrap) {
     openActiveCharacter: openCharacterSheetFromAccount,
     openCharacterCreation: openCharacterCreationFromAccount,
   });
+  const classReportRenderer = createClassReportRenderer({
+    document,
+    teacherShortName,
+    letterGradeForScore,
+    letterGradePasses,
+    todayCorrectSummary,
+    formatClassScore,
+    postClassState,
+    guestSignupRequired,
+    knownTeacherAssetId,
+    teacherAssetUrl,
+  });
   const comicReaderRenderer = createComicReaderRenderer({
     document,
     pageTitle: comicPageTitle,
@@ -1736,104 +1748,10 @@ export function runViewerClient(bootstrap) {
   }
   function buildClassReportCard(faculty, currentGrade) {
     const progress = lastTelemetry && lastTelemetry.active_course_progress;
-    const today = progress && progress.today;
-    if (!progress || !today || today.status !== "complete") return null;
-    const teacherName = teacherShortName(faculty, progress.displayName);
-    const classLetter = today.letterGrade || letterGradeForScore(today.score);
-    const passedToday = letterGradePasses(today.letterGrade) || Number(today.score || 0) >= 70;
-    const wrap = document.createElement("section");
-    wrap.className = "class-report-card" + (passedToday ? " is-passed" : " needs-work");
-
-    const main = document.createElement("div");
-    main.className = "class-report-main";
-    const badge = document.createElement("div");
-    badge.className = "class-report-letter";
-    badge.textContent = classLetter;
-    const titleWrap = document.createElement("div");
-    titleWrap.className = "class-report-heading";
-    const title = document.createElement("div");
-    title.className = "class-report-title";
-    title.textContent = "Teacher " + teacherName;
-    const subtitle = document.createElement("div");
-    subtitle.className = "class-report-subtitle";
-    subtitle.textContent = passedToday ? "daily class passed" : "practice open";
-    titleWrap.appendChild(title);
-    titleWrap.appendChild(subtitle);
-    main.appendChild(badge);
-    main.appendChild(titleWrap);
-
-    const artAssetId = faculty && (faculty.assetTeacherId || knownTeacherAssetId(faculty));
-    if (artAssetId) {
-      const art = document.createElement("div");
-      art.className = "class-report-teacher-art";
-      const img = document.createElement("img");
-      img.alt = "";
-      img.decoding = "async";
-      img.loading = "lazy";
-      img.src = teacherAssetUrl(artAssetId, "full-sticker");
-      img.onerror = () => art.remove();
-      art.appendChild(img);
-      main.appendChild(art);
-    }
-
-    wrap.appendChild(main);
-
-    const metrics = document.createElement("div");
-    metrics.className = "class-report-metrics";
-    const addMetric = (label, value, detail) => {
-      const item = document.createElement("div");
-      item.className = "class-report-metric";
-      const k = document.createElement("span");
-      k.className = "k";
-      k.textContent = label;
-      const v = document.createElement("span");
-      v.className = "v";
-      if (value instanceof Node) v.appendChild(value);
-      else v.textContent = value;
-      const d = document.createElement("span");
-      d.className = "d";
-      d.textContent = detail;
-      item.appendChild(k);
-      item.appendChild(v);
-      item.appendChild(d);
-      metrics.appendChild(item);
-    };
-    const correctSummary = todayCorrectSummary(today);
-    addMetric("correct", correctSummary.value, correctSummary.detail);
-    addMetric("score", formatClassScore(today.score), "grade score");
-    wrap.appendChild(metrics);
-    return wrap;
+    return classReportRenderer.buildCard(faculty, currentGrade, progress);
   }
   function buildClassReportNextStep() {
-    const state = postClassState(lastTelemetry);
-    const signupRequired = guestSignupRequired(lastTelemetry);
-    const wrap = document.createElement("div");
-    wrap.className = "class-report-next" + (signupRequired ? " is-signup" : state.socialReady ? " is-social" : state.practiceReady ? " is-practice" : "");
-    const mark = document.createElement("span");
-    mark.className = "class-report-next-mark";
-    wrap.appendChild(mark);
-    const copy = document.createElement("div");
-    copy.className = "class-report-next-copy";
-    const title = document.createElement("div");
-    title.className = "class-report-next-title";
-    const body = document.createElement("div");
-    body.className = "class-report-next-body";
-    if (signupRequired) {
-      title.textContent = "Sign up to continue";
-      body.textContent = "Your guest lesson is complete. Keep your student and unlock the rest of Ruby High.";
-    } else if (state.socialReady) {
-      title.textContent = "Homeroom reflection";
-      body.textContent = "One short prompt before the next class.";
-    } else if (state.practiceReady) {
-      title.textContent = "Practice open";
-      body.textContent = "Extra review, no change to today's grade.";
-    } else {
-      title.textContent = "Daily class complete";
-    }
-    copy.appendChild(title);
-    if (body.textContent) copy.appendChild(body);
-    wrap.appendChild(copy);
-    return wrap;
+    return classReportRenderer.buildNextStep(lastTelemetry);
   }
   function showBlackboardClassReport(faculty, currentGrade) {
     const report = buildClassReportCard(faculty, currentGrade);
