@@ -24,6 +24,33 @@ interface CharacterResponse {
   choices?: Array<{ message?: { content?: string } }>;
 }
 
+type CharacterTextComponent = "name" | "personality" | "arcAnswer" | "flavorQuote";
+
+function characterResponseFormat(fields: CharacterTextComponent[]) {
+  const descriptions: Record<CharacterTextComponent, string> = {
+    name: "One first name for the student.",
+    personality: "Two to three third-person sentences about how the student shows up in class.",
+    arcAnswer: "One to two in-voice sentences answering the playbook hook question.",
+    flavorQuote: "One short line of character flavor text, without surrounding quote marks.",
+  };
+  return {
+    type: "json_schema",
+    json_schema: {
+      name: "ruby_high_student_roll",
+      strict: true,
+      schema: {
+        type: "object",
+        properties: Object.fromEntries(fields.map((field) => [
+          field,
+          { type: "string", description: descriptions[field] },
+        ])),
+        required: fields,
+        additionalProperties: false,
+      },
+    },
+  };
+}
+
 async function fetchPortraitOnce(args: {
   apiKey: string;
   prompt: string;
@@ -270,7 +297,7 @@ export async function rollRandomCharacter(args: {
     ? randomStatDistribution()
     : keep.stats;
 
-  const textFields: CharacterComponent[] = ["name", "personality", "arcAnswer", "flavorQuote"];
+  const textFields: CharacterTextComponent[] = ["name", "personality", "arcAnswer", "flavorQuote"];
   const textRegen = textFields.filter((f) => regenSet.has(f));
   if (textRegen.length === 0) {
     const name = String(keep.name ?? "").trim();
@@ -332,6 +359,8 @@ export async function rollRandomCharacter(args: {
         { role: "system", content: "You generate compact JSON character sheets for a high school RPG. Output VALID JSON only — no commentary, no code fences, no extra keys." },
         { role: "user", content: userPrompt },
       ],
+      provider: { require_parameters: true },
+      response_format: characterResponseFormat(textRegen),
       max_tokens: 480,
       temperature: 1.1,
     },

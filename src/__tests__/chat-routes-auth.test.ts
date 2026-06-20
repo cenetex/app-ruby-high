@@ -554,6 +554,21 @@ describe("hosted AI access auth", () => {
     });
     expect(capturedChatRequest?.authorization).toBe("Bearer sk-hosted");
     expect(capturedChatRequest?.body.messages?.[0]?.content).toContain("compact JSON character sheets");
+    expect(capturedChatRequest?.body.provider).toMatchObject({
+      require_parameters: true,
+    });
+    expect(capturedChatRequest?.body.response_format).toMatchObject({
+      type: "json_schema",
+      json_schema: {
+        name: "ruby_high_student_roll",
+        strict: true,
+        schema: {
+          type: "object",
+          required: ["name", "personality", "arcAnswer", "flavorQuote"],
+          additionalProperties: false,
+        },
+      },
+    });
   });
 });
 
