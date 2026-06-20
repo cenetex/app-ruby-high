@@ -332,6 +332,21 @@ describe("viewer regression guardrails", () => {
     expect(controlsSource).not.toContain('status.className = "stat-budget";');
   });
 
+  it("renders character creation intro and loading panels from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createCreationIntroRenderer(");
+    expectScriptToContain(clientSource, "const creationIntroRenderer = createCreationIntroRenderer({");
+    expectScriptToContain(clientSource, "creationIntroRenderer.renderInto(sheetCard);");
+    expectScriptToContain(script, 'loading.className = "creation-loading";');
+    const creationStart = clientSource.indexOf("function renderSheetCreation(playbooks)");
+    const candidateStart = clientSource.indexOf("const candidateCardRefs = creationCandidateCardRenderer.build();", creationStart);
+    const introSource = clientSource.slice(creationStart, candidateStart);
+    expect(introSource).not.toContain('loading.className = "creation-loading";');
+    expect(introSource).not.toContain('explanation.className = "creation-explanation";');
+  });
+
   it("builds blackboard question prompts from typed view models", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");

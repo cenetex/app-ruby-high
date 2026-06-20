@@ -1414,6 +1414,9 @@ export function runViewerClient(bootstrap) {
   const creationControlCardRenderer = createCreationControlCardRenderer({
     document,
   });
+  const creationIntroRenderer = createCreationIntroRenderer({
+    document,
+  });
   const creationRowsRenderer = createCreationRowsRenderer({
     document,
   });
@@ -6502,25 +6505,7 @@ export function runViewerClient(bootstrap) {
     sheetCard.classList.add("is-creation-sheet");
     sheetCard.innerHTML = "";
 
-    // Full-pane loading state — covers the sheet while the initial
-    // roll is in flight so the player isn't staring at empty form
-    // rows wondering why nothing's there. Hidden once the rolled
-    // payload lands; re-shown if the player triggers a full reroll later.
-    const loading = document.createElement("div");
-    loading.className = "creation-loading";
-    const explanation = document.createElement("div");
-    explanation.className = "creation-explanation";
-    explanation.innerHTML =
-      '<p>You are about to enroll at Ruby High as a student.</p>'
-      + '<p>Your character gets a <strong>playbook</strong> — a personality template with stats (HEAD, HEART, HUSTLE, HONOR) and a unique move. Think of it as your role in the school story.</p>'
-      + '<p>You can reroll anything you don\'t like. Your character sticks with you for all four years.</p>';
-    sheetCard.appendChild(explanation);
-
-    loading.innerHTML =
-      '<div class="creation-loading-spinner" aria-hidden="true"></div>'
-      + '<div class="creation-loading-title">Rolling your student…</div>'
-      + '<div class="creation-loading-sub">Ruby is looking up your file. One moment.</div>';
-    sheetCard.appendChild(loading);
+    const { loading } = creationIntroRenderer.renderInto(sheetCard);
 
     // Creation now uses the same two-card deck surface as profile sheets:
     // a playable character card beside a roll-control card.
