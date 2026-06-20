@@ -287,6 +287,21 @@ describe("viewer regression guardrails", () => {
     expect(creationStatsSource).not.toContain('ve.className = "v"');
   });
 
+  it("renders character creation reroll rows from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createCreationRowsRenderer(");
+    expectScriptToContain(clientSource, "const creationRowsRenderer = createCreationRowsRenderer({");
+    expectScriptToContain(clientSource, "return creationRowsRenderer.buildRow(fields, label, key);");
+    expectScriptToContain(script, 'row.className = "creation-row";');
+    const makeRowStart = clientSource.indexOf("function makeRow(label, key)");
+    const makeRowEnd = clientSource.indexOf('const nameRow = makeRow("Name", "name");', makeRowStart);
+    const makeRowSource = clientSource.slice(makeRowStart, makeRowEnd);
+    expect(makeRowSource).not.toContain('row.className = "creation-row";');
+    expect(makeRowSource).not.toContain('reroll.className = "creation-reroll";');
+  });
+
   it("builds blackboard question prompts from typed view models", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");

@@ -1408,6 +1408,9 @@ export function runViewerClient(bootstrap) {
     document,
     streakScoreMultiplier,
   });
+  const creationRowsRenderer = createCreationRowsRenderer({
+    document,
+  });
   const creationStatsRenderer = createCreationStatsRenderer({
     document,
   });
@@ -6607,25 +6610,7 @@ export function runViewerClient(bootstrap) {
     controlsBody.appendChild(fields);
 
     function makeRow(label, key) {
-      const row = document.createElement("div");
-      row.className = "creation-row";
-      const lab = document.createElement("div");
-      lab.className = "creation-row-label";
-      lab.textContent = label;
-      const val = document.createElement("div");
-      val.className = "creation-row-value";
-      val.dataset.key = key;
-      const reroll = document.createElement("button");
-      reroll.type = "button";
-      reroll.className = "creation-reroll";
-      reroll.title = "Reroll " + label.toLowerCase();
-      reroll.textContent = "↻";
-      reroll.dataset.key = key;
-      row.appendChild(lab);
-      row.appendChild(val);
-      row.appendChild(reroll);
-      fields.appendChild(row);
-      return { val, reroll };
+      return creationRowsRenderer.buildRow(fields, label, key);
     }
     const nameRow = makeRow("Name", "name");
     const playbookRow = makeRow("Playbook", "playbook");
