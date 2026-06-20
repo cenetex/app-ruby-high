@@ -6252,89 +6252,43 @@ export function runViewerClient(bootstrap) {
     const activeToday = activeProgress.today || {};
     const activeSubject = subjectDisplayName(activeProgress.facultyId || t.faculty, activeProgress);
     const todaySummary = todayCorrectSummary(activeToday);
-
-    const card = document.createElement("div");
-    card.className = "ccg-card is-career-card" + (graduated ? " is-graduated" : "");
-
-    const role = document.createElement("span");
-    role.className = "ccg-role career";
-    role.textContent = graduated ? "graduated" : gradeLabel;
-    card.appendChild(role);
-
-    const body = document.createElement("div");
-    body.className = "ccg-body";
-
-    const nameEl = document.createElement("div");
-    nameEl.className = "ccg-name";
-    nameEl.textContent = "School Career";
-    body.appendChild(nameEl);
-
-    const sub = document.createElement("div");
-    sub.className = "ccg-subtitle";
     const subjects = subjectClearSummary();
     const gradeLine = subjects.grades
       .map((g) => letterGradePasses(g.grade) ? g.grade : subjectProgressShortLabel(g.progress))
       .join(" ");
-    sub.textContent = graduated ? "Arc complete" : gradeLabel + " · " + gradeLine;
-    body.appendChild(sub);
-
-    const metrics = document.createElement("div");
-    metrics.className = "career-metrics";
-    const addMetric = (label, value, detail, met) => {
-      const row = document.createElement("div");
-      row.className = "career-metric" + (met ? " is-met" : "");
-      const k = document.createElement("span");
-      k.className = "k";
-      k.textContent = label;
-      const v = document.createElement("span");
-      v.className = "v";
-      v.textContent = value;
-      const d = document.createElement("span");
-      d.className = "detail";
-      d.textContent = detail;
-      row.appendChild(k);
-      row.appendChild(v);
-      row.appendChild(d);
-      metrics.appendChild(row);
-    };
-
+    const metrics = [];
     if (graduated) {
-      addMetric("status", "graduated", "four-year arc complete", true);
-      addMetric("yearbook", yearbookCount + "/4", "paper cards sealed", yearbookCount >= 4);
+      metrics.push({ label: "status", value: "graduated", detail: "four-year arc complete", met: true });
+      metrics.push({ label: "yearbook", value: yearbookCount + "/4", detail: "paper cards sealed", met: yearbookCount >= 4 });
     } else {
-      addMetric("today", todaySummary.value, activeSubject + " · " + todaySummary.detail, todaySummary.met);
+      metrics.push({ label: "today", value: todaySummary.value, detail: activeSubject + " · " + todaySummary.detail, met: todaySummary.met });
     }
-    if (metrics.children.length > 0) body.appendChild(metrics);
-    if (!graduated) {
-      body.appendChild(buildCareerTokens({
+    const tokens = graduated
+      ? null
+      : buildCareerTokens({
         streakHere,
         streakReq,
         streakLastDate,
         todayKey,
         advantageRemaining: budget.remaining,
         advantageCap: budget.cap,
-      }));
-    }
+      });
 
     const ceremonyReady = !!(t.graduation_ready || c.pendingGraduation);
-    if (ceremonyReady) {
-      const ceremony = buildGraduationCeremony(c, grade, {});
-      if (ceremony) body.appendChild(ceremony);
-    } else {
-      const hint = buildNextStepHint(c);
-      if (hint) {
-        const ns = document.createElement("div");
-        ns.className = "ccg-next-step";
-        ns.textContent = hint;
-        body.appendChild(ns);
-      }
-    }
-
-    appendProgression(body, buildProgressionForCharacter(c));
+    const ceremony = ceremonyReady ? buildGraduationCeremony(c, grade, {}) : null;
+    const nextStep = ceremonyReady ? "" : buildNextStepHint(c);
     const mash = buildMashGrid(c, graduated);
-    if (mash) body.appendChild(mash);
-    card.appendChild(body);
-    return card;
+    return careerCardRenderer.buildSchoolCard({
+      graduated,
+      roleLabel: graduated ? "graduated" : gradeLabel,
+      subtitle: graduated ? "Arc complete" : gradeLabel + " · " + gradeLine,
+      metrics,
+      tokens,
+      ceremony,
+      nextStep,
+      progression: buildProgressionForCharacter(c),
+      mash,
+    });
   }
 
   function comicCollectionForTelemetry() {

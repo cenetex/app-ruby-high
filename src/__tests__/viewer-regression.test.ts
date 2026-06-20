@@ -204,6 +204,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(clientSource, "const careerCardRenderer = createCareerCardRenderer({");
     expectScriptToContain(clientSource, "const careerTokensRenderer = createCareerTokensRenderer({");
     expectScriptToContain(clientSource, "return careerCardRenderer.buildProfileCard(spec);");
+    expectScriptToContain(clientSource, "return careerCardRenderer.buildSchoolCard({");
     expectScriptToContain(clientSource, "return careerCardRenderer.buildMetrics(rows);");
     expectScriptToContain(clientSource, "return careerTokensRenderer.build(spec);");
     expectScriptToContain(script, 'row.className = "career-metric" + (m.met ? " is-met" : "");');
@@ -218,6 +219,11 @@ describe("viewer regression guardrails", () => {
     const careerTokensSource = clientSource.slice(careerTokensStart, careerTokensEnd);
     expect(careerTokensSource).not.toContain('wrap.className = "career-token-strip";');
     expect(careerTokensSource).not.toContain('dice.className = "career-dice";');
+    const schoolCareerStart = clientSource.indexOf("function buildCareerCard(c, graduated)");
+    const schoolCareerEnd = clientSource.indexOf("function comicCollectionForTelemetry", schoolCareerStart);
+    const schoolCareerSource = clientSource.slice(schoolCareerStart, schoolCareerEnd);
+    expect(schoolCareerSource).not.toContain('card.className = "ccg-card is-career-card"');
+    expect(schoolCareerSource).not.toContain('ns.className = "ccg-next-step";');
   });
 
   it("builds sealed paper cards from a typed renderer", () => {

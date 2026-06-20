@@ -104,4 +104,86 @@ describe("career card renderer", () => {
     expect(textTree(metrics)).toEqual(["daily", "2/3", "classes passed"]);
     expect(metrics.children[0]!.className).toBe("career-metric is-met");
   });
+
+  it("renders live school career cards with tokens, next steps, progression, and mash", () => {
+    const progressions: unknown[] = [];
+    const renderer = createCareerCardRenderer({
+      document: createDocument(),
+      appendProgression(parent, progression) {
+        progressions.push(progression);
+        const marker = createDocument().createElement("div") as unknown as FakeElement;
+        marker.className = "career-progression-marker";
+        marker.textContent = "progression";
+        (parent as unknown as FakeElement).appendChild(marker);
+      },
+    });
+    const tokens = createDocument().createElement("div") as unknown as FakeElement;
+    tokens.className = "career-token-strip";
+    tokens.textContent = "tokens";
+    const mash = createDocument().createElement("div") as unknown as FakeElement;
+    mash.className = "mash-grid-wrap";
+    mash.textContent = "mash";
+
+    const card = renderer.buildSchoolCard({
+      roleLabel: "Freshman",
+      subtitle: "Freshman · C B A",
+      metrics: [
+        { label: "today", value: "2/3", detail: "Ruby · one more", met: false },
+      ],
+      tokens: tokens as unknown as HTMLElement,
+      nextStep: "Pass today's daily class.",
+      progression: { rungs: ["9", "10"] },
+      mash: mash as unknown as HTMLElement,
+    }) as unknown as FakeElement;
+
+    expect(card.className).toBe("ccg-card is-career-card");
+    expect(textTree(card)).toEqual([
+      "Freshman",
+      "School Career",
+      "Freshman · C B A",
+      "today",
+      "2/3",
+      "Ruby · one more",
+      "tokens",
+      "Pass today's daily class.",
+      "progression",
+      "mash",
+    ]);
+    expect(progressions).toEqual([{ rungs: ["9", "10"] }]);
+  });
+
+  it("renders graduated school career cards with ceremony instead of tokens or next-step copy", () => {
+    const renderer = createCareerCardRenderer({
+      document: createDocument(),
+      appendProgression() {},
+    });
+    const tokens = createDocument().createElement("div") as unknown as FakeElement;
+    tokens.textContent = "tokens";
+    const ceremony = createDocument().createElement("div") as unknown as FakeElement;
+    ceremony.className = "graduation-ceremony";
+    ceremony.textContent = "ceremony";
+
+    const card = renderer.buildSchoolCard({
+      graduated: true,
+      roleLabel: "graduated",
+      subtitle: "Arc complete",
+      metrics: [
+        { label: "status", value: "graduated", detail: "four-year arc complete", met: true },
+      ],
+      tokens: tokens as unknown as HTMLElement,
+      ceremony: ceremony as unknown as HTMLElement,
+      nextStep: "Should not render",
+    }) as unknown as FakeElement;
+
+    expect(card.className).toBe("ccg-card is-career-card is-graduated");
+    expect(textTree(card)).toEqual([
+      "graduated",
+      "School Career",
+      "Arc complete",
+      "status",
+      "graduated",
+      "four-year arc complete",
+      "ceremony",
+    ]);
+  });
 });

@@ -13,6 +13,18 @@ export interface ProfileCareerCardSpec {
   progression?: unknown;
 }
 
+export interface SchoolCareerCardSpec {
+  graduated?: boolean;
+  roleLabel?: string;
+  subtitle?: string;
+  metrics?: CareerMetric[];
+  tokens?: HTMLElement | null;
+  ceremony?: HTMLElement | null;
+  nextStep?: string;
+  progression?: unknown;
+  mash?: HTMLElement | null;
+}
+
 export interface CareerCardRendererDeps {
   document: Pick<Document, "createElement">;
   appendProgression(parent: HTMLElement, progression: unknown): void;
@@ -20,6 +32,7 @@ export interface CareerCardRendererDeps {
 
 export interface CareerCardRenderer {
   buildProfileCard(spec: ProfileCareerCardSpec): HTMLElement;
+  buildSchoolCard(spec: SchoolCareerCardSpec): HTMLElement;
   buildMetrics(rows: CareerMetric[]): HTMLElement;
 }
 
@@ -53,6 +66,45 @@ export function createCareerCardRenderer(deps: CareerCardRendererDeps): CareerCa
 
       body.appendChild(renderer.buildMetrics(spec.metrics || []));
       deps.appendProgression(body, spec.progression);
+      card.appendChild(body);
+      return card;
+    },
+    buildSchoolCard(spec): HTMLElement {
+      const card = deps.document.createElement("div");
+      card.className = "ccg-card is-career-card" + (spec.graduated ? " is-graduated" : "");
+
+      const role = deps.document.createElement("span");
+      role.className = "ccg-role career";
+      role.textContent = spec.roleLabel || (spec.graduated ? "graduated" : "");
+      card.appendChild(role);
+
+      const body = deps.document.createElement("div");
+      body.className = "ccg-body";
+
+      const nameEl = deps.document.createElement("div");
+      nameEl.className = "ccg-name";
+      nameEl.textContent = "School Career";
+      body.appendChild(nameEl);
+
+      const sub = deps.document.createElement("div");
+      sub.className = "ccg-subtitle";
+      sub.textContent = spec.subtitle || "";
+      body.appendChild(sub);
+
+      const metrics = renderer.buildMetrics(spec.metrics || []);
+      if (metrics.children.length > 0) body.appendChild(metrics);
+      if (!spec.graduated && spec.tokens) body.appendChild(spec.tokens);
+      if (spec.ceremony) {
+        body.appendChild(spec.ceremony);
+      } else if (spec.nextStep) {
+        const ns = deps.document.createElement("div");
+        ns.className = "ccg-next-step";
+        ns.textContent = spec.nextStep;
+        body.appendChild(ns);
+      }
+
+      deps.appendProgression(body, spec.progression);
+      if (spec.mash) body.appendChild(spec.mash);
       card.appendChild(body);
       return card;
     },
