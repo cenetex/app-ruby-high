@@ -1395,6 +1395,11 @@ export function runViewerClient(bootstrap) {
     openActiveCharacter: openCharacterSheetFromAccount,
     openCharacterCreation: openCharacterCreationFromAccount,
   });
+  const ccgCardRenderer = createCcgCardRenderer({
+    document,
+    renderMarkdownInto,
+    appendProgression,
+  });
   const classReportRenderer = createClassReportRenderer({
     document,
     teacherShortName,
@@ -5220,103 +5225,7 @@ export function runViewerClient(bootstrap) {
   // visual the player complained about is the legacy of the prior
   // append-trailing-row pattern; it's gone now.
   function buildCharacterCard(spec) {
-    // spec: { role, name, subtitle, portraitUrl, accent, stats?, bodyText, quote?, nextStepHint?, footer?, actions? }
-    const card = document.createElement("div");
-    card.className = "ccg-card";
-    if (spec.accent) card.style.borderColor = spec.accent;
-    const role = document.createElement("span");
-    role.className = "ccg-role " + spec.role;
-    if (spec.accent) role.style.background = spec.accent;
-    role.textContent = spec.role;
-    card.appendChild(role);
-    const art = document.createElement("div");
-    art.className = "ccg-art";
-    if (spec.portraitUrl) {
-      const img = document.createElement("img");
-      img.src = spec.portraitUrl;
-      img.alt = "";
-      img.onerror = () => { art.innerHTML = ""; art.style.display = "grid"; art.style.placeItems = "center"; art.textContent = (spec.name || "?").slice(0, 1).toUpperCase(); };
-      art.appendChild(img);
-    } else {
-      art.style.display = "grid";
-      art.style.placeItems = "center";
-      art.style.fontSize = "72px";
-      art.style.color = "var(--text-mute)";
-      art.textContent = (spec.name || "?").slice(0, 1).toUpperCase();
-    }
-    card.appendChild(art);
-    const body = document.createElement("div");
-    body.className = "ccg-body";
-    const nameEl = document.createElement("div");
-    nameEl.className = "ccg-name";
-    nameEl.textContent = spec.name || "—";
-    body.appendChild(nameEl);
-    if (spec.subtitle) {
-      const sub = document.createElement("div");
-      sub.className = "ccg-subtitle";
-      sub.textContent = spec.subtitle;
-      body.appendChild(sub);
-    }
-    if (spec.stats) {
-      const stats = document.createElement("div");
-      stats.className = "ccg-stats";
-      const fmt = (n) => (n >= 0 ? "+" : "") + n;
-      ["head", "heart", "hustle", "honor"].forEach((k) => {
-        const wrap = document.createElement("span");
-        wrap.className = "stat";
-        const ke = document.createElement("span"); ke.className = "k"; ke.textContent = k;
-        const ve = document.createElement("span");
-        const v = spec.stats[k];
-        ve.className = "v" + (v > 0 ? " pos" : v < 0 ? " neg" : "");
-        ve.textContent = fmt(v);
-        wrap.appendChild(ke); wrap.appendChild(ve);
-        stats.appendChild(wrap);
-      });
-      body.appendChild(stats);
-    }
-    if (spec.quote) {
-      const q = document.createElement("blockquote");
-      q.className = "ccg-quote";
-      renderMarkdownInto(q, "“" + spec.quote + "”", { inline: true });
-      body.appendChild(q);
-    }
-    if (spec.nextStepHint) {
-      const ns = document.createElement("div");
-      ns.className = "ccg-next-step";
-      ns.textContent = spec.nextStepHint;
-      body.appendChild(ns);
-    }
-    appendProgression(body, spec.progression);
-    if (spec.footer) {
-      const ft = document.createElement("div");
-      ft.className = "ccg-footer";
-      const title = document.createElement("strong");
-      title.textContent = spec.footer.title;
-      ft.appendChild(title);
-      const content = document.createElement("span");
-      content.className = "ccg-footer-content";
-      renderMarkdownInto(content, spec.footer.content || "", { inline: true });
-      ft.appendChild(content);
-      body.appendChild(ft);
-    }
-    if (spec.actions && spec.actions.length) {
-      const actionsRow = document.createElement("div");
-      actionsRow.className = "ccg-card-actions";
-      for (const a of spec.actions) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        if (a.secondary) btn.className = "secondary";
-        btn.textContent = a.label;
-        btn.addEventListener("click", a.onClick);
-        actionsRow.appendChild(btn);
-      }
-      // Actions render as the LAST element inside .ccg-body — keeps the
-      // card a single rectangle. The teacher/student profile cards still
-      // use this for their Close button until the X-corner pattern lands.
-      body.appendChild(actionsRow);
-    }
-    card.appendChild(body);
-    return card;
+    return ccgCardRenderer.buildCharacterCard(spec);
   }
 
   // Lifted out of appendProgression so the same chip + metadata are reusable

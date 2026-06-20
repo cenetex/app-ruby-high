@@ -179,6 +179,22 @@ describe("viewer regression guardrails", () => {
     expect(clientSource).not.toContain("if (c.showThinking) {");
   });
 
+  it("builds shared CCG character cards from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createCcgCardRenderer(");
+    expectScriptToContain(clientSource, "const ccgCardRenderer = createCcgCardRenderer({");
+    expectScriptToContain(clientSource, "return ccgCardRenderer.buildCharacterCard(spec);");
+    expectScriptToContain(script, "ccg-card-actions");
+    expectScriptToContain(script, "ccg-footer-content");
+    const buildCharacterStart = clientSource.indexOf("function buildCharacterCard(spec)");
+    const buildCharacterEnd = clientSource.indexOf("const SUBJECT_GATE_ICONS", buildCharacterStart);
+    const buildCharacterSource = clientSource.slice(buildCharacterStart, buildCharacterEnd);
+    expect(buildCharacterSource).not.toContain('card.className = "ccg-card";');
+    expect(buildCharacterSource).not.toContain('actionsRow.className = "ccg-card-actions";');
+  });
+
   it("builds blackboard question prompts from typed view models", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
