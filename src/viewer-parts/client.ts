@@ -1429,6 +1429,12 @@ export function runViewerClient(bootstrap) {
     fmtStat,
     renderMarkdownInto,
   });
+  const paperCardRenderer = createPaperCardRenderer({
+    gradeLabels: GRADE_LABELS,
+    buildCharacterCard,
+    defaultPortraitFor,
+    formatSealedDate,
+  });
   const yearbookShareActionsRenderer = createYearbookShareActionsRenderer({
     document,
     absoluteUrl: absoluteViewerUrl,
@@ -6631,33 +6637,7 @@ export function runViewerClient(bootstrap) {
   // path in normalizeLoaded() guarantees these fields exist even on
   // pre-snapshot saves.
   function buildPaperCard(entry, liveChar, livePb, playbooks) {
-    const gradeLabel = GRADE_LABELS[entry.grade] || ("Grade " + entry.grade);
-    const playbookId = entry.playbookId || liveChar.playbookId;
-    const pb = (Array.isArray(playbooks) && playbooks.find((p) => p.id === playbookId)) || livePb;
-    const name = entry.name || liveChar.name;
-    const stats = entry.stats || liveChar.stats;
-    const portraitUrl = entry.portraitDataUrl
-      || liveChar.portraitDataUrl
-      || defaultPortraitFor(playbookId);
-    const quote = entry.flavorQuote || entry.arcAnswer || "";
-    const summary = entry.summary || { correct: 0, total: 0 };
-    const sealedSubtitle = "✓ " + gradeLabel + " · sealed " + formatSealedDate(entry.completedAt)
-      + " · " + summary.correct + "/" + summary.total + " correct";
-
-    const card = buildCharacterCard({
-      role: "player",
-      name,
-      subtitle: sealedSubtitle,
-      portraitUrl,
-      accent: pb.accent,
-      stats,
-      quote,
-      // No progression, no next-step hint, no move footer. A paper card
-      // is a record, not a dashboard.
-    });
-    card.classList.add("is-paper-card");
-    // Sealed badge in the corner (CSS-driven via pseudo-element on the class).
-    return card;
+    return paperCardRenderer.build(entry, liveChar, livePb, playbooks);
   }
 
   // formatSealedDate, fmtStat are in client-pure.

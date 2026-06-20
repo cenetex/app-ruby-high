@@ -220,6 +220,21 @@ describe("viewer regression guardrails", () => {
     expect(careerTokensSource).not.toContain('dice.className = "career-dice";');
   });
 
+  it("builds sealed paper cards from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createPaperCardRenderer(");
+    expectScriptToContain(clientSource, "const paperCardRenderer = createPaperCardRenderer({");
+    expectScriptToContain(clientSource, "return paperCardRenderer.build(entry, liveChar, livePb, playbooks);");
+    expectScriptToContain(script, 'card.classList.add("is-paper-card");');
+    const paperCardStart = clientSource.indexOf("function buildPaperCard(entry, liveChar, livePb, playbooks)");
+    const paperCardEnd = clientSource.indexOf("// formatSealedDate, fmtStat are in client-pure.", paperCardStart);
+    const paperCardSource = clientSource.slice(paperCardStart, paperCardEnd);
+    expect(paperCardSource).not.toContain("const sealedSubtitle");
+    expect(paperCardSource).not.toContain("const card = buildCharacterCard");
+  });
+
   it("builds blackboard question prompts from typed view models", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
