@@ -1394,6 +1394,21 @@ export function runViewerClient(bootstrap) {
     container: els.accountHistoryList,
     rowView: accountHistoryRowView,
   });
+  const accountCardReaderRenderer = createAccountCardReaderRenderer({
+    document,
+    cardBackArtUrl: CARD_BACK_ART_URL,
+    cardProfile: hallPassCardProfile,
+    cardReaderView: accountHallPassCardReaderView,
+    cardArtUrl: hallPassCardArtUrl,
+    appendSolanaProofLink,
+    mintCard: mintHallPassCardFromAccount,
+    isAuthed() {
+      return !!authed;
+    },
+    isBillingBusy() {
+      return !!billingBusy;
+    },
+  });
   const accountCharacterRenderer = createAccountCharacterPanelRenderer({
     document,
     grid: els.accountCharacterGrid,
@@ -2511,139 +2526,7 @@ export function runViewerClient(bootstrap) {
   }
 
   function showHallPassCardReader(card) {
-    if (!card) return;
-    let currentCard = card;
-    const overlay = document.createElement("div");
-    overlay.className = "account-card-reader";
-    overlay.setAttribute("role", "dialog");
-    overlay.setAttribute("aria-modal", "true");
-    const panel = document.createElement("div");
-    let closeButton = null;
-    overlay.appendChild(panel);
-
-    const remove = () => {
-      document.removeEventListener("keydown", onKey);
-      overlay.remove();
-    };
-    const onKey = (event) => {
-      if (event.key === "Escape") remove();
-    };
-    const render = (nextCard, opts) => {
-      currentCard = nextCard || currentCard;
-      const options = opts || {};
-      const profile = hallPassCardProfile(currentCard);
-      const view = accountHallPassCardReaderView(currentCard, {
-        authed,
-        billingBusy,
-        flip: options.flip,
-        profile,
-        revealed: options.revealed,
-      });
-      panel.className = view.panelClassName;
-      panel.replaceChildren();
-
-      const top = document.createElement("div");
-      top.className = "account-card-reader-top";
-      const title = document.createElement("div");
-      title.className = "account-card-reader-title";
-      title.textContent = view.title;
-      const close = document.createElement("button");
-      close.type = "button";
-      close.className = "account-card-reader-close";
-      close.setAttribute("aria-label", "Close card");
-      close.textContent = "X";
-      close.addEventListener("click", remove);
-      closeButton = close;
-      top.appendChild(title);
-      top.appendChild(close);
-      panel.appendChild(top);
-
-      const main = document.createElement("div");
-      main.className = "account-card-reader-main";
-      const artWrap = document.createElement("div");
-      artWrap.className = view.artClassName;
-      const artUrl = view.faceDown ? CARD_BACK_ART_URL : hallPassCardArtUrl(currentCard);
-      if (artUrl) {
-        const img = document.createElement("img");
-        img.alt = view.artAlt;
-        img.src = artUrl;
-        artWrap.appendChild(img);
-      } else {
-        const fallback = document.createElement("div");
-        fallback.className = "account-card-reader-fallback";
-        fallback.textContent = view.fallbackInitial;
-        artWrap.appendChild(fallback);
-      }
-      main.appendChild(artWrap);
-
-      const body = document.createElement("div");
-      body.className = "account-card-reader-body";
-      const detail = document.createElement("div");
-      detail.className = "account-card-reader-detail";
-      detail.textContent = view.detail;
-      body.appendChild(detail);
-      if (view.proofAddress) {
-        appendSolanaProofLink(body, view.proofAddress, "View Card on Solscan");
-      }
-      if (view.teachesVisible) {
-        const teaches = document.createElement("div");
-        teaches.className = "account-hall-pass-card-teaches";
-        const detailLabel = document.createElement("span");
-        detailLabel.textContent = view.teachesLabel;
-        const detailText = document.createElement("strong");
-        detailText.textContent = view.teachesText;
-        teaches.appendChild(detailLabel);
-        teaches.appendChild(detailText);
-        body.appendChild(teaches);
-        if (profile.stats) body.appendChild(buildHallPassStats(profile.stats));
-        if (view.quoteText) {
-          const quote = document.createElement("div");
-          quote.className = "account-hall-pass-card-quote";
-          quote.textContent = view.quoteText;
-          body.appendChild(quote);
-        }
-      } else if (view.noteText) {
-        const note = document.createElement("div");
-        note.className = "account-card-reader-note";
-        note.textContent = view.noteText;
-        body.appendChild(note);
-      }
-
-      const actions = document.createElement("div");
-      actions.className = "account-card-reader-actions";
-      if (view.revealVisible) {
-        const reveal = document.createElement("button");
-        reveal.type = "button";
-        reveal.className = "account-card-tile-reveal";
-        reveal.textContent = view.revealText;
-        reveal.disabled = view.revealDisabled;
-        reveal.title = view.revealTitle;
-        reveal.addEventListener("click", async (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          reveal.disabled = true;
-          reveal.textContent = "Minting...";
-          panel.classList.add("is-minting");
-          const revealedCard = await mintHallPassCardFromAccount(currentCard.id);
-          if (revealedCard) {
-            render(revealedCard, { flip: true, revealed: true });
-            return;
-          }
-          render(currentCard);
-        });
-        actions.appendChild(reveal);
-      }
-      if (actions.childElementCount > 0) body.appendChild(actions);
-      main.appendChild(body);
-      panel.appendChild(main);
-    };
-    overlay.addEventListener("click", (event) => {
-      if (event.target === overlay) remove();
-    });
-    document.addEventListener("keydown", onKey);
-    document.body.appendChild(overlay);
-    render(currentCard);
-    if (closeButton) closeButton.focus({ preventScroll: true });
+    accountCardReaderRenderer.show(card);
   }
 
   function hallPassCardById(cardId) {
@@ -2679,36 +2562,6 @@ export function runViewerClient(bootstrap) {
     if (card.artSheet === "items") return ITEM_CARD_SHEET_URL;
     if (card.artSheet === "locations") return LOCATION_CARD_SHEET_URL;
     return "";
-  }
-
-  function buildHallPassStats(stats) {
-    const row = document.createElement("div");
-    row.className = "account-hall-pass-card-stats";
-    [
-      ["HEAD", stats.head],
-      ["HEART", stats.heart],
-      ["HONOR", stats.honor],
-      ["HUSTLE", stats.hustle],
-    ].forEach(([label, raw]) => {
-      const value = Number(raw || 0);
-      const stat = document.createElement("div");
-      stat.className = "account-hall-pass-card-stat" + (value < 0 ? " is-neg" : " is-pos");
-      const text = document.createElement("span");
-      text.className = "account-hall-pass-card-stat-label";
-      text.textContent = label + " " + (value >= 0 ? "+" : "") + value;
-      const dots = document.createElement("span");
-      dots.className = "account-hall-pass-card-dots";
-      const filled = Math.max(0, Math.min(5, Math.round(value) + 2));
-      for (let i = 0; i < 5; i += 1) {
-        const dot = document.createElement("i");
-        if (i < filled) dot.className = "is-filled";
-        dots.appendChild(dot);
-      }
-      stat.appendChild(text);
-      stat.appendChild(dots);
-      row.appendChild(stat);
-    });
-    return row;
   }
 
   function displayCardText(value, fallback) {

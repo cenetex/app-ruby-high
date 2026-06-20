@@ -295,10 +295,13 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(clientSource, "accountHallPassCardsRenderer.render({");
     expectScriptToContain(script, "function accountHallPassPackTileView(packInput, opts)");
     expectScriptToContain(script, "function accountHallPassCardTileView(cardInput)");
+    expectScriptToContain(script, "function createAccountCardReaderRenderer(");
+    expectScriptToContain(clientSource, "const accountCardReaderRenderer = createAccountCardReaderRenderer({");
+    expectScriptToContain(clientSource, "accountCardReaderRenderer.show(card);");
     expectScriptToContain(script, "function hallPassCardProfile(cardInput)");
-    expectScriptToContain(clientSource, "const profile = hallPassCardProfile(currentCard);");
     expectScriptToContain(script, "function accountHallPassCardReaderView(cardInput, opts)");
-    expectScriptToContain(clientSource, "const view = accountHallPassCardReaderView(currentCard, {");
+    expect(clientSource).not.toContain('overlay.className = "account-card-reader";');
+    expect(clientSource).not.toContain("function buildHallPassStats(stats)");
     expectScriptToContain(script, "function billingCardBurnChoiceView(opts)");
     expectScriptToContain(clientSource, "const view = billingCardBurnChoiceView({");
     expectScriptToContain(script, "function accountComicPanelView(collectionInput)");
@@ -433,8 +436,9 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, '"Face-down Card · mint to reveal · #"');
     expectScriptToContain(script, '"View Card on Solscan"');
     expectScriptToContain(script, "function showHallPassCardReader(card)");
-    expectScriptToContain(script, "const render = (nextCard, opts) =>");
-    expectScriptToContain(script, "const revealedCard = await mintHallPassCardFromAccount(currentCard.id)");
+    expectScriptToContain(script, "mintCard: mintHallPassCardFromAccount");
+    expectScriptToContain(script, "const render = (nextCard, opts)");
+    expectScriptToContain(script, 'const revealedCard = await deps.mintCard(recordValue(currentCard, "id"))');
     expectScriptToContain(script, "render(revealedCard, { flip: true, revealed: true })");
     expectScriptToContain(script, "function hallPassCardById(cardId)");
     expectScriptToContain(script, "function hallPassCardNftImageUrl(card)");

@@ -1,4 +1,5 @@
 import type { ViewerRenderOptions } from "../viewer.js";
+import { createAccountCardReaderRenderer } from "./account-card-reader.js";
 import { createAccountCharacterPanelRenderer } from "./account-character-panel.js";
 import { createAccountComicPanelRenderer } from "./account-comic-panel.js";
 import { createAccountHallPassCardsPanelRenderer } from "./account-hall-pass-cards-panel.js";
@@ -221,6 +222,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   ${serializeConstants()}
   ${serializePureHelpers()}
   const withViewerTimeoutSignal = ${withViewerTimeoutSignal.toString()};
+  const createAccountCardReaderRenderer = ${createAccountCardReaderRenderer.toString()};
   const createAccountCharacterPanelRenderer = ${createAccountCharacterPanelRenderer.toString()};
   const createAccountComicPanelRenderer = ${createAccountComicPanelRenderer.toString()};
   const createAccountHallPassCardsPanelRenderer = ${createAccountHallPassCardsPanelRenderer.toString()};
