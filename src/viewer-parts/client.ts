@@ -6803,6 +6803,9 @@ export function runViewerClient(bootstrap) {
     document,
     buildCharacterCard,
   });
+  const teacherPreviewUpdater = createTeacherPreviewUpdater({
+    renderMarkdownInto,
+  });
   const TEACHER_ROLL_NAMES = ["Ruby", "Sally Science", "Professor Edward", "Mara Vale", "Dr. Mina Quill", "Theo Signal", "Cass Vector", "Nico Frame"];
   const TEACHER_ROLL_STYLES = [
     { subject: "Critical Systems", description: "Calm, surgical, and excellent at turning abstract systems into questions students can actually answer.", quote: "A system is only invisible until it breaks." },
@@ -7935,17 +7938,7 @@ export function runViewerClient(bootstrap) {
     refreshPendingTeacherPreview();
   }
   function refreshPendingTeacherPreview() {
-    if (!pendingTeacherRoll || !packTeacherDetailEl) return;
-    const card = packTeacherDetailEl.querySelector(".is-creation-candidate-card");
-    if (!card) return;
-    const nameEl = card.querySelector(".ccg-name");
-    if (nameEl) nameEl.textContent = pendingTeacherRoll.displayName || "New Teacher";
-    const subtitleEl = card.querySelector(".ccg-subtitle");
-    if (subtitleEl) subtitleEl.textContent = (pendingTeacherRoll.subject || "Custom class") + " · teacher candidate";
-    const quoteEl = card.querySelector(".ccg-quote");
-    if (quoteEl) renderMarkdownInto(quoteEl, pendingTeacherRoll.quote ? "“" + pendingTeacherRoll.quote + "”" : "", { inline: true });
-    const footerEl = card.querySelector(".ccg-footer-content");
-    if (footerEl) renderMarkdownInto(footerEl, pendingTeacherRoll.description || "", { inline: true });
+    teacherPreviewUpdater.refresh(packTeacherDetailEl, pendingTeacherRoll);
   }
   function setPackEditorTabsHidden(hidden) {
     const tabs = packEditEl.querySelector(".pack-editor-tabs");

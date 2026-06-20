@@ -303,6 +303,21 @@ describe("viewer regression guardrails", () => {
     expect(deckSource).not.toContain('saveBtn.className = "primary teacher-save-button";');
   });
 
+  it("refreshes teacher creation previews from a typed updater", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createTeacherPreviewUpdater(");
+    expectScriptToContain(clientSource, "const teacherPreviewUpdater = createTeacherPreviewUpdater({");
+    expectScriptToContain(clientSource, "teacherPreviewUpdater.refresh(packTeacherDetailEl, pendingTeacherRoll);");
+    expectScriptToContain(script, 'const card = root.querySelector(".is-creation-candidate-card");');
+    const refreshStart = clientSource.indexOf("function refreshPendingTeacherPreview()");
+    const refreshEnd = clientSource.indexOf("function setPackEditorTabsHidden(hidden)", refreshStart);
+    const refreshSource = clientSource.slice(refreshStart, refreshEnd);
+    expect(refreshSource).not.toContain('card.querySelector(".ccg-name")');
+    expect(refreshSource).not.toContain('renderMarkdownInto(quoteEl');
+  });
+
   it("builds report cards from a typed renderer", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");

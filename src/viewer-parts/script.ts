@@ -44,6 +44,7 @@ import { createStudentPoolCardRenderer } from "./student-pool-card.js";
 import { createMashGridRenderer } from "./mash-grid.js";
 import { createTeacherRollControlsRenderer } from "./teacher-roll-controls.js";
 import { createTeacherCreationDeckRenderer } from "./teacher-creation-deck.js";
+import { createTeacherPreviewUpdater } from "./teacher-preview-updater.js";
 import { runViewerClient } from "./client.js";
 import * as Pure from "./client-pure.js";
 
@@ -290,6 +291,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createMashGridRenderer = ${createMashGridRenderer.toString()};
   const createTeacherRollControlsRenderer = ${createTeacherRollControlsRenderer.toString()};
   const createTeacherCreationDeckRenderer = ${createTeacherCreationDeckRenderer.toString()};
+  const createTeacherPreviewUpdater = ${createTeacherPreviewUpdater.toString()};
   const parseViewerSseFrames = ${parseViewerSseFrames.toString()};
   const consumeViewerSseStream = ${consumeViewerSseStream.toString()};
   const runViewerClient = ${runViewerClient.toString()};
