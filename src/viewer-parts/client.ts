@@ -1408,6 +1408,9 @@ export function runViewerClient(bootstrap) {
     document,
     streakScoreMultiplier,
   });
+  const creationStatsRenderer = createCreationStatsRenderer({
+    document,
+  });
   const classReportRenderer = createClassReportRenderer({
     document,
     teacherShortName,
@@ -6741,22 +6744,7 @@ export function runViewerClient(bootstrap) {
     }
 
     function renderCreationStatsInto(parent, stats) {
-      parent.replaceChildren();
-      const fmt = (n) => (n >= 0 ? "+" : "") + n;
-      ["head", "heart", "hustle", "honor"].forEach((k) => {
-        const wrap = document.createElement("span");
-        wrap.className = "stat";
-        const ke = document.createElement("span");
-        ke.className = "k";
-        ke.textContent = k;
-        const ve = document.createElement("span");
-        const v = Number(stats && stats[k] || 0);
-        ve.className = "v" + (v > 0 ? " pos" : v < 0 ? " neg" : "");
-        ve.textContent = fmt(v);
-        wrap.appendChild(ke);
-        wrap.appendChild(ve);
-        parent.appendChild(wrap);
-      });
+      creationStatsRenderer.renderInto(parent, stats);
     }
 
     function renderRolled(c) {

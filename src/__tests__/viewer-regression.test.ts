@@ -272,6 +272,21 @@ describe("viewer regression guardrails", () => {
     expect(reportCardSource).not.toContain("const avg = essayAverage");
   });
 
+  it("renders character creation stat chips from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createCreationStatsRenderer(");
+    expectScriptToContain(clientSource, "const creationStatsRenderer = createCreationStatsRenderer({");
+    expectScriptToContain(clientSource, "creationStatsRenderer.renderInto(parent, stats);");
+    expectScriptToContain(script, 'wrap.className = "stat";');
+    const creationStatsStart = clientSource.indexOf("function renderCreationStatsInto(parent, stats)");
+    const creationStatsEnd = clientSource.indexOf("function renderRolled(c)", creationStatsStart);
+    const creationStatsSource = clientSource.slice(creationStatsStart, creationStatsEnd);
+    expect(creationStatsSource).not.toContain('wrap.className = "stat";');
+    expect(creationStatsSource).not.toContain('ve.className = "v"');
+  });
+
   it("builds blackboard question prompts from typed view models", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
