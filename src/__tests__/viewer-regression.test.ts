@@ -256,6 +256,21 @@ describe("viewer regression guardrails", () => {
     expect(studentPoolSource).not.toContain("pool.slice(0, 8).forEach");
   });
 
+  it("builds social card grids from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createMashGridRenderer(");
+    expectScriptToContain(clientSource, "const mashGridRenderer = createMashGridRenderer({");
+    expectScriptToContain(clientSource, "return mashGridRenderer.build(c, graduated);");
+    expectScriptToContain(script, 'tile.className = "mash-tile";');
+    const mashGridStart = clientSource.indexOf("function buildMashGrid(c, graduated)");
+    const mashGridEnd = clientSource.indexOf("function essayReportsForCard()", mashGridStart);
+    const mashGridSource = clientSource.slice(mashGridStart, mashGridEnd);
+    expect(mashGridSource).not.toContain('tile.className = "mash-tile";');
+    expect(mashGridSource).not.toContain('tag.className = "mash-resolved-axis";');
+  });
+
   it("builds report cards from a typed renderer", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");

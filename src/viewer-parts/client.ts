@@ -1466,6 +1466,12 @@ export function runViewerClient(bootstrap) {
     formatSealedDate,
     clipEssayText,
   });
+  const mashGridRenderer = createMashGridRenderer({
+    document,
+    students: STUDENTS,
+    recentRelationshipEvents,
+    mashTickStory,
+  });
   const reportCardRenderer = createReportCardRenderer({
     document,
     essayLetter,
@@ -6056,95 +6062,7 @@ export function runViewerClient(bootstrap) {
   // superlatives on the diploma. This is the player-facing slice — a
   // compact 2x3 of cells plus the resolved axis lines underneath.
   function buildMashGrid(c, graduated) {
-    if (!c || !c.mashCard || !c.mashCard.cells) return null;
-    const card = c.mashCard;
-    const wrap = document.createElement("div");
-    wrap.className = "mash-grid-wrap";
-
-    const heading = document.createElement("div");
-    heading.className = "mash-grid-heading";
-    heading.textContent = graduated ? "Social Card · sealed" : "Social Card";
-    wrap.appendChild(heading);
-
-    const grid = document.createElement("div");
-    grid.className = "mash-grid";
-    STUDENTS.forEach((s) => {
-      const cell = card.cells[s.id];
-      const tile = document.createElement("div");
-      tile.className = "mash-tile";
-      const aff = (cell && typeof cell.affinity === "number") ? cell.affinity : 0;
-      if (cell && cell.scratched) tile.classList.add("is-scratched");
-      else if (cell && cell.circled) tile.classList.add("is-circled");
-      else if (aff > 0) tile.classList.add("is-warm");
-      else if (aff < 0) tile.classList.add("is-cool");
-      tile.style.setProperty("--mash-accent", s.color);
-
-      const dot = document.createElement("span");
-      dot.className = "mash-tile-dot";
-      tile.appendChild(dot);
-
-      const name = document.createElement("span");
-      name.className = "mash-tile-name";
-      name.textContent = s.name;
-      tile.appendChild(name);
-
-      const meter = document.createElement("span");
-      meter.className = "mash-tile-meter";
-      meter.setAttribute("aria-label", "affinity " + aff);
-      meter.textContent = cell && cell.scratched
-        ? "✗"
-        : cell && cell.circled
-        ? "○"
-        : aff > 0
-        ? "+" + aff
-        : aff < 0
-        ? String(aff)
-        : "·";
-      tile.appendChild(meter);
-
-      grid.appendChild(tile);
-    });
-    wrap.appendChild(grid);
-
-    const recentTicks = recentRelationshipEvents().slice(-3);
-    if (recentTicks.length > 0) {
-      const recent = document.createElement("ul");
-      recent.className = "mash-recent";
-      recentTicks.forEach((event) => {
-        const li = document.createElement("li");
-        li.textContent = mashTickStory(event);
-        recent.appendChild(li);
-      });
-      wrap.appendChild(recent);
-    }
-
-    const resolved = card.resolved || {};
-    const lines = [];
-    const order = ["crush", "job", "lives", "pet", "money", "lucky"];
-    order.forEach((axis) => {
-      const r = resolved[axis];
-      if (!r) return;
-      const who = (STUDENTS.find((s) => s.id === r.studentId) || {}).name || r.studentId;
-      lines.push({ axis, who, value: r.value });
-    });
-    if (lines.length > 0) {
-      const list = document.createElement("ul");
-      list.className = "mash-resolved";
-      lines.forEach((l) => {
-        const li = document.createElement("li");
-        const tag = document.createElement("span");
-        tag.className = "mash-resolved-axis";
-        tag.textContent = l.axis;
-        const body = document.createElement("span");
-        body.className = "mash-resolved-body";
-        body.textContent = l.who + " — " + l.value;
-        li.appendChild(tag);
-        li.appendChild(body);
-        list.appendChild(li);
-      });
-      wrap.appendChild(list);
-    }
-    return wrap;
+    return mashGridRenderer.build(c, graduated);
   }
 
   function essayReportsForCard() {
