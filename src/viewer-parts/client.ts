@@ -1485,6 +1485,13 @@ export function runViewerClient(bootstrap) {
     body: els.leaderboardBody,
     viewFor: leaderboardView,
   });
+  const raceStripRenderer = createRaceStripRenderer({
+    document,
+    timerLabel: els.timerLabel,
+    timerPill: els.timerPill,
+    row: els.raceRow,
+    viewFor: raceStripView,
+  });
 
   // ── message factories ────────────────────────────────────────────────────
   function knownTeacherAssetId(faculty) {
@@ -4060,58 +4067,11 @@ export function runViewerClient(bootstrap) {
 
   // ── race strip (timer + per-NPC thinking/locked indicators) ─────────────
   function renderRaceStrip(t) {
-    const view = raceStripView(
-      t,
-      STUDENTS,
-      STUDENTS.filter((s) => shouldShowStudentId(s.id)).map((s) => s.id),
-      playerDisplayName(),
-    );
-    // Visibility is owned by applyViewMode/CSS via data-mode. We bail
-    // here only when there's NO content to paint — applyViewMode has
-    // already hidden the strip if mode != round-live.
-    if (!view) {
-      els.raceRow.innerHTML = "";
-      return;
-    }
-    // Timer label (uses server-derived remainingMs as the source of truth).
-    els.timerLabel.textContent = view.timer.label;
-    els.timerPill.classList.toggle("is-warn", view.timer.warn);
-    els.timerPill.classList.toggle("is-danger", view.timer.danger);
-    els.timerPill.classList.toggle("is-locked", view.timer.locked);
-
-    // Per-participant cards (player + NPCs).
-    els.raceRow.innerHTML = "";
-    for (const c of view.cards) {
-      const card = document.createElement("span");
-      card.className = "race-card" + (c.isLocked ? " is-locked" : "");
-      if (c.isCorrect === true) card.classList.add("is-correct");
-      else if (c.isCorrect === false) card.classList.add("is-wrong");
-      if (c.isFirstCorrect) card.classList.add("is-first-correct");
-      const av = document.createElement("span");
-      av.className = "race-avatar";
-      av.style.background = c.color;
-      av.style.color = "#fff";
-      av.textContent = c.avatarText;
-      card.appendChild(av);
-      const nameEl = document.createElement("span");
-      nameEl.textContent = c.name;
-      card.appendChild(nameEl);
-      if (c.pickText) {
-        const lt = document.createElement("span");
-        lt.className = "pick-letter";
-        lt.textContent = c.pickText;
-        if (c.isTimedOut) lt.title = "Timed out";
-        card.appendChild(lt);
-      } else if (c.showThinking) {
-        const dots = document.createElement("span");
-        dots.className = "thinking-dots";
-        dots.appendChild(document.createElement("span"));
-        dots.appendChild(document.createElement("span"));
-        dots.appendChild(document.createElement("span"));
-        card.appendChild(dots);
-      }
-      els.raceRow.appendChild(card);
-    }
+    raceStripRenderer.render(t, {
+      students: STUDENTS,
+      visibleStudentIds: STUDENTS.filter((s) => shouldShowStudentId(s.id)).map((s) => s.id),
+      playerName: playerDisplayName(),
+    });
   }
   function renderTeacherFigure(faculty) {
     if (!faculty || faculty.id === LOUNGE_ID) {

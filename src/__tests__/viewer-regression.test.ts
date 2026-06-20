@@ -170,11 +170,13 @@ describe("viewer regression guardrails", () => {
 
     expectScriptToContain(script, "function raceStripView");
     expectScriptToContain(script, "function raceStripPickText");
-    expectScriptToContain(clientSource, "const view = raceStripView(");
-    expectScriptToContain(clientSource, "els.timerLabel.textContent = view.timer.label;");
-    expectScriptToContain(clientSource, "for (const c of view.cards)");
-    expectScriptToContain(clientSource, "lt.textContent = c.pickText;");
-    expectScriptToContain(clientSource, "if (c.showThinking) {");
+    expectScriptToContain(script, "function createRaceStripRenderer(deps)");
+    expectScriptToContain(clientSource, "const raceStripRenderer = createRaceStripRenderer({");
+    expectScriptToContain(clientSource, "viewFor: raceStripView");
+    expectScriptToContain(clientSource, "raceStripRenderer.render(t, {");
+    expect(clientSource).not.toContain("for (const c of view.cards)");
+    expect(clientSource).not.toContain("lt.textContent = c.pickText;");
+    expect(clientSource).not.toContain("if (c.showThinking) {");
   });
 
   it("builds blackboard question prompts from typed view models", () => {

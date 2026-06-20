@@ -24,7 +24,7 @@ export type LeaderboardRowView = {
   playbookName: string;
   gradeChips: LeaderboardGradeChipView[];
 };
-type RaceStripCardView = {
+export type RaceStripCardView = {
   kind: "player" | "student";
   id: string;
   name: string;
