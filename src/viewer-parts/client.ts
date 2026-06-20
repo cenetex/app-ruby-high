@@ -1326,6 +1326,24 @@ export function runViewerClient(bootstrap) {
       return displayCardText(card && card.title, "Collectible Card");
     },
   });
+  const billingProductsRenderer = createBillingProductsRenderer({
+    document,
+    productRowView: billingProductRowView,
+    hallPassPaymentChoiceView: billingHallPassPaymentChoiceView,
+    cardPackPaymentChoiceView: billingCardPackPaymentChoiceView,
+    cardBurnChoiceView: billingCardBurnChoiceView,
+    getRubyLink: buildGetRubyLink,
+    isPrivyConfigured() {
+      return !!privyState.configured;
+    },
+    canPackCheckout(solana) {
+      return !!(solana && solana.configured && currentRubyTokenMintFromSolana(solana));
+    },
+    onSelectProduct: selectBillingProduct,
+    onStartCheckout: startCheckout,
+    onStartSolanaPayment: startSolanaPayment,
+    onBurnCard: burnHallPassCardFromBilling,
+  });
   const accountHistoryRenderer = createAccountHistoryPanelRenderer({
     document,
     container: els.accountHistoryList,
@@ -2944,31 +2962,10 @@ export function runViewerClient(bootstrap) {
       selectedBillingProductId = null;
     }
     shownProducts.forEach((product) => {
-      const view = billingProductRowView(mode, product, solana, {
+      els.billingProducts.appendChild(billingProductsRenderer.buildProductRow(mode, product, solana, {
         selected: product.id === selectedBillingProductId,
         billingBusy,
-      });
-      const row = document.createElement("div");
-      row.className = "billing-product";
-      if (view.selected) row.classList.add("is-selected");
-      const body = document.createElement("div");
-      const title = document.createElement("div");
-      title.className = "billing-product-title";
-      title.textContent = view.titleText;
-      const meta = document.createElement("div");
-      meta.className = "billing-product-meta";
-      meta.textContent = view.metaText;
-      body.appendChild(title);
-      body.appendChild(meta);
-      const buy = document.createElement("button");
-      buy.type = "button";
-      buy.className = "billing-buy";
-      buy.textContent = view.buttonText;
-      buy.disabled = view.buttonDisabled;
-      buy.addEventListener("click", () => selectBillingProduct(product.id));
-      row.appendChild(body);
-      row.appendChild(buy);
-      els.billingProducts.appendChild(row);
+      }));
       if (product.id === selectedBillingProductId) {
         els.billingProducts.appendChild(mode === "card-packs"
           ? buildCardPackPaymentChoice(solana, product)
@@ -2998,103 +2995,23 @@ export function runViewerClient(bootstrap) {
   // packCountLabel is in client-pure.ts.
 
   function buildBillingPaymentChoice(payload, product) {
-    const view = billingHallPassPaymentChoiceView(payload, product, { billingBusy });
-    const panel = document.createElement("div");
-    panel.className = "billing-payment-choice";
-    const title = document.createElement("div");
-    title.className = "billing-payment-title";
-    title.textContent = view.titleText;
-    const meta = document.createElement("div");
-    meta.className = "billing-product-meta";
-    meta.textContent = view.metaText;
-    const actions = document.createElement("div");
-    actions.className = "billing-payment-actions";
-    const stripe = document.createElement("button");
-    stripe.type = "button";
-    stripe.className = "billing-buy";
-    stripe.textContent = view.buttonText;
-    stripe.disabled = view.buttonDisabled;
-    stripe.title = view.buttonTitle;
-    stripe.addEventListener("click", () => startCheckout(product.id));
-    actions.appendChild(stripe);
-    panel.appendChild(title);
-    panel.appendChild(meta);
-    panel.appendChild(actions);
-    return panel;
+    return billingProductsRenderer.buildHallPassPaymentChoice(payload, product, { billingBusy });
   }
 
   function buildHallPassCardBurnChoice(hallPassesPerBurnedCard) {
     const ownerWallet = knownSolanaOwnerWalletAddress() || connectedSolanaWalletAddress();
     const burnableCards = ownerWallet ? activeMintedHallPassCardsForWallet(ownerWallet).length : mintedCardCount(lastTelemetry);
-    const view = billingCardBurnChoiceView({
+    return billingProductsRenderer.buildCardBurnChoice({
       hasWallet: !!ownerWallet,
       burnableCards,
       hallPassesPerBurnedCard,
       authed,
       billingBusy,
     });
-    const row = document.createElement("div");
-    row.className = "billing-product billing-card-burn";
-    const body = document.createElement("div");
-    const title = document.createElement("div");
-    title.className = "billing-product-title";
-    title.textContent = view.titleText;
-    const meta = document.createElement("div");
-    meta.className = "billing-product-meta";
-    meta.textContent = view.metaText;
-    body.appendChild(title);
-    body.appendChild(meta);
-    const burn = document.createElement("button");
-    burn.type = "button";
-    burn.className = "billing-buy";
-    burn.textContent = view.buttonText;
-    burn.disabled = view.buttonDisabled;
-    burn.title = view.buttonTitle;
-    burn.addEventListener("click", () => burnHallPassCardFromBilling());
-    row.appendChild(body);
-    row.appendChild(burn);
-    return row;
   }
 
   function buildCardPackPaymentChoice(solana, product) {
-    const panel = document.createElement("div");
-    panel.className = "billing-payment-choice";
-    const canPackCheckout = !!(solana && solana.configured && currentRubyTokenMintFromSolana(solana));
-    const cryptoUnavailable = !privyState.configured;
-    const view = billingCardPackPaymentChoiceView(solana, product, {
-      cryptoUnavailable,
-      canPackCheckout,
-      billingBusy,
-    });
-    const title = document.createElement("div");
-    title.className = "billing-payment-title";
-    title.textContent = view.titleText;
-    const meta = document.createElement("div");
-    meta.className = "billing-product-meta";
-    meta.textContent = view.metaText;
-    const actions = document.createElement("div");
-    actions.className = "billing-payment-actions";
-    const crypto = document.createElement("button");
-    crypto.type = "button";
-    crypto.className = "billing-buy";
-    crypto.textContent = view.buttonText;
-    crypto.disabled = view.buttonDisabled;
-    crypto.title = view.buttonTitle;
-    crypto.addEventListener("click", () => startSolanaPayment(product.id));
-    actions.appendChild(crypto);
-    panel.appendChild(title);
-    panel.appendChild(meta);
-    panel.appendChild(actions);
-    if (view.noteText) {
-      const note = document.createElement("div");
-      note.className = "billing-payment-note";
-      note.textContent = view.noteText;
-      panel.appendChild(note);
-    }
-    if (view.showGetRubyLink) {
-      panel.appendChild(buildGetRubyLink("billing-get-ruby-link billing-payment-note-link"));
-    }
-    return panel;
+    return billingProductsRenderer.buildCardPackPaymentChoice(solana, product, { billingBusy });
   }
 
   async function burnHallPassCardFromBilling() {

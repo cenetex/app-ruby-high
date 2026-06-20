@@ -7,6 +7,7 @@ import { createAccountHistoryPanelRenderer } from "./account-history-panel.js";
 import { createAccountPublicWorldController } from "./account-public-world.js";
 import { createAccountTrustPanelRenderer } from "./account-trust-panel.js";
 import { createViewerApiClient, withViewerTimeoutSignal } from "./api.js";
+import { createBillingProductsRenderer } from "./billing-products.js";
 import { createCardBurnSelector } from "./card-burn-selector.js";
 import { consumeViewerSseStream, parseViewerSseFrames } from "./sse.js";
 import { createViewerTurnController } from "./turn-controller.js";
@@ -233,6 +234,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createAccountPublicWorldController = ${createAccountPublicWorldController.toString()};
   const createAccountTrustPanelRenderer = ${createAccountTrustPanelRenderer.toString()};
   const createViewerApiClient = ${createViewerApiClient.toString()};
+  const createBillingProductsRenderer = ${createBillingProductsRenderer.toString()};
   const createCardBurnSelector = ${createCardBurnSelector.toString()};
   const createViewerTurnController = ${createViewerTurnController.toString()};
   const createViewerWorldActionsController = ${createViewerWorldActionsController.toString()};
