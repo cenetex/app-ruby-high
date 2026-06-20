@@ -1441,6 +1441,17 @@ export function runViewerClient(bootstrap) {
     formatSealedDate,
     clipEssayText,
   });
+  const reportCardRenderer = createReportCardRenderer({
+    document,
+    essayLetter,
+    clipEssayText,
+    facultyLabel,
+    essayScoreText,
+    formatSealedDate,
+    essayResponderName,
+    essayRivalryText,
+    buildCareerMetrics,
+  });
   const yearbookShareActionsRenderer = createYearbookShareActionsRenderer({
     document,
     absoluteUrl: absoluteViewerUrl,
@@ -6185,13 +6196,6 @@ export function runViewerClient(bootstrap) {
       .sort((a, b) => Number(a.gradedAt || 0) - Number(b.gradedAt || 0));
   }
   // essayScoreText, essayLetter are in client-pure.
-  function essayAverage(reports) {
-    const scores = reports
-      .map((r) => Number(r.score))
-      .filter((n) => Number.isFinite(n));
-    if (scores.length === 0) return null;
-    return scores.reduce((sum, n) => sum + n, 0) / scores.length;
-  }
   function essayResponderName(id) {
     if (!id) return "—";
     if (id === "player") return playerDisplayName();
@@ -6225,112 +6229,10 @@ export function runViewerClient(bootstrap) {
     return "No classroom winner recorded yet.";
   }
   function buildReportEntry(report) {
-    const row = document.createElement("article");
-    row.className = "report-entry" + (report.passed ? " is-passed" : "");
-
-    const grade = document.createElement("div");
-    grade.className = "report-entry-grade";
-    grade.textContent = essayLetter(report.score);
-    row.appendChild(grade);
-
-    const body = document.createElement("div");
-    body.className = "report-entry-body";
-
-    const title = document.createElement("div");
-    title.className = "report-entry-title";
-    title.textContent = clipEssayText(report.prompt, 72) || "Essay";
-    body.appendChild(title);
-
-    const meta = document.createElement("div");
-    meta.className = "report-entry-meta";
-    const subject = report.subject ? " · " + report.subject : "";
-    meta.textContent = facultyLabel(report.faculty) + subject + " · " + essayScoreText(report.score) + " · " + formatSealedDate(report.gradedAt);
-    body.appendChild(meta);
-
-    if (report.comment) {
-      const comment = document.createElement("div");
-      comment.className = "report-entry-comment";
-      comment.textContent = clipEssayText(report.comment, 104);
-      body.appendChild(comment);
-    }
-
-    const foot = document.createElement("div");
-    foot.className = "report-entry-foot";
-    if (report.bestResponder) {
-      const best = document.createElement("span");
-      best.textContent = "Best: " + essayResponderName(report.bestResponder)
-        + (Number.isFinite(Number(report.bestResponderScore)) ? " " + essayScoreText(report.bestResponderScore) : "");
-      foot.appendChild(best);
-    }
-    if (report.response) {
-      const yours = document.createElement("span");
-      yours.textContent = "You: " + clipEssayText(report.response, 58);
-      foot.appendChild(yours);
-    }
-    if (foot.children.length > 0) body.appendChild(foot);
-
-    row.appendChild(body);
-    return row;
+    return reportCardRenderer.buildEntry(report);
   }
   function buildReportCard() {
-    const reports = essayReportsForCard();
-    const recent = reports.slice(-5).reverse();
-    const visible = recent.slice(0, 3);
-    const avg = essayAverage(reports);
-    const playerWins = reports.filter((r) => r.bestResponder === "player").length;
-    const topScore = reports
-      .map((r) => Number(r.score))
-      .filter((n) => Number.isFinite(n))
-      .sort((a, b) => b - a)[0];
-
-    const card = document.createElement("div");
-    card.className = "ccg-card is-report-card";
-
-    const role = document.createElement("span");
-    role.className = "ccg-role report";
-    role.textContent = "report";
-    card.appendChild(role);
-
-    const body = document.createElement("div");
-    body.className = "ccg-body";
-
-    const nameEl = document.createElement("div");
-    nameEl.className = "ccg-name";
-    nameEl.textContent = "Report Card";
-    body.appendChild(nameEl);
-
-    const sub = document.createElement("div");
-    sub.className = "ccg-subtitle";
-    sub.textContent = reports.length
-      ? reports.length + " essays · average " + essayScoreText(avg)
-      : "No graded essays yet";
-    body.appendChild(sub);
-
-    body.appendChild(buildCareerMetrics([
-      { label: "essays", value: String(reports.length), detail: "graded", met: reports.length > 0 },
-      { label: "average", value: essayScoreText(avg), detail: "teacher score", met: Number(avg) >= 7 },
-      { label: "top", value: Number.isFinite(Number(topScore)) ? essayScoreText(topScore) : "—", detail: playerWins + " class wins", met: playerWins > 0 },
-    ]));
-
-    if (reports.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "report-empty";
-      empty.textContent = "Your first graded essay will land here.";
-      body.appendChild(empty);
-    } else {
-      const rivalry = document.createElement("div");
-      rivalry.className = "report-rivalry";
-      rivalry.textContent = essayRivalryText(recent);
-      body.appendChild(rivalry);
-
-      const list = document.createElement("div");
-      list.className = "report-list";
-      visible.forEach((report) => list.appendChild(buildReportEntry(report)));
-      body.appendChild(list);
-    }
-
-    card.appendChild(body);
-    return card;
+    return reportCardRenderer.buildCard(essayReportsForCard());
   }
 
   // ── School Career Card builder ──────────────────────────────────────────

@@ -250,6 +250,22 @@ describe("viewer regression guardrails", () => {
     expect(studentPoolSource).not.toContain("pool.slice(0, 8).forEach");
   });
 
+  it("builds report cards from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createReportCardRenderer(");
+    expectScriptToContain(clientSource, "const reportCardRenderer = createReportCardRenderer({");
+    expectScriptToContain(clientSource, "return reportCardRenderer.buildEntry(report);");
+    expectScriptToContain(clientSource, "return reportCardRenderer.buildCard(essayReportsForCard());");
+    expectScriptToContain(script, 'card.className = "ccg-card is-report-card";');
+    const reportCardStart = clientSource.indexOf("function buildReportCard()");
+    const reportCardEnd = clientSource.indexOf("// ── School Career Card builder", reportCardStart);
+    const reportCardSource = clientSource.slice(reportCardStart, reportCardEnd);
+    expect(reportCardSource).not.toContain('list.className = "report-list";');
+    expect(reportCardSource).not.toContain("const avg = essayAverage");
+  });
+
   it("builds blackboard question prompts from typed view models", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");

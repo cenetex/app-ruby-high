@@ -261,9 +261,9 @@ outcomes without requiring crypto participation.
    welcome Hall Pass popup, card-burn selector, billing product/payment DOM,
    comic-reader modal rendering, class-report card/next-step rendering, and
    yearbook archive/collectible/share-action, shared CCG card rendering, and
-   career-card/metric/token, sealed paper-card, and student-pool card rendering
-   now also delegate to typed renderers/controllers instead of unchecked
-   client-local DOM branching.
+   career-card/metric/token, sealed paper-card, student-pool card, and report-card
+   rendering now also delegate to typed renderers/controllers instead of
+   unchecked client-local DOM branching.
 2. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the
    current minimal room contribution proof with one visible cooperative reward:
    completed live-room goals now carry a class-wide Study Spark reward label in
