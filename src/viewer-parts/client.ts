@@ -1408,6 +1408,9 @@ export function runViewerClient(bootstrap) {
     document,
     streakScoreMultiplier,
   });
+  const creationCandidateCardRenderer = createCreationCandidateCardRenderer({
+    document,
+  });
   const creationRowsRenderer = createCreationRowsRenderer({
     document,
   });
@@ -6518,63 +6521,19 @@ export function runViewerClient(bootstrap) {
 
     // Creation now uses the same two-card deck surface as profile sheets:
     // a playable character card beside a roll-control card.
-    const candidateCard = document.createElement("div");
-    candidateCard.className = "ccg-card is-character-card is-creation-candidate-card";
-    const candidateRole = document.createElement("span");
-    candidateRole.className = "ccg-role player";
-    candidateRole.textContent = "player";
-    candidateCard.appendChild(candidateRole);
-    const candidateArt = document.createElement("div");
-    candidateArt.className = "ccg-art";
-    const portraitImg = document.createElement("img");
-    portraitImg.alt = "";
-    candidateArt.appendChild(portraitImg);
-    candidateCard.appendChild(candidateArt);
-    const candidateBody = document.createElement("div");
-    candidateBody.className = "ccg-body";
-    candidateCard.appendChild(candidateBody);
-    const candidateName = document.createElement("div");
-    candidateName.className = "ccg-name";
-    candidateBody.appendChild(candidateName);
-    const candidateSubtitle = document.createElement("div");
-    candidateSubtitle.className = "ccg-subtitle";
-    candidateBody.appendChild(candidateSubtitle);
-    const candidateStats = document.createElement("div");
-    candidateStats.className = "ccg-stats";
-    candidateBody.appendChild(candidateStats);
-    const candidateQuote = document.createElement("blockquote");
-    candidateQuote.className = "ccg-quote";
-    candidateBody.appendChild(candidateQuote);
-    const candidateMove = document.createElement("div");
-    candidateMove.className = "ccg-footer";
-    const candidateMoveTitle = document.createElement("strong");
-    const candidateMoveContent = document.createElement("span");
-    candidateMoveContent.className = "ccg-footer-content";
-    candidateMove.appendChild(candidateMoveTitle);
-    candidateMove.appendChild(candidateMoveContent);
-    candidateBody.appendChild(candidateMove);
-    const candidateHint = document.createElement("div");
-    candidateHint.className = "ccg-next-step";
-    candidateHint.textContent = "Ruby will save this student and start today's class.";
-    candidateBody.appendChild(candidateHint);
-    const portraitStatus = document.createElement("div");
-    portraitStatus.className = "creation-portrait-status";
-    candidateBody.appendChild(portraitStatus);
-    const candidateActions = document.createElement("div");
-    candidateActions.className = "ccg-card-actions";
-    const portraitBtn = document.createElement("button");
-    portraitBtn.type = "button";
-    portraitBtn.className = "secondary";
-    portraitBtn.textContent = "✨ Generate AI portrait";
-    const saveBtn = document.createElement("button");
-    saveBtn.type = "button";
-    saveBtn.className = "primary";
-    saveBtn.textContent = "Save Character";
-    saveBtn.disabled = true;
-    saveBtn.hidden = true;
-    candidateActions.appendChild(portraitBtn);
-    candidateActions.appendChild(saveBtn);
-    candidateBody.appendChild(candidateActions);
+    const candidateCardRefs = creationCandidateCardRenderer.build();
+    const candidateCard = candidateCardRefs.card;
+    const candidateRole = candidateCardRefs.role;
+    const portraitImg = candidateCardRefs.portraitImg;
+    const candidateName = candidateCardRefs.name;
+    const candidateSubtitle = candidateCardRefs.subtitle;
+    const candidateStats = candidateCardRefs.stats;
+    const candidateQuote = candidateCardRefs.quote;
+    const candidateMoveTitle = candidateCardRefs.moveTitle;
+    const candidateMoveContent = candidateCardRefs.moveContent;
+    const portraitStatus = candidateCardRefs.portraitStatus;
+    const portraitBtn = candidateCardRefs.portraitBtn;
+    const saveBtn = candidateCardRefs.saveBtn;
 
     const controlsCard = document.createElement("div");
     controlsCard.className = "ccg-card is-career-card is-creation-control-card";

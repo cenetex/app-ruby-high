@@ -302,6 +302,21 @@ describe("viewer regression guardrails", () => {
     expect(makeRowSource).not.toContain('reroll.className = "creation-reroll";');
   });
 
+  it("renders character creation candidate cards from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createCreationCandidateCardRenderer(");
+    expectScriptToContain(clientSource, "const creationCandidateCardRenderer = createCreationCandidateCardRenderer({");
+    expectScriptToContain(clientSource, "const candidateCardRefs = creationCandidateCardRenderer.build();");
+    expectScriptToContain(script, 'card.className = "ccg-card is-character-card is-creation-candidate-card";');
+    const creationStart = clientSource.indexOf("function renderSheetCreation(playbooks)");
+    const controlsStart = clientSource.indexOf("const controlsCard = document.createElement", creationStart);
+    const creationCandidateSource = clientSource.slice(creationStart, controlsStart);
+    expect(creationCandidateSource).not.toContain('candidateCard.className = "ccg-card is-character-card is-creation-candidate-card";');
+    expect(creationCandidateSource).not.toContain('candidateActions.className = "ccg-card-actions";');
+  });
+
   it("builds blackboard question prompts from typed view models", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
