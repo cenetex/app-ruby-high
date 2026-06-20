@@ -453,7 +453,12 @@ describe("viewer regression guardrails", () => {
     // binding is visible to the IIFE scope at runtime.
     expectScriptToContain(script, '"HALL_PASS_CARDS_PER_PACK":5');
     expect(script).toMatch(/const \{[^}]*\bHALL_PASS_CARDS_PER_PACK\b[^}]*\} = VIEWER_CONSTANTS/);
+    expectScriptToContain(script, "function createPackMintProgressController(deps)");
+    expectScriptToContain(script, "const packMintProgressController = createPackMintProgressController({");
     expectScriptToContain(script, "function showPackMintProgress(message, options)");
+    expectScriptToContain(script, "packMintProgressController.show(message, options)");
+    expectScriptToContain(script, "packMintProgressController.update(message)");
+    expectScriptToContain(script, "packMintProgressController.hide(delayMs)");
     expectScriptToContain(script, "Please wait: minting pack");
     expectScriptToContain(script, "Please wait: minting card");
     expectScriptToContain(script, "rotate: false");
@@ -461,6 +466,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "setPrivyStatus(\"Review the card mint transaction in your wallet.\", false)");
     expect(script).not.toContain("Review the mint preview...");
     expect(script).not.toContain("Confirm the mint in your wallet...");
+    expect(clientSource).not.toContain('overlay.className = "pack-mint-overlay";');
     const hallPassRendererConfig = script.slice(
       script.indexOf("const accountHallPassCardsRenderer = createAccountHallPassCardsPanelRenderer({"),
       script.indexOf("const roomChannelRowsController = createRoomChannelRowsController({"),

@@ -789,12 +789,6 @@ export function runViewerClient(bootstrap) {
   let packSyncBusy = false;
   let packSyncWalletAddress = "";
   let packSyncAt = 0;
-  let packMintProgressEl = null;
-  let packMintProgressTitleEl = null;
-  let packMintProgressStatusEl = null;
-  let packMintProgressTimer = null;
-  let packMintProgressCloseTimer = null;
-  let packMintProgressIndex = 0;
   let chatViewSeq = 0;         // bumps on room/lounges switches; invalidates stale history/SSE work
   function setNextButtonDisabled(disabled) {
     if (els.nextBtn) els.nextBtn.disabled = !!disabled;
@@ -803,90 +797,22 @@ export function runViewerClient(bootstrap) {
     els.chatInput.disabled = !!disabled;
     els.chatSend.disabled = !!disabled;
   }
-  function ensurePackMintProgressOverlay() {
-    if (packMintProgressEl && document.body.contains(packMintProgressEl)) return packMintProgressEl;
-    const overlay = document.createElement("div");
-    overlay.className = "pack-mint-overlay";
-    overlay.setAttribute("role", "dialog");
-    overlay.setAttribute("aria-modal", "true");
-    overlay.setAttribute("aria-hidden", "true");
-
-    const panel = document.createElement("div");
-    panel.className = "pack-mint-panel";
-    const spinner = document.createElement("div");
-    spinner.className = "pack-mint-spinner";
-    spinner.setAttribute("aria-hidden", "true");
-    const copy = document.createElement("div");
-    copy.className = "pack-mint-copy";
-    const title = document.createElement("div");
-    title.className = "pack-mint-title";
-    title.textContent = "Please wait: minting pack";
-    const status = document.createElement("div");
-    status.className = "pack-mint-status";
-    status.setAttribute("aria-live", "polite");
-    status.textContent = PACK_MINT_STATUS_LINES[0];
-    copy.appendChild(title);
-    copy.appendChild(status);
-    panel.appendChild(spinner);
-    panel.appendChild(copy);
-    overlay.appendChild(panel);
-    document.body.appendChild(overlay);
-    packMintProgressEl = overlay;
-    packMintProgressTitleEl = title;
-    packMintProgressStatusEl = status;
-    return overlay;
-  }
+  const packMintProgressController = createPackMintProgressController({
+    document,
+    defaultLines: PACK_MINT_STATUS_LINES,
+    setInterval,
+    clearInterval,
+    setTimeout,
+    clearTimeout,
+  });
   function updatePackMintProgress(message) {
-    if (!packMintProgressStatusEl) return;
-    const text = String(message || "").trim();
-    if (text) packMintProgressStatusEl.textContent = text;
+    packMintProgressController.update(message);
   }
   function showPackMintProgress(message, options) {
-    const overlay = ensurePackMintProgressOverlay();
-    if (packMintProgressCloseTimer) {
-      clearTimeout(packMintProgressCloseTimer);
-      packMintProgressCloseTimer = null;
-    }
-    const title = options && options.title ? String(options.title) : "Please wait: minting pack";
-    const rotate = !options || options.rotate !== false;
-    const lines = options && Array.isArray(options.lines) && options.lines.length > 0
-      ? options.lines
-      : PACK_MINT_STATUS_LINES;
-    if (packMintProgressTitleEl) packMintProgressTitleEl.textContent = title;
-    packMintProgressIndex = 0;
-    updatePackMintProgress(message || lines[0]);
-    overlay.classList.add("is-open");
-    overlay.setAttribute("aria-hidden", "false");
-    if (packMintProgressTimer) clearInterval(packMintProgressTimer);
-    packMintProgressTimer = null;
-    if (rotate) {
-      packMintProgressTimer = setInterval(() => {
-        packMintProgressIndex = (packMintProgressIndex + 1) % lines.length;
-        updatePackMintProgress(lines[packMintProgressIndex]);
-      }, 1600);
-    }
+    packMintProgressController.show(message, options);
   }
   function hidePackMintProgress(delayMs) {
-    const close = () => {
-      if (packMintProgressTimer) {
-        clearInterval(packMintProgressTimer);
-        packMintProgressTimer = null;
-      }
-      if (!packMintProgressEl) return;
-      packMintProgressEl.classList.remove("is-open");
-      packMintProgressEl.setAttribute("aria-hidden", "true");
-    };
-    if (packMintProgressCloseTimer) clearTimeout(packMintProgressCloseTimer);
-    const delay = Math.max(0, Math.floor(Number(delayMs || 0)));
-    if (delay > 0) {
-      packMintProgressCloseTimer = setTimeout(() => {
-        packMintProgressCloseTimer = null;
-        close();
-      }, delay);
-      return;
-    }
-    packMintProgressCloseTimer = null;
-    close();
+    packMintProgressController.hide(delayMs);
   }
   const turnController = createViewerTurnController({
     setNextButtonDisabled,

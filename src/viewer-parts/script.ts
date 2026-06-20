@@ -16,6 +16,7 @@ import { createViewerWorldLifecycleController } from "./world-lifecycle.js";
 import { createViewerWorldPanelController } from "./world-panel.js";
 import { createRoomChannelRowsController } from "./room-channel-rows.js";
 import { createLeaderboardPanelRenderer } from "./leaderboard-panel.js";
+import { createPackMintProgressController } from "./pack-mint-progress.js";
 import { createRaceStripRenderer } from "./race-strip.js";
 import { createArcIndicatorRenderer } from "./arc-indicator.js";
 import { createGuestSpotlightRenderer } from "./guest-spotlight.js";
@@ -238,6 +239,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createViewerWorldController = ${createViewerWorldController.toString()};
   const createRoomChannelRowsController = ${createRoomChannelRowsController.toString()};
   const createLeaderboardPanelRenderer = ${createLeaderboardPanelRenderer.toString()};
+  const createPackMintProgressController = ${createPackMintProgressController.toString()};
   const createRaceStripRenderer = ${createRaceStripRenderer.toString()};
   const createArcIndicatorRenderer = ${createArcIndicatorRenderer.toString()};
   const createGuestSpotlightRenderer = ${createGuestSpotlightRenderer.toString()};
