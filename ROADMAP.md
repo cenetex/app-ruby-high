@@ -265,7 +265,7 @@ outcomes without requiring crypto participation.
    student-pool card, report-card, graduation ceremony shells, and
    character-creation intro/loading, candidate-card, control-card, rolled-state
    presentation, stat-chip, reroll-row, social-card grid, and teacher-roll
-   control/deck/preview rendering now also delegate to typed
+   control/deck/preview/stat-pill rendering now also delegate to typed
    renderers/controllers instead of unchecked client-local DOM branching.
 2. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the
    current minimal room contribution proof with one visible cooperative reward:

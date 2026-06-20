@@ -318,6 +318,21 @@ describe("viewer regression guardrails", () => {
     expect(refreshSource).not.toContain('renderMarkdownInto(quoteEl');
   });
 
+  it("builds teacher stat pills from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createTeacherStatPillsRenderer(");
+    expectScriptToContain(clientSource, "const teacherStatPillsRenderer = createTeacherStatPillsRenderer({");
+    expectScriptToContain(clientSource, "return teacherStatPillsRenderer.build(stats);");
+    expectScriptToContain(script, 'wrap.className = "teacher-stat-pills";');
+    const statsStart = clientSource.indexOf("function buildTeacherStatPills(stats)");
+    const statsEnd = clientSource.indexOf("function differentTeacherAsset(currentAssetId)", statsStart);
+    const statsSource = clientSource.slice(statsStart, statsEnd);
+    expect(statsSource).not.toContain('wrap.className = "teacher-stat-pills";');
+    expect(statsSource).not.toContain('pill.className = "pill stat "');
+  });
+
   it("builds report cards from a typed renderer", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");

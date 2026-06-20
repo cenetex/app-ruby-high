@@ -6806,6 +6806,11 @@ export function runViewerClient(bootstrap) {
   const teacherPreviewUpdater = createTeacherPreviewUpdater({
     renderMarkdownInto,
   });
+  const teacherStatPillsRenderer = createTeacherStatPillsRenderer({
+    document,
+    statLabel,
+    fmtStat,
+  });
   const TEACHER_ROLL_NAMES = ["Ruby", "Sally Science", "Professor Edward", "Mara Vale", "Dr. Mina Quill", "Theo Signal", "Cass Vector", "Nico Frame"];
   const TEACHER_ROLL_STYLES = [
     { subject: "Critical Systems", description: "Calm, surgical, and excellent at turning abstract systems into questions students can actually answer.", quote: "A system is only invisible until it breaks." },
@@ -7841,16 +7846,7 @@ export function runViewerClient(bootstrap) {
     }
   }
   function buildTeacherStatPills(stats) {
-    const s = stats || { head: 0, heart: 0, hustle: 0, honor: 0 };
-    const wrap = document.createElement("div");
-    wrap.className = "teacher-stat-pills";
-    ["head", "heart", "hustle", "honor"].forEach((key) => {
-      const pill = document.createElement("span");
-      pill.className = "pill stat " + key;
-      pill.textContent = statLabel(key) + " " + fmtStat(Number(s[key] || 0));
-      wrap.appendChild(pill);
-    });
-    return wrap;
+    return teacherStatPillsRenderer.build(stats);
   }
   function differentTeacherAsset(currentAssetId) {
     const choices = PREGENERATED_TEACHER_ASSETS.filter((asset) => asset.id !== currentAssetId);
