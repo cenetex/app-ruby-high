@@ -232,7 +232,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function roomCompletionProgressLabel");
     expectScriptToContain(script, "function roomChannelRowViews");
     expectScriptToContain(script, "function createRoomChannelRowsController");
-    expectScriptToContain(clientSource, "return classmateArcStanding(entry, currentGrade");
+    expectScriptToContain(script, "function createClassmateChannelRowsRenderer(");
     expectScriptToContain(clientSource, "return classmateArcSubtitle(entry, currentGrade");
     expectScriptToContain(clientSource, "return classmateArcProgress(entry);");
     expectScriptToContain(clientSource, "return classmateArcProgressLabel(progress);");
@@ -240,6 +240,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(clientSource, "return roomCompletionProgressLabel(fac, progress);");
     expectScriptToContain(clientSource, "const roomViews = roomChannelRowViews(t.rooms || [], roster, cohort, t.faculty, STUDENTS, visibleStudentIds);");
     expectScriptToContain(clientSource, "roomChannelRowsController.appendRows(els.channelsList, roomViews, roster);");
+    expectScriptToContain(clientSource, "const classmateChannelRowsRenderer = createClassmateChannelRowsRenderer({");
+    expectScriptToContain(clientSource, "classmateChannelRowsRenderer.appendSection(els.channelsList, classmateChannelGroups(t, grade));");
+    expect(clientSource).not.toContain('row.className = "channel-row student-row";');
+    expect(clientSource).not.toContain('meter.className = "student-year-meter";');
   });
 
   it("keeps lounge mode out of the empty-board class-start CTA", () => {

@@ -272,7 +272,7 @@ export type WelcomeHallPassPopupView = {
   showLater: boolean;
   primaryText: string;
 };
-type ClassmateArcProgress = { value: number; total: number };
+export type ClassmateArcProgress = { value: number; total: number };
 type RoomCompletionProgress = { value: number; total: number };
 export type RoomChannelStudentView = { id: string; name: string };
 export type RoomChannelRowView = {

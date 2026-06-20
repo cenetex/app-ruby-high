@@ -18,6 +18,7 @@ import { createLeaderboardPanelRenderer } from "./leaderboard-panel.js";
 import { createRaceStripRenderer } from "./race-strip.js";
 import { createArcIndicatorRenderer } from "./arc-indicator.js";
 import { createGuestSpotlightRenderer } from "./guest-spotlight.js";
+import { createClassmateChannelRowsRenderer } from "./classmate-channel-rows.js";
 import { runViewerClient } from "./client.js";
 import * as Pure from "./client-pure.js";
 
@@ -238,6 +239,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createRaceStripRenderer = ${createRaceStripRenderer.toString()};
   const createArcIndicatorRenderer = ${createArcIndicatorRenderer.toString()};
   const createGuestSpotlightRenderer = ${createGuestSpotlightRenderer.toString()};
+  const createClassmateChannelRowsRenderer = ${createClassmateChannelRowsRenderer.toString()};
   const parseViewerSseFrames = ${parseViewerSseFrames.toString()};
   const consumeViewerSseStream = ${consumeViewerSseStream.toString()};
   const runViewerClient = ${runViewerClient.toString()};
