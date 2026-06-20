@@ -764,6 +764,11 @@ export function runViewerClient(bootstrap) {
   const teacherImageStatusView = createTeacherImageStatusView({
     openRouterGenerationMessage,
   });
+  const profileCardView = createProfileCardView({
+    gradeLabels: GRADE_LABELS,
+    streakRequired: STREAK_REQUIRED,
+    teachingFacultyLabels: TEACHING_FACULTY_LABELS,
+  });
   let lockedFor = null;
   let renderedHistorySig = null;
   let activeQuestionId = null; // currently displayed question id on the blackboard
@@ -5545,107 +5550,35 @@ export function runViewerClient(bootstrap) {
     const arc = (lastTelemetry && lastTelemetry.npc_cohort)
       ? lastTelemetry.npc_cohort.find((n) => n.id === npc.id)
       : null;
-    const arcLine = !arc
-      ? (GRADE_LABELS[npc.grade] || npc.grade)
-      : arc.graduated
-        ? "Graduated · " + arc.completedGrades.length + " years"
-        : (GRADE_LABELS[arc.grade] || arc.grade) + " · " + arc.streak.count + " daily classes";
     renderCardDeck([
-      buildCharacterCard({
-        role: "student",
-        name: s.name,
-        subtitle: arcLine + (npc.currentRoom ? " · #" + roomLabelFor(npc.currentRoom) : ""),
+      buildCharacterCard(profileCardView.studentProfileCard({
+        npc,
+        student: s,
+        arc,
         portraitUrl: studentFullPortraitUrl(npc.id),
-        accent: s.color,
-        stats: npc.stats,
-        quote: studentVibe(npc.id),
-        // Close lives in the overlay corner now (X), so no per-card button.
-      }),
+      })),
       buildStudentCareerCard(npc, s, arc),
     ]);
   }
 
-  const TEACHER_STATS = {
-    ruby: { head: 1, heart: 2, hustle: 1, honor: 0 },
-    "sally-science": { head: 3, heart: 0, hustle: 1, honor: 1 },
-    "professor-edward": { head: 3, heart: 1, hustle: -1, honor: 2 },
-  };
-  const TEACHER_SUBJECT_LINE = {
-    ruby: "Homeroom · school lore + general",
-    "sally-science": "Science Lab · physics, chem, bio, earth-sci",
-    "professor-edward": "Library · postwar literature & literary theory",
-  };
-  const TEACHER_SIGNATURE = {
-    ruby: "My job's the door. The teaching happens in the rooms.",
-    "sally-science": "I'd rather you be wrong with reasons than right by accident.",
-    "professor-edward": "Every wrong answer has a half-truth folded inside it. We start there.",
-  };
-
-  function teacherStatsFor(facultyId) {
-    if (facultyId && typeof facultyId === "object" && facultyId.stats) return facultyId.stats;
-    const id = typeof facultyId === "object" ? facultyId.id : facultyId;
-    return TEACHER_STATS[id] || { head: 2, heart: 1, hustle: 1, honor: 1 };
-  }
   function roomLabelFor(roomId) {
-    return ({
-      homeroom: "homeroom",
-      science: "science",
-      literature: "literature",
-      lounge: "lounge",
-    })[roomId] || roomId || "class";
+    return profileCardView.roomLabel(roomId);
   }
   function teacherFullPortraitUrl(facultyId) {
     return teacherPortraitUrl(facultyId, "full");
   }
   function buildTeacherProfileCard(fac) {
-    const subjectLine = TEACHER_SUBJECT_LINE[fac.id] || (Array.isArray(fac.subjects) ? fac.subjects.join(", ") : fac.bio);
-    return buildCharacterCard({
-      role: "teacher",
-      name: fac.displayName,
-      subtitle: subjectLine,
-      portraitUrl: teacherFullPortraitUrl(fac.id),
-      accent: fac.accent,
-      stats: teacherStatsFor(fac),
-      quote: TEACHER_SIGNATURE[fac.id] || fac.bio,
-      footer: { title: "Teaches", content: subjectLine },
-      // Close lives in the overlay corner now (X), so no per-card button.
-    });
+    return buildCharacterCard(profileCardView.teacherProfileCard(fac, teacherFullPortraitUrl(fac.id)));
   }
   function buildTeacherCareerCard(fac) {
-    const subjectLine = TEACHER_SUBJECT_LINE[fac.id] || (Array.isArray(fac.subjects) ? fac.subjects.join(", ") : fac.bio);
-    return buildProfileCareerCard({
-      badgeLabel: "faculty",
-      name: "Faculty Card",
-      subtitle: subjectLine,
-      metrics: [
-        { label: "role", value: "Teacher", detail: "faculty", met: true },
-        { label: "subject", value: TEACHING_FACULTY_LABELS[fac.id] || "Faculty", detail: "room", met: true },
-        { label: "questions", value: String(fac.questionCount || 0), detail: "question bank", met: false },
-      ],
-    });
+    return buildProfileCareerCard(profileCardView.teacherCareerCard(fac));
   }
   function buildStudentCareerCard(npc, _s, arc) {
-    const grade = String((arc && arc.grade) || npc.grade || lastTelemetry?.current_grade || "9");
-    const gradeLabel = GRADE_LABELS[grade] || ("Grade " + grade);
-    const graduated = !!(arc && arc.graduated);
-    const streakReq = STREAK_REQUIRED[grade] || 1;
-    const streakHere = arc && arc.streak && arc.streak.grade === grade ? arc.streak.count : 0;
-    return buildProfileCareerCard({
-      badgeLabel: graduated ? "graduated" : gradeLabel,
-      subtitle: graduated ? "Graduated · classmate" : gradeLabel + " · classmate",
-      metrics: graduated
-        ? [
-            { label: "status", value: "graduated", detail: "four-year arc complete", met: true },
-            { label: "yearbook", value: ((arc && arc.completedGrades && arc.completedGrades.length) || 4) + "/4", detail: "paper cards sealed", met: true },
-            { label: "room", value: roomLabelFor(npc.currentRoom), detail: "last seen", met: false },
-          ]
-        : [
-            { label: "year", value: gradeLabel, detail: "active grade", met: false },
-            { label: "daily", value: streakHere + "/" + streakReq, detail: "classes passed", met: streakHere >= streakReq },
-            { label: "room", value: roomLabelFor(npc.currentRoom), detail: "current room", met: false },
-          ],
-      progression: buildProgressionForNpcArc(arc, grade),
-    });
+    return buildProfileCareerCard(profileCardView.studentCareerCard({
+      npc,
+      arc,
+      currentGrade: lastTelemetry?.current_grade,
+    }));
   }
   function buildProfileCareerCard(spec) {
     return careerCardRenderer.buildProfileCard(spec);
@@ -5656,49 +5589,6 @@ export function runViewerClient(bootstrap) {
   function buildCareerTokens(spec) {
     return careerTokensRenderer.build(spec);
   }
-  function buildCompletedHighSchoolProgression() {
-    return {
-      graduated: true,
-      rungs: ["9", "10", "11", "12"].map((g) => ({
-        grade: g,
-        label: GRADE_LABELS[g],
-        streakReq: STREAK_REQUIRED[g] || 1,
-        state: "completed",
-      })),
-    };
-  }
-  function buildProgressionForNpcArc(arc, fallbackGrade) {
-    if (arc && arc.graduated) return buildCompletedHighSchoolProgression();
-    const completed = new Set((arc && Array.isArray(arc.completedGrades) ? arc.completedGrades : []));
-    const currentGrade = String((arc && arc.grade) || fallbackGrade || lastTelemetry?.current_grade || "9");
-    const streakHere = arc && arc.streak && arc.streak.grade === currentGrade ? arc.streak.count : 0;
-    const rungs = ["9", "10", "11", "12"].map((g) => {
-      const streakReq = STREAK_REQUIRED[g] || 1;
-      let state = "future";
-      let streakProgress;
-      if (completed.has(g)) {
-        state = "completed";
-      } else if (g === currentGrade) {
-        state = "current";
-        streakProgress = { have: streakHere, need: streakReq };
-      }
-      return { grade: g, label: GRADE_LABELS[g], streakReq, state, streakProgress };
-    });
-    return { rungs, graduated: false };
-  }
-  function studentVibe(id) {
-    // In-voice one-liners — what each student would actually say. MTG-style
-    // flavor text where the line itself characterizes the speaker.
-    return ({
-      lyra: "wait what — i KNEW it was c. ok im rewriting my notes.",
-      sami: "respectfully, ouch. couldve been you.",
-      ravi: "OK so technically — wait, sorry, am i shouting again",
-      indra: "the answer was always c.",
-      mika: "you cooked. for real.",
-      noor: "the test designer is in this room and is laughing.",
-    })[id] || "—";
-  }
-
   // ── character sheet UI ──────────────────────────────────────────────────
   const sheetEl = $("sheet-overlay");
   const sheetCard = $("sheet-card");

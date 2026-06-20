@@ -349,6 +349,24 @@ describe("viewer regression guardrails", () => {
     expect(reasonSource).not.toContain('openRouterGenerationMessage("generating teacher images")');
   });
 
+  it("builds profile card copy from typed view models", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createProfileCardView(");
+    expectScriptToContain(clientSource, "const profileCardView = createProfileCardView({");
+    expectScriptToContain(clientSource, "return profileCardView.roomLabel(roomId);");
+    expectScriptToContain(clientSource, "profileCardView.teacherProfileCard(fac, teacherFullPortraitUrl(fac.id))");
+    expectScriptToContain(clientSource, "profileCardView.teacherCareerCard(fac)");
+    expectScriptToContain(clientSource, "profileCardView.studentProfileCard({");
+    expectScriptToContain(clientSource, "profileCardView.studentCareerCard({");
+    expectScriptToContain(script, "Science Lab · physics, chem, bio, earth-sci");
+    expectScriptToContain(script, "Every wrong answer has a half-truth folded inside it. We start there.");
+    expect(clientSource).not.toContain("const TEACHER_SUBJECT_LINE =");
+    expect(clientSource).not.toContain("function studentVibe(id)");
+    expect(clientSource).not.toContain("function buildProgressionForNpcArc(");
+  });
+
   it("builds report cards from a typed renderer", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
