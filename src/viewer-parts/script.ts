@@ -9,6 +9,7 @@ import { createAccountTrustPanelRenderer } from "./account-trust-panel.js";
 import { createViewerApiClient, withViewerTimeoutSignal } from "./api.js";
 import { createBillingProductsRenderer } from "./billing-products.js";
 import { createCardBurnSelector } from "./card-burn-selector.js";
+import { createComicReaderRenderer } from "./comic-reader.js";
 import { consumeViewerSseStream, parseViewerSseFrames } from "./sse.js";
 import { createViewerTurnController } from "./turn-controller.js";
 import { createViewerWorldActionsController } from "./world-actions.js";
@@ -236,6 +237,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createViewerApiClient = ${createViewerApiClient.toString()};
   const createBillingProductsRenderer = ${createBillingProductsRenderer.toString()};
   const createCardBurnSelector = ${createCardBurnSelector.toString()};
+  const createComicReaderRenderer = ${createComicReaderRenderer.toString()};
   const createViewerTurnController = ${createViewerTurnController.toString()};
   const createViewerWorldActionsController = ${createViewerWorldActionsController.toString()};
   const createViewerWorldFeedClient = ${createViewerWorldFeedClient.toString()};

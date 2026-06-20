@@ -1395,6 +1395,11 @@ export function runViewerClient(bootstrap) {
     openActiveCharacter: openCharacterSheetFromAccount,
     openCharacterCreation: openCharacterCreationFromAccount,
   });
+  const comicReaderRenderer = createComicReaderRenderer({
+    document,
+    pageTitle: comicPageTitle,
+    pageUrl: comicPageUrl,
+  });
   const accountComicRenderer = createAccountComicPanelRenderer({
     document,
     container: els.accountComics,
@@ -6838,62 +6843,7 @@ export function runViewerClient(bootstrap) {
   }
 
   function showComicReader(collection, unlock, options) {
-    if (!unlock) return;
-    options = options || {};
-    const pageNumber = Math.floor(Number(unlock.pageNumber || 1));
-    const overlay = document.createElement("div");
-    overlay.className = "comic-reader" + (options.reward ? " is-reward" : "");
-    overlay.setAttribute("role", "dialog");
-    overlay.setAttribute("aria-modal", "true");
-    overlay.setAttribute("aria-label", options.reward ? "Comic page unlocked" : comicPageTitle(pageNumber));
-
-    const panel = document.createElement("div");
-    panel.className = "comic-reader-panel";
-    const top = document.createElement("div");
-    top.className = "comic-reader-top";
-    const title = document.createElement("div");
-    title.className = "comic-reader-title";
-    title.textContent = options.reward ? "Comic Page Unlocked" : comicPageTitle(pageNumber);
-    if (options.reward) {
-      const detail = document.createElement("div");
-      detail.className = "comic-reader-detail";
-      detail.textContent = comicPageTitle(pageNumber);
-      title.appendChild(document.createTextNode(" "));
-      title.appendChild(detail);
-    }
-    const close = document.createElement("button");
-    close.type = "button";
-    close.className = "comic-reader-close";
-    close.setAttribute("aria-label", "Close comic page");
-    close.textContent = "X";
-    top.appendChild(title);
-    top.appendChild(close);
-    panel.appendChild(top);
-
-    const img = document.createElement("img");
-    img.alt = comicPageTitle(pageNumber);
-    img.src = comicPageUrl(pageNumber);
-    panel.appendChild(img);
-    overlay.appendChild(panel);
-
-    let closed = false;
-    const remove = () => {
-      if (closed) return;
-      closed = true;
-      document.removeEventListener("keydown", onKey);
-      overlay.remove();
-      if (typeof options.onClose === "function") options.onClose();
-    };
-    const onKey = (event) => {
-      if (event.key === "Escape") remove();
-    };
-    close.addEventListener("click", remove);
-    overlay.addEventListener("click", (event) => {
-      if (event.target === overlay) remove();
-    });
-    document.addEventListener("keydown", onKey);
-    document.body.appendChild(overlay);
-    close.focus({ preventScroll: true });
+    comicReaderRenderer.show(collection, unlock, options);
   }
 
   function buildYearbookArchive(entries, liveChar, livePb, playbooks) {

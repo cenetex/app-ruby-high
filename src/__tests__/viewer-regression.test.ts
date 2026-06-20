@@ -310,8 +310,13 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(clientSource, "return billingProductsRenderer.buildCardBurnChoice({");
     expectScriptToContain(script, "function accountComicPanelView(collectionInput)");
     expectScriptToContain(script, "function createAccountComicPanelRenderer(");
+    expectScriptToContain(script, "function createComicReaderRenderer(");
+    expectScriptToContain(clientSource, "const comicReaderRenderer = createComicReaderRenderer({");
+    expectScriptToContain(clientSource, "comicReaderRenderer.show(collection, unlock, options);");
     expectScriptToContain(clientSource, "const accountComicRenderer = createAccountComicPanelRenderer({");
     expectScriptToContain(clientSource, "accountComicRenderer.render(comicCollectionForTelemetry());");
+    expect(clientSource).not.toContain('overlay.className = "comic-reader"');
+    expect(clientSource).not.toContain('panel.className = "comic-reader-panel";');
     expectScriptToContain(script, "function accountCharacterCardView(entry, slotNumber, playbooks, currentGrade, fallbackPortraitUrl)");
     expectScriptToContain(script, "function accountEmptyCharacterSlotView(slotNumber, canCreateCharacter)");
     expectScriptToContain(script, "function accountCharacterPanelView(slotsInput, walletInput, opts)");
@@ -659,7 +664,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "if (nextSignature === previousRenderSignature && container.childElementCount > 0) return;");
     expectScriptToContain(script, "function syncComicUnlockModals(t)");
     expectScriptToContain(script, "Comic Page Unlocked");
-    expectScriptToContain(script, 'title.appendChild(document.createTextNode(" "));');
+    expectScriptToContain(script, 'title.appendChild(deps.document.createTextNode(" "));');
     expect(script).not.toContain("FIRST BELL CARD");
     expect(script).not.toContain("First Bell Card Unlocked");
     expect(script).not.toContain("Start Social Card");
