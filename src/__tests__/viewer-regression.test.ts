@@ -164,6 +164,16 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "leaderboardViewOpen = true");
   });
 
+  it("keeps live-round mobile chrome from crowding the answer loop", () => {
+    expect(VIEWER_CSS).toContain("@media (max-width: 600px)");
+    expect(VIEWER_CSS).toContain("--composer-min: 50px");
+    expect(VIEWER_CSS).toContain("grid-template-rows: auto minmax(0, auto) auto minmax(56px, 1fr) auto");
+    expect(VIEWER_CSS).toContain("max-height: 46dvh");
+    expect(VIEWER_CSS).toContain('.shell[data-mode="round-live"] .world-panel');
+    expect(VIEWER_CSS).toContain("max-height: 52px");
+    expect(VIEWER_CSS).toContain('.shell[data-mode="round-live"] .world-panel-rooms');
+  });
+
   it("builds the race strip from typed view models", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");

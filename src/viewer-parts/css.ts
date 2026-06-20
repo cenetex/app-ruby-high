@@ -7194,14 +7194,42 @@ export const VIEWER_CSS = `
      sideways instead of stacking, and long prompts opt into smaller chalk
      type via script-set classes. */
   @media (max-width: 600px) {
+    :root {
+      --composer-min: 50px;
+    }
     main.workspace {
-      grid-template-rows: auto minmax(0, auto) auto minmax(92px, 1fr) auto;
+      grid-template-rows: auto minmax(0, auto) auto minmax(72px, 1fr) auto;
+    }
+    .shell[data-mode="round-live"] main.workspace {
+      grid-template-rows: auto minmax(0, auto) auto minmax(56px, 1fr) auto;
+    }
+    .top-bar {
+      gap: 6px;
+      padding-right: calc(var(--safe-right) + 8px);
+    }
+    .hamburger {
+      width: 36px;
+      height: 36px;
+      padding: 7px;
+    }
+    .channel-name .top {
+      font-size: 15px;
+      line-height: 1.12;
+    }
+    .channel-name .sub {
+      font-size: 10px;
+    }
+    .arc-indicator {
+      max-width: 38vw;
+      gap: 4px;
+      padding: 6px 9px;
+      font-size: 11px;
     }
     .blackboard-panel {
-      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 242px);
+      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 176px);
     }
     .blackboard-panel[data-mode="round-revealed"] {
-      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 186px);
+      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 144px);
     }
     .blackboard-meta {
       flex-wrap: nowrap;
@@ -7220,42 +7248,42 @@ export const VIEWER_CSS = `
     }
     .board-frame { padding: 6px; }
     .board {
-      min-height: 86px;
-      max-height: 30dvh;
-      padding: 12px 62px 12px 12px;
-      font-size: 20px;
-      line-height: 1.32;
+      min-height: 82px;
+      max-height: 27dvh;
+      padding: 10px 56px 10px 12px;
+      font-size: 18px;
+      line-height: 1.3;
     }
     .blackboard-panel[data-faculty="ruby"] .board,
     .blackboard-panel[data-faculty="professor-edward"] .board {
-      font-size: 21px;
+      font-size: 19px;
       line-height: 1.28;
     }
     .blackboard-panel[data-faculty="sally-science"] .board {
-      font-size: 19px;
-      line-height: 1.35;
+      font-size: 18px;
+      line-height: 1.33;
     }
     .blackboard-panel.is-long-prompt .board {
-      max-height: 34dvh;
-      font-size: 18px;
-      line-height: 1.32;
+      max-height: 29dvh;
+      font-size: 17px;
+      line-height: 1.31;
     }
     .blackboard-panel.is-essay-prompt .board {
-      max-height: 38dvh;
-      font-size: 17px;
-      line-height: 1.32;
+      max-height: 31dvh;
+      font-size: 16px;
+      line-height: 1.31;
     }
     .blackboard-panel.is-long-prompt[data-faculty="ruby"] .board,
     .blackboard-panel.is-long-prompt[data-faculty="professor-edward"] .board,
     .blackboard-panel.is-essay-prompt[data-faculty="ruby"] .board,
     .blackboard-panel.is-essay-prompt[data-faculty="professor-edward"] .board {
-      font-size: 18px;
+      font-size: 17px;
     }
     .teacher-figure {
-      width: 48px;
-      height: 48px;
-      right: calc(var(--safe-right) + 10px);
-      top: 8px;
+      width: 44px;
+      height: 44px;
+      right: calc(var(--safe-right) + 9px);
+      top: 7px;
       border-width: 2px;
     }
     .blackboard-panel.is-essay-prompt .teacher-figure {
@@ -7263,22 +7291,22 @@ export const VIEWER_CSS = `
       height: 40px;
     }
     .answers-host {
-      padding: 8px calc(var(--safe-right) + 8px) 8px calc(var(--safe-left) + 8px);
-      max-height: 34dvh;
+      padding: 7px calc(var(--safe-right) + 8px) 8px calc(var(--safe-left) + 8px);
+      max-height: 46dvh;
     }
-    .answers { gap: 7px; }
+    .answers { gap: 6px; }
     .answer {
-      min-height: 46px;
-      padding: 10px 10px 10px 44px;
+      min-height: 43px;
+      padding: 9px 10px 9px 42px;
       border-radius: 10px;
-      font-size: 14px;
+      font-size: 13.5px;
       line-height: 1.25;
     }
     .answer .badge {
-      left: 9px;
-      width: 28px;
-      height: 28px;
-      font-size: 14px;
+      left: 8px;
+      width: 27px;
+      height: 27px;
+      font-size: 13px;
     }
     .advantage-bar {
       align-items: flex-start;
@@ -7302,19 +7330,49 @@ export const VIEWER_CSS = `
     .race-row { flex-wrap: nowrap; }
     .race-card { flex: 0 0 auto; }
     .stream {
-      padding: 10px calc(var(--safe-right) + 10px) 12px calc(var(--safe-left) + 10px);
-      scroll-padding-bottom: calc(var(--composer-min) + var(--safe-bot) + 18px);
+      padding: 8px calc(var(--safe-right) + 10px) 10px calc(var(--safe-left) + 10px);
+      scroll-padding-bottom: calc(var(--composer-min) + var(--safe-bot) + 14px);
     }
     .world-panel {
-      max-height: 96px;
+      max-height: 76px;
       grid-template-columns: minmax(0, 1fr);
       gap: 6px;
-      padding: 8px calc(var(--safe-right) + 10px) 8px calc(var(--safe-left) + 10px);
+      padding: 6px calc(var(--safe-right) + 9px) 6px calc(var(--safe-left) + 9px);
     }
     .world-panel-head {
-      min-height: 30px;
+      min-height: 28px;
+      gap: 8px;
+    }
+    .world-panel-title {
+      font-size: 12px;
+    }
+    .world-panel-sub {
+      font-size: 10px;
+    }
+    .world-panel-refresh {
+      width: 32px;
+      height: 32px;
     }
     .world-panel-events {
+      display: none;
+    }
+    .world-room-chip {
+      max-width: 136px;
+      padding: 5px 7px;
+      font-size: 10px;
+      line-height: 1.18;
+    }
+    .world-room-chip strong {
+      font-size: 11px;
+    }
+    .shell[data-mode="round-live"] .world-panel {
+      max-height: 52px;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+      padding-top: 5px;
+      padding-bottom: 5px;
+    }
+    .shell[data-mode="round-live"] .world-panel-rooms {
       display: none;
     }
     .msg {
@@ -7330,11 +7388,12 @@ export const VIEWER_CSS = `
       line-height: 1.45;
     }
     .composer-zone {
-      padding: 8px calc(var(--safe-right) + 8px) calc(var(--safe-bot) + 8px) calc(var(--safe-left) + 8px);
+      padding: 6px calc(var(--safe-right) + 8px) calc(var(--safe-bot) + 6px) calc(var(--safe-left) + 8px);
     }
     .chat-action-btn {
-      min-height: 46px;
-      border-radius: 14px;
+      min-height: 40px;
+      border-radius: 12px;
+      font-size: 15px;
     }
     .composer-form {
       border-radius: 16px;
@@ -7345,19 +7404,19 @@ export const VIEWER_CSS = `
   @media (max-width: 380px) {
     .answers { grid-template-columns: 1fr; }
     .blackboard-panel {
-      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 218px);
+      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 156px);
     }
     .board {
-      max-height: 28dvh;
-      padding-right: 54px;
+      max-height: 25dvh;
+      padding-right: 50px;
     }
     .teacher-figure {
-      width: 42px;
-      height: 42px;
+      width: 40px;
+      height: 40px;
     }
     .answer {
-      min-height: 44px;
-      padding-left: 42px;
+      min-height: 42px;
+      padding-left: 40px;
       font-size: 13px;
     }
   }
