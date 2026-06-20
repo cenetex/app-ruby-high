@@ -37,7 +37,7 @@ export type RaceStripCardView = {
   pickText: string;
   showThinking: boolean;
 };
-type ArcIndicatorView = {
+export type ArcIndicatorView = {
   hidden: boolean;
   graduated: boolean;
   yearText: string;

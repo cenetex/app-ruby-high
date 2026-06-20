@@ -211,10 +211,13 @@ describe("viewer regression guardrails", () => {
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
 
     expectScriptToContain(script, "function arcIndicatorView");
-    expectScriptToContain(clientSource, "const view = arcIndicatorView(t, subjectClearSummary(), walletSummaryText(t));");
-    expectScriptToContain(clientSource, "els.arcIndicator.classList.toggle(\"is-graduated\", view.graduated);");
-    expectScriptToContain(clientSource, "els.arcStreak.classList.toggle(\"is-met\", view.streakMet);");
-    expectScriptToContain(clientSource, "els.arcXp.classList.toggle(\"is-met\", view.subjectMet);");
+    expectScriptToContain(script, "function createArcIndicatorRenderer(deps)");
+    expectScriptToContain(clientSource, "const arcIndicatorRenderer = createArcIndicatorRenderer({");
+    expectScriptToContain(clientSource, "viewFor: arcIndicatorView");
+    expectScriptToContain(clientSource, "arcIndicatorRenderer.render(t, {");
+    expect(clientSource).not.toContain("els.arcIndicator.classList.toggle(\"is-graduated\", view.graduated);");
+    expect(clientSource).not.toContain("els.arcStreak.classList.toggle(\"is-met\", view.streakMet);");
+    expect(clientSource).not.toContain("els.arcXp.classList.toggle(\"is-met\", view.subjectMet);");
   });
 
   it("builds classmate arc labels and meters from typed helpers", () => {
@@ -765,7 +768,7 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('title="Subjects cleared with a C or better this year"');
     expectScriptToContain(script, '"📚 " + streakCount + "/" + streakReq');
     expectScriptToContain(script, '"✅ " + subjectMet + "/" + subjectTotal');
-    expectScriptToContain(script, "const view = arcIndicatorView(t, subjectClearSummary(), walletSummaryText(t));");
+    expectScriptToContain(script, "arcIndicatorRenderer.render(t, {");
     expectScriptToContain(script, 'walletSummaryText(t)');
     expectScriptToContain(script, '" · 🎫 "');
   });

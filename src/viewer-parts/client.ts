@@ -1492,6 +1492,14 @@ export function runViewerClient(bootstrap) {
     row: els.raceRow,
     viewFor: raceStripView,
   });
+  const arcIndicatorRenderer = createArcIndicatorRenderer({
+    root: els.arcIndicator,
+    year: els.arcYear,
+    streak: els.arcStreak,
+    subject: els.arcXp,
+    score: els.arcScore,
+    viewFor: arcIndicatorView,
+  });
 
   // ── message factories ────────────────────────────────────────────────────
   function knownTeacherAssetId(faculty) {
@@ -1903,19 +1911,10 @@ export function runViewerClient(bootstrap) {
   // sitting on the threshold, waiting for the other gate to land). After
   // graduation the year flips to "Graduated" and the gate hints drop.
   function renderArcIndicator(t) {
-    const view = arcIndicatorView(t, subjectClearSummary(), walletSummaryText(t));
-    if (view.hidden) {
-      els.arcIndicator.hidden = true;
-      return;
-    }
-    els.arcIndicator.hidden = false;
-    els.arcIndicator.classList.toggle("is-graduated", view.graduated);
-    els.arcYear.textContent = view.yearText;
-    els.arcStreak.textContent = view.streakText;
-    els.arcStreak.classList.toggle("is-met", view.streakMet);
-    els.arcXp.textContent = view.subjectText;
-    els.arcXp.classList.toggle("is-met", view.subjectMet);
-    els.arcScore.textContent = view.scoreText;
+    arcIndicatorRenderer.render(t, {
+      subjects: subjectClearSummary(),
+      walletText: walletSummaryText(t),
+    });
   }
 
   function walletSummaryText(t) {
