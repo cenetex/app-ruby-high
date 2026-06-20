@@ -13,6 +13,7 @@ import { createCardBurnSelector } from "./card-burn-selector.js";
 import { createCcgCardRenderer } from "./ccg-card.js";
 import { createCareerCardRenderer } from "./career-card.js";
 import { createCareerTokensRenderer } from "./career-tokens.js";
+import { createChatMessageRenderer } from "./chat-messages.js";
 import { createClassReportRenderer } from "./class-report.js";
 import { createComicReaderRenderer } from "./comic-reader.js";
 import { createCreationCandidateCardRenderer } from "./creation-candidate-card.js";
@@ -265,6 +266,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createCcgCardRenderer = ${createCcgCardRenderer.toString()};
   const createCareerCardRenderer = ${createCareerCardRenderer.toString()};
   const createCareerTokensRenderer = ${createCareerTokensRenderer.toString()};
+  const createChatMessageRenderer = ${createChatMessageRenderer.toString()};
   const createClassReportRenderer = ${createClassReportRenderer.toString()};
   const createComicReaderRenderer = ${createComicReaderRenderer.toString()};
   const createCreationCandidateCardRenderer = ${createCreationCandidateCardRenderer.toString()};

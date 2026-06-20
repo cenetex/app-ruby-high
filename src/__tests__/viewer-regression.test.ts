@@ -367,6 +367,24 @@ describe("viewer regression guardrails", () => {
     expect(clientSource).not.toContain("function buildProgressionForNpcArc(");
   });
 
+  it("renders chat messages from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createChatMessageRenderer(");
+    expectScriptToContain(clientSource, "const chatMessageRenderer = createChatMessageRenderer({");
+    expectScriptToContain(clientSource, "const rendered = chatMessageRenderer.buildMessage({ kind, name, body, color, avatarUrl: avatarImgSrc });");
+    expectScriptToContain(clientSource, "const wrap = chatMessageRenderer.buildSystem(text);");
+    expectScriptToContain(clientSource, "const wrap = chatMessageRenderer.buildTool(text);");
+    expectScriptToContain(clientSource, "const wrap = chatMessageRenderer.buildEmptyState({ title, body, ctaLabel, ctaAction, heroSrc });");
+    expectScriptToContain(script, 'tag.className = "role-tag " + (kind === "teacher" ? "bot" : kind);');
+    expectScriptToContain(script, 'body.dataset.markdownRaw = deps.sanitizeVisibleChatText(spec.body || "");');
+    expect(clientSource).not.toContain('wrap.className = "msg " + (kind || "bot");');
+    expect(clientSource).not.toContain('tag.className = "role-tag bot"');
+    expect(clientSource).not.toContain('wrap.innerHTML =');
+    expect(clientSource).not.toContain('bodyEl.dataset.markdownRaw = sanitizeVisibleChatText(body || "");');
+  });
+
   it("builds report cards from a typed renderer", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");

@@ -711,6 +711,11 @@ export function runViewerClient(bootstrap) {
     letterGradePasses,
     buildSubjectGradeChip: makeSubjectGradeChip,
   });
+  const chatMessageRenderer = createChatMessageRenderer({
+    document,
+    sanitizeVisibleChatText,
+    renderMarkdownInto,
+  });
   let lockedFor = null;
   let renderedHistorySig = null;
   let activeQuestionId = null; // currently displayed question id on the blackboard
@@ -1593,53 +1598,13 @@ export function runViewerClient(bootstrap) {
     return apiBase + "/assets/students/" + encodeURIComponent(studentId) + "-face.png";
   }
   function appendMsg({ kind, name, body, color, facultyId, studentId }) {
-    const wrap = document.createElement("div");
-    wrap.className = "msg " + (kind || "bot");
-    const avatar = document.createElement("div");
-    avatar.className = "avatar" + (kind === "teacher" ? " is-teacher" : "");
     let avatarImgSrc = null;
     if (kind === "teacher" && facultyId) avatarImgSrc = teacherSmallAvatarUrl(facultyId);
     else if (kind === "student" && studentId) avatarImgSrc = studentStickerUrl(studentId);
     else if (kind === "you" && lastTelemetry?.character?.portraitDataUrl) avatarImgSrc = lastTelemetry.character.portraitDataUrl;
-    if (avatarImgSrc) {
-      avatar.style.background = "#fff";
-      const img = document.createElement("img");
-      img.src = avatarImgSrc;
-      img.alt = name || "";
-      img.onerror = () => {
-        avatar.removeChild(img);
-        avatar.style.background = color || "var(--bg-elev)";
-        avatar.textContent = name ? name.slice(0, 1).toUpperCase() : "?";
-      };
-      avatar.appendChild(img);
-    } else {
-      avatar.style.background = color || "var(--bg-elev)";
-      avatar.textContent = name ? name.slice(0, 1).toUpperCase() : "?";
-    }
-    const head = document.createElement("div");
-    head.className = "head";
-    const nameEl = document.createElement("span");
-    nameEl.className = "name";
-    nameEl.textContent = name || "—";
-    head.appendChild(nameEl);
-    if (kind === "teacher") {
-      const tag = document.createElement("span"); tag.className = "role-tag bot"; tag.textContent = "Teacher"; head.appendChild(tag);
-    } else if (kind === "you") {
-      const tag = document.createElement("span"); tag.className = "role-tag you"; tag.textContent = "you"; head.appendChild(tag);
-    } else if (kind === "student") {
-      const tag = document.createElement("span"); tag.className = "role-tag student"; tag.textContent = "Student"; head.appendChild(tag);
-    }
-    const stamp = document.createElement("span");
-    stamp.className = "stamp";
-    stamp.textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    head.appendChild(stamp);
-    const bodyEl = document.createElement("div");
-    bodyEl.className = "body";
-    bodyEl.dataset.markdownRaw = sanitizeVisibleChatText(body || "");
-    renderMarkdownInto(bodyEl, bodyEl.dataset.markdownRaw);
-    wrap.appendChild(avatar);
-    wrap.appendChild(head);
-    wrap.appendChild(bodyEl);
+    const rendered = chatMessageRenderer.buildMessage({ kind, name, body, color, avatarUrl: avatarImgSrc });
+    const wrap = rendered.wrap;
+    const bodyEl = rendered.body;
     els.stream.appendChild(wrap);
     // The player should always see their own words land — force the scroll
     // even if they were peeking up the log when they hit Send. Other roles
@@ -1648,41 +1613,18 @@ export function runViewerClient(bootstrap) {
     return bodyEl;
   }
   function appendSystem(text) {
-    const wrap = document.createElement("div");
-    wrap.className = "msg system";
-    const body = document.createElement("div");
-    body.className = "body";
-    body.textContent = text;
-    wrap.appendChild(body);
+    const wrap = chatMessageRenderer.buildSystem(text);
     els.stream.appendChild(wrap);
     scrollIfPinned();
   }
   function appendTool(text) {
-    const wrap = document.createElement("div");
-    wrap.className = "msg tool";
-    const body = document.createElement("div");
-    body.className = "body";
-    body.textContent = text;
-    wrap.appendChild(body);
+    const wrap = chatMessageRenderer.buildTool(text);
     els.stream.appendChild(wrap);
     scrollIfPinned();
   }
   function appendEmptyState({ title, body, ctaLabel, ctaAction, facultyId }) {
-    const wrap = document.createElement("div");
-    wrap.className = "empty-state";
     const heroSrc = (facultyId && teacherAssetUrl(facultyId, "full")) || teacherAssetUrl("ruby", "full");
-    wrap.innerHTML =
-      '<img class="logo" src="' + heroSrc + '" alt=""/>' +
-      '<h2>' + escape(title) + '</h2>' +
-      '<p>' + escape(body) + '</p>';
-    if (ctaLabel) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "cta";
-      btn.textContent = ctaLabel;
-      btn.addEventListener("click", ctaAction);
-      wrap.appendChild(btn);
-    }
+    const wrap = chatMessageRenderer.buildEmptyState({ title, body, ctaLabel, ctaAction, heroSrc });
     els.stream.appendChild(wrap);
   }
   // escape, escapeHtml, safeMarkdownHref, sanitizeVisibleChatText,
