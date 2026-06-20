@@ -16,6 +16,7 @@ export interface GraduationCeremonySpec {
   scoreText?: string;
   targetLabel?: string;
   hasNextGrade?: boolean;
+  photoLaterNote?: string;
   choices?: GraduationChoice[];
   onChoice?(reward: unknown, button: HTMLButtonElement, controls: GraduationChoiceControls): void;
 }
@@ -65,7 +66,7 @@ export function createGraduationCeremonyRenderer(
 
         const prompt = deps.document.createElement("div");
         prompt.className = "graduation-board-prompt";
-        prompt.textContent = "Choose one yearbook reward.";
+        prompt.textContent = spec.photoLaterNote || "Choose one yearbook reward.";
         wrap.appendChild(prompt);
 
         row = deps.document.createElement("div");
@@ -82,7 +83,7 @@ export function createGraduationCeremonyRenderer(
 
         const note = deps.document.createElement("div");
         note.className = "graduation-note";
-        note.textContent = "Pick one keepsake or reward to seal the yearbook.";
+        note.textContent = spec.photoLaterNote || "Pick one keepsake or reward to seal the yearbook.";
         wrap.appendChild(note);
 
         wrap.appendChild(status);

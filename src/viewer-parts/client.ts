@@ -1352,6 +1352,7 @@ export function runViewerClient(bootstrap) {
     formatSealedDate,
     fmtStat,
     renderMarkdownInto,
+    buildPhotoAction: buildGraduationPhotoAction,
   });
   const paperCardRenderer = createPaperCardRenderer({
     gradeLabels: GRADE_LABELS,
@@ -1949,7 +1950,7 @@ export function runViewerClient(bootstrap) {
     const detail = isCharacterPortrait
       ? "Keep editing while it runs. Ruby saves the student after the request finishes."
       : isGraduationPhoto
-        ? "Ruby will add the finished group photo to this yearbook reward."
+        ? "Ruby will add the finished group photo to your yearbook."
       : "Keep editing while it runs. Save and Close unlock once it finishes or you cancel.";
     const confirmText = isCharacterPortrait ? "Generate portrait" : isGraduationPhoto ? "Take photo" : "Generate image";
     if (usePhotoDayCredit) {
@@ -5362,40 +5363,9 @@ export function runViewerClient(bootstrap) {
         controls.status.classList.add("is-invalid");
         resetCeremonyControls(controls);
       };
-      const takeGraduationPhoto = async (btn, controls) => {
-        setBusy(btn, "Taking photo…", controls);
-        if (!(await confirmHostedCreditSpend("Take graduation photo", "portrait"))) {
-          resetCeremonyControls(controls);
-          return false;
-        }
-        const photoEntitlement = hostedImageEntitlement("portrait") || {};
-        const photoCost = photoEntitlement.cost || 1;
-        if (usingHostedImageGeneration("portrait") && !canSpendHallPasses(photoCost)) {
-          resetCeremonyControls(controls);
-          return false;
-        }
-        const r = await apiFetch("/api/apps/ruby-high/chat/character/graduation-photo", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            requestId: imageRequestId("graduation-photo"),
-          }),
-        });
-        const data = await r.json().catch(() => ({}));
-        if (!r.ok) {
-          throw new Error(responseErrorText(data) || "photo " + r.status);
-        }
-        if (typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements, data.characterSlots);
-        return true;
-      };
       const submitReward = async (reward, btn, controls) => {
         try {
-          if (reward && reward.kind === "photo") {
-            const taken = await takeGraduationPhoto(btn, controls);
-            if (!taken) return;
-          } else {
-            setBusy(btn, "Sealing…", controls);
-          }
+          setBusy(btn, "Sealing…", controls);
           btn.textContent = "Sealing…";
           controls.status.textContent = "Ceremony in progress…";
           controls.status.classList.remove("is-invalid");
@@ -5442,8 +5412,8 @@ export function runViewerClient(bootstrap) {
       });
 
       const photoChoice = {
-        label: "Take photo",
-        detail: hostedImageCostLabel("portrait") + " · student, teacher, classmate.",
+        label: "Generate photo later",
+        detail: "in your yearbook any time.",
         reward: { kind: "photo" },
       };
       const seed = (c.pendingGraduation && c.pendingGraduation.readyAt)
@@ -5457,6 +5427,7 @@ export function runViewerClient(bootstrap) {
         scoreText,
         targetLabel,
         hasNextGrade: !!next,
+        photoLaterNote: "Choose one reward. You can generate the photo later in your yearbook.",
         choices,
         onChoice: submitReward,
       });
@@ -5493,7 +5464,7 @@ export function runViewerClient(bootstrap) {
 
     const papers = yearbook.slice()
       .sort((a, b) => Number(a.grade) - Number(b.grade))
-      .filter((y) => !(grad && y.grade === "12") && !(!grad && y.grade === liveGrade));
+      .filter((y) => !(!grad && y.grade === liveGrade));
 
     const cards = [
       buildCurrentCharacterCard(c, pb, portraitFallback, grad, papers, playbooks),
@@ -5810,6 +5781,46 @@ export function runViewerClient(bootstrap) {
 
   function buildGraduationPhotoCollectible(photo) {
     return yearbookArchiveRenderer.buildGraduationPhoto(photo);
+  }
+
+  function buildGraduationPhotoAction(photo, entry) {
+    const grade = String((photo && photo.grade) || (entry && entry.grade) || "");
+    if (!grade) return null;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "paper-archive-photo-action";
+    btn.textContent = "Take photo";
+    btn.title = "Take graduation photo";
+    btn.addEventListener("click", async () => {
+      if (btn.disabled) return;
+      if (!(await confirmHostedCreditSpend("Take graduation photo", "portrait"))) return;
+      const photoEntitlement = hostedImageEntitlement("portrait") || {};
+      const photoCost = photoEntitlement.cost || 1;
+      if (usingHostedImageGeneration("portrait") && !canSpendHallPasses(photoCost)) return;
+      btn.disabled = true;
+      btn.textContent = "Taking…";
+      try {
+        const r = await apiFetch("/api/apps/ruby-high/chat/character/graduation-photo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            grade,
+            requestId: imageRequestId("graduation-photo-" + grade),
+          }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(responseErrorText(data) || "photo " + r.status);
+        if (typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements, data.characterSlots);
+        await fetchSession();
+        if (sheetOverlayOpen) renderSheet();
+        showCongrats("Graduation photo added to the yearbook.", true);
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Try again";
+        showCongrats(err && err.message ? err.message : "Photo failed.", false);
+      }
+    });
+    return btn;
   }
 
 

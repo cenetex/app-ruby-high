@@ -6,13 +6,14 @@ export interface YearbookArchiveRendererDeps {
   formatSealedDate(value: unknown): string;
   fmtStat(value: number): string;
   renderMarkdownInto(el: HTMLElement, markdown: string, opts?: { inline?: boolean }): void;
+  buildPhotoAction?(photo: unknown, entry?: unknown): HTMLElement | null;
 }
 
 export interface YearbookArchiveRenderer {
   buildArchive(entries: unknown, liveChar: unknown, livePb: unknown, playbooks: unknown): HTMLElement | null;
   buildEntry(entry: unknown, liveChar: unknown, livePb: unknown, playbooks: unknown): HTMLElement;
   buildDiploma(diploma: unknown): HTMLElement;
-  buildGraduationPhoto(photo: unknown): HTMLElement;
+  buildGraduationPhoto(photo: unknown, entry?: unknown): HTMLElement;
 }
 
 export function createYearbookArchiveRenderer(deps: YearbookArchiveRendererDeps): YearbookArchiveRenderer {
@@ -161,7 +162,7 @@ export function createYearbookArchiveRenderer(deps: YearbookArchiveRendererDeps)
       const diploma = recordValue(entry, "diploma");
       if (diploma) item.appendChild(renderer.buildDiploma(diploma));
       const photo = recordValue(entry, "photo");
-      if (photo) item.appendChild(renderer.buildGraduationPhoto(photo));
+      if (photo) item.appendChild(renderer.buildGraduationPhoto(photo, entry));
       const portrait = buildPortrait(entry);
       if (portrait) item.appendChild(portrait);
       return item;
@@ -191,7 +192,7 @@ export function createYearbookArchiveRenderer(deps: YearbookArchiveRendererDeps)
       wrap.appendChild(copy);
       return wrap;
     },
-    buildGraduationPhoto(photo): HTMLElement {
+    buildGraduationPhoto(photo, entry): HTMLElement {
       const wrap = deps.document.createElement("div");
       wrap.className = "paper-archive-photo";
       const imageUrl = recordValue(photo, "imageUrl");
@@ -223,6 +224,10 @@ export function createYearbookArchiveRenderer(deps: YearbookArchiveRendererDeps)
       meta.textContent = teacherName + " · " + studentName;
       copy.appendChild(title);
       copy.appendChild(meta);
+      if (!imageUrl && deps.buildPhotoAction) {
+        const action = deps.buildPhotoAction(photo, entry);
+        if (action) copy.appendChild(action);
+      }
       wrap.appendChild(copy);
       return wrap;
     },

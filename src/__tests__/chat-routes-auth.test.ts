@@ -1017,6 +1017,76 @@ describe("hosted image Hall Passes", () => {
     });
   });
 
+  it("spends a Hall Pass to generate a photo for a sealed yearbook grade", async () => {
+    process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
+    const token = "hosted-sealed-graduation-photo";
+    const record = {
+      userId: "hosted-sealed-graduation-photo-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Hosted Sealed Graduation Photo",
+    };
+    auth.injectSessionForTest(token, record);
+    const stateKey = auth.stateKeyForRecord(record);
+    ruby.grantHallPasses(stateKey, {
+      amount: 1,
+      idempotencyKey: "test:sealed-graduation-photo-fund",
+      source: "admin",
+    });
+    attachReadyFreshmanForGraduation(stateKey);
+    ruby.completeGraduation(stateKey, { kind: "advantage" });
+    expect(ruby.getOrCreate(stateKey).character?.yearbook[0]?.photo?.imageUrl).toBeUndefined();
+    (globalThis.fetch as any).mockImplementation(async (_url: string, init?: RequestInit) => {
+      capturedChatRequest = {
+        body: JSON.parse(String(init?.body || "{}")),
+      };
+      return new Response(JSON.stringify({
+        choices: [{
+          message: {
+            images: [{ image_url: { url: "data:image/png;base64,SEALEDPHOTO" } }],
+          },
+        }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/character/graduation-photo"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        body: {
+          grade: "9",
+          requestId: "graduation-photo-sealed-9",
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toMatchObject({
+      ok: true,
+      graduationPhotoImageUrl: "data:image/png;base64,SEALEDPHOTO",
+      grade: "9",
+      hallPassCost: 1,
+      hallPasses: 0,
+      teacher: { id: "ruby", name: "Ruby" },
+      student: { id: "lyra", name: "Lyra" },
+    });
+    const content = capturedChatRequest?.body.messages?.[0]?.content;
+    expect(Array.isArray(content) ? content.filter((part: any) => part.type === "image_url") : []).toHaveLength(3);
+    expect(ruby.getOrCreate(stateKey).character?.yearbook[0]?.photo?.imageUrl).toBe("data:image/png;base64,SEALEDPHOTO");
+    expect(ruby.hallPassBalance(stateKey)).toBe(0);
+    expect(ruby.getOrCreate(stateKey).wallet.transactions?.some((tx) =>
+      tx.kind === "hall-pass-spend" &&
+      tx.source === "hosted-image" &&
+      tx.metadata?.route === "graduation-photo" &&
+      tx.metadata?.requestId === "graduation-photo-sealed-9" &&
+      tx.metadata?.status === "completed"
+    )).toBe(true);
+  });
+
   it("uses a Photo Day credit before Hall Passes for hosted character portraits", async () => {
     process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
     const token = "hosted-portrait-photo-day";

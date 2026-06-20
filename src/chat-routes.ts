@@ -59,9 +59,11 @@ import {
 import { renderYearbookCard } from "./services/yearbook-image.js";
 import { detectGenericPraise, parseTeacherGrades, verdictHasSubstance } from "./grading.js";
 import {
+  GRADES,
   GRADE_LABELS,
   PLAYER_CHAT_INTENTS,
   type CharacterStats,
+  type Grade,
   type PlayerChatIntent,
   type Question,
   type QuizState,
@@ -3467,9 +3469,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     return true;
   }
 
-  // Graduation photo — generated before the player seals the photo reward.
-  // It composes the active student, top teacher, and top classmate, then
-  // stores the image on the pending ceremony for complete-graduation.
+  // Graduation photo — composes the active student, top teacher, and top
+  // classmate. It can target the pending ceremony or any sealed yearbook year.
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/graduation-photo`) {
     const token = auth.parseSessionToken(ctx.cookieHeader);
     const record = auth.resolve(token);
@@ -3497,9 +3498,18 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       return true;
     }
     const sessionId = auth.stateKeyForRecord(record);
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown> | null;
+    const rawGrade = body && typeof body.grade === "string" ? body.grade : "";
+    const requestedGrade = rawGrade
+      ? ((GRADES as readonly string[]).includes(rawGrade) ? rawGrade as Grade : null)
+      : null;
+    if (rawGrade && !requestedGrade) {
+      ctx.error(ctx.res, `Grade must be one of ${GRADES.join(", ")}`, 400);
+      return true;
+    }
     let scene: ReturnType<RubyHighService["graduationPhotoScene"]>;
     try {
-      scene = ruby.graduationPhotoScene(sessionId);
+      scene = ruby.graduationPhotoScene(sessionId, requestedGrade ? { grade: requestedGrade } : undefined);
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 400);
       return true;
@@ -3507,7 +3517,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const state = ruby.getOrCreate(sessionId);
     const cachedUrl = state.character?.pendingGraduation?.grade === scene.grade
       ? state.character.pendingGraduation.photoImageUrl
-      : null;
+      : state.character?.yearbook?.find((entry) => entry.grade === scene.grade)?.photo?.imageUrl;
     if (cachedUrl) {
       ctx.json(ctx.res, {
         ok: true,
@@ -3518,7 +3528,6 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       });
       return true;
     }
-    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown> | null;
     let charge: HostedImageCharge;
     try {
       charge = await prepareHostedImageCharge({
@@ -3545,7 +3554,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       return true;
     }
     if (charge.replayUrl) {
-      ruby.setPendingGraduationPhotoImage(sessionId, {
+      ruby.setGraduationPhotoImage(sessionId, {
         grade: scene.grade,
         imageUrl: charge.replayUrl,
       });
@@ -3572,7 +3581,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         classmate: scene.student,
       });
       url = await maybeUploadPortrait(dataUrl, "graduation-photo");
-      ruby.setPendingGraduationPhotoImage(sessionId, {
+      ruby.setGraduationPhotoImage(sessionId, {
         grade: scene.grade,
         imageUrl: url,
       });

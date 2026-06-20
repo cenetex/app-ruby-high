@@ -3078,29 +3078,65 @@ export class RubyHighService extends Service {
     return null;
   }
 
-  graduationPhotoScene(sessionId: string): GraduationPhotoScene {
+  graduationPhotoScene(sessionId: string, input?: { grade?: Grade }): GraduationPhotoScene {
     const state = this.getOrCreate(sessionId);
     const ch = state.character;
     const pending = ch?.pendingGraduation;
-    if (!ch || !pending || !state.currentGrade || pending.grade !== state.currentGrade) {
-      throw new Error("No graduation ceremony is ready.");
+    if (!ch) {
+      throw new Error("No active student.");
     }
-    const status = this.gradeCompletionStatus(state);
-    if (!status || !status.ready || status.grade !== pending.grade) {
-      throw new Error("Graduation requirements are not complete.");
+    if (pending && (!input?.grade || input.grade === pending.grade)) {
+      if (!state.currentGrade || pending.grade !== state.currentGrade) {
+        throw new Error("No graduation ceremony is ready.");
+      }
+      const status = this.gradeCompletionStatus(state);
+      if (!status || !status.ready || status.grade !== pending.grade) {
+        throw new Error("Graduation requirements are not complete.");
+      }
+      return this.graduationPhotoSceneFor(state, ch, pending.grade, {
+        characterName: ch.name,
+        characterImageUrl: ch.portraitDataUrl || defaultPlayerPortraitUrl(ch.playbookId),
+      });
     }
-    const teacher = this.topGraduationTeacherFor(state, pending.grade);
+
+    const yearbook = characterYearbookEntries(ch);
+    const entry = input?.grade
+      ? yearbook.find((card) => card.grade === input.grade)
+      : yearbook.slice().reverse().find((card) => !card.photo?.imageUrl) ?? yearbook[yearbook.length - 1];
+    if (!entry) {
+      throw new Error(input?.grade ? "That year is not sealed in the yearbook." : "No yearbook photo is available.");
+    }
+    return this.graduationPhotoSceneFor(state, ch, entry.grade, {
+      characterName: entry.name || ch.name,
+      characterImageUrl: entry.portraitDataUrl
+        || ch.portraitDataUrl
+        || defaultPlayerPortraitUrl(entry.playbookId || ch.playbookId),
+      photo: entry.photo,
+    });
+  }
+
+  private graduationPhotoSceneFor(
+    state: QuizState,
+    ch: PlayerCharacter,
+    grade: Grade,
+    input: {
+      characterName: string;
+      characterImageUrl: string;
+      photo?: GraduationPhotoCollectible;
+    },
+  ): GraduationPhotoScene {
+    const teacher = input.photo?.teacher ?? this.topGraduationTeacherFor(state, grade);
     const faculty = facultyByIdForSession(state, teacher.id);
     const teacherImageUrl = teacherFullPortraitUrl(teacher.id, faculty?.assetTeacherId, faculty?.profileImageUrl)
       || teacher.imageUrl
       || teacherPortraitUrl(teacher.id, faculty?.assetTeacherId, faculty?.profileImageUrl)
       || teacherFullPortraitUrl(RUBY_FACULTY.id)
       || "";
-    const student = this.topSocialStudentFor(ch);
+    const student = input.photo?.student ?? this.topSocialStudentFor(ch);
     return {
-      grade: pending.grade,
-      characterName: ch.name,
-      characterImageUrl: ch.portraitDataUrl || defaultPlayerPortraitUrl(ch.playbookId),
+      grade,
+      characterName: input.characterName,
+      characterImageUrl: input.characterImageUrl,
       teacher: {
         id: teacher.id,
         name: teacher.name,
@@ -3114,22 +3150,39 @@ export class RubyHighService extends Service {
     };
   }
 
-  setPendingGraduationPhotoImage(sessionId: string, input: { grade: Grade; imageUrl: string; generatedAt?: number }): QuizState {
+  setGraduationPhotoImage(sessionId: string, input: { grade: Grade; imageUrl: string; generatedAt?: number }): QuizState {
     const state = this.getOrCreate(sessionId);
     const ch = state.character;
-    const pending = ch?.pendingGraduation;
-    if (!ch || !pending || pending.grade !== input.grade) {
-      throw new Error("No matching graduation ceremony is ready.");
-    }
+    if (!ch) throw new Error("No active student.");
     const imageUrl = normalizeStoredImageRef(input.imageUrl, "graduationPhotoImageUrl");
     if (!imageUrl) throw new Error("graduationPhotoImageUrl is required.");
-    pending.photoImageUrl = imageUrl;
-    pending.photoImageGeneratedAt = typeof input.generatedAt === "number" && Number.isFinite(input.generatedAt)
+    const generatedAt = typeof input.generatedAt === "number" && Number.isFinite(input.generatedAt)
       ? Math.floor(input.generatedAt)
       : Date.now();
+    const pending = ch.pendingGraduation;
+    if (pending?.grade === input.grade) {
+      pending.photoImageUrl = imageUrl;
+      pending.photoImageGeneratedAt = generatedAt;
+      state.updatedAt = Date.now();
+      void this.persistSession(sessionId);
+      return state;
+    }
+
+    const entry = characterYearbookEntries(ch).find((card) => card.grade === input.grade);
+    if (!entry) {
+      throw new Error("That year is not sealed in the yearbook.");
+    }
+    entry.photo = {
+      ...(entry.photo ?? this.graduationPhotoCollectibleFor(state, ch, input.grade, Number(entry.completedAt) || generatedAt)),
+      imageUrl,
+    };
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
+  }
+
+  setPendingGraduationPhotoImage(sessionId: string, input: { grade: Grade; imageUrl: string; generatedAt?: number }): QuizState {
+    return this.setGraduationPhotoImage(sessionId, input);
   }
 
   hallPassBalance(sessionId: string): number {
@@ -6314,9 +6367,7 @@ export class RubyHighService extends Service {
       completedAt,
       verdictQuote: bestVerdict,
     });
-    const photo = normalizedReward.kind === "photo"
-      ? this.graduationPhotoCollectibleFor(state, ch, grade, completedAt, pending.photoImageUrl)
-      : null;
+    const photo = this.graduationPhotoCollectibleFor(state, ch, grade, completedAt, pending.photoImageUrl);
 
     ch.yearbook = characterYearbookEntries(ch);
     ch.yearbook.push({
@@ -6332,7 +6383,7 @@ export class RubyHighService extends Service {
       ...(ch.subjectScores ? { subjectScores: { ...ch.subjectScores } } : {}),
       graduationReward: normalizedReward,
       diploma,
-      ...(photo ? { photo } : {}),
+      photo,
       ...(superlatives.length > 0 ? { superlatives } : {}),
     });
     if (newResolutions.length > 0) {
@@ -6568,9 +6619,6 @@ export class RubyHighService extends Service {
       return { kind: "affinity", facultyId: reward.facultyId };
     }
     if (reward.kind === "photo") {
-      if (!ch.pendingGraduation?.photoImageUrl) {
-        throw new Error("Take the graduation photo before sealing the photo reward.");
-      }
       return { kind: "photo" };
     }
     throw new Error(`Unknown graduation reward: ${(reward as { kind?: string }).kind ?? "?"}`);

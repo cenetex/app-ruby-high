@@ -5998,6 +5998,26 @@ export const VIEWER_CSS = `
     font-size: 9px;
     line-height: 1.25;
   }
+  .paper-archive-photo-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 5px;
+    min-height: 24px;
+    padding: 0 9px;
+    border: 1px solid rgba(255,188,55,0.55);
+    border-radius: 999px;
+    background: rgba(255,188,55,0.16);
+    color: var(--text);
+    font-size: 9px;
+    font-weight: 900;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .paper-archive-photo-action:disabled {
+    cursor: wait;
+    opacity: 0.68;
+  }
   .paper-archive-photo-faces {
     display: flex;
     align-items: center;

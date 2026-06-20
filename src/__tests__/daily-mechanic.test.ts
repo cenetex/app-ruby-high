@@ -959,6 +959,11 @@ describe("Streak + grade advancement", () => {
       title: "Ruby High 9th Grade Diploma",
       imageUrl: expect.stringContaining("/assets/diplomas/ruby-high-9.png"),
     });
+    expect(after.character!.yearbook[0]?.photo).toMatchObject({
+      kind: "graduation-photo",
+      grade: "9",
+    });
+    expect(after.character!.yearbook[0]?.photo?.imageUrl).toBeUndefined();
     expect(() => ruby.completeGraduation(sid, { kind: "stat", stat: "head" })).toThrow(/No graduation ceremony/);
   });
 
@@ -999,11 +1004,6 @@ describe("Streak + grade advancement", () => {
     }
 
     ruby.getOrCreate(sid);
-    expect(() => ruby.completeGraduation(sid, { kind: "photo" })).toThrow(/Take the graduation photo/);
-    ruby.setPendingGraduationPhotoImage(sid, {
-      grade: "9",
-      imageUrl: "/api/apps/ruby-high/assets/generated/graduation-photo.png",
-    });
     ruby.completeGraduation(sid, { kind: "photo" });
     const entry = ruby.getOrCreate(sid).character!.yearbook[0]!;
     expect(entry.graduationReward).toEqual({ kind: "photo" });
@@ -1011,10 +1011,23 @@ describe("Streak + grade advancement", () => {
       kind: "graduation-photo",
       grade: "9",
       title: "9th Grade Graduation Photo",
-      imageUrl: "/api/apps/ruby-high/assets/generated/graduation-photo.png",
       teacher: { id: "sally-science", name: "Sally" },
       student: { id: "noor", name: "Noor" },
     });
+    expect(entry.photo?.imageUrl).toBeUndefined();
+    const scene = ruby.graduationPhotoScene(sid, { grade: "9" });
+    expect(scene).toMatchObject({
+      grade: "9",
+      characterName: entry.name,
+      teacher: { id: "sally-science", name: "Sally" },
+      student: { id: "noor", name: "Noor" },
+    });
+    ruby.setGraduationPhotoImage(sid, {
+      grade: "9",
+      imageUrl: "/api/apps/ruby-high/assets/generated/graduation-photo.png",
+    });
+    expect(ruby.getOrCreate(sid).character!.yearbook[0]?.photo?.imageUrl)
+      .toBe("/api/apps/ruby-high/assets/generated/graduation-photo.png");
     expect(entry.diploma?.imageUrl).toContain("/assets/diplomas/ruby-high-9.png");
   });
 

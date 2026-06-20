@@ -46,7 +46,7 @@ function textTree(node: FakeNode): string[] {
   return node instanceof FakeElement ? [...own, ...node.children.flatMap((child) => textTree(child))] : own;
 }
 
-function renderer() {
+function renderer(options: { buildPhotoAction?(photo: unknown, entry?: unknown): HTMLElement | null } = {}) {
   return createYearbookArchiveRenderer({
     document: createDocument(),
     gradeLabels: { "9": "Freshman", "10": "Sophomore" },
@@ -57,6 +57,7 @@ function renderer() {
     renderMarkdownInto(el, markdown) {
       el.textContent = "md:" + markdown;
     },
+    ...options,
   });
 }
 
@@ -142,6 +143,29 @@ describe("yearbook archive renderer", () => {
 
     expect(textTree(diploma)).toEqual(["Ruby High Diploma", "collectible \u00b7 date:unknown"]);
     expect(textTree(photo)).toEqual(["?", "?", "Graduation Photo", "top teacher \u00b7 top classmate"]);
+  });
+
+  it("renders a photo action for sealed years without generated images", () => {
+    const r = renderer({
+      buildPhotoAction(photo, entry) {
+        expect(photo).toMatchObject({ grade: "9" });
+        expect(entry).toMatchObject({ grade: "9" });
+        const btn = createDocument().createElement("button") as unknown as FakeElement;
+        btn.className = "paper-archive-photo-action";
+        btn.textContent = "Take photo";
+        return btn as unknown as HTMLElement;
+      },
+    });
+
+    const photo = r.buildGraduationPhoto({
+      grade: "9",
+      title: "Freshman Graduation Photo",
+      teacher: { name: "Ruby" },
+      student: { name: "Lyra" },
+    }, { grade: "9" }) as unknown as FakeElement;
+
+    expect(textTree(photo)).toEqual(["R", "L", "Freshman Graduation Photo", "Ruby \u00b7 Lyra", "Take photo"]);
+    expect(((photo.children[1] as FakeElement).children[2] as FakeElement).className).toBe("paper-archive-photo-action");
   });
 
   it("ignores empty archive inputs", () => {
