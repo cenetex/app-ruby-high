@@ -1128,11 +1128,15 @@ describe("viewer regression guardrails", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
 
+    expectScriptToContain(script, "function createBoardStatusRenderer(");
+    expectScriptToContain(script, "buildClassStartHeader(currentGrade, summary, statusText, infoText)");
     expectScriptToContain(script, "function buildBoardClassStartHeader(statusText, infoText)");
     expectScriptToContain(script, "function boardSubjectGradesTitleView(currentGradeInput, summaryInput)");
-    expectScriptToContain(script, "return boardSubjectGradesTitleView(grade, summary);");
     expectScriptToContain(script, "function subjectGradeChipView(specInput)");
     expectScriptToContain(script, "const view = subjectGradeChipView(spec);");
+    expectScriptToContain(clientSource, "const boardStatusRenderer = createBoardStatusRenderer({");
+    expectScriptToContain(clientSource, "return boardStatusRenderer.buildSubjectGrades(t.current_grade, subjectClearSummary());");
+    expectScriptToContain(clientSource, "return boardStatusRenderer.buildClassStartHeader(grade, summary, statusText, infoText);");
     expectScriptToContain(script, 'button.className = "board-info-button";');
     expectScriptToContain(script, 'bubble.className = "board-info-popover";');
     expectScriptToContain(script, "const spotlight = buildGuestSpotlight(lastTelemetry);");
@@ -1142,6 +1146,9 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "viewFor: guestSpotlightView");
     expectScriptToContain(script, "return guestSpotlightRenderer.build(t);");
     expect(script.match(/buildGuestSpotlight\(/g) ?? []).toHaveLength(2);
+    expect(clientSource).not.toContain('wrap.className = "board-empty-header";');
+    expect(clientSource).not.toContain('button.className = "board-info-button";');
+    expect(clientSource).not.toContain('row.className = "board-subject-grades-row";');
     expect(clientSource).not.toContain('wrap.className = "guest-spotlight";');
     expect(VIEWER_CSS).toContain(".board-info-popover");
     expect(VIEWER_CSS).toContain('.blackboard-panel[data-mode="in-lounge"] .blackboard-empty');

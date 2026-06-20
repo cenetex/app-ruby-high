@@ -8,6 +8,7 @@ import { createAccountPublicWorldController } from "./account-public-world.js";
 import { createAccountTrustPanelRenderer } from "./account-trust-panel.js";
 import { createViewerApiClient, withViewerTimeoutSignal } from "./api.js";
 import { createBillingProductsRenderer } from "./billing-products.js";
+import { createBoardStatusRenderer } from "./board-status.js";
 import { createCardBurnSelector } from "./card-burn-selector.js";
 import { createCcgCardRenderer } from "./ccg-card.js";
 import { createCareerCardRenderer } from "./career-card.js";
@@ -259,6 +260,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createAccountTrustPanelRenderer = ${createAccountTrustPanelRenderer.toString()};
   const createViewerApiClient = ${createViewerApiClient.toString()};
   const createBillingProductsRenderer = ${createBillingProductsRenderer.toString()};
+  const createBoardStatusRenderer = ${createBoardStatusRenderer.toString()};
   const createCardBurnSelector = ${createCardBurnSelector.toString()};
   const createCcgCardRenderer = ${createCcgCardRenderer.toString()};
   const createCareerCardRenderer = ${createCareerCardRenderer.toString()};

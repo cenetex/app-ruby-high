@@ -266,8 +266,9 @@ outcomes without requiring crypto participation.
    character-creation intro/loading, candidate-card, control-card, rolled-state
    presentation, stat-chip, reroll-row, social-card grid, teacher-roll
    control/deck/preview/stat-pill/image-status rendering, and teacher/student
-   profile card copy/progression view models now also delegate to typed
-   renderers/controllers instead of unchecked client-local DOM branching.
+   profile card copy/progression view models, plus empty-board subject/class
+   status rendering now also delegate to typed renderers/controllers instead of
+   unchecked client-local DOM branching.
 2. [#139](https://github.com/cenetex/app-ruby-high/issues/139): replace the
    current minimal room contribution proof with one visible cooperative reward:
    completed live-room goals now carry a class-wide Study Spark reward label in

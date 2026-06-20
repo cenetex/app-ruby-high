@@ -241,79 +241,13 @@ export function runViewerClient(bootstrap) {
   function buildBoardSubjectGrades() {
     const t = lastTelemetry;
     if (!t || !t.character || !t.current_grade) return null;
-    const summary = subjectClearSummary();
-    const wrap = document.createElement("div");
-    wrap.className = "board-subject-grades";
-    const heading = document.createElement("div");
-    heading.className = "board-subject-grades-title";
-    heading.textContent = boardSubjectGradesTitle(summary);
-    wrap.appendChild(heading);
-    wrap.appendChild(buildBoardSubjectGradesRow(summary));
-    return wrap;
-  }
-
-  function boardSubjectGradesTitle(summary) {
-    const t = lastTelemetry;
-    const grade = t && t.current_grade ? t.current_grade : "";
-    return boardSubjectGradesTitleView(grade, summary);
-  }
-
-  function buildBoardSubjectGradesRow(summary) {
-    const row = document.createElement("div");
-    row.className = "board-subject-grades-row";
-    for (const g of summary.grades) {
-      const meta = subjectGateMetaFor(g.facultyId, g.progress);
-      const p = g.progress || {};
-      const completed = Number(p.completedClasses || 0);
-      const required = Number(p.requiredClasses || 0);
-      const met = required > 0 && completed >= required && letterGradePasses(g.grade);
-      row.appendChild(makeSubjectGradeChip({
-        label: meta.label,
-        icon: meta.icon,
-        grade: met ? g.grade : subjectProgressShortLabel(p),
-        met,
-        pending: !met,
-      }));
-    }
-    return row;
-  }
-
-  function buildBoardInfoButton(infoText) {
-    const text = String(infoText || "").trim();
-    if (!text) return null;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "board-info-button";
-    button.setAttribute("aria-label", "Class details");
-    button.title = text;
-    button.textContent = "i";
-    const bubble = document.createElement("span");
-    bubble.className = "board-info-popover";
-    bubble.setAttribute("aria-hidden", "true");
-    bubble.textContent = text;
-    button.appendChild(bubble);
-    return button;
+    return boardStatusRenderer.buildSubjectGrades(t.current_grade, subjectClearSummary());
   }
 
   function buildBoardClassStartHeader(statusText, infoText) {
     const summary = subjectClearSummary();
-    const wrap = document.createElement("div");
-    wrap.className = "board-empty-header";
-    const top = document.createElement("div");
-    top.className = "board-empty-topline";
-    const grade = document.createElement("div");
-    grade.className = "board-empty-grade";
-    grade.textContent = boardSubjectGradesTitle(summary);
-    top.appendChild(grade);
-    const info = buildBoardInfoButton(infoText);
-    if (info) top.appendChild(info);
-    wrap.appendChild(top);
-    const status = document.createElement("div");
-    status.className = "board-empty-status";
-    status.textContent = statusText || "Today's class ready";
-    wrap.appendChild(status);
-    wrap.appendChild(buildBoardSubjectGradesRow(summary));
-    return wrap;
+    const grade = lastTelemetry && lastTelemetry.current_grade ? lastTelemetry.current_grade : "";
+    return boardStatusRenderer.buildClassStartHeader(grade, summary, statusText, infoText);
   }
 
   function buildGuestSpotlight(t) {
@@ -768,6 +702,14 @@ export function runViewerClient(bootstrap) {
     gradeLabels: GRADE_LABELS,
     streakRequired: STREAK_REQUIRED,
     teachingFacultyLabels: TEACHING_FACULTY_LABELS,
+  });
+  const boardStatusRenderer = createBoardStatusRenderer({
+    document,
+    titleView: boardSubjectGradesTitleView,
+    subjectGateMetaFor,
+    subjectProgressShortLabel,
+    letterGradePasses,
+    buildSubjectGradeChip: makeSubjectGradeChip,
   });
   let lockedFor = null;
   let renderedHistorySig = null;
