@@ -540,12 +540,17 @@ describe("viewer regression guardrails", () => {
 
   it("shows a thumbnail selector before burning collectible cards", () => {
     const script = inlineScript(renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test" } }));
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
 
     expectScriptToContain(script, "function selectHallPassCardsForBurn(cards, needed)");
+    expectScriptToContain(script, "function createCardBurnSelector(deps)");
+    expectScriptToContain(script, "const cardBurnSelector = createCardBurnSelector({");
+    expectScriptToContain(script, "return cardBurnSelector.select(cards, needed);");
     expectScriptToContain(script, 'overlay.className = "card-burn-overlay"');
     expectScriptToContain(script, 'grid.className = "card-burn-grid"');
     expectScriptToContain(script, 'thumb.className = "card-burn-thumb"');
-    expectScriptToContain(script, "img.src = hallPassCardArtUrl(card)");
+    expectScriptToContain(script, "img.src = deps.cardArtUrl(card)");
+    expect(clientSource).not.toContain('overlay.className = "card-burn-overlay";');
     expectScriptToContain(script, "const selectedCards = presetCards.length === needed");
     expectScriptToContain(script, "function buildHallPassCardBurnChoice(hallPassesPerBurnedCard)");
     expectScriptToContain(script, "els.billingProducts.appendChild(buildHallPassCardBurnChoice(hallPassesPerBurnedCard))");

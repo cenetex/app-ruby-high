@@ -1315,6 +1315,17 @@ export function runViewerClient(bootstrap) {
     document,
     container: els.accountTrustList,
   });
+  const cardBurnSelector = createCardBurnSelector({
+    document,
+    setTimeout,
+    cardArtUrl: hallPassCardArtUrl,
+    cardTitle(card) {
+      return displayCardText(card && (card.characterName || card.title), "Ruby High Card");
+    },
+    cardMeta(card) {
+      return displayCardText(card && card.title, "Collectible Card");
+    },
+  });
   const accountHistoryRenderer = createAccountHistoryPanelRenderer({
     document,
     container: els.accountHistoryList,
@@ -3356,134 +3367,7 @@ export function runViewerClient(bootstrap) {
   }
 
   function selectHallPassCardsForBurn(cards, needed) {
-    const choices = Array.isArray(cards) ? cards.slice() : [];
-    const count = positiveWholeNumber(needed, 1);
-    if (choices.length < count) return Promise.resolve(null);
-    return new Promise((resolve) => {
-      const previousFocus = document.activeElement && typeof document.activeElement.focus === "function"
-        ? document.activeElement
-        : null;
-      const selectedIds = new Set();
-      const overlay = document.createElement("div");
-      overlay.className = "card-burn-overlay";
-      overlay.setAttribute("role", "dialog");
-      overlay.setAttribute("aria-modal", "true");
-      const panel = document.createElement("div");
-      panel.className = "card-burn-panel";
-      const kicker = document.createElement("div");
-      kicker.className = "card-burn-kicker";
-      kicker.textContent = "Choose card burn";
-      const title = document.createElement("h2");
-      title.textContent = count === 1 ? "Pick a card to burn" : "Pick " + count + " cards to burn";
-      const copy = document.createElement("p");
-      copy.textContent = "Each selected card leaves your wallet and credits 5 Hall Passes.";
-      const grid = document.createElement("div");
-      grid.className = "card-burn-grid";
-      const actions = document.createElement("div");
-      actions.className = "card-burn-actions";
-      const cancel = document.createElement("button");
-      cancel.type = "button";
-      cancel.className = "secondary";
-      cancel.textContent = "Cancel";
-      const confirm = document.createElement("button");
-      confirm.type = "button";
-      confirm.className = "primary";
-      confirm.disabled = true;
-      confirm.textContent = count === 1 ? "Burn Card" : "Burn " + count + " Cards";
-
-      function escapedCardId(id) {
-        if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(String(id || ""));
-        return String(id || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-      }
-      function cleanup(result) {
-        document.removeEventListener("keydown", onKeyDown);
-        overlay.removeEventListener("click", onOverlayClick);
-        overlay.remove();
-        if (previousFocus && previousFocus.isConnected) {
-          try { previousFocus.focus({ preventScroll: true }); } catch (_err) { try { previousFocus.focus(); } catch (_focusErr) {} }
-        }
-        resolve(result);
-      }
-      function updateConfirm() {
-        confirm.disabled = selectedIds.size !== count;
-      }
-      function toggleCard(card, button) {
-        if (selectedIds.has(card.id)) {
-          selectedIds.delete(card.id);
-          button.classList.remove("is-selected");
-          button.setAttribute("aria-pressed", "false");
-        } else {
-          if (selectedIds.size >= count) {
-            const first = selectedIds.values().next().value;
-            selectedIds.delete(first);
-            const firstButton = grid.querySelector("[data-card-id='" + escapedCardId(first) + "']");
-            if (firstButton) {
-              firstButton.classList.remove("is-selected");
-              firstButton.setAttribute("aria-pressed", "false");
-            }
-          }
-          selectedIds.add(card.id);
-          button.classList.add("is-selected");
-          button.setAttribute("aria-pressed", "true");
-        }
-        updateConfirm();
-      }
-      function onOverlayClick(event) {
-        if (event.target === overlay) cleanup(null);
-      }
-      function onKeyDown(event) {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          cleanup(null);
-        }
-      }
-
-      choices.forEach((card) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "card-burn-choice";
-        button.dataset.cardId = card.id;
-        button.setAttribute("aria-pressed", "false");
-        const thumb = document.createElement("span");
-        thumb.className = "card-burn-thumb";
-        const img = document.createElement("img");
-        img.alt = "";
-        img.src = hallPassCardArtUrl(card);
-        thumb.appendChild(img);
-        const text = document.createElement("span");
-        text.className = "card-burn-choice-text";
-        const name = document.createElement("strong");
-        name.textContent = displayCardText(card.characterName || card.title, "Ruby High Card");
-        const meta = document.createElement("span");
-        meta.textContent = displayCardText(card.title, "Collectible Card");
-        text.appendChild(name);
-        text.appendChild(meta);
-        button.appendChild(thumb);
-        button.appendChild(text);
-        button.addEventListener("click", () => toggleCard(card, button));
-        grid.appendChild(button);
-      });
-      cancel.addEventListener("click", () => cleanup(null));
-      confirm.addEventListener("click", () => {
-        const selected = choices.filter((card) => selectedIds.has(card.id)).slice(0, count);
-        cleanup(selected.length === count ? selected : null);
-      });
-      actions.appendChild(cancel);
-      actions.appendChild(confirm);
-      panel.appendChild(kicker);
-      panel.appendChild(title);
-      panel.appendChild(copy);
-      panel.appendChild(grid);
-      panel.appendChild(actions);
-      overlay.appendChild(panel);
-      document.body.appendChild(overlay);
-      overlay.addEventListener("click", onOverlayClick);
-      document.addEventListener("keydown", onKeyDown);
-      setTimeout(() => {
-        const first = grid.querySelector("button");
-        try { (first || cancel).focus({ preventScroll: true }); } catch (_err) { (first || cancel).focus(); }
-      }, 0);
-    });
+    return cardBurnSelector.select(cards, needed);
   }
 
   async function burnHallPassCardsForSpend(count, opts) {
