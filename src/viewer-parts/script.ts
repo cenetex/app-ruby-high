@@ -35,6 +35,7 @@ import { createPackMintProgressController } from "./pack-mint-progress.js";
 import { createRaceStripRenderer } from "./race-strip.js";
 import { createArcIndicatorRenderer } from "./arc-indicator.js";
 import { createGuestSpotlightRenderer } from "./guest-spotlight.js";
+import { createGraduationCeremonyRenderer } from "./graduation-ceremony.js";
 import { createClassmateChannelRowsRenderer } from "./classmate-channel-rows.js";
 import { createPaperCardRenderer } from "./paper-card.js";
 import { createReportCardRenderer } from "./report-card.js";
@@ -276,6 +277,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createRaceStripRenderer = ${createRaceStripRenderer.toString()};
   const createArcIndicatorRenderer = ${createArcIndicatorRenderer.toString()};
   const createGuestSpotlightRenderer = ${createGuestSpotlightRenderer.toString()};
+  const createGraduationCeremonyRenderer = ${createGraduationCeremonyRenderer.toString()};
   const createClassmateChannelRowsRenderer = ${createClassmateChannelRowsRenderer.toString()};
   const createPaperCardRenderer = ${createPaperCardRenderer.toString()};
   const createReportCardRenderer = ${createReportCardRenderer.toString()};

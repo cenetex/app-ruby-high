@@ -1423,6 +1423,9 @@ export function runViewerClient(bootstrap) {
   const creationStatsRenderer = createCreationStatsRenderer({
     document,
   });
+  const graduationCeremonyRenderer = createGraduationCeremonyRenderer({
+    document,
+  });
   const classReportRenderer = createClassReportRenderer({
     document,
     teacherShortName,
@@ -5828,74 +5831,16 @@ export function runViewerClient(bootstrap) {
       const next = nextGradeAfterClient(completedGrade);
       const targetLabel = next ? (GRADE_LABELS[next] || ("Grade " + next)) : "graduate";
       const finalGrade = finalGradeSummary();
-      const wrap = document.createElement(onBoard ? "section" : "div");
-      wrap.className = onBoard
-        ? "graduation-board-card"
-        : "graduation-ceremony";
-      const status = document.createElement("div");
-      status.className = "graduation-status";
-      let row;
-
-      if (onBoard) {
-        const gradeLabel = completedGrade ? (GRADE_LABELS[completedGrade] || ("Grade " + completedGrade)) : "Ruby High";
-        const hero = document.createElement("div");
-        hero.className = "graduation-board-hero";
-
-        const badge = document.createElement("div");
-        badge.className = "graduation-board-letter";
-        badge.textContent = finalGrade.letter;
-
-        const copy = document.createElement("div");
-        copy.className = "graduation-board-copy";
-        const title = document.createElement("div");
-        title.className = "graduation-board-title";
-        title.textContent = gradeLabel + " complete";
-        const subtitle = document.createElement("div");
-        subtitle.className = "graduation-board-subtitle";
-        const scoreText = finalGrade.averageScore == null ? "Final grade ready" : "Final grade " + finalGrade.letter + " · " + formatClassScore(finalGrade.averageScore);
-        subtitle.textContent = scoreText + (next ? " · next: " + targetLabel : " · diploma ceremony");
-        copy.appendChild(title);
-        copy.appendChild(subtitle);
-
-        hero.appendChild(badge);
-        hero.appendChild(copy);
-        wrap.appendChild(hero);
-
-        const prompt = document.createElement("div");
-        prompt.className = "graduation-board-prompt";
-        prompt.textContent = "Choose one yearbook reward.";
-        wrap.appendChild(prompt);
-
-        row = document.createElement("div");
-        row.className = "graduation-choice-row";
-        wrap.appendChild(row);
-        wrap.appendChild(status);
-      } else {
-        const title = document.createElement("div");
-        title.className = "graduation-title";
-        title.textContent = next ? "Advance to " + targetLabel : "Graduation Ceremony";
-        wrap.appendChild(title);
-
-        const note = document.createElement("div");
-        note.className = "graduation-note";
-        note.textContent = "Pick one keepsake or reward to seal the yearbook.";
-        wrap.appendChild(note);
-
-        wrap.appendChild(status);
-        row = document.createElement("div");
-        row.className = "graduation-choice-row";
-        wrap.appendChild(row);
-      }
-
-      const allButtons = [];
-      const setBusy = (btn, text) => {
-        allButtons.forEach((b) => { b.disabled = true; });
+      const gradeLabel = completedGrade ? (GRADE_LABELS[completedGrade] || ("Grade " + completedGrade)) : "Ruby High";
+      const scoreText = finalGrade.averageScore == null ? "Final grade ready" : "Final grade " + finalGrade.letter + " · " + formatClassScore(finalGrade.averageScore);
+      const setBusy = (btn, text, controls) => {
+        controls.buttons.forEach((b) => { b.disabled = true; });
         btn.textContent = text;
-        status.textContent = "Ceremony in progress…";
-        status.classList.remove("is-invalid");
+        controls.status.textContent = "Ceremony in progress…";
+        controls.status.classList.remove("is-invalid");
       };
-      const submitReward = async (reward, btn) => {
-        setBusy(btn, "Sealing…");
+      const submitReward = async (reward, btn, controls) => {
+        setBusy(btn, "Sealing…", controls);
         const data = await command({ type: "complete-graduation", reward });
         if (data && data.session) {
           showCongrats(next ? "You're a " + targetLabel + " now!" : "You graduated.", true);
@@ -5903,25 +5848,9 @@ export function runViewerClient(bootstrap) {
           if (sheetOverlayOpen) renderSheet();
           return;
         }
-        status.textContent = "Ceremony failed — pick again.";
-        status.classList.add("is-invalid");
-        allButtons.forEach((b) => { b.disabled = false; });
-      };
-      const addChoice = (label, detail, reward) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "graduation-choice";
-        const main = document.createElement("span");
-        main.className = "main";
-        main.textContent = label;
-        const sub = document.createElement("span");
-        sub.className = "sub";
-        sub.textContent = detail;
-        btn.appendChild(main);
-        btn.appendChild(sub);
-        btn.addEventListener("click", () => submitReward(reward, btn));
-        row.appendChild(btn);
-        allButtons.push(btn);
+        controls.status.textContent = "Ceremony failed — pick again.";
+        controls.status.classList.add("is-invalid");
+        controls.buttons.forEach((b) => { b.disabled = false; });
       };
 
       // Build the eligible pool. Stats already at the +3 cap are excluded
@@ -5961,9 +5890,17 @@ export function runViewerClient(bootstrap) {
       const seed = (c.pendingGraduation && c.pendingGraduation.readyAt)
         || (ready && ready.readyAt)
         || hashCeremonySeed((c.name || "") + ":" + grade);
-      const picked = [photoChoice].concat(seededShuffle(pool, seed).slice(0, 2));
-      picked.forEach(({ label, detail, reward }) => addChoice(label, detail, reward));
-      return wrap;
+      const choices = [photoChoice].concat(seededShuffle(pool, seed).slice(0, 2));
+      return graduationCeremonyRenderer.build({
+        onBoard,
+        completedGradeLabel: gradeLabel,
+        finalGradeLetter: finalGrade.letter,
+        scoreText,
+        targetLabel,
+        hasNextGrade: !!next,
+        choices,
+        onChoice: submitReward,
+      });
     }
 
   // Fisher-Yates with a deterministic mulberry32 PRNG so the same ceremony

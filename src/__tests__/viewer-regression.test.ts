@@ -347,6 +347,21 @@ describe("viewer regression guardrails", () => {
     expect(introSource).not.toContain('explanation.className = "creation-explanation";');
   });
 
+  it("renders graduation ceremony shells from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createGraduationCeremonyRenderer(");
+    expectScriptToContain(clientSource, "const graduationCeremonyRenderer = createGraduationCeremonyRenderer({");
+    expectScriptToContain(clientSource, "return graduationCeremonyRenderer.build({");
+    expectScriptToContain(script, 'wrap.className = spec.onBoard ? "graduation-board-card" : "graduation-ceremony";');
+    const ceremonyStart = clientSource.indexOf("function buildGraduationCeremony(c, grade, opts)");
+    const ceremonyEnd = clientSource.indexOf("// Fisher-Yates", ceremonyStart);
+    const ceremonySource = clientSource.slice(ceremonyStart, ceremonyEnd);
+    expect(ceremonySource).not.toContain('hero.className = "graduation-board-hero";');
+    expect(ceremonySource).not.toContain('btn.className = "graduation-choice";');
+  });
+
   it("builds blackboard question prompts from typed view models", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
