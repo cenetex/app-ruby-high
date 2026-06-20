@@ -271,6 +271,21 @@ describe("viewer regression guardrails", () => {
     expect(mashGridSource).not.toContain('tag.className = "mash-resolved-axis";');
   });
 
+  it("builds teacher roll controls from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createTeacherRollControlsRenderer(");
+    expectScriptToContain(clientSource, "const teacherRollControlsRenderer = createTeacherRollControlsRenderer({");
+    expectScriptToContain(clientSource, "return teacherRollControlsRenderer.build({");
+    expectScriptToContain(script, 'controlsCard.className = "ccg-card is-career-card is-creation-control-card";');
+    const controlsStart = clientSource.indexOf("function buildTeacherRollControls()");
+    const controlsEnd = clientSource.indexOf("function renderNewTeacherCreation()", controlsStart);
+    const controlsSource = clientSource.slice(controlsStart, controlsEnd);
+    expect(controlsSource).not.toContain('controlsCard.className = "ccg-card is-career-card is-creation-control-card";');
+    expect(controlsSource).not.toContain('choices.className = "teacher-image-presets";');
+  });
+
   it("builds report cards from a typed renderer", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");

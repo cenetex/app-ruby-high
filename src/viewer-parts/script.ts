@@ -42,6 +42,7 @@ import { createPaperCardRenderer } from "./paper-card.js";
 import { createReportCardRenderer } from "./report-card.js";
 import { createStudentPoolCardRenderer } from "./student-pool-card.js";
 import { createMashGridRenderer } from "./mash-grid.js";
+import { createTeacherRollControlsRenderer } from "./teacher-roll-controls.js";
 import { runViewerClient } from "./client.js";
 import * as Pure from "./client-pure.js";
 
@@ -286,6 +287,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createReportCardRenderer = ${createReportCardRenderer.toString()};
   const createStudentPoolCardRenderer = ${createStudentPoolCardRenderer.toString()};
   const createMashGridRenderer = ${createMashGridRenderer.toString()};
+  const createTeacherRollControlsRenderer = ${createTeacherRollControlsRenderer.toString()};
   const parseViewerSseFrames = ${parseViewerSseFrames.toString()};
   const consumeViewerSseStream = ${consumeViewerSseStream.toString()};
   const runViewerClient = ${runViewerClient.toString()};

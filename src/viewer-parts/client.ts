@@ -1472,6 +1472,10 @@ export function runViewerClient(bootstrap) {
     recentRelationshipEvents,
     mashTickStory,
   });
+  const teacherRollControlsRenderer = createTeacherRollControlsRenderer({
+    document,
+    assets: PREGENERATED_TEACHER_ASSETS,
+  });
   const reportCardRenderer = createReportCardRenderer({
     document,
     essayLetter,
@@ -7915,11 +7919,6 @@ export function runViewerClient(bootstrap) {
     }
     renderPackTeacherEditor();
   }
-  function currentTeacherImageChoice(roll) {
-    if (!roll) return "ruby";
-    if (roll.imageChoice === "custom" || roll.profileImageUrl) return "custom";
-    return roll.assetTeacherId || "ruby";
-  }
   function updatePendingTeacherRollField(field, value) {
     if (!pendingTeacherRoll) return;
     const next = { ...pendingTeacherRoll };
@@ -7953,151 +7952,25 @@ export function runViewerClient(bootstrap) {
     });
   }
   function buildTeacherRollControls() {
-    const controlsCard = document.createElement("div");
-    controlsCard.className = "ccg-card is-career-card is-creation-control-card";
-    const controlsRole = document.createElement("span");
-    controlsRole.className = "ccg-role career";
-    controlsRole.textContent = "roll";
-    controlsCard.appendChild(controlsRole);
-    const controlsBody = document.createElement("div");
-    controlsBody.className = "ccg-body";
-    controlsCard.appendChild(controlsBody);
-    const controlsName = document.createElement("div");
-    controlsName.className = "ccg-name";
-    controlsName.textContent = "Teacher Roll";
-    controlsBody.appendChild(controlsName);
-    const controlsSub = document.createElement("div");
-    controlsSub.className = "ccg-subtitle";
-    controlsSub.textContent = "Start with a pregenerated Ruby High teacher, then reroll the parts that should change.";
-    controlsBody.appendChild(controlsSub);
-    const fields = document.createElement("div");
-    fields.className = "creation-fields";
-    controlsBody.appendChild(fields);
-    const makeRow = (label, key, value, opts) => {
-      const row = document.createElement("div");
-      row.className = "creation-row" + (opts && opts.className ? " " + opts.className : "");
-      const lab = document.createElement("div");
-      lab.className = "creation-row-label";
-      lab.textContent = label;
-      const val = document.createElement("div");
-      val.className = "creation-row-value";
-      if (opts && opts.editField) {
-        const input = document.createElement(opts.multiline ? "textarea" : "input");
-        input.className = "creation-edit-input" + (opts.multiline ? " is-multiline" : "");
-        if (!opts.multiline) input.type = "text";
-        input.value = value || "";
-        input.placeholder = opts.placeholder || "";
-        if (opts.maxLength) input.maxLength = opts.maxLength;
-        if (opts.multiline) input.rows = opts.rows || 2;
-        input.disabled = packImportBusy;
-        input.addEventListener("input", () => updatePendingTeacherRollField(opts.editField, input.value));
-        val.appendChild(input);
-      } else if (value && typeof value === "object" && value.nodeType) val.appendChild(value);
-      else val.textContent = value || "";
-      row.appendChild(lab);
-      row.appendChild(val);
-      if (!opts || opts.reroll !== false) {
-        const reroll = document.createElement("button");
-        reroll.type = "button";
-        reroll.className = "creation-reroll";
-        reroll.title = "Reroll " + label.toLowerCase();
-        reroll.textContent = "↻";
-        reroll.disabled = packImportBusy;
-        reroll.addEventListener("click", () => {
-          rollTeacherCandidate([key]);
-          renderPackTeacherEditor();
-        });
-        row.appendChild(reroll);
-      }
-      fields.appendChild(row);
-      return { row, val };
-    };
     const roll = pendingTeacherRoll || rollTeacherCandidate();
-    makeRow("Name", "name", roll.displayName, { editField: "displayName", maxLength: 64, placeholder: "Teacher name" });
-    makeRow("Class", "style", roll.subject, { editField: "subject", maxLength: 80, placeholder: "Class or subject" });
-    makeTeacherImageRow(fields, roll);
-    makeRow("Stats", "stats", buildTeacherStatPills(roll.stats), { className: "is-compact-stats" });
-    makeRow("Style", "style", roll.description, { editField: "description", multiline: true, maxLength: 220, placeholder: "Teaching style", reroll: false });
-    makeRow("Quote", "quote", roll.quote, { editField: "quote", multiline: true, maxLength: 160, placeholder: "Teacher quote" });
-    return controlsCard;
-  }
-  function makeTeacherImageRow(fields, roll) {
-    const row = document.createElement("div");
-    row.className = "creation-row teacher-image-row";
-    const lab = document.createElement("div");
-    lab.className = "creation-row-label";
-    lab.textContent = "Image";
-    const val = document.createElement("div");
-    val.className = "creation-row-value teacher-image-control";
-    const choices = document.createElement("div");
-    choices.className = "teacher-image-presets";
-    const current = currentTeacherImageChoice(roll);
-    PREGENERATED_TEACHER_ASSETS.forEach((asset) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "teacher-image-preset" + (current === asset.id ? " is-selected" : "");
-      btn.textContent = asset.name;
-      btn.disabled = packImportBusy || pendingTeacherImageBusy;
-      btn.addEventListener("click", () => chooseTeacherImage(asset.id));
-      choices.appendChild(btn);
+    return teacherRollControlsRenderer.build({
+      roll,
+      importBusy: packImportBusy,
+      imageBusy: pendingTeacherImageBusy,
+      imageStatus: pendingTeacherImageStatus,
+      imageInvalid: pendingTeacherImageInvalid,
+      imageReason: teacherImageGenerationStatusReason(),
+      imageCreditHint: teacherImageCreditHint(),
+      statsNode: buildTeacherStatPills(roll.stats),
+      onFieldInput: updatePendingTeacherRollField,
+      onReroll(key) {
+        rollTeacherCandidate([key]);
+        renderPackTeacherEditor();
+      },
+      onChooseImage: chooseTeacherImage,
+      onGenerateImage: generateTeacherImageForPendingRoll,
+      onCancelImage: cancelTeacherImageGeneration,
     });
-    const customBtn = document.createElement("button");
-    customBtn.type = "button";
-    customBtn.className = "teacher-image-preset" + (current === "custom" ? " is-selected" : "");
-    customBtn.textContent = "Custom";
-    customBtn.disabled = packImportBusy || pendingTeacherImageBusy;
-    customBtn.addEventListener("click", () => chooseTeacherImage("custom"));
-    choices.appendChild(customBtn);
-    val.appendChild(choices);
-    if (current === "custom") {
-      const custom = document.createElement("div");
-      custom.className = "teacher-custom-image";
-      const generateBtn = document.createElement("button");
-      generateBtn.type = "button";
-      generateBtn.className = "secondary teacher-custom-generate" + (pendingTeacherImageBusy ? " is-loading" : "");
-      generateBtn.dataset.requiresOpenrouter = "teacher-image";
-      generateBtn.setAttribute("aria-busy", pendingTeacherImageBusy ? "true" : "false");
-      if (pendingTeacherImageBusy) {
-        const spinner = document.createElement("span");
-        spinner.className = "teacher-button-spinner";
-        spinner.setAttribute("aria-hidden", "true");
-        generateBtn.appendChild(spinner);
-      }
-      const generateLabel = document.createElement("span");
-      generateLabel.textContent = pendingTeacherImageBusy ? "Generating" : (roll.profileImageUrl ? "Generate again" : "Generate");
-      generateBtn.appendChild(generateLabel);
-      const imageReason = teacherImageGenerationStatusReason();
-      generateBtn.disabled = packImportBusy || pendingTeacherImageBusy || !!imageReason;
-      generateBtn.title = imageReason;
-      generateBtn.addEventListener("click", generateTeacherImageForPendingRoll);
-      custom.appendChild(generateBtn);
-      if (pendingTeacherImageBusy) {
-        const cancelBtn = document.createElement("button");
-        cancelBtn.type = "button";
-        cancelBtn.className = "secondary teacher-generation-cancel";
-        cancelBtn.textContent = "Cancel generation";
-        cancelBtn.disabled = packImportBusy;
-        cancelBtn.addEventListener("click", cancelTeacherImageGeneration);
-        custom.appendChild(cancelBtn);
-      }
-      const credit = document.createElement("div");
-      credit.className = "creation-portrait-status is-credit-hint";
-      credit.textContent = pendingTeacherImageBusy
-        ? "Keep editing while the image generates. Save and Close unlock after it finishes or you cancel."
-        : teacherImageCreditHint();
-      custom.appendChild(credit);
-      const statusText = pendingTeacherImageBusy ? "" : (pendingTeacherImageStatus || (roll.profileImageUrl ? "Custom teacher image ready." : ""));
-      if (statusText) {
-        const status = document.createElement("div");
-        status.className = "creation-portrait-status" + (pendingTeacherImageInvalid ? " is-invalid" : "");
-        status.textContent = statusText;
-        custom.appendChild(status);
-      }
-      val.appendChild(custom);
-    }
-    row.appendChild(lab);
-    row.appendChild(val);
-    fields.appendChild(row);
   }
   function renderNewTeacherCreation() {
     const roll = pendingTeacherRoll || rollTeacherCandidate();
