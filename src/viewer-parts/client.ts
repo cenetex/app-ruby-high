@@ -317,41 +317,7 @@ export function runViewerClient(bootstrap) {
   }
 
   function buildGuestSpotlight(t) {
-    if (!secondarySurfacesUnlocked(t)) return null;
-    const guest = t.guest_pack || {};
-    const pack = guest.auto || null;
-    const view = guestSpotlightView(guest);
-    if (!view.visible) return null;
-    const key = String(guest.weekKey || "") + ":" + view.packId;
-    if (!guestSpotlightSeenKeys.has(key)) {
-      guestSpotlightSeenKeys.add(key);
-      postViewerMetricEvent("guest_spotlight_seen", { packId: view.packId });
-    }
-    const wrap = document.createElement("div");
-    wrap.className = "guest-spotlight";
-    const copy = document.createElement("div");
-    copy.className = "guest-spotlight-copy";
-    const title = document.createElement("div");
-    title.className = "guest-spotlight-title";
-    title.textContent = view.titleText;
-    const meta = document.createElement("div");
-    meta.className = "guest-spotlight-meta";
-    meta.textContent = view.metaText;
-    copy.appendChild(title);
-    copy.appendChild(meta);
-    const action = document.createElement("button");
-    action.type = "button";
-    action.className = "guest-spotlight-action";
-    action.textContent = view.actionText;
-    action.disabled = view.actionDisabled;
-    action.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      void startGuestSpotlight(pack);
-    });
-    wrap.appendChild(copy);
-    wrap.appendChild(action);
-    return wrap;
+    return guestSpotlightRenderer.build(t);
   }
 
   async function startGuestSpotlight(pack) {
@@ -757,7 +723,6 @@ export function runViewerClient(bootstrap) {
   let lastRevealId = null;
   let lastAnswerGradedTriggerId = null;
   let lastIdleTriggerId = null;
-  const guestSpotlightSeenKeys = new Set();
   let showWelcomeBackCopy = false;
   let firstRunCreationOpened = false;
   let lastPostClassToastShown = false;
@@ -1499,6 +1464,17 @@ export function runViewerClient(bootstrap) {
     subject: els.arcXp,
     score: els.arcScore,
     viewFor: arcIndicatorView,
+  });
+  const guestSpotlightRenderer = createGuestSpotlightRenderer({
+    document,
+    viewFor: guestSpotlightView,
+    isUnlocked: secondarySurfacesUnlocked,
+    markSeen(packId) {
+      postViewerMetricEvent("guest_spotlight_seen", { packId });
+    },
+    startPack(pack) {
+      void startGuestSpotlight(pack);
+    },
   });
 
   // ── message factories ────────────────────────────────────────────────────

@@ -775,6 +775,7 @@ describe("viewer regression guardrails", () => {
 
   it("keeps weekly guest spotlight in the lounge and collapses class-start copy behind info", () => {
     const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
 
     expectScriptToContain(script, "function buildBoardClassStartHeader(statusText, infoText)");
     expectScriptToContain(script, "function boardSubjectGradesTitleView(currentGradeInput, summaryInput)");
@@ -785,8 +786,12 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'bubble.className = "board-info-popover";');
     expectScriptToContain(script, "const spotlight = buildGuestSpotlight(lastTelemetry);");
     expectScriptToContain(script, "function guestSpotlightView(guestInput)");
-    expectScriptToContain(script, "const view = guestSpotlightView(guest);");
+    expectScriptToContain(script, "function createGuestSpotlightRenderer(deps)");
+    expectScriptToContain(script, "const guestSpotlightRenderer = createGuestSpotlightRenderer({");
+    expectScriptToContain(script, "viewFor: guestSpotlightView");
+    expectScriptToContain(script, "return guestSpotlightRenderer.build(t);");
     expect(script.match(/buildGuestSpotlight\(/g) ?? []).toHaveLength(2);
+    expect(clientSource).not.toContain('wrap.className = "guest-spotlight";');
     expect(VIEWER_CSS).toContain(".board-info-popover");
     expect(VIEWER_CSS).toContain('.blackboard-panel[data-mode="in-lounge"] .blackboard-empty');
     expect(cssRule(".blackboard-empty")).toContain("flex-direction: column");
