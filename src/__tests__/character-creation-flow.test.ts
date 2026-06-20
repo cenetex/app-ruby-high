@@ -139,7 +139,8 @@ describe("character creation flow", () => {
     it("routes unaffordable AI portrait requests to the Hall Pass flow", () => {
       const script = renderedViewerScript();
       expectScriptToContain(script, "function hostedPortraitHallPassNeeded()");
-      expectScriptToContain(script, "Hall Pass needed.");
+      expectScriptNotToContain(script, "Hall Pass needed.");
+      expectScriptToContain(script, 'title: "Hall Pass needed"');
       expectScriptToContain(script, "Custom character portrait needs");
       expectScriptToContain(script, "Rolling and saving your student stays free.");
       expectScriptToContain(script, "openBilling({ mode: \"hall-passes\" })");

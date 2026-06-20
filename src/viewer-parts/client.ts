@@ -6097,16 +6097,7 @@ export function runViewerClient(bootstrap) {
       const portraitReason = portraitGenerationStatusReason();
       portraitBtn.hidden = !portraitGenerationVisible();
       portraitBtn.disabled = !rolled || inFlight.portrait || (!!portraitReason && !portraitHallPassNeeded);
-      portraitBtn.title = portraitHallPassNeeded
-        ? "Hall Pass needed. Open Hall Passes to claim a free starter pass."
-        : portraitReason || "";
-      if (rolled && portraitHallPassNeeded && !inFlight.portrait) {
-        portraitStatus.textContent = "Hall Pass needed.";
-        portraitStatus.classList.add("is-invalid");
-      } else if (portraitStatus.textContent === "Hall Pass needed.") {
-        portraitStatus.textContent = "";
-        portraitStatus.classList.remove("is-invalid");
-      }
+      portraitBtn.title = portraitReason || "";
     }
 
     function portraitGenerationVisible() {
@@ -6225,8 +6216,6 @@ export function runViewerClient(bootstrap) {
       if (hostedPortraitHallPassNeeded()) {
         const entitlement = hostedImageEntitlement("portrait") || {};
         const cost = Math.max(1, Math.floor(Number(entitlement.cost || 1)));
-        portraitStatus.textContent = "Hall Pass needed.";
-        portraitStatus.classList.add("is-invalid");
         await promptForHallPasses({
           title: "Hall Pass needed",
           copy: "Custom character portrait needs " + hallPassCostLabel(cost) + ". Claim your free starter Hall Passes or add more.",
