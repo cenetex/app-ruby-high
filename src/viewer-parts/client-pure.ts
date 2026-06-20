@@ -1615,10 +1615,19 @@ export function worldFeedCurriculumPressureLabel(room: unknown, curriculumLoops:
   return parts.length > 0 ? "Curriculum: " + parts.join(", ") : "";
 }
 
+export function worldFeedRoomBonusPressureLabel(room: unknown): string {
+  const record = room && typeof room === "object" ? room as LooseRecord : {};
+  const goal = record.goal && typeof record.goal === "object" ? record.goal as LooseRecord : null;
+  if (!goal || goal.complete !== true) return "";
+  const label = String(goal.bonusLabel || "").trim();
+  return label ? "Bonus: " + label : "";
+}
+
 export function worldFeedRoomPressureText(room: unknown, summary: unknown): string {
   const record = summary && typeof summary === "object" ? summary as LooseRecord : {};
   const pressure = [
     worldFeedRoomPressureLabel(room, record.termRules),
+    worldFeedRoomBonusPressureLabel(room),
     worldFeedCurriculumPressureLabel(room, record.curriculumLoops),
   ].filter(Boolean);
   return pressure.join(" · ");

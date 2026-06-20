@@ -199,6 +199,13 @@ describe("viewer world feed pure helpers", () => {
     expect(worldFeedCurriculumPressureLabel({ grade: "11" }, summary.curriculumLoops)).toBe("Curriculum: 1 promoted");
     expect(worldFeedCurriculumPressureLabel({ grade: "9" }, summary.curriculumLoops)).toBe("");
     expect(worldFeedRoomPressureText({ grade: "10" }, summary)).toBe("Term Momentum: 2-student room goal · Curriculum: 1 in review, 2 promoted");
+    expect(worldFeedRoomPressureText({
+      grade: "10",
+      goal: {
+        complete: true,
+        bonusLabel: "Ruby earned a Class Chain bonus",
+      },
+    }, summary)).toBe("Term Momentum: 2-student room goal · Bonus: Ruby earned a Class Chain bonus · Curriculum: 1 in review, 2 promoted");
   });
 
   it("builds compact world panel view models for the DOM renderer", () => {
