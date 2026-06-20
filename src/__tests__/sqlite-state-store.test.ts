@@ -67,6 +67,121 @@ describe("SqliteStateStore", () => {
     expect((await s.loadAuth()).sessions).toHaveLength(0);
   });
 
+  it("deletes all rows owned by an account", async () => {
+    const s = store();
+    await s.saveSession(session("rh:user:delete", 10));
+    await s.saveSession(session("rh:user:keep", 20));
+    await s.saveAuthUser({
+      provider: "guest",
+      providerUserHash: "visitor-delete",
+      visitorHash: "visitor-delete",
+      userId: "u-delete",
+      createdAt: 1,
+      lastLoginAt: 1,
+    } as AuthUserRecord);
+    await s.saveAuthUser({
+      provider: "guest",
+      providerUserHash: "visitor-keep",
+      visitorHash: "visitor-keep",
+      userId: "u-keep",
+      createdAt: 1,
+      lastLoginAt: 1,
+    } as AuthUserRecord);
+    await s.saveAuthSession({ token: "tok-delete", userId: "u-delete", createdAt: 1, expiresAt: Date.now() + 60_000 });
+    await s.saveAuthSession({ token: "tok-keep", userId: "u-keep", createdAt: 1, expiresAt: Date.now() + 60_000 });
+    await s.savePack({ pack: { id: "pack-delete" }, ownerSessionId: "rh:user:delete", touchedAt: 5 } as unknown as StoredContentPackRecord);
+    await s.savePack({ pack: { id: "pack-keep" }, ownerSessionId: "rh:user:keep", touchedAt: 5 } as unknown as StoredContentPackRecord);
+    await s.saveDraftPack({
+      id: "draft-delete",
+      ownerUserId: "u-delete",
+      ownerSessionId: "rh:user:delete",
+      name: "Draft",
+      visibility: "private",
+      teachers: [],
+      createdAt: 1,
+      updatedAt: 1,
+    } as unknown as StoredDraftContentPackRecord);
+    await s.savePackInstallation({
+      userId: "u-delete",
+      packId: "pack-delete",
+      enabled: true,
+      active: true,
+      installedAt: 1,
+      updatedAt: 1,
+    } as unknown as StoredPackInstallationRecord);
+    await s.saveMetricEvent({
+      id: "metric-delete",
+      name: "app_open",
+      occurredAt: 9,
+      day: "2026-05-31",
+      sessionId: "rh:user:delete",
+      userId: "u-delete",
+      visitorHash: "visitor-delete",
+    } as StoredMetricEventRecord);
+    await s.saveMetricEvent({
+      id: "metric-keep",
+      name: "app_open",
+      occurredAt: 10,
+      day: "2026-05-31",
+      sessionId: "rh:user:keep",
+      userId: "u-keep",
+      visitorHash: "visitor-keep",
+    } as StoredMetricEventRecord);
+    await s.saveSchoolEvent({
+      id: "school:event:delete",
+      sessionId: "rh:user:delete",
+      occurredAt: 9,
+      day: "2026-05-31",
+      event: {
+        id: "school:event:delete",
+        kind: "comic.page-unlocked",
+        at: 9,
+        faculty: "ruby",
+        grade: "10",
+        issueId: "first-bell",
+        pageId: "first-bell-delete",
+        pageNumber: 1,
+        reason: "teacher-class-aced",
+        sourceId: "teacher:ruby:grade:10",
+        label: "Delete page",
+      },
+    });
+
+    const result = await s.deleteAccountData({
+      userId: "u-delete",
+      sessionId: "rh:user:delete",
+      authSessionTokens: ["tok-delete"],
+      authUsers: [{
+        provider: "guest",
+        providerUserHash: "visitor-delete",
+        visitorHash: "visitor-delete",
+        userId: "u-delete",
+        createdAt: 1,
+        lastLoginAt: 1,
+      }],
+      visitorHashes: ["visitor-delete"],
+    });
+
+    expect(result).toMatchObject({
+      sessions: 1,
+      authUsers: 1,
+      authSessions: 1,
+      packs: 1,
+      draftPacks: 1,
+      packInstallations: 1,
+      metricEvents: 1,
+      schoolEvents: 1,
+    });
+    expect([...(await s.load()).keys()]).toEqual(["rh:user:keep"]);
+    expect((await s.loadAuth()).users.map((user) => user.userId)).toEqual(["u-keep"]);
+    expect((await s.loadAuth()).sessions.map((authSession) => authSession.token)).toEqual(["tok-keep"]);
+    expect((await s.loadPacks()).map((record) => record.pack.id)).toEqual(["pack-keep"]);
+    expect(await s.loadDraftPacks()).toHaveLength(0);
+    expect(await s.loadPackInstallations()).toHaveLength(0);
+    expect((await s.loadMetricEvents()).map((event) => event.id)).toEqual(["metric-keep"]);
+    expect(await s.loadSchoolEvents()).toHaveLength(0);
+  });
+
   it("round-trips packs, draft packs, installations, metric events, service state", async () => {
     const s = store();
     const pack: StoredContentPackRecord = {

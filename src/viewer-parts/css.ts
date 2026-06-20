@@ -3438,37 +3438,20 @@ export const VIEWER_CSS = `
     background: rgba(255,255,255,0.035);
   }
   .account-wallet-rules strong,
-  .account-wallet-rules span,
-  .account-public-world-rules strong,
-  .account-public-world-rules span {
+  .account-wallet-rules span {
     display: block;
     min-width: 0;
   }
-  .account-wallet-rules strong,
-  .account-public-world-rules strong {
+  .account-wallet-rules strong {
     color: var(--text);
     font-size: 12px;
     font-weight: 900;
   }
-  .account-wallet-rules span,
-  .account-public-world-rules span {
+  .account-wallet-rules span {
     margin-top: 3px;
     color: var(--text-mute);
     font-size: 12px;
     line-height: 1.35;
-  }
-  .account-public-world-rules {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    margin-top: 10px;
-  }
-  .account-public-world-rules div {
-    min-width: 0;
-    padding: 9px;
-    border-radius: 8px;
-    border: 1px solid rgba(255,255,255,0.08);
-    background: rgba(255,255,255,0.035);
   }
   .account-card .sheet-actions {
     margin-top: 10px;
@@ -3493,6 +3476,15 @@ export const VIEWER_CSS = `
   .account-card .sheet-actions button.secondary {
     background: rgba(255,255,255,0.07);
     color: var(--text-soft);
+  }
+  .account-section-head button.danger {
+    border: 1px solid rgba(255, 110, 110, 0.36);
+    background: rgba(185, 43, 43, 0.18);
+    color: #ffb7b7;
+  }
+  .account-section-head button.danger:not(:disabled):hover {
+    background: rgba(185, 43, 43, 0.28);
+    color: #fff;
   }
   .account-character-grid {
     display: grid;
@@ -4110,9 +4102,6 @@ export const VIEWER_CSS = `
       flex-direction: column;
     }
     .account-wallet-rules {
-      grid-template-columns: 1fr;
-    }
-    .account-public-world-rules {
       grid-template-columns: 1fr;
     }
     .account-hall-pass-cards {

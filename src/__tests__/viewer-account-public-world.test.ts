@@ -39,8 +39,8 @@ describe("accountPublicWorldView", () => {
       hasCharacter: false,
       hasPublicName: false,
       visible: false,
-      summaryText: "Create a student before joining shared school activity.",
-      statusText: "Not in school activity",
+      summaryText: "Create a student before joining school activity.",
+      statusText: "Not shown in school activity",
       toggleText: "Join",
       toggleDisabled: true,
       toggleTitle: "Create a student first",
@@ -65,7 +65,7 @@ describe("accountPublicWorldView", () => {
       hasPublicName: true,
       publicNameReviewOk: true,
       visible: true,
-      summaryText: "Your active student can appear in school rooms and activity.",
+      summaryText: "Your active student is shown in school activity.",
       statusClass: "is-visible",
       toggleText: "Leave",
       toggleDisabled: false,
@@ -73,7 +73,7 @@ describe("accountPublicWorldView", () => {
     });
     expect(hidden).toMatchObject({
       visible: false,
-      summaryText: "Your active student is not appearing in school rooms and activity.",
+      summaryText: "Your active student is not shown in school activity.",
       statusClass: "",
       toggleText: "Join",
       toggleDisabled: false,
@@ -208,17 +208,17 @@ describe("account public-world controller", () => {
 
     harness.controller.render();
 
-    expect(harness.summary.textContent).toBe("Your active student is not appearing in school rooms and activity.");
-    expect(harness.status.textContent).toBe("Not in school activity");
+    expect(harness.summary.textContent).toBe("Your active student is not shown in school activity.");
+    expect(harness.status.textContent).toBe("Not shown in school activity");
     expect(harness.status.classList.has("is-visible")).toBe(false);
     expect(harness.toggle.textContent).toBe("Join");
     expect(harness.toggle.disabled).toBe(false);
-    expect(harness.toggle.title).toBe("Allow this student to appear in school rooms and activity");
+    expect(harness.toggle.title).toBe("Show this student in school activity");
 
     harness.setCharacter({ name: "Noor", publicWorldVisible: true, socialConsent: true });
     harness.controller.render();
 
-    expect(harness.status.textContent).toBe("Visible in school activity");
+    expect(harness.status.textContent).toBe("Shown in school activity");
     expect(harness.status.classList.has("is-visible")).toBe(true);
     expect(harness.toggle.textContent).toBe("Leave");
   });

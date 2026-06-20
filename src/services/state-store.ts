@@ -215,6 +215,27 @@ export interface StoredServiceStateRecord {
   data: Record<string, unknown>;
 }
 
+export interface StoredAccountDeletionTarget {
+  userId: string;
+  sessionId: string;
+  publicSessionId?: string;
+  authSessionTokens?: string[];
+  authUsers?: AuthUserRecord[];
+  visitorHashes?: string[];
+}
+
+export interface StoredAccountDeletionResult {
+  sessions: number;
+  authUsers: number;
+  authSessions: number;
+  packs: number;
+  teachers: number;
+  draftPacks: number;
+  packInstallations: number;
+  metricEvents: number;
+  schoolEvents: number;
+}
+
 /**
  * Common shape every state-store backend implements. RubyHighService talks
  * to this abstraction; the JSON-file backend (this file) and the DynamoDB
@@ -261,6 +282,7 @@ export interface StateStoreLike {
   deleteDraftPack(draftId: string): Promise<void>;
   deletePackInstallation(userId: string, packId: string): Promise<void>;
   deleteAuthSession(token: string): Promise<void>;
+  deleteAccountData?(target: StoredAccountDeletionTarget): Promise<StoredAccountDeletionResult>;
   save(states: Iterable<QuizState>): Promise<void>;
   describe(): string;
   /** Optional: drain any debounced writes immediately. No-op for backends
@@ -671,6 +693,55 @@ export class StateStore implements StateStoreLike {
     return this.scheduleWrite();
   }
 
+  deleteAccountData(target: StoredAccountDeletionTarget): Promise<StoredAccountDeletionResult> {
+    const normalized = normalizeStoredAccountDeletionTarget(target);
+    const result = emptyStoredAccountDeletionResult();
+    if (this.snapshot.delete(normalized.sessionId)) result.sessions += 1;
+
+    for (const [key, user] of Array.from(this.authUsers.entries())) {
+      if (!storedAccountAuthUserMatches(user, normalized)) continue;
+      this.authUsers.delete(key);
+      result.authUsers += 1;
+    }
+    for (const [token, session] of Array.from(this.authSessions.entries())) {
+      if (!storedAccountAuthSessionMatches(token, session, normalized)) continue;
+      this.authSessions.delete(token);
+      result.authSessions += 1;
+    }
+    for (const [key, record] of Array.from(this.importedPacks.entries())) {
+      if (!storedAccountPackMatches(record, normalized)) continue;
+      this.importedPacks.delete(key);
+      result.packs += 1;
+    }
+    for (const [id, record] of Array.from(this.teachers.entries())) {
+      if (!storedAccountTeacherMatches(record, normalized)) continue;
+      this.teachers.delete(id);
+      result.teachers += 1;
+    }
+    for (const [id, record] of Array.from(this.draftPacks.entries())) {
+      if (!storedAccountDraftPackMatches(record, normalized)) continue;
+      this.draftPacks.delete(id);
+      result.draftPacks += 1;
+    }
+    for (const [key, record] of Array.from(this.packInstallations.entries())) {
+      if (!storedAccountPackInstallationMatches(record, normalized)) continue;
+      this.packInstallations.delete(key);
+      result.packInstallations += 1;
+    }
+    for (const [id, record] of Array.from(this.metricEvents.entries())) {
+      if (!storedAccountMetricEventMatches(record, normalized)) continue;
+      this.metricEvents.delete(id);
+      result.metricEvents += 1;
+    }
+    for (const [id, record] of Array.from(this.schoolEvents.entries())) {
+      if (!storedAccountSchoolEventMatches(record, normalized)) continue;
+      this.schoolEvents.delete(id);
+      result.schoolEvents += 1;
+    }
+
+    return storedAccountDeletionResultTotal(result) > 0 ? this.scheduleWrite().then(() => result) : Promise.resolve(result);
+  }
+
   describe(): string {
     return this.path;
   }
@@ -855,6 +926,99 @@ export function querySessionRecords(
     );
   const selected = limit === null ? rows : rows.slice(0, limit);
   return new Map(selected.map((state) => [state.sessionId, state]));
+}
+
+export function emptyStoredAccountDeletionResult(): StoredAccountDeletionResult {
+  return {
+    sessions: 0,
+    authUsers: 0,
+    authSessions: 0,
+    packs: 0,
+    teachers: 0,
+    draftPacks: 0,
+    packInstallations: 0,
+    metricEvents: 0,
+    schoolEvents: 0,
+  };
+}
+
+export function storedAccountDeletionResultTotal(result: StoredAccountDeletionResult): number {
+  return result.sessions +
+    result.authUsers +
+    result.authSessions +
+    result.packs +
+    result.teachers +
+    result.draftPacks +
+    result.packInstallations +
+    result.metricEvents +
+    result.schoolEvents;
+}
+
+export function normalizeStoredAccountDeletionTarget(target: StoredAccountDeletionTarget): StoredAccountDeletionTarget {
+  const userId = String(target.userId || "").trim();
+  const sessionId = String(target.sessionId || "").trim();
+  const authSessionTokens = Array.from(new Set((target.authSessionTokens ?? [])
+    .map((token) => String(token || "").trim())
+    .filter(Boolean)));
+  const authUsers = (target.authUsers ?? []).filter((user): user is AuthUserRecord =>
+    !!user &&
+    typeof user.userId === "string" &&
+    typeof user.providerUserHash === "string" &&
+    (user.provider === "openrouter" || user.provider === "guest" || user.provider === "privy"));
+  const visitorHashes = Array.from(new Set([
+    ...(target.visitorHashes ?? []),
+    ...authUsers.map((user) => user.visitorHash),
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)));
+  return {
+    userId,
+    sessionId,
+    ...(target.publicSessionId ? { publicSessionId: String(target.publicSessionId).trim() } : {}),
+    authSessionTokens,
+    authUsers,
+    visitorHashes,
+  };
+}
+
+export function storedAccountAuthUserMatches(user: AuthUserRecord, target: StoredAccountDeletionTarget): boolean {
+  if (user.userId === target.userId) return true;
+  return (target.authUsers ?? []).some((candidate) =>
+    candidate.provider === user.provider && candidate.providerUserHash === user.providerUserHash);
+}
+
+export function storedAccountAuthSessionMatches(
+  token: string,
+  session: AuthSessionRecord,
+  target: StoredAccountDeletionTarget,
+): boolean {
+  return session.userId === target.userId || (target.authSessionTokens ?? []).includes(token);
+}
+
+export function storedAccountPackMatches(record: StoredContentPackRecord, target: StoredAccountDeletionTarget): boolean {
+  return record.ownerSessionId === target.sessionId || record.creatorUserId === target.userId;
+}
+
+export function storedAccountTeacherMatches(record: StoredTeacherRecord, target: StoredAccountDeletionTarget): boolean {
+  return record.creatorUserId === target.userId || record.creatorSessionId === target.sessionId;
+}
+
+export function storedAccountDraftPackMatches(record: StoredDraftContentPackRecord, target: StoredAccountDeletionTarget): boolean {
+  return record.ownerUserId === target.userId || record.ownerSessionId === target.sessionId;
+}
+
+export function storedAccountPackInstallationMatches(record: StoredPackInstallationRecord, target: StoredAccountDeletionTarget): boolean {
+  return record.userId === target.userId;
+}
+
+export function storedAccountMetricEventMatches(record: StoredMetricEventRecord, target: StoredAccountDeletionTarget): boolean {
+  return record.userId === target.userId ||
+    record.sessionId === target.sessionId ||
+    ((target.visitorHashes ?? []).length > 0 && !!record.visitorHash && target.visitorHashes!.includes(record.visitorHash));
+}
+
+export function storedAccountSchoolEventMatches(record: StoredSchoolEventRecord, target: StoredAccountDeletionTarget): boolean {
+  return record.sessionId === target.sessionId;
 }
 
 export function authUserKey(provider: AuthUserRecord["provider"], providerUserHash: string): string {

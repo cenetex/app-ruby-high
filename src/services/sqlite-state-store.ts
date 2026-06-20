@@ -7,6 +7,8 @@ import type {
   AuthStoreSnapshot,
   AuthUserRecord,
   StateStoreLike,
+  StoredAccountDeletionResult,
+  StoredAccountDeletionTarget,
   StoredContentPackRecord,
   StoredDraftContentPackRecord,
   StoredMetricEventRecord,
@@ -17,7 +19,22 @@ import type {
   StoredServiceStateRecord,
   StoredTeacherRecord,
 } from "./state-store.js";
-import { isStoredMetricEventName, isStoredSchoolEventRecord, querySchoolEventRecords } from "./state-store.js";
+import {
+  emptyStoredAccountDeletionResult,
+  isStoredMetricEventName,
+  isStoredSchoolEventRecord,
+  normalizeStoredAccountDeletionTarget,
+  querySchoolEventRecords,
+  storedAccountAuthSessionMatches,
+  storedAccountAuthUserMatches,
+  storedAccountDeletionResultTotal,
+  storedAccountDraftPackMatches,
+  storedAccountMetricEventMatches,
+  storedAccountPackInstallationMatches,
+  storedAccountPackMatches,
+  storedAccountSchoolEventMatches,
+  storedAccountTeacherMatches,
+} from "./state-store.js";
 
 /**
  * SQLite-backed state store. One row per record in a single `kv` table,
@@ -116,6 +133,22 @@ export class SqliteStateStore implements StateStoreLike {
     for (const row of stmt.all(kind, nowSec) as Array<{ data: string }>) {
       try {
         out.push(JSON.parse(row.data));
+      } catch {
+        /* skip malformed row */
+      }
+    }
+    return out;
+  }
+
+  private keyedRowsOfKind(kind: Kind): Array<{ pk: string; data: unknown }> {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const stmt = this.db.prepare(
+      "SELECT pk, data FROM kv WHERE kind = ? AND (expires_at IS NULL OR expires_at > ?)",
+    );
+    const out: Array<{ pk: string; data: unknown }> = [];
+    for (const row of stmt.all(kind, nowSec) as Array<{ pk: string; data: string }>) {
+      try {
+        out.push({ pk: row.pk, data: JSON.parse(row.data) });
       } catch {
         /* skip malformed row */
       }
@@ -402,6 +435,19 @@ export class SqliteStateStore implements StateStoreLike {
     this.db.prepare("DELETE FROM kv WHERE pk = ?").run(pk);
   }
 
+  private deleteMany(pks: readonly string[]): void {
+    if (pks.length === 0) return;
+    const stmt = this.db.prepare("DELETE FROM kv WHERE pk = ?");
+    this.db.exec("BEGIN");
+    try {
+      for (const pk of pks) stmt.run(pk);
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+  }
+
   async deletePack(ownerSessionId: string | null, packId: string): Promise<void> {
     this.delete(this.packPk(ownerSessionId, packId));
   }
@@ -420,6 +466,65 @@ export class SqliteStateStore implements StateStoreLike {
 
   async deleteAuthSession(token: string): Promise<void> {
     this.delete(`auth:session:${token}`);
+  }
+
+  async deleteAccountData(targetInput: StoredAccountDeletionTarget): Promise<StoredAccountDeletionResult> {
+    const target = normalizeStoredAccountDeletionTarget(targetInput);
+    const result = emptyStoredAccountDeletionResult();
+    const pks: string[] = [];
+
+    for (const row of this.keyedRowsOfKind("session")) {
+      const state = row.data as QuizState;
+      if (row.pk !== target.sessionId && state?.sessionId !== target.sessionId) continue;
+      pks.push(row.pk);
+      result.sessions += 1;
+    }
+    for (const row of this.keyedRowsOfKind("authUser")) {
+      const user = row.data as AuthUserRecord;
+      if (!storedAccountAuthUserMatches(user, target)) continue;
+      pks.push(row.pk);
+      result.authUsers += 1;
+    }
+    for (const row of this.keyedRowsOfKind("authSession")) {
+      const session = row.data as AuthSessionRecord;
+      const token = String(row.pk).startsWith("auth:session:") ? String(row.pk).slice("auth:session:".length) : session?.token;
+      if (!storedAccountAuthSessionMatches(token, session, target)) continue;
+      pks.push(row.pk);
+      result.authSessions += 1;
+    }
+    for (const row of this.keyedRowsOfKind("contentPack")) {
+      if (!storedAccountPackMatches(row.data as StoredContentPackRecord, target)) continue;
+      pks.push(row.pk);
+      result.packs += 1;
+    }
+    for (const row of this.keyedRowsOfKind("teacherRecord")) {
+      if (!storedAccountTeacherMatches(row.data as StoredTeacherRecord, target)) continue;
+      pks.push(row.pk);
+      result.teachers += 1;
+    }
+    for (const row of this.keyedRowsOfKind("draftPack")) {
+      if (!storedAccountDraftPackMatches(row.data as StoredDraftContentPackRecord, target)) continue;
+      pks.push(row.pk);
+      result.draftPacks += 1;
+    }
+    for (const row of this.keyedRowsOfKind("packInstallation")) {
+      if (!storedAccountPackInstallationMatches(row.data as StoredPackInstallationRecord, target)) continue;
+      pks.push(row.pk);
+      result.packInstallations += 1;
+    }
+    for (const row of this.keyedRowsOfKind("metricEvent")) {
+      if (!storedAccountMetricEventMatches(row.data as StoredMetricEventRecord, target)) continue;
+      pks.push(row.pk);
+      result.metricEvents += 1;
+    }
+    for (const row of this.keyedRowsOfKind("schoolEvent")) {
+      if (!storedAccountSchoolEventMatches(row.data as StoredSchoolEventRecord, target)) continue;
+      pks.push(row.pk);
+      result.schoolEvents += 1;
+    }
+
+    if (storedAccountDeletionResultTotal(result) > 0) this.deleteMany(pks);
+    return result;
   }
 
   // ── housekeeping ─────────────────────────────────────────────────────────────

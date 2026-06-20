@@ -532,6 +532,7 @@ export function runViewerClient(bootstrap) {
     accountPublicWorldSummary: $("account-public-world-summary"),
     accountPublicWorldStatus: $("account-public-world-status"),
     accountPublicWorldToggle: $("account-public-world-toggle"),
+    accountDelete: $("account-delete"),
     accountComicSummary: $("account-comic-summary"),
     accountComics: $("account-comics"),
     accountHistoryList: $("account-history-list"),
@@ -8770,6 +8771,7 @@ export function runViewerClient(bootstrap) {
   function setPrivyBusy(busy) {
     if (els.privyLoginWidget) els.privyLoginWidget.disabled = !!busy;
     if (els.privySignout) els.privySignout.disabled = !!busy;
+    if (els.accountDelete) els.accountDelete.disabled = !!busy;
   }
   async function signOutPrivy() {
     setPrivyBusy(true);
@@ -8782,6 +8784,52 @@ export function runViewerClient(bootstrap) {
       setPrivyStatus("Signed out.", false);
     } catch (err) {
       setPrivyStatus(err && err.message ? err.message : "Could not sign out", true);
+    } finally {
+      setPrivyBusy(false);
+    }
+  }
+  async function deleteAccountFromAccount() {
+    if (!authed) {
+      setPrivyStatus("No Ruby High account is signed in.", true);
+      return;
+    }
+    const confirmed = await confirmInApp({
+      kicker: "Delete account",
+      title: "Delete this account?",
+      copy: "This permanently removes this account, students, progress, wallet ledger, receipts, and school activity.",
+      detail: "This cannot be undone.",
+      confirmText: "Delete account",
+      tone: "danger",
+      focus: "cancel",
+    });
+    if (!confirmed) return;
+    setPrivyBusy(true);
+    setPrivyStatus("Deleting account...", false);
+    try {
+      const r = await fetch(apiBase + "/auth/delete-account", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: attachVisitorHeader(new Headers()),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || "Could not delete account.");
+      clearStoredAuth();
+      try {
+        const client = await getPrivyClient();
+        if (client) await client.logout();
+      } catch (_err) {}
+      applyPrivyState({ configured: !!privyConfig, authenticated: false, ready: true });
+      authed = null;
+      aiEnabled = false;
+      localAiEnabled = false;
+      hostedAiActive = false;
+      lastAuthState = null;
+      lastTelemetry = null;
+      applyAuthUI();
+      setPrivyStatus("Account deleted. Starting fresh...", false);
+      setTimeout(() => { window.location.reload(); }, 700);
+    } catch (err) {
+      setPrivyStatus(err && err.message ? err.message : "Could not delete account", true);
     } finally {
       setPrivyBusy(false);
     }
@@ -9527,6 +9575,7 @@ export function runViewerClient(bootstrap) {
   if (els.accountCreateCharacter) els.accountCreateCharacter.addEventListener("click", openCharacterCreationFromAccount);
   if (els.accountUnlockSlot) els.accountUnlockSlot.addEventListener("click", unlockCharacterSlotFromAccount);
   if (els.accountPublicWorldToggle) els.accountPublicWorldToggle.addEventListener("click", togglePublicWorldFromAccount);
+  if (els.accountDelete) els.accountDelete.addEventListener("click", deleteAccountFromAccount);
   if (els.blackboardEmptyAction) els.blackboardEmptyAction.addEventListener("click", handleBlackboardEmptyAction);
   if (els.billingClose) els.billingClose.addEventListener("click", closeBilling);
   if (els.billingOverlay) els.billingOverlay.addEventListener("click", (e) => {

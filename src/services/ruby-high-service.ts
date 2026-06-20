@@ -120,6 +120,8 @@ import { FacultyService, toFacultyMember } from "./faculty-service.js";
 import {
   getDefaultStateStore,
   type StateStoreLike,
+  type StoredAccountDeletionResult,
+  type StoredAccountDeletionTarget,
   type StoredCourseSlotRecord,
   type StoredContentPackRecord,
   type StoredDraftContentPackRecord,
@@ -1426,6 +1428,67 @@ export class RubyHighService extends Service {
     const promise = this.persistSession(sessionId, { surfaceErrors: true });
     if (typeof this.store.flush === "function") await this.store.flush();
     await promise;
+  }
+
+  async deleteAccountData(target: StoredAccountDeletionTarget): Promise<StoredAccountDeletionResult> {
+    if (!this.store.deleteAccountData) {
+      throw new Error("Account deletion is not supported by this state store.");
+    }
+    const publicSessionId = target.publicSessionId ?? publicWorldSessionId(target.sessionId);
+    const deletionTarget: StoredAccountDeletionTarget = {
+      ...target,
+      ...(publicSessionId ? { publicSessionId } : {}),
+    };
+    if (typeof this.store.flush === "function") await this.store.flush();
+
+    const publicEventIds = new Set<string>();
+    const state = this.sessions.get(deletionTarget.sessionId);
+    if (state && Array.isArray(state.schoolEvents)) {
+      for (const event of state.schoolEvents) {
+        publicEventIds.add(publicSchoolWorldEvent(event).id);
+      }
+    }
+    for (const record of this.schoolEventRecords.values()) {
+      if (record.sessionId === deletionTarget.sessionId) {
+        publicEventIds.add(publicSchoolWorldEvent(record.event).id);
+      }
+    }
+
+    const result = await this.store.deleteAccountData(deletionTarget);
+
+    this.sessions.delete(deletionTarget.sessionId);
+    if (this.persistedPackRecords) {
+      this.persistedPackRecords = this.persistedPackRecords.filter((record) =>
+        record.ownerSessionId !== deletionTarget.sessionId && record.creatorUserId !== deletionTarget.userId);
+    }
+    if (this.teacherRecords) {
+      this.teacherRecords = this.teacherRecords.filter((record) =>
+        record.creatorSessionId !== deletionTarget.sessionId && record.creatorUserId !== deletionTarget.userId);
+    }
+    if (this.draftPackRecords) {
+      this.draftPackRecords = this.draftPackRecords.filter((record) =>
+        record.ownerSessionId !== deletionTarget.sessionId && record.ownerUserId !== deletionTarget.userId);
+    }
+    if (this.packInstallationRecords) {
+      this.packInstallationRecords = this.packInstallationRecords.filter((record) => record.userId !== deletionTarget.userId);
+    }
+    for (const [id, record] of Array.from(this.schoolEventRecords.entries())) {
+      if (record.sessionId === deletionTarget.sessionId) this.schoolEventRecords.delete(id);
+    }
+    for (const id of publicEventIds) this.publicWorldEventLog.delete(id);
+    let liveRoomGoalsChanged = false;
+    if (publicSessionId) {
+      for (const goal of this.liveRoomGoalStates.values()) {
+        if (goal.contributors.delete(publicSessionId)) liveRoomGoalsChanged = true;
+      }
+    }
+
+    await Promise.all([
+      this.persistPublicWorldEventLog({ surfaceErrors: true }),
+      liveRoomGoalsChanged ? this.persistLiveRoomGoalState({ surfaceErrors: true }) : Promise.resolve(),
+      this.persistPublicWorldSummaryState({ surfaceErrors: true }),
+    ]);
+    return result;
   }
 
   recordAppOpen(

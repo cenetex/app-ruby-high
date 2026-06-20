@@ -416,6 +416,123 @@ describe("DynamoStateStore", () => {
     expect(auth.sessions.map((s) => s.token)).toEqual(["token-1"]);
   });
 
+  it("deletes account-owned Dynamo items and keeps unrelated rows", async () => {
+    await store.saveSession(blankState("rh:user:delete", 10));
+    await store.saveSession(blankState("rh:user:keep", 20));
+    await store.saveAuthUser({
+      userId: "usr_delete",
+      provider: "guest",
+      providerUserHash: "visitor-delete",
+      visitorHash: "visitor-delete",
+      createdAt: 100,
+      lastLoginAt: 100,
+    } as any);
+    await store.saveAuthUser({
+      userId: "usr_keep",
+      provider: "guest",
+      providerUserHash: "visitor-keep",
+      visitorHash: "visitor-keep",
+      createdAt: 100,
+      lastLoginAt: 100,
+    } as any);
+    await store.saveAuthSession({ token: "tok-delete", userId: "usr_delete", createdAt: 100, expiresAt: Date.now() + 60_000 });
+    await store.saveAuthSession({ token: "tok-keep", userId: "usr_keep", createdAt: 100, expiresAt: Date.now() + 60_000 });
+    await store.savePack({ pack: fakePack("pack-delete"), ownerSessionId: "rh:user:delete", touchedAt: 100 });
+    await store.savePack({ pack: fakePack("pack-keep"), ownerSessionId: "rh:user:keep", touchedAt: 100 });
+    await store.saveDraftPack({
+      id: "draft-delete",
+      ownerUserId: "usr_delete",
+      ownerSessionId: "rh:user:delete",
+      name: "Delete draft",
+      visibility: "private",
+      teachers: [],
+      createdAt: 100,
+      updatedAt: 100,
+    } as any);
+    await store.savePackInstallation({
+      userId: "usr_delete",
+      packId: "pack-delete",
+      enabled: true,
+      active: true,
+      installedAt: 100,
+      updatedAt: 100,
+    } as any);
+    await store.saveMetricEvent({
+      id: "metric-delete",
+      name: "app_open",
+      occurredAt: 100,
+      day: "1970-01-01",
+      sessionId: "rh:user:delete",
+      userId: "usr_delete",
+      visitorHash: "visitor-delete",
+    } as any);
+    await store.saveMetricEvent({
+      id: "metric-keep",
+      name: "app_open",
+      occurredAt: 101,
+      day: "1970-01-01",
+      sessionId: "rh:user:keep",
+      userId: "usr_keep",
+      visitorHash: "visitor-keep",
+    } as any);
+    await store.saveSchoolEvent({
+      id: "school:event:delete",
+      sessionId: "rh:user:delete",
+      occurredAt: 100,
+      day: "1970-01-01",
+      event: {
+        id: "school:event:delete",
+        kind: "comic.page-unlocked",
+        at: 100,
+        faculty: "ruby",
+        grade: "10",
+        issueId: "first-bell",
+        pageId: "first-bell-delete",
+        pageNumber: 1,
+        reason: "teacher-class-aced",
+        sourceId: "teacher:ruby:grade:10",
+        label: "Delete page",
+      },
+    });
+
+    const result = await store.deleteAccountData({
+      userId: "usr_delete",
+      sessionId: "rh:user:delete",
+      authSessionTokens: ["tok-delete"],
+      authUsers: [{
+        userId: "usr_delete",
+        provider: "guest",
+        providerUserHash: "visitor-delete",
+        visitorHash: "visitor-delete",
+        createdAt: 100,
+        lastLoginAt: 100,
+      }],
+      visitorHashes: ["visitor-delete"],
+    });
+
+    expect(result).toMatchObject({
+      sessions: 1,
+      authUsers: 1,
+      authSessions: 1,
+      packs: 1,
+      draftPacks: 1,
+      packInstallations: 1,
+      metricEvents: 1,
+      schoolEvents: 1,
+    });
+    const snapshot = fake.snapshot();
+    expect(snapshot.has("rh:user:delete")).toBe(false);
+    expect(snapshot.has("rh:user:keep")).toBe(true);
+    expect(snapshot.has("auth:user:guest:visitor-delete")).toBe(false);
+    expect(snapshot.has("auth:user:guest:visitor-keep")).toBe(true);
+    expect(snapshot.has("auth:session:tok-delete")).toBe(false);
+    expect(snapshot.has("auth:session:tok-keep")).toBe(true);
+    expect([...snapshot.keys()]).not.toContain("pack:rh%3Auser%3Adelete:pack-delete");
+    expect([...snapshot.keys()]).toContain("pack:rh%3Auser%3Akeep:pack-keep");
+    expect((await store.loadMetricEvents()).map((event) => event.id)).toEqual(["metric-keep"]);
+    expect(await store.loadSchoolEvents()).toHaveLength(0);
+  });
+
   it("saves and loads durable metric events in separate Dynamo items", async () => {
     await store.saveSession(blankState("rh:user:state"));
     await store.saveMetricEvent({

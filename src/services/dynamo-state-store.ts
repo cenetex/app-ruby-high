@@ -12,6 +12,8 @@ import type {
   AuthStoreSnapshot,
   AuthUserRecord,
   StateStoreLike,
+  StoredAccountDeletionResult,
+  StoredAccountDeletionTarget,
   StoredContentPackRecord,
   StoredDraftContentPackRecord,
   StoredMetricEventRecord,
@@ -22,7 +24,23 @@ import type {
   StoredServiceStateRecord,
   StoredTeacherRecord,
 } from "./state-store.js";
-import { isStoredMetricEventName, isStoredSchoolEventRecord, querySchoolEventRecords, querySessionRecords } from "./state-store.js";
+import {
+  emptyStoredAccountDeletionResult,
+  isStoredMetricEventName,
+  isStoredSchoolEventRecord,
+  normalizeStoredAccountDeletionTarget,
+  querySchoolEventRecords,
+  querySessionRecords,
+  storedAccountAuthSessionMatches,
+  storedAccountAuthUserMatches,
+  storedAccountDeletionResultTotal,
+  storedAccountDraftPackMatches,
+  storedAccountMetricEventMatches,
+  storedAccountPackInstallationMatches,
+  storedAccountPackMatches,
+  storedAccountSchoolEventMatches,
+  storedAccountTeacherMatches,
+} from "./state-store.js";
 
 /**
  * DynamoDB-backed state store. One item per session, primary key = sessionId.
@@ -579,6 +597,83 @@ export class DynamoStateStore implements StateStoreLike {
       TableName: this.tableName,
       Key: { pk: `auth:session:${token}` },
     }));
+  }
+
+  async deleteAccountData(targetInput: StoredAccountDeletionTarget): Promise<StoredAccountDeletionResult> {
+    await this.flush();
+    const target = normalizeStoredAccountDeletionTarget(targetInput);
+    const result = emptyStoredAccountDeletionResult();
+    const items = await this.scanAll();
+    const pks: string[] = [];
+    for (const item of items) {
+      const pk = String(item.pk ?? "");
+      if (!pk) continue;
+      const state = item.state as QuizState | undefined;
+      if (state && (pk === target.sessionId || state.sessionId === target.sessionId)) {
+        pks.push(pk);
+        result.sessions += 1;
+        continue;
+      }
+      const authUser = item.authUser as AuthUserRecord | undefined;
+      if (authUser && storedAccountAuthUserMatches(authUser, target)) {
+        pks.push(pk);
+        result.authUsers += 1;
+        continue;
+      }
+      const authSession = item.authSession as AuthSessionRecord | undefined;
+      if (authSession) {
+        const token = pk.startsWith("auth:session:") ? pk.slice("auth:session:".length) : authSession.token;
+        if (storedAccountAuthSessionMatches(token, authSession, target)) {
+          pks.push(pk);
+          result.authSessions += 1;
+          continue;
+        }
+      }
+      const pack = item.contentPack as StoredContentPackRecord | undefined;
+      if (pack && storedAccountPackMatches(pack, target)) {
+        pks.push(pk);
+        result.packs += 1;
+        continue;
+      }
+      const teacher = item.teacherRecord as StoredTeacherRecord | undefined;
+      if (teacher && storedAccountTeacherMatches(teacher, target)) {
+        pks.push(pk);
+        result.teachers += 1;
+        continue;
+      }
+      const draft = item.draftPack as StoredDraftContentPackRecord | undefined;
+      if (draft && storedAccountDraftPackMatches(draft, target)) {
+        pks.push(pk);
+        result.draftPacks += 1;
+        continue;
+      }
+      const installation = item.packInstallation as StoredPackInstallationRecord | undefined;
+      if (installation && storedAccountPackInstallationMatches(installation, target)) {
+        pks.push(pk);
+        result.packInstallations += 1;
+        continue;
+      }
+      const metric = item.metricEvent as StoredMetricEventRecord | undefined;
+      if (metric && storedAccountMetricEventMatches(metric, target)) {
+        pks.push(pk);
+        result.metricEvents += 1;
+        continue;
+      }
+      const schoolEvent = item.schoolEvent as StoredSchoolEventRecord | undefined;
+      if (schoolEvent && storedAccountSchoolEventMatches(schoolEvent, target)) {
+        pks.push(pk);
+        result.schoolEvents += 1;
+      }
+    }
+    if (storedAccountDeletionResultTotal(result) <= 0) return result;
+    this.invalidateScanCache();
+    for (const pk of pks) {
+      await this.client.send(new DeleteCommand({
+        TableName: this.tableName,
+        Key: { pk },
+      }));
+    }
+    return result;
   }
 
   /** Bulk write — used by tests / migrations. Chunks at 25 (BatchWrite cap). */

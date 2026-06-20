@@ -1197,16 +1197,20 @@ describe("viewer regression guardrails", () => {
     const script = inlineScript(html);
 
     expect(html).toContain('id="account-public-world-toggle"');
-    expect(html).toContain("Student name, grade, playbook, stats, completed class grades, yearbook count, and safe portrait URL.");
-    expect(html).toContain("Answers, chat text, session id, wallets, AI keys, receipts, and account identity stay off shared school activity.");
+    expect(html).not.toContain("Student name, grade, playbook, stats, completed class grades, yearbook count, and safe portrait URL.");
+    expect(html).not.toContain("Answers, chat text, session id, wallets, AI keys, receipts, and account identity stay off shared school activity.");
+    expect(html).toContain('id="account-delete"');
+    expect(html).toContain("Delete this account, students, progress, wallet ledger, receipts, and school activity.");
     expectScriptToContain(script, "function renderAccountPublicWorld()");
     expectScriptToContain(script, "function accountPublicWorldView(character, opts)");
     expectScriptToContain(script, "function createAccountPublicWorldController(deps)");
     expectScriptToContain(script, "function togglePublicWorldFromAccount()");
+    expectScriptToContain(script, "async function deleteAccountFromAccount()");
     expectScriptToContain(script, "const accountPublicWorldController = createAccountPublicWorldController");
     expectScriptToContain(script, "viewFor: accountPublicWorldView");
     expectScriptToContain(script, 'type: "set-public-presence"');
-    expect(cssRule(".account-public-world-rules")).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
+    expectScriptToContain(script, '"/auth/delete-account"');
+    expect(cssRule(".account-section-head button.danger")).toContain("#ffb7b7");
     expect(cssRule(".account-public-world-status.is-visible")).toContain("color: #8fdc9b");
   });
 

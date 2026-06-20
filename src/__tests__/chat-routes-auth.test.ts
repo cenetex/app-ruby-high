@@ -19,6 +19,7 @@ let auth: AuthService;
 let chat: ChatService;
 let faculty: FacultyService;
 let ruby: RubyHighService;
+let stateStore: StateStore;
 let capturedChatRequest: any | null = null;
 let restoreHallPassBurnVerifier: (() => void) | null = null;
 const originalHostedOpenRouterKey = process.env.RUBY_HIGH_OPENROUTER_API_KEY;
@@ -208,11 +209,11 @@ beforeEach(async () => {
   capturedChatRequest = null;
   resetActivePack();
   await getActivePack();
-  const store = new StateStore(join(tmpDir, "state.json"), { debounceMs: 0 });
-  auth = await AuthService.start({} as never, store);
+  stateStore = new StateStore(join(tmpDir, "state.json"), { debounceMs: 0 });
+  auth = await AuthService.start({} as never, stateStore);
   chat = await ChatService.start({} as never);
   faculty = await FacultyService.start({} as never);
-  ruby = new RubyHighService({} as never, store);
+  ruby = new RubyHighService({} as never, stateStore);
   ruby.setFacultyService(faculty);
   chat.setRubyHighService(ruby);
   vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
@@ -339,6 +340,104 @@ describe("auth origin guard", () => {
     expect(logoutHandled).toBe(true);
     expect(logoutRes.statusCode).toBe(403);
     expect(logoutRes.getHeader("set-cookie")).toBeUndefined();
+    expect(auth.resolve(token)).not.toBeNull();
+  });
+
+  it("deletes the current account and clears persisted state", async () => {
+    const { token, record } = await auth.createGuestSession(null, "delete-visitor");
+    const stateKey = auth.stateKeyForRecord(record);
+    const state = ruby.getOrCreate(stateKey);
+    state.character = {
+      id: "player-delete",
+      name: "Delete Me",
+      playbookId: "overachiever",
+      stats: { head: 1, heart: 1, hustle: 1, honor: 1 },
+      arcAnswer: "",
+      personality: "",
+      yearbook: [],
+      createdAt: Date.now(),
+    } as any;
+    state.updatedAt = Date.now();
+    await ruby.flushSession(stateKey);
+    await stateStore.saveMetricEvent({
+      id: "metric-delete-account",
+      name: "app_open",
+      occurredAt: Date.now(),
+      day: "2026-06-20",
+      sessionId: stateKey,
+      userId: record.userId,
+      visitorHash: "delete-visitor",
+    });
+    await stateStore.saveSchoolEvent({
+      id: "school:event:delete-account",
+      sessionId: stateKey,
+      occurredAt: Date.now(),
+      day: "2026-06-20",
+      event: {
+        id: "school:event:delete-account",
+        kind: "comic.page-unlocked",
+        at: Date.now(),
+        faculty: "ruby",
+        grade: "10",
+        issueId: "first-bell",
+        pageId: "first-bell-delete-account",
+        pageNumber: 1,
+        reason: "teacher-class-aced",
+        sourceId: "teacher:ruby:grade:10",
+        label: "Delete account page",
+      },
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/auth/delete-account"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        originHeader: "http://localhost:3000",
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toMatchObject({
+      ok: true,
+      deleted: {
+        sessions: 1,
+        authUsers: 1,
+        authSessions: 1,
+        metricEvents: 1,
+        schoolEvents: 1,
+      },
+    });
+    expect(res.getHeader("set-cookie")).toEqual(expect.stringContaining("Max-Age=0"));
+    expect(auth.resolve(token)).toBeNull();
+    expect(ruby.getSchoolWorldEvents(10).map((event) => event.id)).not.toContain("school:event:delete-account");
+
+    const fresh = new StateStore(join(tmpDir, "state.json"));
+    expect((await fresh.load()).has(stateKey)).toBe(false);
+    expect(await fresh.loadAuth()).toEqual({ users: [], sessions: [] });
+    expect(await fresh.loadMetricEvents()).toHaveLength(0);
+    expect(await fresh.loadSchoolEvents()).toHaveLength(0);
+  });
+
+  it("rejects cross-origin account deletion without clearing the cookie", async () => {
+    const { token } = await auth.createGuestSession(null, "csrf-delete-visitor");
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/auth/delete-account"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        originHeader: "https://evil.example",
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(403);
+    expect(res.getHeader("set-cookie")).toBeUndefined();
     expect(auth.resolve(token)).not.toBeNull();
   });
 });

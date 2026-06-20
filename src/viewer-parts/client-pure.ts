@@ -704,9 +704,9 @@ export function accountPublicWorldView(character: unknown, opts?: { authed?: unk
   const busy = !!(opts && opts.busy);
   const nextVisible = !visible;
   const summaryText = !hasCharacter
-    ? "Create a student before joining shared school activity."
+    ? "Create a student before joining school activity."
     : visible
-    ? "Your active student can appear in school rooms and activity."
+    ? "Your active student is shown in school activity."
     : blockedBySocialConsent
     ? "A legacy privacy setting is keeping this student out of shared school activity."
     : hasPublicName && !publicNameReviewOk
@@ -716,8 +716,8 @@ export function accountPublicWorldView(character: unknown, opts?: { authed?: unk
         ? "Remove contact info, handles, or links from this student name before joining school rooms."
         : "Choose a school-appropriate student name before joining school rooms."
     : hasPublicName
-    ? "Your active student is not appearing in school rooms and activity."
-    : "Name your student before they can join shared school activity.";
+    ? "Your active student is not shown in school activity."
+    : "Name your student before they can join school activity.";
   const toggleTitle = !hasCharacter
     ? "Create a student first"
     : !hasPublicName
@@ -727,8 +727,8 @@ export function accountPublicWorldView(character: unknown, opts?: { authed?: unk
     : blockedBySocialConsent
     ? "Legacy social sharing is off for this student"
     : visible
-    ? "Remove this student from school rooms and activity"
-    : "Allow this student to appear in school rooms and activity";
+    ? "Remove this student from school activity"
+    : "Show this student in school activity";
   return {
     hasCharacter,
     hasPublicName,
@@ -737,7 +737,7 @@ export function accountPublicWorldView(character: unknown, opts?: { authed?: unk
     blockedBySocialConsent,
     visible,
     summaryText,
-    statusText: visible ? "Visible in school activity" : "Not in school activity",
+    statusText: visible ? "Shown in school activity" : "Not shown in school activity",
     statusClass: visible ? "is-visible" : "",
     toggleText: visible ? "Leave" : "Join",
     toggleDisabled: !authed || busy || !hasCharacter || !hasPublicName || !publicNameReviewOk || blockedBySocialConsent,

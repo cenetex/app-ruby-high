@@ -4,6 +4,7 @@ import { log } from "./logger.js";
 import {
   authUserKey,
   getDefaultStateStore,
+  type StoredAccountDeletionTarget,
   type AuthUserRecord,
   type StateStoreLike,
 } from "./state-store.js";
@@ -505,6 +506,43 @@ export class AuthService extends Service {
       console.error("[ruby-high] auth session delete failed:", err);
     });
     return deleted;
+  }
+
+  accountDeletionTargetForToken(token: string | null): StoredAccountDeletionTarget | null {
+    const record = this.resolve(token);
+    if (!token || !record) return null;
+    const authUsers = Array.from(this.usersByProviderHash.values())
+      .filter((user) => user.userId === record.userId);
+    const authSessionTokens = Array.from(this.sessions.entries())
+      .filter(([, session]) => session.userId === record.userId)
+      .map(([sessionToken]) => sessionToken);
+    if (!authSessionTokens.includes(token)) authSessionTokens.push(token);
+    const visitorHashes = Array.from(new Set(authUsers
+      .map((user) => user.visitorHash)
+      .filter((value): value is string => !!value)));
+    return {
+      userId: record.userId,
+      sessionId: this.stateKeyForRecord(record),
+      authSessionTokens,
+      authUsers,
+      visitorHashes,
+    };
+  }
+
+  forgetDeletedAccount(target: StoredAccountDeletionTarget): void {
+    for (const token of target.authSessionTokens ?? []) {
+      this.sessions.delete(token);
+    }
+    for (const [token, session] of Array.from(this.sessions.entries())) {
+      if (session.userId === target.userId) this.sessions.delete(token);
+    }
+    for (const user of target.authUsers ?? []) {
+      this.usersByProviderHash.delete(authUserKey(user.provider, user.providerUserHash));
+    }
+    for (const [key, user] of Array.from(this.usersByProviderHash.entries())) {
+      if (user.userId === target.userId) this.usersByProviderHash.delete(key);
+    }
+    this.usersById.delete(target.userId);
   }
 
   stateKeyForCookie(cookieHeader: string | undefined | null): string {

@@ -2129,6 +2129,25 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     return true;
   }
 
+  if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/delete-account`) {
+    if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
+    const token = auth.parseSessionToken(ctx.cookieHeader);
+    const target = auth.accountDeletionTargetForToken(token);
+    if (!target) {
+      ctx.error(ctx.res, "No signed-in Ruby High account to delete.", 401);
+      return true;
+    }
+    try {
+      const deleted = await ruby.deleteAccountData(target);
+      auth.forgetDeletedAccount(target);
+      setCookieHeader(ctx.res, auth.buildClearCookie({ secure }));
+      ctx.json(ctx.res, { ok: true, deleted });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 500);
+    }
+    return true;
+  }
+
   // ── chat ──────────────────────────────────────────────────────────────────
   if (ctx.method === "GET" && ctx.pathname === `${CHAT_PREFIX}/history`) {
     const requestedFaculty = ctx.url?.searchParams.get("faculty") ?? "ruby";
