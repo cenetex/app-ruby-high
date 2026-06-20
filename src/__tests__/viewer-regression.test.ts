@@ -333,6 +333,22 @@ describe("viewer regression guardrails", () => {
     expect(statsSource).not.toContain('pill.className = "pill stat "');
   });
 
+  it("computes teacher image status from a typed view model", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createTeacherImageStatusView(");
+    expectScriptToContain(clientSource, "const teacherImageStatusView = createTeacherImageStatusView({");
+    expectScriptToContain(clientSource, "return teacherImageStatusView.reason({");
+    expectScriptToContain(clientSource, "return teacherImageStatusView.creditHint({");
+    expectScriptToContain(script, "Sign in before generating teacher images.");
+    const reasonStart = clientSource.indexOf("function teacherImageGenerationStatusReason()");
+    const reasonEnd = clientSource.indexOf("function teacherImageCreditHint()", reasonStart);
+    const reasonSource = clientSource.slice(reasonStart, reasonEnd);
+    expect(reasonSource).not.toContain('return "Sign in before generating teacher images."');
+    expect(reasonSource).not.toContain('openRouterGenerationMessage("generating teacher images")');
+  });
+
   it("builds report cards from a typed renderer", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");

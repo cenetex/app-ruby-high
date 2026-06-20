@@ -46,6 +46,7 @@ import { createTeacherRollControlsRenderer } from "./teacher-roll-controls.js";
 import { createTeacherCreationDeckRenderer } from "./teacher-creation-deck.js";
 import { createTeacherPreviewUpdater } from "./teacher-preview-updater.js";
 import { createTeacherStatPillsRenderer } from "./teacher-stat-pills.js";
+import { createTeacherImageStatusView } from "./teacher-image-status.js";
 import { runViewerClient } from "./client.js";
 import * as Pure from "./client-pure.js";
 
@@ -294,6 +295,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createTeacherCreationDeckRenderer = ${createTeacherCreationDeckRenderer.toString()};
   const createTeacherPreviewUpdater = ${createTeacherPreviewUpdater.toString()};
   const createTeacherStatPillsRenderer = ${createTeacherStatPillsRenderer.toString()};
+  const createTeacherImageStatusView = ${createTeacherImageStatusView.toString()};
   const parseViewerSseFrames = ${parseViewerSseFrames.toString()};
   const consumeViewerSseStream = ${consumeViewerSseStream.toString()};
   const runViewerClient = ${runViewerClient.toString()};

@@ -761,6 +761,9 @@ export function runViewerClient(bootstrap) {
   function openRouterGenerationMessage(action) {
     return "Connect AI before " + action + ".";
   }
+  const teacherImageStatusView = createTeacherImageStatusView({
+    openRouterGenerationMessage,
+  });
   let lockedFor = null;
   let renderedHistorySig = null;
   let activeQuestionId = null; // currently displayed question id on the blackboard
@@ -2148,24 +2151,25 @@ export function runViewerClient(bootstrap) {
   }
 
   function teacherImageGenerationStatusReason() {
-    if (!authed) return "Sign in before generating teacher images.";
-    if (getStoredApiKey()) return "";
-    const entitlement = hostedImageEntitlement("portrait");
-    if (entitlement && entitlement.configured) {
-      return "";
-    }
-    return openRouterGenerationMessage("generating teacher images");
+    const entitlement = hostedImageEntitlement("portrait") || {};
+    const cost = entitlement.cost || 1;
+    return teacherImageStatusView.reason({
+      authed,
+      hasApiKey: !!getStoredApiKey(),
+      entitlement,
+      canSpendHallPasses: canSpendHallPasses(cost),
+    });
   }
 
   function teacherImageCreditHint() {
-    const reason = teacherImageGenerationStatusReason();
-    if (reason) return reason;
     const entitlement = hostedImageEntitlement("portrait") || {};
     const cost = entitlement.cost || 1;
-    if (!getStoredApiKey()) return canSpendHallPasses(cost)
-      ? "Hosted image generation spends a Hall Pass when it completes."
-      : "No Hall Passes yet. Buy Hall Passes or burn a Card first.";
-    return "Uses your AI key. No cards are burned.";
+    return teacherImageStatusView.creditHint({
+      authed,
+      hasApiKey: !!getStoredApiKey(),
+      entitlement,
+      canSpendHallPasses: canSpendHallPasses(cost),
+    });
   }
 
   function applyHallPassBalance(hallPasses, entitlements, characterSlots) {
