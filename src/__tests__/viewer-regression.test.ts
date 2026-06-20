@@ -200,15 +200,24 @@ describe("viewer regression guardrails", () => {
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
 
     expectScriptToContain(script, "function createCareerCardRenderer(");
+    expectScriptToContain(script, "function createCareerTokensRenderer(");
     expectScriptToContain(clientSource, "const careerCardRenderer = createCareerCardRenderer({");
+    expectScriptToContain(clientSource, "const careerTokensRenderer = createCareerTokensRenderer({");
     expectScriptToContain(clientSource, "return careerCardRenderer.buildProfileCard(spec);");
     expectScriptToContain(clientSource, "return careerCardRenderer.buildMetrics(rows);");
+    expectScriptToContain(clientSource, "return careerTokensRenderer.build(spec);");
     expectScriptToContain(script, 'row.className = "career-metric" + (m.met ? " is-met" : "");');
+    expectScriptToContain(script, 'chip.className = "career-multiplier is-live is-bonus";');
     const profileCareerStart = clientSource.indexOf("function buildProfileCareerCard(spec)");
     const profileCareerEnd = clientSource.indexOf("function buildCareerTokens", profileCareerStart);
     const profileCareerSource = clientSource.slice(profileCareerStart, profileCareerEnd);
     expect(profileCareerSource).not.toContain('card.className = "ccg-card is-career-card";');
     expect(profileCareerSource).not.toContain('metrics.className = "career-metrics";');
+    const careerTokensStart = clientSource.indexOf("function buildCareerTokens(spec)");
+    const careerTokensEnd = clientSource.indexOf("function buildCompletedHighSchoolProgression", careerTokensStart);
+    const careerTokensSource = clientSource.slice(careerTokensStart, careerTokensEnd);
+    expect(careerTokensSource).not.toContain('wrap.className = "career-token-strip";');
+    expect(careerTokensSource).not.toContain('dice.className = "career-dice";');
   });
 
   it("builds blackboard question prompts from typed view models", () => {

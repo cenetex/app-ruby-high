@@ -1404,6 +1404,10 @@ export function runViewerClient(bootstrap) {
     document,
     appendProgression,
   });
+  const careerTokensRenderer = createCareerTokensRenderer({
+    document,
+    streakScoreMultiplier,
+  });
   const classReportRenderer = createClassReportRenderer({
     document,
     teacherShortName,
@@ -5592,89 +5596,7 @@ export function runViewerClient(bootstrap) {
     return careerCardRenderer.buildMetrics(rows);
   }
   function buildCareerTokens(spec) {
-    const wrap = document.createElement("div");
-    wrap.className = "career-token-strip";
-
-    const streak = document.createElement("div");
-    streak.className = "career-token-lane";
-    const streakLabel = document.createElement("span");
-    streakLabel.className = "career-token-label";
-    streakLabel.textContent = "Daily classes";
-    streak.appendChild(streakLabel);
-    const streakTrack = document.createElement("span");
-    streakTrack.className = "career-streak-track";
-    // Daily-class track: cap visible diamonds at STREAK_TRACK_VISIBLE_CAP (3)
-    // so the highest bonus tier is a surprise reveal, not a spoiled preview.
-    // The underlying gameplay still uses spec.streakReq for advancement.
-    const STREAK_TRACK_VISIBLE_CAP = 3;
-    const streakReq = Math.max(0, spec.streakReq || 0);
-    const streakCap = Math.min(STREAK_TRACK_VISIBLE_CAP, streakReq);
-    const currentStreak = Math.max(0, spec.streakHere || 0);
-    const scoreStreak = spec.streakLastDate && spec.todayKey && spec.streakLastDate === spec.todayKey
-      ? Math.max(0, currentStreak - 1)
-      : currentStreak;
-    const streakFilled = Math.max(0, Math.min(streakCap, currentStreak));
-    const liveMult = streakScoreMultiplier(scoreStreak);
-    const bonusActive = liveMult >= 2;
-    // Once the bonus tier kicks in, the diamonds + count are redundant —
-    // the bonus pill IS the live state. Show only the pill so the lane
-    // reads as one strong signal, not three competing ones.
-    if (bonusActive) {
-      streakTrack.classList.add("is-bonus-only");
-      const chip = document.createElement("span");
-      chip.className = "career-multiplier is-live is-bonus";
-      chip.textContent = "×" + liveMult + " Bonus!";
-      chip.setAttribute("aria-label", "×" + liveMult + " score bonus active");
-      streakTrack.appendChild(chip);
-      streak.appendChild(streakTrack);
-    } else {
-      const diamonds = document.createElement("span");
-      diamonds.className = "career-diamonds";
-      for (let i = 0; i < streakCap; i++) {
-        const diamond = document.createElement("span");
-        diamond.className = "career-diamond" + (i < streakFilled ? " is-filled" : "");
-        diamond.setAttribute("aria-label", i < streakFilled ? "Daily class passed" : "Daily class needed");
-        diamonds.appendChild(diamond);
-      }
-      streakTrack.appendChild(diamonds);
-      streak.appendChild(streakTrack);
-      const streakCount = document.createElement("span");
-      streakCount.className = "career-token-count";
-      streakCount.textContent = streakFilled + "/" + streakCap;
-      streak.appendChild(streakCount);
-    }
-    wrap.appendChild(streak);
-
-    const advantage = document.createElement("div");
-    advantage.className = "career-token-lane";
-    const advantageLabel = document.createElement("span");
-    advantageLabel.className = "career-token-label";
-    advantageLabel.textContent = "Advantage";
-    advantage.appendChild(advantageLabel);
-    const dice = document.createElement("span");
-    dice.className = "career-dice";
-    const dieCap = Math.max(0, spec.advantageCap || 0);
-    const remaining = Math.max(0, Math.min(dieCap, spec.advantageRemaining || 0));
-    for (let i = 0; i < dieCap; i++) {
-      const die = document.createElement("span");
-      die.className = "career-die" + (i < remaining ? " is-live" : "");
-      die.setAttribute("aria-label", i < remaining ? "Advantage die available" : "Advantage die spent");
-      for (let p = 0; p < 5; p++) die.appendChild(document.createElement("span"));
-      dice.appendChild(die);
-    }
-    advantage.appendChild(dice);
-    const advantageCount = document.createElement("span");
-    advantageCount.className = "career-token-count";
-    // "0/4" reads as a defeat. When the dice are spent, say "Spent" instead.
-    advantageCount.textContent = dieCap === 0
-      ? "—"
-      : remaining === 0
-        ? "Spent"
-        : remaining + "/" + dieCap;
-    advantage.appendChild(advantageCount);
-    wrap.appendChild(advantage);
-
-    return wrap;
+    return careerTokensRenderer.build(spec);
   }
   function buildCompletedHighSchoolProgression() {
     return {

@@ -11,6 +11,7 @@ import { createBillingProductsRenderer } from "./billing-products.js";
 import { createCardBurnSelector } from "./card-burn-selector.js";
 import { createCcgCardRenderer } from "./ccg-card.js";
 import { createCareerCardRenderer } from "./career-card.js";
+import { createCareerTokensRenderer } from "./career-tokens.js";
 import { createClassReportRenderer } from "./class-report.js";
 import { createComicReaderRenderer } from "./comic-reader.js";
 import { consumeViewerSseStream, parseViewerSseFrames } from "./sse.js";
@@ -244,6 +245,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createCardBurnSelector = ${createCardBurnSelector.toString()};
   const createCcgCardRenderer = ${createCcgCardRenderer.toString()};
   const createCareerCardRenderer = ${createCareerCardRenderer.toString()};
+  const createCareerTokensRenderer = ${createCareerTokensRenderer.toString()};
   const createClassReportRenderer = ${createClassReportRenderer.toString()};
   const createComicReaderRenderer = ${createComicReaderRenderer.toString()};
   const createViewerTurnController = ${createViewerTurnController.toString()};
