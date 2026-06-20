@@ -1435,6 +1435,12 @@ export function runViewerClient(bootstrap) {
     defaultPortraitFor,
     formatSealedDate,
   });
+  const studentPoolCardRenderer = createStudentPoolCardRenderer({
+    document,
+    defaultPortraitFor,
+    formatSealedDate,
+    clipEssayText,
+  });
   const yearbookShareActionsRenderer = createYearbookShareActionsRenderer({
     document,
     absoluteUrl: absoluteViewerUrl,
@@ -6071,79 +6077,7 @@ export function runViewerClient(bootstrap) {
   }
 
   function buildStudentPoolCard(pool, playbooks) {
-    const card = document.createElement("div");
-    card.className = "ccg-card is-student-pool-card";
-    const role = document.createElement("span");
-    role.className = "ccg-role pool";
-    role.textContent = "pool";
-    card.appendChild(role);
-
-    const body = document.createElement("div");
-    body.className = "ccg-body";
-
-    const nameEl = document.createElement("div");
-    nameEl.className = "ccg-name";
-    nameEl.textContent = "Student Pool";
-    body.appendChild(nameEl);
-
-    const sub = document.createElement("div");
-    sub.className = "ccg-subtitle";
-    sub.textContent = pool.length + " completed " + (pool.length === 1 ? "student" : "students");
-    body.appendChild(sub);
-
-    const list = document.createElement("div");
-    list.className = "student-pool-list";
-    pool.slice(0, 8).forEach((entry) => {
-      const pb = playbooks.find((p) => p.id === entry.playbookId)
-        || { name: entry.playbookId || "Student", accent: "var(--accent)" };
-      const item = document.createElement("div");
-      item.className = "student-pool-entry";
-      if (pb.accent) item.style.setProperty("--pool-accent", pb.accent);
-
-      const portrait = document.createElement("div");
-      portrait.className = "student-pool-portrait";
-      const imgUrl = entry.diplomaImageDataUrl || entry.portraitDataUrl || defaultPortraitFor(entry.playbookId);
-      if (imgUrl) {
-        const img = document.createElement("img");
-        img.alt = "";
-        img.src = imgUrl;
-        portrait.appendChild(img);
-      } else {
-        portrait.textContent = String(entry.name || "?").slice(0, 1).toUpperCase();
-      }
-      item.appendChild(portrait);
-
-      const copy = document.createElement("div");
-      copy.className = "student-pool-copy";
-      const title = document.createElement("div");
-      title.className = "student-pool-name";
-      title.textContent = entry.name || "Student";
-      copy.appendChild(title);
-      const meta = document.createElement("div");
-      meta.className = "student-pool-meta";
-      const yearbookCount = Array.isArray(entry.yearbook) ? entry.yearbook.length : 0;
-      meta.textContent = (pb.name || entry.playbookId || "Student") + " · " + yearbookCount + "/4 years · " + formatSealedDate(entry.completedAt);
-      copy.appendChild(meta);
-      if (entry.flavorQuote || entry.arcAnswer) {
-        const quote = document.createElement("div");
-        quote.className = "student-pool-quote";
-        quote.textContent = "“" + clipEssayText(entry.flavorQuote || entry.arcAnswer, 92) + "”";
-        copy.appendChild(quote);
-      }
-      item.appendChild(copy);
-      list.appendChild(item);
-    });
-    body.appendChild(list);
-
-    if (pool.length > 8) {
-      const more = document.createElement("div");
-      more.className = "student-pool-more";
-      more.textContent = "+" + (pool.length - 8) + " more";
-      body.appendChild(more);
-    }
-
-    card.appendChild(body);
-    return card;
+    return studentPoolCardRenderer.build(pool, playbooks);
   }
 
   // ── Social card grid (relationship layer) ───────────────────────────────

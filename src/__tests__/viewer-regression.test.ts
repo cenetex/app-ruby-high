@@ -235,6 +235,21 @@ describe("viewer regression guardrails", () => {
     expect(paperCardSource).not.toContain("const card = buildCharacterCard");
   });
 
+  it("builds student pool cards from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createStudentPoolCardRenderer(");
+    expectScriptToContain(clientSource, "const studentPoolCardRenderer = createStudentPoolCardRenderer({");
+    expectScriptToContain(clientSource, "return studentPoolCardRenderer.build(pool, playbooks);");
+    expectScriptToContain(script, 'card.className = "ccg-card is-student-pool-card";');
+    const studentPoolStart = clientSource.indexOf("function buildStudentPoolCard(pool, playbooks)");
+    const studentPoolEnd = clientSource.indexOf("// ── Social card grid", studentPoolStart);
+    const studentPoolSource = clientSource.slice(studentPoolStart, studentPoolEnd);
+    expect(studentPoolSource).not.toContain('list.className = "student-pool-list";');
+    expect(studentPoolSource).not.toContain("pool.slice(0, 8).forEach");
+  });
+
   it("builds blackboard question prompts from typed view models", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");

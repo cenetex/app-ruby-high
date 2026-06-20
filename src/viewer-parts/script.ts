@@ -32,6 +32,7 @@ import { createArcIndicatorRenderer } from "./arc-indicator.js";
 import { createGuestSpotlightRenderer } from "./guest-spotlight.js";
 import { createClassmateChannelRowsRenderer } from "./classmate-channel-rows.js";
 import { createPaperCardRenderer } from "./paper-card.js";
+import { createStudentPoolCardRenderer } from "./student-pool-card.js";
 import { runViewerClient } from "./client.js";
 import * as Pure from "./client-pure.js";
 
@@ -266,6 +267,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createGuestSpotlightRenderer = ${createGuestSpotlightRenderer.toString()};
   const createClassmateChannelRowsRenderer = ${createClassmateChannelRowsRenderer.toString()};
   const createPaperCardRenderer = ${createPaperCardRenderer.toString()};
+  const createStudentPoolCardRenderer = ${createStudentPoolCardRenderer.toString()};
   const parseViewerSseFrames = ${parseViewerSseFrames.toString()};
   const consumeViewerSseStream = ${consumeViewerSseStream.toString()};
   const runViewerClient = ${runViewerClient.toString()};
