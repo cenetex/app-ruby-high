@@ -557,6 +557,7 @@ describe("hosted AI access auth", () => {
     expect(capturedChatRequest?.body.provider).toMatchObject({
       require_parameters: true,
     });
+    expect(capturedChatRequest?.body.max_tokens).toBe(1200);
     expect(capturedChatRequest?.body.response_format).toMatchObject({
       type: "json_schema",
       json_schema: {

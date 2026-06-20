@@ -361,7 +361,7 @@ export async function rollRandomCharacter(args: {
       ],
       provider: { require_parameters: true },
       response_format: characterResponseFormat(textRegen),
-      max_tokens: 480,
+      max_tokens: 1200,
       temperature: 1.1,
     },
   });
