@@ -1407,6 +1407,15 @@ export function runViewerClient(bootstrap) {
     knownTeacherAssetId,
     teacherAssetUrl,
   });
+  const yearbookArchiveRenderer = createYearbookArchiveRenderer({
+    document,
+    gradeLabels: GRADE_LABELS,
+    gradeShortLabels: GRADE_SHORT_LABELS,
+    gradeOrder: GRADE_ORDER,
+    formatSealedDate,
+    fmtStat,
+    renderMarkdownInto,
+  });
   const comicReaderRenderer = createComicReaderRenderer({
     document,
     pageTitle: comicPageTitle,
@@ -6765,167 +6774,19 @@ export function runViewerClient(bootstrap) {
   }
 
   function buildYearbookArchive(entries, liveChar, livePb, playbooks) {
-    if (!Array.isArray(entries) || entries.length === 0) return null;
-    const archive = document.createElement("details");
-    archive.className = "paper-archive";
-
-    const summary = document.createElement("summary");
-    summary.className = "paper-archive-summary";
-    const stack = document.createElement("span");
-    stack.className = "paper-archive-stack";
-    for (let i = 0; i < Math.min(3, entries.length); i++) {
-      const sheet = document.createElement("span");
-      sheet.className = "paper-archive-sheet";
-      stack.appendChild(sheet);
-    }
-    const label = document.createElement("span");
-    label.className = "paper-archive-label";
-    label.textContent = entries.length === 1 ? "1 sealed year" : entries.length + " sealed years";
-    const hint = document.createElement("span");
-    hint.className = "paper-archive-hint";
-    hint.textContent = "open yearbook";
-    summary.appendChild(stack);
-    summary.appendChild(label);
-    summary.appendChild(hint);
-    archive.appendChild(summary);
-
-    const list = document.createElement("div");
-    list.className = "paper-archive-list";
-    entries.forEach((entry) => list.appendChild(buildYearbookArchiveEntry(entry, liveChar, livePb, playbooks)));
-    archive.appendChild(list);
-    return archive;
+    return yearbookArchiveRenderer.buildArchive(entries, liveChar, livePb, playbooks);
   }
 
   function buildYearbookArchiveEntry(entry, liveChar, livePb, playbooks) {
-    const gradeLabel = GRADE_LABELS[entry.grade] || ("Grade " + entry.grade);
-    const shortGrade = GRADE_SHORT_LABELS[entry.grade] || gradeLabel;
-    const playbookId = entry.playbookId || liveChar.playbookId;
-    const pb = (Array.isArray(playbooks) && playbooks.find((p) => p.id === playbookId)) || livePb;
-    const stats = entry.stats || liveChar.stats || {};
-    const quote = entry.flavorQuote || entry.arcAnswer || "";
-    const summary = entry.summary || { correct: 0, total: 0 };
-    const gradeIdx = GRADE_ORDER.indexOf(String(entry.grade));
-    const diamondCount = Math.max(1, gradeIdx + 1);
-    const item = document.createElement("div");
-    item.className = "paper-archive-entry";
-    if (pb && pb.accent) item.style.setProperty("--paper-accent", pb.accent);
-
-    const top = document.createElement("div");
-    top.className = "paper-archive-entry-top";
-    const grade = document.createElement("span");
-    grade.className = "paper-archive-grade";
-    const diamonds = document.createElement("span");
-    diamonds.className = "paper-archive-diamonds";
-    for (let i = 0; i < diamondCount; i++) {
-      const diamond = document.createElement("span");
-      diamond.textContent = "◆";
-      diamonds.appendChild(diamond);
-    }
-    const gradeText = document.createElement("span");
-    gradeText.textContent = shortGrade;
-    grade.appendChild(diamonds);
-    grade.appendChild(gradeText);
-    const meta = document.createElement("span");
-    meta.className = "paper-archive-meta";
-    meta.textContent = "sealed " + formatSealedDate(entry.completedAt) + " · " + summary.correct + "/" + summary.total;
-    top.appendChild(grade);
-    top.appendChild(meta);
-    item.appendChild(top);
-
-    const statsLine = document.createElement("div");
-    statsLine.className = "paper-archive-stats";
-    ["head", "heart", "hustle", "honor"].forEach((k) => {
-      const stat = document.createElement("span");
-      stat.innerHTML = "<b>" + k + "</b> " + fmtStat(Number(stats[k] || 0));
-      statsLine.appendChild(stat);
-    });
-    item.appendChild(statsLine);
-
-    if (quote) {
-      const quoteEl = document.createElement("div");
-      quoteEl.className = "paper-archive-quote";
-      renderMarkdownInto(quoteEl, "“" + quote + "”", { inline: true });
-      item.appendChild(quoteEl);
-    }
-    if (entry.diploma) {
-      item.appendChild(buildDiplomaCollectible(entry.diploma));
-    }
-    if (entry.photo) {
-      item.appendChild(buildGraduationPhotoCollectible(entry.photo));
-    }
-    // Show the character's portrait or diploma photo inline in the yearbook.
-    const entryImgUrl = entry.diplomaImageDataUrl || entry.portraitDataUrl;
-    if (entryImgUrl) {
-      const photoWrap = document.createElement("div");
-      photoWrap.className = "paper-archive-portrait";
-      const img = document.createElement("img");
-      img.alt = (entry.name || "Student") + " photo";
-      img.loading = "lazy";
-      img.src = entryImgUrl;
-      photoWrap.appendChild(img);
-      item.appendChild(photoWrap);
-    }
-    return item;
+    return yearbookArchiveRenderer.buildEntry(entry, liveChar, livePb, playbooks);
   }
 
   function buildDiplomaCollectible(diploma) {
-    const wrap = document.createElement("div");
-    wrap.className = "paper-archive-diploma";
-    if (diploma.imageUrl) {
-      const img = document.createElement("img");
-      img.alt = diploma.title || "Ruby High diploma";
-      img.loading = "lazy";
-      img.src = diploma.imageUrl;
-      wrap.appendChild(img);
-    }
-    const copy = document.createElement("div");
-    copy.className = "paper-archive-diploma-copy";
-    const title = document.createElement("div");
-    title.className = "paper-archive-diploma-title";
-    title.textContent = diploma.title || "Ruby High Diploma";
-    const meta = document.createElement("div");
-    meta.className = "paper-archive-diploma-meta";
-    meta.textContent = "collectible · " + formatSealedDate(diploma.issuedAt);
-    copy.appendChild(title);
-    copy.appendChild(meta);
-    wrap.appendChild(copy);
-    return wrap;
+    return yearbookArchiveRenderer.buildDiploma(diploma);
   }
 
   function buildGraduationPhotoCollectible(photo) {
-    const wrap = document.createElement("div");
-    wrap.className = "paper-archive-photo";
-    const faces = document.createElement("div");
-    faces.className = "paper-archive-photo-faces";
-    [photo.teacher, photo.student].forEach((person) => {
-      const face = document.createElement("span");
-      face.className = "paper-archive-photo-face";
-      if (person && person.imageUrl) {
-        const img = document.createElement("img");
-        img.alt = person.name || "";
-        img.loading = "lazy";
-        img.src = person.imageUrl;
-        face.appendChild(img);
-      } else {
-        face.textContent = String((person && person.name) || "?").slice(0, 1).toUpperCase();
-      }
-      faces.appendChild(face);
-    });
-    wrap.appendChild(faces);
-    const copy = document.createElement("div");
-    copy.className = "paper-archive-photo-copy";
-    const title = document.createElement("div");
-    title.className = "paper-archive-photo-title";
-    title.textContent = photo.title || "Graduation Photo";
-    const meta = document.createElement("div");
-    meta.className = "paper-archive-photo-meta";
-    const teacherName = photo.teacher && photo.teacher.name ? photo.teacher.name : "top teacher";
-    const studentName = photo.student && photo.student.name ? photo.student.name : "top classmate";
-    meta.textContent = teacherName + " · " + studentName;
-    copy.appendChild(title);
-    copy.appendChild(meta);
-    wrap.appendChild(copy);
-    return wrap;
+    return yearbookArchiveRenderer.buildGraduationPhoto(photo);
   }
 
 

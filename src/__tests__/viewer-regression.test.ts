@@ -739,8 +739,15 @@ describe("viewer regression guardrails", () => {
 
   it("renders yearbook portrait elements in the character sheet", () => {
     const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
 
+    expectScriptToContain(script, "function createYearbookArchiveRenderer(");
+    expectScriptToContain(clientSource, "const yearbookArchiveRenderer = createYearbookArchiveRenderer({");
+    expectScriptToContain(clientSource, "return yearbookArchiveRenderer.buildArchive(entries, liveChar, livePb, playbooks);");
+    expectScriptToContain(clientSource, "return yearbookArchiveRenderer.buildEntry(entry, liveChar, livePb, playbooks);");
     expectScriptToContain(script, "paper-archive-portrait");
+    expect(clientSource).not.toContain('archive.className = "paper-archive";');
+    expect(clientSource).not.toContain('item.className = "paper-archive-entry";');
   });
 
   it("keeps stream refreshes from holding the Chat/Practice busy lock", () => {
