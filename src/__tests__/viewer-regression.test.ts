@@ -288,6 +288,21 @@ describe("viewer regression guardrails", () => {
     expect(controlsSource).not.toContain('choices.className = "teacher-image-presets";');
   });
 
+  it("builds teacher creation decks from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createTeacherCreationDeckRenderer(");
+    expectScriptToContain(clientSource, "const teacherCreationDeckRenderer = createTeacherCreationDeckRenderer({");
+    expectScriptToContain(clientSource, "packTeacherDetailEl.appendChild(teacherCreationDeckRenderer.build({");
+    expectScriptToContain(script, 'wrap.className = "pack-teacher-roll-deck";');
+    const deckStart = clientSource.indexOf("function renderNewTeacherCreation()");
+    const deckEnd = clientSource.indexOf("async function generateTeacherImageForPendingRoll()", deckStart);
+    const deckSource = clientSource.slice(deckStart, deckEnd);
+    expect(deckSource).not.toContain('actionsRow.className = "ccg-card-actions";');
+    expect(deckSource).not.toContain('saveBtn.className = "primary teacher-save-button";');
+  });
+
   it("builds report cards from a typed renderer", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");

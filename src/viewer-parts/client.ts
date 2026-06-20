@@ -6799,6 +6799,10 @@ export function runViewerClient(bootstrap) {
     document,
     assets: PREGENERATED_TEACHER_ASSETS,
   });
+  const teacherCreationDeckRenderer = createTeacherCreationDeckRenderer({
+    document,
+    buildCharacterCard,
+  });
   const TEACHER_ROLL_NAMES = ["Ruby", "Sally Science", "Professor Edward", "Mara Vale", "Dr. Mina Quill", "Theo Signal", "Cass Vector", "Nico Frame"];
   const TEACHER_ROLL_STYLES = [
     { subject: "Critical Systems", description: "Calm, surgical, and excellent at turning abstract systems into questions students can actually answer.", quote: "A system is only invisible until it breaks." },
@@ -7975,37 +7979,16 @@ export function runViewerClient(bootstrap) {
   function renderNewTeacherCreation() {
     const roll = pendingTeacherRoll || rollTeacherCandidate();
     const portraitUrl = roll.profileImageUrl || packTeacherAssetUrl(roll.assetTeacherId, "full");
-    const candidateCard = buildCharacterCard({
-      role: "teacher",
-      name: roll.displayName,
-      subtitle: roll.subject + " · teacher candidate",
+    packTeacherDetailEl.appendChild(teacherCreationDeckRenderer.build({
+      roll,
       portraitUrl,
       accent: teacherRollAccent(roll.assetTeacherId),
-      stats: roll.stats,
-      quote: roll.quote,
-      nextStepHint: "Add this teacher to the pack, then paste materials or generate questions.",
-      footer: { title: "Teaching Style", content: roll.description },
-    });
-    candidateCard.classList.add("is-creation-candidate-card");
-    const body = candidateCard.querySelector(".ccg-body");
-    const actionsRow = document.createElement("div");
-    actionsRow.className = "ccg-card-actions";
-    const saveBtn = document.createElement("button");
-    saveBtn.type = "button";
-    saveBtn.className = "primary teacher-save-button";
-    saveBtn.textContent = "Save";
-    saveBtn.disabled = packImportBusy || pendingTeacherImageBusy || packQuestionGenerationBusy;
-    saveBtn.title = pendingTeacherImageBusy ? "Cancel teacher image generation before saving." : "";
-    saveBtn.addEventListener("click", savePendingTeacherRoll);
-    actionsRow.appendChild(saveBtn);
-    if (body) {
-      body.appendChild(actionsRow);
-    }
-    const wrap = document.createElement("div");
-    wrap.className = "pack-teacher-roll-deck";
-    wrap.appendChild(candidateCard);
-    wrap.appendChild(buildTeacherRollControls());
-    packTeacherDetailEl.appendChild(wrap);
+      importBusy: packImportBusy,
+      imageBusy: pendingTeacherImageBusy,
+      questionGenerationBusy: packQuestionGenerationBusy,
+      controls: buildTeacherRollControls(),
+      onSave: savePendingTeacherRoll,
+    }));
   }
   async function generateTeacherImageForPendingRoll() {
     if (!pendingTeacherRoll || pendingTeacherImageBusy) return;
