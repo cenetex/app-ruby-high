@@ -14,8 +14,8 @@ type WorldFeedEvent = LooseRecord & { id?: unknown; at?: unknown };
 type WorldFeedRoomView = { title: string; meta: string; pressureText?: string };
 type WorldFeedEventView = { id?: string; label: string; age: string };
 type QuestionPromptImageView = { src: string; alt: string };
-type LeaderboardGradeChipView = { className: string; text: string };
-type LeaderboardRowView = {
+export type LeaderboardGradeChipView = { className: string; text: string };
+export type LeaderboardRowView = {
   rank: string;
   rankClass: string;
   name: string;

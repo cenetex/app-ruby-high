@@ -1480,6 +1480,11 @@ export function runViewerClient(bootstrap) {
     openTeacherProfile,
     setFaculty,
   });
+  const leaderboardPanelRenderer = createLeaderboardPanelRenderer({
+    document,
+    body: els.leaderboardBody,
+    viewFor: leaderboardView,
+  });
 
   // ── message factories ────────────────────────────────────────────────────
   function knownTeacherAssetId(faculty) {
@@ -5163,67 +5168,7 @@ export function runViewerClient(bootstrap) {
 
   function renderLeaderboard(data) {
     const playbooks = (lastTelemetry && Array.isArray(lastTelemetry.playbooks)) ? lastTelemetry.playbooks : [];
-    const view = leaderboardView(data, playbooks);
-    const body = els.leaderboardBody;
-    body.innerHTML = "";
-    if (view.empty) {
-      body.innerHTML = '<div class="leaderboard-empty">No classmates yet. Complete daily classes with other players to see them here.</div>';
-      return;
-    }
-    const group = document.createElement("div");
-    group.className = "leaderboard-year-group";
-    const header = document.createElement("div");
-    header.className = "leaderboard-year-header";
-    header.appendChild(document.createTextNode(view.gradeLabel + " Classroom "));
-    const count = document.createElement("span");
-    count.className = "leaderboard-year-count";
-    count.textContent = String(view.count);
-    header.appendChild(count);
-    group.appendChild(header);
-    view.rows.forEach((s) => {
-        const row = document.createElement("div");
-        row.className = "leaderboard-row";
-        const rank = document.createElement("div");
-        rank.className = s.rankClass;
-        rank.textContent = s.rank;
-        row.appendChild(rank);
-        const thumb = document.createElement("div");
-        thumb.className = "leaderboard-portrait";
-        if (s.portraitUrl) {
-          const img = document.createElement("img");
-          img.src = s.portraitUrl;
-          img.alt = "";
-          img.onerror = () => { thumb.textContent = s.avatarText; };
-          thumb.appendChild(img);
-        } else {
-          thumb.textContent = s.avatarText;
-        }
-        row.appendChild(thumb);
-        const info = document.createElement("div");
-        info.className = "leaderboard-info";
-        const nameEl = document.createElement("div");
-        nameEl.className = "leaderboard-name";
-        nameEl.textContent = s.name;
-        info.appendChild(nameEl);
-        const pbEl = document.createElement("div");
-        pbEl.className = "leaderboard-playbook";
-        pbEl.textContent = s.playbookName;
-        info.appendChild(pbEl);
-        if (s.gradeChips.length > 0) {
-          const grades = document.createElement("div");
-          grades.className = "leaderboard-grades";
-          s.gradeChips.forEach((gradeChip) => {
-            const chip = document.createElement("span");
-            chip.className = gradeChip.className;
-            chip.textContent = gradeChip.text;
-            grades.appendChild(chip);
-          });
-          info.appendChild(grades);
-        }
-        row.appendChild(info);
-        group.appendChild(row);
-      });
-      body.appendChild(group);
+    leaderboardPanelRenderer.render(data, playbooks);
   }
 
   }

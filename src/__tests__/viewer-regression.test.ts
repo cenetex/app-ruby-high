@@ -195,10 +195,12 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function leaderboardView");
     expectScriptToContain(script, "function leaderboardRowView");
     expectScriptToContain(script, "function leaderboardGradeChips");
-    expectScriptToContain(clientSource, "const view = leaderboardView(data, playbooks);");
-    expectScriptToContain(clientSource, "header.appendChild(document.createTextNode(view.gradeLabel + \" Classroom \"));");
-    expectScriptToContain(clientSource, "view.rows.forEach((s) =>");
-    expectScriptToContain(clientSource, "pbEl.textContent = s.playbookName;");
+    expectScriptToContain(script, "function createLeaderboardPanelRenderer(deps)");
+    expectScriptToContain(clientSource, "const leaderboardPanelRenderer = createLeaderboardPanelRenderer({");
+    expectScriptToContain(clientSource, "viewFor: leaderboardView");
+    expectScriptToContain(clientSource, "leaderboardPanelRenderer.render(data, playbooks);");
+    expect(clientSource).not.toContain("header.appendChild(document.createTextNode(view.gradeLabel + \" Classroom \"));");
+    expect(clientSource).not.toContain("view.rows.forEach((s) =>");
     expect(clientSource).not.toContain("header.innerHTML = labels[grade]");
   });
 
