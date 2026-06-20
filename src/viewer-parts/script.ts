@@ -36,6 +36,7 @@ import { createRoomChannelRowsController } from "./room-channel-rows.js";
 import { createLeaderboardPanelRenderer } from "./leaderboard-panel.js";
 import { createPackMintProgressController } from "./pack-mint-progress.js";
 import { createRaceStripRenderer } from "./race-strip.js";
+import { createRevealFeedbackRenderer } from "./reveal-feedback.js";
 import { createArcIndicatorRenderer } from "./arc-indicator.js";
 import { createGuestSpotlightRenderer } from "./guest-spotlight.js";
 import { createGraduationCeremonyRenderer } from "./graduation-ceremony.js";
@@ -288,6 +289,7 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const createYearbookShareActionsRenderer = ${createYearbookShareActionsRenderer.toString()};
   const createPackMintProgressController = ${createPackMintProgressController.toString()};
   const createRaceStripRenderer = ${createRaceStripRenderer.toString()};
+  const createRevealFeedbackRenderer = ${createRevealFeedbackRenderer.toString()};
   const createArcIndicatorRenderer = ${createArcIndicatorRenderer.toString()};
   const createGuestSpotlightRenderer = ${createGuestSpotlightRenderer.toString()};
   const createGraduationCeremonyRenderer = ${createGraduationCeremonyRenderer.toString()};

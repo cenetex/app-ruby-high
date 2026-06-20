@@ -385,6 +385,23 @@ describe("viewer regression guardrails", () => {
     expect(clientSource).not.toContain('bodyEl.dataset.markdownRaw = sanitizeVisibleChatText(body || "");');
   });
 
+  it("renders reveal feedback from a typed renderer", () => {
+    const script = inlineScript(renderedViewer());
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(script, "function createRevealFeedbackRenderer(");
+    expectScriptToContain(clientSource, "const revealFeedbackRenderer = createRevealFeedbackRenderer({");
+    expectScriptToContain(clientSource, "const wrap = revealFeedbackRenderer.buildSocialSummary(events);");
+    expectScriptToContain(clientSource, "const wrap = revealFeedbackRenderer.buildResult(reveal, questionCounter, relationshipEventsForQuestion(reveal && reveal.questionId));");
+    expectScriptToContain(script, 'wrap.className = "msg social-summary";');
+    expectScriptToContain(script, 'wrap.className = "msg result";');
+    expectScriptToContain(script, 'chip.className = "mash-tick-chip " + deltaClass(event.delta, "");');
+    expect(clientSource).not.toContain('function appendMashTickChips(body, reveal)');
+    expect(clientSource).not.toContain('wrap.className = "msg social-summary";');
+    expect(clientSource).not.toContain('wrap.className = "msg result";');
+    expect(clientSource).not.toContain('badge.className = "badge-mini " + (reveal.wasCorrect ? "ok" : "bad");');
+  });
+
   it("builds report cards from a typed renderer", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");

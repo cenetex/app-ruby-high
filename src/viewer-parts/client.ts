@@ -1427,6 +1427,15 @@ export function runViewerClient(bootstrap) {
     recentRelationshipEvents,
     mashTickStory,
   });
+  const revealFeedbackRenderer = createRevealFeedbackRenderer({
+    document,
+    statLabel,
+    scoreAwardLabel,
+    mashTickLabel,
+    mashTickStory,
+    studentNameById,
+    studentColorById,
+  });
   const reportCardRenderer = createReportCardRenderer({
     document,
     essayLetter,
@@ -4018,17 +4027,6 @@ export function runViewerClient(bootstrap) {
     }
   }
 
-  function appendMashTickChips(body, reveal) {
-    const events = relationshipEventsForQuestion(reveal && reveal.questionId);
-    events.forEach((event) => {
-      const chip = document.createElement("span");
-      chip.className = "mash-tick-chip " + (event.delta > 0 ? "up" : event.delta < 0 ? "down" : "steady");
-      chip.textContent = mashTickLabel(event);
-      if (event.circled) chip.title = studentNameById(event.studentId) + " is circled on your Social card.";
-      else if (event.scratched) chip.title = studentNameById(event.studentId) + " is scratched on your Social card.";
-      body.appendChild(chip);
-    });
-  }
   function revealCardRole(t, reveal) {
     const round = t && t.active_round;
     return (round && round.cardRole)
@@ -4042,87 +4040,14 @@ export function runViewerClient(bootstrap) {
     if (lastSocialSummaryId === reveal.questionId) return;
     lastSocialSummaryId = reveal.questionId;
 
-    const wrap = document.createElement("div");
-    wrap.className = "msg social-summary";
-    const avatar = document.createElement("div");
-    avatar.className = "avatar social-summary-avatar";
-    avatar.textContent = "S";
-    const head = document.createElement("div");
-    head.className = "head";
-    const name = document.createElement("span");
-    name.className = "name";
-    name.textContent = "Social Shift";
-    head.appendChild(name);
-    const stamp = document.createElement("span");
-    stamp.className = "stamp";
-    stamp.textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    head.appendChild(stamp);
-
-    const body = document.createElement("div");
-    body.className = "body";
-    const list = document.createElement("div");
-    list.className = "social-summary-list";
-    events.forEach((event) => {
-      const row = document.createElement("div");
-      row.className = "social-summary-row " + (event.delta > 0 ? "is-up" : event.delta < 0 ? "is-down" : "is-steady");
-      const dot = document.createElement("span");
-      dot.className = "social-summary-dot";
-      dot.style.background = studentColorById(event.studentId);
-      row.appendChild(dot);
-      const story = document.createElement("span");
-      story.className = "social-summary-story";
-      story.textContent = mashTickStory(event);
-      row.appendChild(story);
-      const delta = document.createElement("span");
-      delta.className = "social-summary-delta";
-      const n = Number(event.delta || 0);
-      delta.textContent = n > 0 ? "+" + n : String(n);
-      row.appendChild(delta);
-      list.appendChild(row);
-    });
-    body.appendChild(list);
-    wrap.appendChild(avatar);
-    wrap.appendChild(head);
-    wrap.appendChild(body);
+    const wrap = revealFeedbackRenderer.buildSocialSummary(events);
+    if (!wrap) return;
     els.stream.appendChild(wrap);
     scrollIfPinned();
   }
 
   function appendResultChip(reveal) {
-    const wrap = document.createElement("div");
-    wrap.className = "msg result";
-    const body = document.createElement("div");
-    body.className = "body";
-    const badge = document.createElement("span");
-    badge.className = "badge-mini " + (reveal.wasCorrect ? "ok" : "bad");
-    const isTypedReveal = reveal.answerText != null || reveal.expectedAnswer != null || reveal.answerJudge != null;
-    badge.textContent = isTypedReveal
-      ? (reveal.forfeit ? "⏱ timeout" : reveal.wasCorrect ? "✓ typed" : "✗ typed")
-      : reveal.forfeit ? "⏱ timeout"
-      : reveal.wasCorrect ? "✓ " + reveal.picked : "✗ " + reveal.picked + " · " + reveal.correct;
-    body.appendChild(badge);
-    body.appendChild(document.createTextNode("Q" + questionCounter + " — " + (reveal.forfeit ? "timed out" : reveal.wasCorrect ? "correct" : "missed")));
-    if (reveal.playerRoll) {
-      const r = reveal.playerRoll;
-      const chip = document.createElement("span");
-      chip.className = "roll-chip " + r.outcome;
-      const fmt = (n) => (n >= 0 ? "+" : "") + n;
-      // Recover the stat modifier from total - dice sum so we don't carry it.
-      const mod = r.total - (r.dice[0] + r.dice[1]);
-      chip.textContent = "🎲 " + r.dice[0] + "+" + r.dice[1] + fmt(mod) + " " + statLabel(r.stat) + " = " + r.total;
-      body.appendChild(chip);
-    }
-    if (reveal.scoreAward || Number(reveal.scoreMultiplier || 1) > 1) {
-      const mult = document.createElement("span");
-      mult.className = "score-multiplier-chip";
-      const scoreMult = Number(reveal.scoreMultiplier || 1);
-      mult.textContent = reveal.scoreAward
-        ? scoreAwardLabel(reveal.scoreAward)
-        : (scoreMult >= 5 ? "◆ Daily Class ×5" : "◆ ×" + scoreMult + " Merit Stars");
-      body.appendChild(mult);
-    }
-    appendMashTickChips(body, reveal);
-    wrap.appendChild(body);
+    const wrap = revealFeedbackRenderer.buildResult(reveal, questionCounter, relationshipEventsForQuestion(reveal && reveal.questionId));
     els.stream.appendChild(wrap);
     scrollIfPinned();
   }
