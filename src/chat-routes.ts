@@ -3,7 +3,6 @@ import type { IAgentRuntime } from "./runtime.js";
 import { AuthService, type AuthRecord } from "./services/auth-service.js";
 import { ChatService, type AvatarPromptContext, type ChatMessage, type ChatStreamEvent, type ToolCall } from "./services/chat-service.js";
 import {
-  CHAT_MERIT_STAR_COST,
   HALL_PASS_CARD_BURN_HALL_PASS_VALUE,
   RubyHighService,
   type HallPassCardBurnInput,
@@ -257,9 +256,10 @@ function chargePlayerChatTurn(
     text: input.text,
     at,
   });
+  const quote = ruby.chatMeritStarQuote(sessionId, input.faculty);
   try {
     ruby.spendMeritStars(sessionId, {
-      amount: CHAT_MERIT_STAR_COST,
+      amount: quote.amount,
       idempotencyKey: `chat:${sessionId}:${input.route}:${input.faculty}:${requestId}`,
       source: "chat",
       description: "Classroom chat",
@@ -267,6 +267,11 @@ function chargePlayerChatTurn(
       metadata: {
         route: input.route,
         faculty: input.faculty,
+        chatCost: quote.amount,
+        chatBaseCost: quote.baseAmount,
+        chatCountForQuestion: quote.chatCount,
+        chatTurnForQuestion: quote.chatCount + 1,
+        ...(quote.questionId ? { questionId: quote.questionId } : {}),
         ...(input.trigger ? { trigger: input.trigger } : {}),
         ...(input.intent ? { intent: input.intent } : {}),
         ...(clientTurnSeq ? { clientTurnSeq } : {}),
@@ -1982,6 +1987,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     ctx.error(ctx.res, "Ruby High auth/chat services unavailable.", 503);
     return true;
   }
+  await chat.ready();
 
   const buildCallback = defaultCallbackBuilder(ctx);
   const secure = ctx.isSecure ?? false;
@@ -2182,6 +2188,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       local_ai: isLocalLlmProvider(),
       hosted_ai: entitlements.hosted_ai,
       entitlements,
+      summary: chat.roomSummary({ sessionToken: token, faculty }) ?? "",
       history: publicChatHistory(messages, token),
     });
     return true;

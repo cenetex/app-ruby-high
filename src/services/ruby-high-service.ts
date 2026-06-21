@@ -306,7 +306,7 @@ const PHOTO_POST_RETRY_DELAY_MS = 15 * 60 * 1000;
 const PHOTO_POST_SCHEDULER_INTERVAL_MS = 60 * 1000;
 export const HALL_PASS_CARDS_PER_PACK = 5;
 export const HALL_PASS_CARD_BURN_HALL_PASS_VALUE = 5;
-export const CHAT_MERIT_STAR_COST = 1;
+export const CHAT_MERIT_STAR_COST = 100;
 export const DEFAULT_CHARACTER_SLOT_COUNT = 1;
 export const CHARACTER_SLOT_HALL_PASS_COST = 1;
 export const CHARACTER_SLOT_PHOTO_DAY_CREDITS = 1;
@@ -537,6 +537,13 @@ export interface MeritStarMutationResult {
   state: QuizState;
   applied: boolean;
   transaction: RubyHighWalletTransaction;
+}
+
+export interface ChatMeritStarQuote {
+  amount: number;
+  baseAmount: number;
+  questionId: string | null;
+  chatCount: number;
 }
 
 export interface HallPassCardGrantInput {
@@ -1374,6 +1381,62 @@ function gradeEssayPrompt(grade: Grade, ch: { name: string; playbookId?: string 
   const key = `${ch.name}:${grade}`;
   for (let i = 0; i < key.length; i++) seed = ((seed << 5) - seed + key.charCodeAt(i)) | 0;
   return pool[Math.abs(seed) % pool.length]!;
+}
+
+export interface CosyWorldWalletCardExport {
+  walletAddress: string;
+  cardIds: string[];
+  hallPassCards: Array<Pick<
+    RubyHighHallPassCard,
+    | "id"
+    | "serial"
+    | "characterId"
+    | "characterName"
+    | "setName"
+    | "setCode"
+    | "setNumber"
+    | "profileId"
+    | "cardName"
+    | "subject"
+    | "role"
+    | "rarity"
+    | "status"
+    | "ownerWalletAddress"
+    | "mintAddress"
+    | "metadataUri"
+    | "artSheet"
+    | "artPosition"
+  >>;
+}
+
+export interface CosyWorldWalletCardsExport {
+  generatedAt: string;
+  wallets: CosyWorldWalletCardExport[];
+}
+
+export interface CosyWorldCardOwnership {
+  mintAddress: string;
+  ownerWalletAddress: string;
+}
+
+const COSYWORLD_OWNERSHIP_LOOKUP_CONCURRENCY = 8;
+
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.max(1, Math.min(Math.floor(concurrency), items.length));
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      out[index] = await mapper(items[index]!, index);
+    }
+  }));
+  return out;
 }
 
 export class RubyHighService extends Service {
@@ -3820,6 +3883,77 @@ export class RubyHighService extends Service {
       ));
   }
 
+  async cosyWorldWalletCards(
+    currentOwnershipForCard: (card: RubyHighHallPassCard) => Promise<CosyWorldCardOwnership | null>,
+  ): Promise<CosyWorldWalletCardsExport> {
+    const byWallet = new Map<string, CosyWorldWalletCardExport>();
+    const cards: RubyHighHallPassCard[] = [];
+    for (const state of this.sessions.values()) {
+      state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+      for (const card of normalizeHallPassCards(state.wallet.hallPassCards)) {
+        if (
+          card.status !== "active" ||
+          !card.ownerWalletAddress ||
+          !card.mintAddress ||
+          !card.mintSignature ||
+          !card.characterId
+        ) {
+          continue;
+        }
+        cards.push(card);
+      }
+    }
+    const ownerships = await mapWithConcurrency(
+      cards,
+      COSYWORLD_OWNERSHIP_LOOKUP_CONCURRENCY,
+      async (card) => ({ card, ownership: await currentOwnershipForCard(card) }),
+    );
+    for (const { card, ownership } of ownerships) {
+      if (!ownership?.ownerWalletAddress) continue;
+      const walletAddress = ownership.ownerWalletAddress.trim();
+      const mintAddress = ownership.mintAddress.trim();
+      const characterId = card.characterId.trim();
+      if (!walletAddress || !mintAddress || !characterId) continue;
+      const key = walletAddress;
+      let entry = byWallet.get(key);
+      if (!entry) {
+        entry = { walletAddress, cardIds: [], hallPassCards: [] };
+        byWallet.set(key, entry);
+      }
+      if (!entry.cardIds.includes(characterId)) entry.cardIds.push(characterId);
+      entry.hallPassCards.push({
+        id: card.id,
+        serial: card.serial,
+        characterId: card.characterId,
+        characterName: card.characterName,
+        setName: card.setName,
+        setCode: card.setCode,
+        setNumber: card.setNumber,
+        profileId: card.profileId,
+        cardName: card.cardName,
+        subject: card.subject,
+        role: card.role,
+        rarity: card.rarity,
+        status: card.status,
+        ownerWalletAddress: walletAddress,
+        mintAddress,
+        metadataUri: card.metadataUri,
+        artSheet: card.artSheet,
+        artPosition: card.artPosition,
+      });
+    }
+    const wallets = [...byWallet.values()]
+      .map((entry) => ({
+        ...entry,
+        cardIds: [...entry.cardIds].sort((a, b) => a.localeCompare(b)),
+        hallPassCards: [...entry.hallPassCards].sort((a, b) => (
+          a.characterId.localeCompare(b.characterId) || a.serial - b.serial || a.id.localeCompare(b.id)
+        )),
+      }))
+      .sort((a, b) => a.walletAddress.localeCompare(b.walletAddress));
+    return { generatedAt: new Date().toISOString(), wallets };
+  }
+
   hallPassPacks(sessionId: string): RubyHighHallPassPack[] {
     const state = this.getOrCreate(sessionId);
     state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
@@ -4010,6 +4144,41 @@ export class RubyHighService extends Service {
 
   spendMeritStars(sessionId: string, input: MeritStarMutationInput): MeritStarMutationResult {
     return this.applyMeritStarTransaction(sessionId, "merit-star-spend", input);
+  }
+
+  chatMeritStarQuote(sessionId: string, facultyId?: string | null): ChatMeritStarQuote {
+    const state = this.getOrCreate(sessionId);
+    const faculty = facultyId || state.faculty;
+    const questionId = state.current && state.activeRound && !state.activeRound.resolved && state.faculty === faculty
+      ? state.current.id
+      : null;
+    const chatCount = questionId ? this.countChatSpendsForQuestion(state, faculty, questionId) : 0;
+    return {
+      amount: CHAT_MERIT_STAR_COST * (chatCount + 1),
+      baseAmount: CHAT_MERIT_STAR_COST,
+      questionId,
+      chatCount,
+    };
+  }
+
+  private countChatSpendsForQuestion(state: QuizState, faculty: string, questionId: string): number {
+    const transactions = Object.values(state.wallet.operationLedger ?? {});
+    const fallback = state.wallet.transactions ?? [];
+    const seen = new Set<string>();
+    let count = 0;
+    for (const tx of transactions.length > 0 ? transactions : fallback) {
+      if (seen.has(tx.id)) continue;
+      seen.add(tx.id);
+      if (
+        tx.kind === "merit-star-spend" &&
+        tx.source === "chat" &&
+        tx.metadata?.faculty === faculty &&
+        tx.metadata?.questionId === questionId
+      ) {
+        count += 1;
+      }
+    }
+    return count;
   }
 
   private applyMeritStarTransaction(
@@ -4271,6 +4440,10 @@ export class RubyHighService extends Service {
    */
   setFacultyService(faculty: FacultyService): void {
     this.faculty = faculty;
+  }
+
+  chatPersistenceStore(): StateStoreLike {
+    return this.store;
   }
 
   hasFaculty(): boolean {

@@ -17,6 +17,10 @@ import {
   providerSupportsTools,
   streamTeacherCompletion,
 } from "./teacher-providers.js";
+import type {
+  StateStoreLike,
+  StoredServiceStateRecord,
+} from "./state-store.js";
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -59,9 +63,9 @@ export interface ChatHistoryKey {
 /**
  * A room-event is the architectural counterpart to a ChatMessage.
  *
- *  - ChatMessage = in-process dialogue (user / assistant / tool). Goes into
- *    `histories`. Round-trips to OpenRouter as role-shaped messages, but is
- *    not part of the durable state store.
+ *  - ChatMessage = room dialogue (user / assistant / tool). Goes into
+ *    `histories`, round-trips to OpenRouter as role-shaped messages, and is
+ *    persisted through the service-state store with summary compaction.
  *
  *  - RoomEvent = volatile awareness (who chimed in, what answer just
  *    resolved, who entered the room). Goes into `events`. Surfaces to
@@ -93,6 +97,12 @@ export interface RoomEvent {
   at: number;
 }
 
+interface ChatRoomSummary {
+  text: string;
+  updatedAt: number;
+  compactedMessages: number;
+}
+
 export interface AvatarPromptContext {
   roomBlock: string;
   boardBlock: string;
@@ -101,7 +111,10 @@ export interface AvatarPromptContext {
   recentTexts: string[];
 }
 
-const HISTORY_LIMIT = 30;
+const CHAT_ROOM_COMPACT_TRIGGER_GROUPS = 50;
+const CHAT_ROOM_COMPACT_KEEP_GROUPS = 20;
+const CHAT_ROOM_SUMMARY_MAX_CHARS = 2400;
+const CHAT_SERVICE_STATE_ID = "service:chat:rooms:v1";
 const EVENT_LOG_LIMIT = 60;
 const DEFAULT_AGENT_ROUNDS = 4;
 const MAX_AGENT_ROUNDS = readAgentRoundLimit(process.env.RUBY_HIGH_CHAT_AGENT_ROUNDS);
@@ -164,7 +177,8 @@ export interface SendOpts {
 
 /**
  * ChatService is the bridge from the viewer to OpenRouter.
- *  - Owns per-(cookie, faculty) chat history (in memory only).
+ *  - Owns server-global per-room chat history, including the lounge.
+ *  - Persists rooms and compacts older turns into a summary after the room grows.
  *  - Builds the system prompt + tool list per teacher.
  *  - Streams the OpenRouter response, dispatches tool calls into RubyHighService,
  *    feeds tool results back, and yields events for the SSE consumer.
@@ -175,6 +189,7 @@ export class ChatService extends Service {
     "Routes chat between students and Ruby High teachers via OpenRouter, with tools that drive the chalkboard.";
 
   private readonly histories = new Map<string, ChatMessage[]>();
+  private readonly summaries = new Map<string, ChatRoomSummary>();
   /**
    * Tier B store: per-bucket append-only ring of room events. Compose
    * filters by `at > lastSpeakerAssistantAt(...)` so each turn's
@@ -184,19 +199,40 @@ export class ChatService extends Service {
   private readonly events = new Map<string, RoomEvent[]>();
   private readonly npcOpinionKickoffs = new Map<string, Promise<void>>();
   private ruby: RubyHighService | null = null;
+  private store: StateStoreLike | null = null;
+  private hydratePromise: Promise<void> = Promise.resolve();
+  private hydratedStore: StateStoreLike | null = null;
+  private hydrateStoreInFlight: StateStoreLike | null = null;
+  private persistPromise: Promise<void> = Promise.resolve();
 
   static async start(runtime: IAgentRuntime): Promise<ChatService> {
     return new ChatService(runtime);
   }
 
   async stop(): Promise<void> {
+    await this.flushPersistence();
     this.histories.clear();
+    this.summaries.clear();
     this.events.clear();
     this.npcOpinionKickoffs.clear();
   }
 
   setRubyHighService(ruby: RubyHighService): void {
     this.ruby = ruby;
+    this.store = ruby.chatPersistenceStore();
+  }
+
+  async ready(): Promise<void> {
+    const store = this.store;
+    if (!store || this.hydratedStore === store) return;
+    if (this.hydrateStoreInFlight !== store) {
+      this.hydrateStoreInFlight = store;
+      this.hydratePromise = this.hydrateFromStore(store).finally(() => {
+        if (this.hydrateStoreInFlight === store) this.hydrateStoreInFlight = null;
+      });
+    }
+    await this.hydratePromise;
+    this.hydratedStore = store;
   }
 
   requiresBrowserApiKey(agentSessionId: string, faculty: string): boolean {
@@ -210,9 +246,16 @@ export class ChatService extends Service {
     return this.histories.get(this.keyOf(key)) ?? [];
   }
 
+  roomSummary(key: ChatHistoryKey): string | null {
+    return this.summaries.get(this.keyOf(key))?.text ?? null;
+  }
+
   resetHistory(key: ChatHistoryKey): void {
-    this.histories.delete(this.keyOf(key));
-    this.events.delete(this.keyOf(key));
+    const k = this.keyOf(key);
+    this.histories.delete(k);
+    this.summaries.delete(k);
+    this.events.delete(k);
+    this.persistSoon();
   }
 
   /** Append a structured room event. Synopsised into the model's per-turn
@@ -229,6 +272,7 @@ export class ChatService extends Service {
     if (list.length > EVENT_LOG_LIMIT) {
       list.splice(0, list.length - EVENT_LOG_LIMIT);
     }
+    this.persistSoon();
   }
 
   /** Convenience for the answer-noted event ("student picked X — correct"). */
@@ -256,6 +300,7 @@ export class ChatService extends Service {
       at,
     });
     this.trim(key);
+    this.persistSoon();
   }
 
   events_for_test(key: ChatHistoryKey): RoomEvent[] {
@@ -295,16 +340,21 @@ export class ChatService extends Service {
     const bankStatus = activeFaculty === "lounge" ? null : this.ruby.questionBankStatus(opts.agentSessionId, activeFaculty);
     const dialogueLines = recentHistory.map((m) => formatDialogueLineForAvatar(state, m));
     const eventLines = recentEvents.map((event) => `  - ${clipForPrompt(event.text.trim(), 220)}`);
+    const summaryText = this.roomSummary(key);
+    const summaryBlock = summaryText
+      ? `Earlier room summary: ${clipForPrompt(summaryText, 700)}`
+      : "";
     return {
       roomBlock: describeRoomForAvatar(state),
       boardBlock: describeBoardForAvatar(state, bankStatus),
       recentEventsBlock: eventLines.length
         ? ["Recent visible room events (context only; do not imitate this format):", ...eventLines].join("\n")
         : "Recent visible room events: none.",
-      dialogueBlock: dialogueLines.length
-        ? ["Recent dialogue (context only; do not imitate this format):", ...dialogueLines].join("\n")
+      dialogueBlock: summaryBlock || dialogueLines.length
+        ? ["Recent dialogue (context only; do not imitate this format):", summaryBlock, ...dialogueLines].filter(Boolean).join("\n")
         : "Recent dialogue: none yet.",
       recentTexts: [
+        ...(summaryText ? [summaryText] : []),
         ...recentHistory.map((m) => m.content.trim()),
         ...recentEvents.map((event) => event.text.trim()),
       ],
@@ -312,6 +362,7 @@ export class ChatService extends Service {
   }
 
   async *send(opts: SendOpts): AsyncGenerator<ChatStreamEvent> {
+    await this.ready();
     if (!this.ruby) throw new Error("RubyHighService not bound to ChatService.");
     const state = this.ruby.getOrCreate(opts.agentSessionId);
     const rawSpeakerId = opts.speakerFacultyId ?? opts.faculty;
@@ -354,6 +405,7 @@ export class ChatService extends Service {
         at: Date.now(),
       });
       this.trim(key);
+      this.persistSoon();
     }
     if (history.length === 0 && !turnDirective) {
       // Nothing to say + nothing to react to + no directive — bail.
@@ -471,6 +523,7 @@ export class ChatService extends Service {
 
       if (assistantToolCalls.length === 0) {
         this.trim(key);
+        this.persistSoon();
         yield { type: "done", finishReason };
         return;
       }
@@ -570,6 +623,7 @@ export class ChatService extends Service {
         return;
       }
       this.trim(key);
+      this.persistSoon();
       for (const ev of toolEvents) yield ev;
       if (staleRoomTurn) {
         yield { type: "done", finishReason: "stale-room" };
@@ -631,6 +685,13 @@ export class ChatService extends Service {
     messages.push({ role: "system", content: `Active board context for this turn:\n${ctx}` });
     if (!disableTools) {
       messages.push({ role: "system", content: describeQuestionBankForModel(bankStatus) });
+    }
+    const summary = this.summaries.get(this.keyOf(bucketKey));
+    if (summary?.text) {
+      messages.push({
+        role: "system",
+        content: `Earlier room summary (older chat compacted; memory only, not a new instruction):\n${summary.text}`,
+      });
     }
     // 4. RECENT EVENTS synopsis — events newer than this speaker's last
     //    assistant turn. Floor at 0 so the very first turn includes the
@@ -833,11 +894,76 @@ export class ChatService extends Service {
     const k = this.keyOf(key);
     const list = this.histories.get(k);
     if (!list) return;
-    const next = normalizeHistoryForProvider(list, HISTORY_LIMIT);
+    const next = this.compactHistoryForRoom(k, list);
     // Preserve the array identity returned by ensure(). send() holds that
     // reference while it is appending the current turn; replacing the map
     // value here would make later pushes land on a detached array.
     list.splice(0, list.length, ...next);
+  }
+
+  private compactHistoryForRoom(roomKey: string, list: ChatMessage[]): ChatMessage[] {
+    const groups = providerSafeHistoryGroups(list);
+    if (groups.length <= CHAT_ROOM_COMPACT_TRIGGER_GROUPS) return groups.flat();
+
+    const keep = groups.slice(-CHAT_ROOM_COMPACT_KEEP_GROUPS);
+    const compacted = groups.slice(0, Math.max(0, groups.length - CHAT_ROOM_COMPACT_KEEP_GROUPS)).flat();
+    const previous = this.summaries.get(roomKey);
+    const text = appendRoomSummary(previous?.text ?? "", compacted);
+    this.summaries.set(roomKey, {
+      text,
+      updatedAt: Date.now(),
+      compactedMessages: (previous?.compactedMessages ?? 0) + compacted.length,
+    });
+    return keep.flat();
+  }
+
+  private async hydrateFromStore(store: StateStoreLike): Promise<void> {
+    if (!store.loadServiceState) return;
+    const record = await store.loadServiceState(CHAT_SERVICE_STATE_ID).catch(() => null);
+    if (!record) return;
+    const rooms = normalizePersistedChatRooms(record);
+    for (const room of rooms) {
+      if (!this.histories.has(room.key)) this.histories.set(room.key, room.history);
+      if (!this.events.has(room.key)) this.events.set(room.key, room.events);
+      if (room.summary && !this.summaries.has(room.key)) this.summaries.set(room.key, room.summary);
+    }
+  }
+
+  private persistSoon(): void {
+    const store = this.store;
+    if (!store?.saveServiceState) return;
+    const record = this.persistenceRecord();
+    this.persistPromise = this.persistPromise
+      .catch(() => undefined)
+      .then(() => store.saveServiceState!(record));
+    void this.persistPromise.catch(() => undefined);
+  }
+
+  private async flushPersistence(): Promise<void> {
+    await this.hydratePromise.catch(() => undefined);
+    await this.persistPromise.catch(() => undefined);
+    await this.store?.flush?.().catch(() => undefined);
+  }
+
+  private persistenceRecord(): StoredServiceStateRecord {
+    const keys = new Set([
+      ...this.histories.keys(),
+      ...this.events.keys(),
+      ...this.summaries.keys(),
+    ]);
+    const rooms = Array.from(keys).sort().map((key) => ({
+      key,
+      history: normalizeHistoryForProvider(this.histories.get(key) ?? [], CHAT_ROOM_COMPACT_TRIGGER_GROUPS),
+      events: (this.events.get(key) ?? []).slice(-EVENT_LOG_LIMIT),
+      summary: this.summaries.get(key) ?? null,
+    })).filter((room) =>
+      room.history.length > 0 || room.events.length > 0 || !!room.summary?.text
+    );
+    return {
+      id: CHAT_SERVICE_STATE_ID,
+      updatedAt: Date.now(),
+      data: { version: 1, rooms },
+    };
   }
 
   private keyOf(key: ChatHistoryKey): string {
@@ -861,6 +987,149 @@ function normalizeHistoryForProvider(list: ChatMessage[], limit: number): ChatMe
     count += group.length;
   }
   return kept.reverse().flat();
+}
+
+function appendRoomSummary(previous: string, compacted: ChatMessage[]): string {
+  const prior = previous.trim();
+  const lines = compacted
+    .map(roomSummaryLine)
+    .filter((line): line is string => !!line)
+    .slice(-36);
+  const next = lines.length > 0
+    ? [
+        prior,
+        `Earlier chat digest (${compacted.length} compacted messages):`,
+        ...lines.map((line) => `- ${line}`),
+      ].filter(Boolean).join("\n")
+    : prior;
+  return clipRoomSummary(next);
+}
+
+function roomSummaryLine(message: ChatMessage): string | null {
+  const content = clipForPrompt(message.content.trim(), 180);
+  if (!content && message.role !== "tool") return null;
+  if (message.role === "user") {
+    return `${message.authorName || "Student"}: ${content}`;
+  }
+  if (message.role === "assistant") {
+    return `${teacherByIdSafe(message.faculty)}: ${content}`;
+  }
+  if (message.role === "tool") {
+    const tool = message.toolCallId ? `tool ${message.toolCallId}` : "tool";
+    return `${teacherByIdSafe(message.faculty)} used ${tool}.`;
+  }
+  return null;
+}
+
+function teacherByIdSafe(facultyId: string | undefined): string {
+  if (!facultyId) return "Teacher";
+  try {
+    return teacherById(facultyId).shortName || teacherById(facultyId).displayName || facultyId;
+  } catch {
+    return facultyId.replace(/-/g, " ");
+  }
+}
+
+function clipRoomSummary(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= CHAT_ROOM_SUMMARY_MAX_CHARS) return trimmed;
+  return `...${trimmed.slice(trimmed.length - CHAT_ROOM_SUMMARY_MAX_CHARS + 3)}`;
+}
+
+function normalizePersistedChatRooms(record: StoredServiceStateRecord): Array<{
+  key: string;
+  history: ChatMessage[];
+  events: RoomEvent[];
+  summary: ChatRoomSummary | null;
+}> {
+  const rawRooms = Array.isArray(record.data?.rooms) ? record.data.rooms : [];
+  const rooms: Array<{
+    key: string;
+    history: ChatMessage[];
+    events: RoomEvent[];
+    summary: ChatRoomSummary | null;
+  }> = [];
+  for (const raw of rawRooms) {
+    if (!raw || typeof raw !== "object") continue;
+    const row = raw as Record<string, unknown>;
+    const key = typeof row.key === "string" && row.key.startsWith("room::")
+      ? row.key
+      : "";
+    if (!key) continue;
+    const history = normalizeHistoryForProvider(
+      Array.isArray(row.history)
+        ? row.history.map(normalizeChatMessage).filter((m): m is ChatMessage => !!m)
+        : [],
+      CHAT_ROOM_COMPACT_TRIGGER_GROUPS,
+    );
+    const events = Array.isArray(row.events)
+      ? row.events.map(normalizeRoomEvent).filter((event): event is RoomEvent => !!event).slice(-EVENT_LOG_LIMIT)
+      : [];
+    const summary = normalizeChatRoomSummary(row.summary);
+    rooms.push({ key, history, events, summary });
+  }
+  return rooms;
+}
+
+function normalizeChatMessage(raw: unknown): ChatMessage | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const role = row.role;
+  if (role !== "user" && role !== "assistant" && role !== "tool" && role !== "system") return null;
+  const content = typeof row.content === "string" ? row.content : "";
+  const at = Number.isFinite(Number(row.at)) ? Math.floor(Number(row.at)) : Date.now();
+  const message: ChatMessage = { role, content, at };
+  if (typeof row.toolCallId === "string" && row.toolCallId) message.toolCallId = row.toolCallId;
+  const toolCalls = normalizeToolCalls(row.toolCalls);
+  if (toolCalls.length > 0) message.toolCalls = toolCalls;
+  if (typeof row.faculty === "string" && row.faculty) message.faculty = row.faculty;
+  if (typeof row.authorSessionToken === "string" && row.authorSessionToken) message.authorSessionToken = row.authorSessionToken;
+  if (typeof row.authorName === "string" && row.authorName.trim()) message.authorName = row.authorName.trim().slice(0, 80);
+  return message;
+}
+
+function normalizeToolCalls(value: unknown): ToolCall[] {
+  if (!Array.isArray(value)) return [];
+  const out: ToolCall[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const row = raw as Record<string, unknown>;
+    const fn = row.function;
+    if (typeof row.id !== "string" || row.type !== "function" || !fn || typeof fn !== "object") continue;
+    const f = fn as Record<string, unknown>;
+    if (typeof f.name !== "string" || typeof f.arguments !== "string") continue;
+    out.push({ id: row.id, type: "function", function: { name: f.name, arguments: f.arguments } });
+  }
+  return out;
+}
+
+function normalizeRoomEvent(raw: unknown): RoomEvent | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const kind = row.kind;
+  if (
+    kind !== "chime" &&
+    kind !== "answer-resolved" &&
+    kind !== "channel-enter" &&
+    kind !== "lounge-enter" &&
+    kind !== "opinion-graded" &&
+    kind !== "answer-noted" &&
+    kind !== "note"
+  ) return null;
+  const text = typeof row.text === "string" ? row.text.trim() : "";
+  if (!text) return null;
+  const at = Number.isFinite(Number(row.at)) ? Math.floor(Number(row.at)) : Date.now();
+  return { kind, text, at };
+}
+
+function normalizeChatRoomSummary(raw: unknown): ChatRoomSummary | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const text = typeof row.text === "string" ? clipRoomSummary(row.text) : "";
+  if (!text) return null;
+  const updatedAt = Number.isFinite(Number(row.updatedAt)) ? Math.floor(Number(row.updatedAt)) : Date.now();
+  const compactedMessages = Math.max(0, Math.floor(Number(row.compactedMessages ?? 0)));
+  return { text, updatedAt, compactedMessages };
 }
 
 function providerSafeHistoryGroups(list: ChatMessage[]): ChatMessage[][] {

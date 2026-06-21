@@ -1,4 +1,5 @@
 import type { AuthService } from "../services/auth-service.js";
+import { createHash } from "node:crypto";
 import {
   corePackCollectionMetadataForRoute,
   corePackNftMetadataForRoute,
@@ -16,13 +17,17 @@ import {
   buildHallPassCardsBurnTransaction,
   hallPassNftMetadataForRoute,
   hallPassNftStatus,
+  fetchHallPassCardCurrentOwnershipOrNull,
   publicHallPassNftStatus,
   submitSignedHallPassCardMintTransaction,
   verifyHallPassCardMint,
   verifyHallPassCardBurn,
 } from "../services/hall-pass-nfts.js";
 import type { HallPassCardBurnInput } from "../services/ruby-high-service.js";
-import type { RubyHighService } from "../services/ruby-high-service.js";
+import {
+  HALL_PASS_CARD_BURN_HALL_PASS_VALUE,
+  type RubyHighService,
+} from "../services/ruby-high-service.js";
 import { log } from "../services/logger.js";
 import { TokenBucket } from "../services/rate-limit.js";
 import { solanaErrorMessages } from "../services/solana-errors.js";
@@ -115,10 +120,61 @@ function takeNftMutationToken(ctx: RouteContext, deps: NftDeps): boolean {
   return false;
 }
 
+function configuredCosyWorldExportToken(): string {
+  return (process.env.RUBY_HIGH_COSYWORLD_EXPORT_TOKEN ?? "").trim();
+}
+
+function bearerTokenFromAuthHeader(value: string | string[] | null | undefined): string {
+  const header = firstHeader(value).trim();
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return (match?.[1] ?? "").trim();
+}
+
+function authorizeCosyWorldExport(ctx: RouteContext): boolean {
+  const expected = configuredCosyWorldExportToken();
+  if (!expected) {
+    ctx.error(ctx.res, "CosyWorld ownership export is not configured.", 503);
+    return false;
+  }
+  if (bearerTokenFromAuthHeader(ctx.authorizationHeader) !== expected) {
+    ctx.error(ctx.res, "CosyWorld ownership export requires authorization.", 401);
+    return false;
+  }
+  return true;
+}
+
+function setPrivateNoStoreHeaders(res: unknown): void {
+  (res as { setHeader?: (name: string, value: string) => void }).setHeader?.("Cache-Control", "private, no-store");
+}
+
+function hallPassBurnConversionKey(burns: HallPassCardBurnInput[]): string {
+  const stable = burns
+    .map((burn) => `${burn.cardId}:${burn.mintAddress}:${burn.burnSignature}`)
+    .sort()
+    .join("|");
+  return `hall-pass-card-burn:${createHash("sha256").update(stable).digest("hex").slice(0, 32)}`;
+}
+
 export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise<boolean> {
   if (!ctx.pathname.startsWith(HALL_PASS_NFT_PREFIX)) return false;
   if (rejectBadNftMutationRequest(ctx)) return true;
   if (!takeNftMutationToken(ctx, deps)) return true;
+
+  if (ctx.method === "GET" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/internal/cosyworld/wallet-cards`) {
+    if (!authorizeCosyWorldExport(ctx)) return true;
+    try {
+      const exportPayload = await deps.ruby.cosyWorldWalletCards(async (card) => {
+        if (!card.mintAddress) return null;
+        return fetchHallPassCardCurrentOwnershipOrNull(card.mintAddress);
+      });
+      setPrivateNoStoreHeaders(ctx.res);
+      ctx.json(ctx.res, exportPayload);
+    } catch (err) {
+      log.error("nft.cosyworld-export-failed", err);
+      ctx.error(ctx.res, "CosyWorld ownership export failed.", 502);
+    }
+    return true;
+  }
 
   if (ctx.method === "GET" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/metadata/core/collection.json`) {
     setNftMetadataCacheHeaders(ctx.res);
@@ -851,18 +907,61 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     const card = deps.ruby.burnableHallPassCards(stateKey, burn.ownerWalletAddress)
       .find((candidate) => candidate.id === burn.cardId && candidate.mintAddress === burn.mintAddress);
     if (!card) {
+      const existing = deps.ruby.getOrCreate(stateKey).wallet.hallPassCards
+        ?.find((candidate) =>
+          candidate.id === burn.cardId &&
+          candidate.mintAddress === burn.mintAddress &&
+          candidate.ownerWalletAddress === burn.ownerWalletAddress &&
+          candidate.status === "redeemed" &&
+          candidate.burnSignature === burn.burnSignature);
+      if (existing) {
+        ctx.json(ctx.res, {
+          ok: true,
+          applied: false,
+          burn: {
+            ...burn,
+            slot: null,
+            blockTime: null,
+          },
+          hallPasses: deps.ruby.hallPassBalance(stateKey),
+          amount: HALL_PASS_CARD_BURN_HALL_PASS_VALUE,
+          burnedCards: [{
+            cardId: existing.id,
+            characterId: existing.characterId,
+            characterName: existing.characterName,
+            burnSignature: existing.burnSignature,
+          }],
+        });
+        return true;
+      }
       ctx.error(ctx.res, "No active minted card matches this burn.", 404);
       return true;
     }
     try {
       const verified = await verifyHallPassCardBurn(burn);
+      const result = deps.ruby.convertBurnedHallPassCardsToHallPasses(stateKey, {
+        burns: [burn],
+        idempotencyKey: hallPassBurnConversionKey([burn]),
+        source: "hall-pass-card",
+        description: `1 Card burned for ${HALL_PASS_CARD_BURN_HALL_PASS_VALUE} Hall Passes`,
+      });
+      await deps.ruby.flushSession(stateKey);
       ctx.json(ctx.res, {
         ok: true,
+        applied: result.applied,
         burn: {
           ...burn,
           slot: verified.slot ?? null,
           blockTime: verified.blockTime ?? null,
         },
+        hallPasses: result.state.wallet.hallPasses,
+        amount: HALL_PASS_CARD_BURN_HALL_PASS_VALUE,
+        burnedCards: result.cards?.map((burnedCard) => ({
+          cardId: burnedCard.id,
+          characterId: burnedCard.characterId,
+          characterName: burnedCard.characterName,
+          burnSignature: burnedCard.burnSignature,
+        })) ?? [],
       });
     } catch (err) {
       log.error("nft.card-burn-confirm-failed", err, {

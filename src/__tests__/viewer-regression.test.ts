@@ -1007,8 +1007,9 @@ describe("viewer regression guardrails", () => {
   it("labels offline classroom advance as Continue instead of Chat", () => {
     const script = inlineScript(renderedViewer());
 
-    expectScriptToContain(script, 'offlineClassroom ? "Continue" : "Chat"');
-    expectScriptToContain(script, 'const advanceLabel = teacherChatEnabled() ? "Chat" : "Continue";');
+    expectScriptToContain(script, 'return "Chat *x" + formatWholeNumber(nextChatCost(t));');
+    expectScriptToContain(script, 'offlineClassroom ? "Continue" : chatActionLabel(t)');
+    expectScriptToContain(script, 'const advanceLabel = teacherChatEnabled() ? chatActionLabel(lastTelemetry) : "Continue";');
     expectScriptToContain(script, "Connect AI for hints.");
     expect(script).not.toContain("Connect OpenRouter for hints.");
   });
@@ -1018,6 +1019,7 @@ describe("viewer regression guardrails", () => {
 
     expectScriptToContain(script, '/api/apps/ruby-high/chat/opinion-submit');
     expectScriptToContain(script, '/api/apps/ruby-high/chat/room-turn');
+    expectScriptToContain(script, "Earlier room summary");
     expectScriptToContain(script, 'event === "player-line"');
     expectScriptToContain(script, 'event === "student"');
     expectScriptToContain(script, 'event === "waiting" || event === "opinion-graded"');

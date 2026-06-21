@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { handleBillingRoutes } from "../routes/billing.js";
 import { handleNftRoutes } from "../routes/nft.js";
 import type { RouteContext } from "../routes/context.js";
 import { getActivePack } from "../content/registry.js";
@@ -12,6 +13,7 @@ import {
 } from "../services/core-pack-nfts.js";
 import {
   hallPassNftMetadataUri,
+  setHallPassCardOwnershipFetcherForTest,
   setHallPassNftBurnTransactionBuilderForTest,
   setHallPassNftBurnVerifierForTest,
   setHallPassNftMintTransactionBuilderForTest,
@@ -42,6 +44,7 @@ import { AuthService } from "../services/auth-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { nftImageUri } from "../services/nft-arweave-assets.js";
 import { StateStore } from "../services/state-store.js";
+import type { RubyHighHallPassCard } from "../types.js";
 
 let tmpDir: string;
 let auth: AuthService;
@@ -53,8 +56,10 @@ let restoreMintSubmitter: (() => void) | null = null;
 let restoreMintVerifier: (() => void) | null = null;
 let restoreBurnBuilder: (() => void) | null = null;
 let restoreBurnVerifier: (() => void) | null = null;
+let restoreCardOwnershipFetcher: (() => void) | null = null;
 let restorePackFetcher: (() => void) | null = null;
 let restorePackOpenedUpdater: (() => void) | null = null;
+let currentCardOwners: Map<string, string | null>;
 
 const OWNER = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
 const ORIGINAL_ENV = {
@@ -63,6 +68,7 @@ const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS,
   RUBY_HIGH_PACK_REVEAL_SECRET: process.env.RUBY_HIGH_PACK_REVEAL_SECRET,
   RUBY_HIGH_PUBLIC_BASE_URL: process.env.RUBY_HIGH_PUBLIC_BASE_URL,
+  RUBY_HIGH_COSYWORLD_EXPORT_TOKEN: process.env.RUBY_HIGH_COSYWORLD_EXPORT_TOKEN,
 };
 
 function restoreEnv(): void {
@@ -78,6 +84,7 @@ function makeCtx(opts: {
   cookie?: string | null;
   contentTypeHeader?: string | string[] | null;
   originHeader?: string | string[] | null;
+  authorizationHeader?: string | string[] | null;
   callbackOrigin?: string | null;
   body?: any;
 }): RouteContext {
@@ -98,6 +105,7 @@ function makeCtx(opts: {
     cookieHeader: opts.cookie ?? null,
     contentTypeHeader: opts.contentTypeHeader === undefined ? "application/json" : opts.contentTypeHeader,
     originHeader: opts.originHeader ?? null,
+    authorizationHeader: opts.authorizationHeader ?? null,
     callbackUrlBuilder: (path) => `${opts.callbackOrigin ?? "https://ruby-high.ai"}${path}`,
     error: (_res, message, status = 500) => { lastResponse = { status, body: { error: message } }; },
     json: (_res, data, status = 200) => { lastResponse = { status, body: data }; },
@@ -118,6 +126,35 @@ function signInUser(token: string): string {
     expiresAt: now + 30 * 24 * 60 * 60 * 1000,
   });
   return `rh:user:${userId}`;
+}
+
+function makeOwnedHallPassCard(
+  overrides: Partial<RubyHighHallPassCard> & Pick<RubyHighHallPassCard, "id" | "serial" | "characterId" | "characterName" | "role">,
+): RubyHighHallPassCard {
+  const now = Date.now();
+  return {
+    title: `${overrides.characterName} #${overrides.serial}`,
+    setName: FIRST_BELL_SET_NAME,
+    setCode: FIRST_BELL_SET_CODE,
+    rarity: "common",
+    blurb: "A CosyWorld route test card.",
+    color: "#82e0aa",
+    hallPasses: 1,
+    status: "active",
+    issuedAt: now,
+    updatedAt: now,
+    ownerWalletAddress: OWNER,
+    mintAddress: `Mint${overrides.serial}111111111111111111111111111111`,
+    mintSignature: `Sig${overrides.serial}111111111111111111111111111111`,
+    metadataUri: `https://ruby-high.ai/api/apps/ruby-high/nft/metadata/hall-pass/card/${encodeURIComponent(overrides.id)}.json`,
+    ...overrides,
+  };
+}
+
+function setCurrentOnChainCardOwners(cards: RubyHighHallPassCard[]): void {
+  for (const card of cards) {
+    if (card.mintAddress) currentCardOwners.set(card.mintAddress, card.ownerWalletAddress ?? null);
+  }
 }
 
 function expectWebsiteLink(metadata: any, website = "https://ruby-high.ai/"): void {
@@ -201,6 +238,14 @@ beforeEach(async () => {
     mintAddress: burn.mintAddress,
     slot: 123,
   }));
+  currentCardOwners = new Map();
+  restoreCardOwnershipFetcher = setHallPassCardOwnershipFetcherForTest(async (mintAddress) => {
+    if (!currentCardOwners.has(mintAddress)) return null;
+    const ownerWalletAddress = currentCardOwners.get(mintAddress);
+    return ownerWalletAddress
+      ? { mintAddress, ownerWalletAddress, collectionAddress: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q" }
+      : null;
+  });
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-nft-routes-"));
   const store = new StateStore(join(tmpDir, "state.json"), { debounceMs: 0 });
   auth = await AuthService.start({} as never, store);
@@ -221,6 +266,8 @@ afterEach(async () => {
   restoreBurnBuilder = null;
   restoreBurnVerifier?.();
   restoreBurnVerifier = null;
+  restoreCardOwnershipFetcher?.();
+  restoreCardOwnershipFetcher = null;
   restorePackFetcher?.();
   restorePackFetcher = null;
   restorePackOpenedUpdater?.();
@@ -232,6 +279,219 @@ afterEach(async () => {
 });
 
 describe("Hall Pass NFT routes", () => {
+  it("exports active minted wallet cards for CosyWorld only with internal authorization", async () => {
+    process.env.RUBY_HIGH_COSYWORLD_EXPORT_TOKEN = "cosy-test-token";
+    const stateKey = signInUser("cosy-export");
+    const state = ruby.getOrCreate(stateKey);
+    const mintedRati = makeOwnedHallPassCard({
+      id: "cosy-rati-owned",
+      serial: 1001,
+      characterId: "rati",
+      characterName: "Rati",
+      role: "teacher",
+      subject: "Textiles",
+    });
+    const mintedScience = makeOwnedHallPassCard({
+      id: "cosy-science-owned",
+      serial: 1002,
+      characterId: "location-science-lab",
+      characterName: "Science Class",
+      role: "location",
+      subject: "Science",
+    });
+    const unmintedLibrary = makeOwnedHallPassCard({
+      id: "cosy-library-unminted",
+      serial: 1003,
+      characterId: "location-library",
+      characterName: "Library",
+      role: "location",
+      subject: "Library",
+      mintAddress: undefined,
+      mintSignature: undefined,
+    });
+    const redeemedGarden = makeOwnedHallPassCard({
+      id: "cosy-garden-redeemed",
+      serial: 1004,
+      characterId: "cosy-rain-soft-garden",
+      characterName: "Rain-Soft Garden",
+      role: "location",
+      status: "redeemed",
+    });
+    state.wallet.hallPassCards = [mintedRati, mintedScience, unmintedLibrary, redeemedGarden];
+    setCurrentOnChainCardOwners([mintedRati, mintedScience, unmintedLibrary, redeemedGarden]);
+
+    const handled = await handleNftRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/nft/internal/cosyworld/wallet-cards",
+      authorizationHeader: "Bearer cosy-test-token",
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(lastResponse?.status).toBe(200);
+    expect(lastHeaders["cache-control"]).toBe("private, no-store");
+    expect(lastResponse?.body.wallets).toHaveLength(1);
+    expect(lastResponse?.body.wallets[0]).toMatchObject({
+      walletAddress: OWNER,
+      cardIds: ["location-science-lab", "rati"],
+    });
+    expect(lastResponse?.body.wallets[0].hallPassCards.map((card: any) => card.characterId)).toEqual([
+      "location-science-lab",
+      "rati",
+    ]);
+
+    await handleNftRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/nft/internal/cosyworld/wallet-cards",
+      authorizationHeader: "Bearer wrong-token",
+    }), deps());
+
+    expect(lastResponse).toMatchObject({
+      status: 401,
+      body: { error: "CosyWorld ownership export requires authorization." },
+    });
+  });
+
+  it("does not expose the CosyWorld wallet-card export until configured", async () => {
+    delete process.env.RUBY_HIGH_COSYWORLD_EXPORT_TOKEN;
+
+    const handled = await handleNftRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/nft/internal/cosyworld/wallet-cards",
+      authorizationHeader: "Bearer cosy-test-token",
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(lastResponse).toMatchObject({
+      status: 503,
+      body: { error: "CosyWorld ownership export is not configured." },
+    });
+  });
+
+  it("keeps case-distinct wallet addresses in separate CosyWorld export buckets", async () => {
+    process.env.RUBY_HIGH_COSYWORLD_EXPORT_TOKEN = "cosy-test-token";
+    const lowerState = ruby.getOrCreate(signInUser("cosy-case-lower"));
+    const upperState = ruby.getOrCreate(signInUser("cosy-case-upper"));
+    const lowerWallet = "CaseSensitiveWallet11111111111111111111111111a";
+    const upperWallet = "CaseSensitiveWallet11111111111111111111111111A";
+    lowerState.wallet.hallPassCards = [
+      makeOwnedHallPassCard({
+        id: "cosy-case-lower",
+        serial: 1101,
+        characterId: "lower-case-card",
+        characterName: "Lower Case",
+        role: "teacher",
+        ownerWalletAddress: lowerWallet,
+      }),
+    ];
+    upperState.wallet.hallPassCards = [
+      makeOwnedHallPassCard({
+        id: "cosy-case-upper",
+        serial: 1102,
+        characterId: "upper-case-card",
+        characterName: "Upper Case",
+        role: "teacher",
+        ownerWalletAddress: upperWallet,
+      }),
+    ];
+    setCurrentOnChainCardOwners([
+      ...(lowerState.wallet.hallPassCards ?? []),
+      ...(upperState.wallet.hallPassCards ?? []),
+    ]);
+
+    const handled = await handleNftRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/nft/internal/cosyworld/wallet-cards",
+      authorizationHeader: "Bearer cosy-test-token",
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(lastResponse?.status).toBe(200);
+    const exported = lastResponse?.body.wallets.filter((wallet: any) =>
+      wallet.walletAddress === lowerWallet || wallet.walletAddress === upperWallet
+    );
+    expect(exported).toHaveLength(2);
+    expect(exported.map((wallet: any) => wallet.walletAddress).sort()).toEqual([lowerWallet, upperWallet].sort());
+    expect(exported.flatMap((wallet: any) => wallet.cardIds).sort()).toEqual([
+      "lower-case-card",
+      "upper-case-card",
+    ]);
+  });
+
+  it("uses current on-chain owners for the CosyWorld export instead of stale persisted owners", async () => {
+    process.env.RUBY_HIGH_COSYWORLD_EXPORT_TOKEN = "cosy-test-token";
+    const state = ruby.getOrCreate(signInUser("cosy-transfer"));
+    const originalWallet = OWNER;
+    const transferredWallet = "6b7Fv4Qc5HQVEyZAF83NGe2JC2JtjNS2FjBQuYCF8Nxo";
+    const transferredCard = makeOwnedHallPassCard({
+      id: "cosy-transferred-card",
+      serial: 1201,
+      characterId: "mika",
+      characterName: "Mika",
+      role: "student",
+      ownerWalletAddress: originalWallet,
+    });
+    state.wallet.hallPassCards = [transferredCard];
+    currentCardOwners.set(transferredCard.mintAddress!, transferredWallet);
+
+    const handled = await handleNftRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/nft/internal/cosyworld/wallet-cards",
+      authorizationHeader: "Bearer cosy-test-token",
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body.wallets).toHaveLength(1);
+    expect(lastResponse?.body.wallets[0]).toMatchObject({
+      walletAddress: transferredWallet,
+      cardIds: ["mika"],
+    });
+    expect(lastResponse?.body.wallets[0].hallPassCards[0]).toMatchObject({
+      ownerWalletAddress: transferredWallet,
+      mintAddress: transferredCard.mintAddress,
+    });
+    expect(lastResponse?.body.wallets.some((wallet: any) => wallet.walletAddress === originalWallet)).toBe(false);
+  });
+
+  it("bounds concurrent on-chain owner lookups for the CosyWorld export", async () => {
+    process.env.RUBY_HIGH_COSYWORLD_EXPORT_TOKEN = "cosy-test-token";
+    const state = ruby.getOrCreate(signInUser("cosy-concurrency"));
+    state.wallet.hallPassCards = Array.from({ length: 18 }, (_, index) => makeOwnedHallPassCard({
+      id: `cosy-concurrent-${index}`,
+      serial: 1300 + index,
+      characterId: `cosy-concurrent-${index}`,
+      characterName: `Concurrent ${index}`,
+      role: "student",
+    }));
+    const ownersByMint = new Map(
+      state.wallet.hallPassCards.map((card) => [card.mintAddress!, card.ownerWalletAddress!]),
+    );
+    restoreCardOwnershipFetcher?.();
+    let inFlight = 0;
+    let maxInFlight = 0;
+    restoreCardOwnershipFetcher = setHallPassCardOwnershipFetcherForTest(async (mintAddress) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      inFlight -= 1;
+      const ownerWalletAddress = ownersByMint.get(mintAddress);
+      return ownerWalletAddress
+        ? { mintAddress, ownerWalletAddress, collectionAddress: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q" }
+        : null;
+    });
+
+    await handleNftRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/nft/internal/cosyworld/wallet-cards",
+      authorizationHeader: "Bearer cosy-test-token",
+    }), deps());
+
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body.wallets[0].hallPassCards).toHaveLength(18);
+    expect(maxInFlight).toBeGreaterThan(1);
+    expect(maxInFlight).toBeLessThanOrEqual(8);
+  });
+
   it("serves public Hall Pass metadata", async () => {
     const collectionHandled = await handleNftRoutes(makeCtx({
       method: "GET",
@@ -1144,6 +1404,7 @@ describe("Hall Pass NFT routes", () => {
   });
 
   it("prepares and confirms owner-signed card burns", async () => {
+    const burnSignature = "4444444444444444444444444444444444444444444444444444444444444444";
     const stateKey = signInUser("burn");
     const grant = ruby.grantHallPassCards(stateKey, {
       cardCount: 4,
@@ -1177,12 +1438,53 @@ describe("Hall Pass NFT routes", () => {
         cardId: card.id,
         ownerWalletAddress: OWNER,
         mintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
-        burnSignature: "4mBurnSignature111111111111111111111111111111111111111111111",
+        burnSignature,
       },
     }), deps());
 
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body.burn.slot).toBe(123);
+    expect(lastResponse?.body).toMatchObject({
+      applied: true,
+      amount: 5,
+      hallPasses: 5,
+      burnedCards: [{
+        cardId: card.id,
+        characterId: card.characterId,
+        characterName: card.characterName,
+        burnSignature,
+      }],
+    });
+    const burnedCard = ruby.getOrCreate(stateKey).wallet.hallPassCards?.find((candidate) => candidate.id === card.id);
+    expect(burnedCard).toMatchObject({
+      status: "redeemed",
+      burnSignature,
+    });
+    expect(ruby.burnableHallPassCards(stateKey, OWNER)).toHaveLength(0);
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/card-burn",
+      cookie: "rh_session=burn",
+      body: {
+        hallPassBurns: [{
+          cardId: card.id,
+          ownerWalletAddress: OWNER,
+          mintAddress: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
+          burnSignature,
+        }],
+      },
+    }), deps());
+
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        applied: false,
+        amount: 5,
+        hallPasses: 5,
+      },
+    });
   });
 
   it("rejects multi-card burns so wallets only review one burn at a time", async () => {

@@ -165,6 +165,13 @@ export interface HallPassNftBurnVerification {
   blockTime?: number;
 }
 
+export interface HallPassCardCurrentOwnership {
+  mintAddress: string;
+  ownerWalletAddress: string;
+  collectionAddress: string;
+  metadataUri?: string;
+}
+
 type HallPassNftMinter = (
   card: RubyHighHallPassCard,
   ownerWalletAddress: string,
@@ -189,6 +196,7 @@ type HallPassNftBurnVerifier = (input: {
   mintAddress: string;
   burnSignature: string;
 }) => Promise<HallPassNftBurnVerification>;
+type HallPassCardOwnershipFetcher = (mintAddress: string) => Promise<HallPassCardCurrentOwnership | null>;
 
 let minterOverride: HallPassNftMinter | null = null;
 let mintTransactionBuilderOverride: HallPassNftMintTransactionBuilder | null = null;
@@ -196,6 +204,7 @@ let mintSubmitterOverride: HallPassNftMintSubmitter | null = null;
 let mintVerifierOverride: HallPassNftMintVerifier | null = null;
 let burnTransactionBuilderOverride: HallPassNftBurnTransactionBuilder | null = null;
 let burnVerifierOverride: HallPassNftBurnVerifier | null = null;
+let cardOwnershipFetcherOverride: HallPassCardOwnershipFetcher | null = null;
 let authorityBalanceOverride: (() => Promise<bigint>) | null = null;
 
 export function setHallPassNftMinterForTest(minter: HallPassNftMinter | null): () => void {
@@ -247,6 +256,14 @@ export function setHallPassNftBurnVerifierForTest(verifier: HallPassNftBurnVerif
   burnVerifierOverride = verifier;
   return () => {
     burnVerifierOverride = previous;
+  };
+}
+
+export function setHallPassCardOwnershipFetcherForTest(fetcher: HallPassCardOwnershipFetcher | null): () => void {
+  const previous = cardOwnershipFetcherOverride;
+  cardOwnershipFetcherOverride = fetcher;
+  return () => {
+    cardOwnershipFetcherOverride = previous;
   };
 }
 
@@ -1218,13 +1235,41 @@ async function confirmSubmittedTransaction(
 }
 
 export async function ensureHallPassCardCollectionVerified(mintAddress: string): Promise<boolean> {
-  const config = readMintConfig();
-  const umi = createUmi(config.rpcUrl).use(mplCore());
-  const asset = await fetchAssetV1(umi, publicKey(cleanSolanaAddress(mintAddress, "Card asset")), { commitment: "confirmed" });
-  if (String(coreAssetCollectionAddress(asset) ?? "") !== config.collectionAddress) {
-    throw new Error("Card NFT is not in the Ruby High Core collection.");
-  }
+  const ownership = await fetchHallPassCardCurrentOwnership(mintAddress);
+  if (!ownership) throw new Error("Card NFT is not in the Ruby High Core collection.");
   return true;
+}
+
+export async function fetchHallPassCardCurrentOwnership(mintAddress: string): Promise<HallPassCardCurrentOwnership | null> {
+  if (cardOwnershipFetcherOverride) return cardOwnershipFetcherOverride(mintAddress);
+  const config = readMintConfig();
+  const cleanMintAddress = cleanSolanaAddress(mintAddress, "Card asset");
+  const umi = createUmi(config.rpcUrl).use(mplCore());
+  const asset = await fetchAssetV1(umi, publicKey(cleanMintAddress), { commitment: "confirmed" });
+  const collectionAddress = String(coreAssetCollectionAddress(asset) ?? "").trim();
+  if (collectionAddress !== config.collectionAddress) return null;
+  const ownerWalletAddress = String(asset.owner ?? "").trim();
+  if (!ownerWalletAddress) return null;
+  return {
+    mintAddress: cleanMintAddress,
+    ownerWalletAddress: cleanSolanaAddress(ownerWalletAddress, "Card NFT owner"),
+    collectionAddress,
+    ...(typeof asset.uri === "string" && asset.uri.trim() ? { metadataUri: asset.uri.trim() } : {}),
+  };
+}
+
+export function isHallPassCardOwnershipLookupMiss(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  return /not found|account does not exist|account not found|could not find/i.test(message);
+}
+
+export async function fetchHallPassCardCurrentOwnershipOrNull(mintAddress: string): Promise<HallPassCardCurrentOwnership | null> {
+  try {
+    return await fetchHallPassCardCurrentOwnership(mintAddress);
+  } catch (err) {
+    if (isHallPassCardOwnershipLookupMiss(err)) return null;
+    throw err;
+  }
 }
 
 export async function assertHallPassMintAuthorityCapacity(cardCount: number): Promise<void> {

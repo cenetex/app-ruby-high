@@ -100,6 +100,11 @@ function makeCommandCtx(
   apiKeyHeader?: string | null,
   auth?: AuthService | null,
   cookieHeader?: string | null,
+  options: {
+    contentTypeHeader?: string | string[] | null;
+    originHeader?: string | string[] | null;
+    callbackOrigin?: string;
+  } = {},
 ): {
   ctx: RouteContext;
   response: { status: number; body: any } | null;
@@ -118,10 +123,14 @@ function makeCommandCtx(
   const ctx: RouteContext = {
     method: "POST",
     pathname: "/api/apps/ruby-high/session/test-session/command",
+    url: new URL("https://ruby-high.test/api/apps/ruby-high/session/test-session/command"),
     runtime: runtimeFor(ruby, faculty, auth),
     res,
     cookieHeader: cookieHeader ?? null,
     apiKeyHeader,
+    contentTypeHeader: options.contentTypeHeader === undefined ? "application/json" : options.contentTypeHeader,
+    originHeader: options.originHeader ?? null,
+    callbackUrlBuilder: (path) => `${options.callbackOrigin ?? "https://ruby-high.test"}${path}`,
     error: (_res, message, status = 500) => { response = { status, body: { error: message } }; },
     json: (_res, data, status = 200) => { response = { status, body: data }; },
     readJsonBody: async () => body,
@@ -308,6 +317,51 @@ describe("command route persistence and scheduler misses", () => {
       const record = auth.resolve(decodeURIComponent(token!));
       expect(record).not.toBeNull();
       expect(ruby.getOrCreate(auth.stateKeyForRecord(record!)).character?.name).toBe("Ari");
+    } finally {
+      await auth.stop();
+    }
+  });
+
+  it("rejects bad browser command mutations before minting a guest session", async () => {
+    await getActivePack();
+    const store = new MemorySessionStore();
+    const ruby = new RubyHighService({} as never, store);
+    const auth = await AuthService.start({} as never, store);
+    try {
+      const crossOrigin = makeCommandCtx(
+        ruby,
+        { type: "mark-intro-seen" },
+        undefined,
+        null,
+        auth,
+        null,
+        { originHeader: "https://evil.example" },
+      );
+
+      expect(await handleAppRoutes(crossOrigin.ctx)).toBe(true);
+      expect(crossOrigin.response).toEqual({
+        status: 403,
+        body: { error: "Command request origin is not allowed." },
+      });
+      expect(crossOrigin.getHeader("set-cookie")).toBeUndefined();
+
+      const nonJson = makeCommandCtx(
+        ruby,
+        { type: "mark-intro-seen" },
+        undefined,
+        null,
+        auth,
+        null,
+        { contentTypeHeader: "text/plain" },
+      );
+
+      expect(await handleAppRoutes(nonJson.ctx)).toBe(true);
+      expect(nonJson.response).toEqual({
+        status: 415,
+        body: { error: "Command requests must be sent as JSON." },
+      });
+      expect(nonJson.getHeader("set-cookie")).toBeUndefined();
+      expect(auth.sessionCount()).toBe(0);
     } finally {
       await auth.stop();
     }

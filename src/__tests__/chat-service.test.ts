@@ -242,6 +242,35 @@ describe("ChatService.send — message composition", () => {
     expect(chat.history({ sessionToken: "student-b", faculty: "sally-science" })).toEqual([]);
   });
 
+  it("persists global room history with summary compaction", async () => {
+    const { ruby, chat } = await makeServices();
+
+    for (let i = 0; i < 51; i += 1) {
+      chat.appendPlayerMessage(
+        { sessionToken: `student-${i}`, faculty: "lounge", authorName: `Student ${i}` },
+        `shared lounge line ${i}`,
+        1_700_000_000_000 + i,
+      );
+    }
+
+    expect(chat.history({ sessionToken: "late-student", faculty: "lounge" })).toHaveLength(20);
+    expect(chat.roomSummary({ sessionToken: "late-student", faculty: "lounge" })).toContain("Earlier chat digest");
+    expect(chat.roomSummary({ sessionToken: "late-student", faculty: "lounge" })).toContain("shared lounge line 0");
+    await (chat as any).flushPersistence();
+
+    const rehydrated = await ChatService.start({} as never);
+    rehydrated.setRubyHighService(ruby);
+    await rehydrated.ready();
+
+    expect(rehydrated.history({ sessionToken: "new-student", faculty: "lounge" })).toHaveLength(20);
+    expect(rehydrated.history({ sessionToken: "new-student", faculty: "lounge" })[0]).toMatchObject({
+      content: "shared lounge line 31",
+      authorName: "Student 31",
+    });
+    expect(rehydrated.roomSummary({ sessionToken: "new-student", faculty: "lounge" })).toContain("shared lounge line 0");
+    await rehydrated.stop();
+  });
+
   it("includes the teacher's system prompt as the first message", async () => {
     mockOpenRouter(buildSseChunk([{ content: "ok", finish: "stop" }]));
     const { chat } = await makeServices();
@@ -1302,7 +1331,7 @@ describe("ChatService.send — message composition", () => {
     expect(historyMessages[idx + 1]?.tool_call_id).toBe("call_a");
     expect(historyMessages[idx + 2]?.role).toBe("tool");
     expect(historyMessages[idx + 2]?.tool_call_id).toBe("call_b");
-    expect(historyMessages.length).toBeLessThanOrEqual(30);
+    expect(historyMessages.length).toBeLessThanOrEqual(50);
   });
 
   it("surfaces an error event when OpenRouter returns a non-OK response", async () => {

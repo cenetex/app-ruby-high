@@ -99,19 +99,29 @@ export function runViewerClient(bootstrap) {
       ? access.message
       : "Today's class is done. Sign up to keep your character, earn Merit Stars, and unlock all classrooms. It just takes a moment.";
   }
+  function nextChatCost(t) {
+    const value = Number(t && t.next_chat_cost);
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : 100;
+  }
+  function chatActionLabel(t) {
+    return "Chat *x" + formatWholeNumber(nextChatCost(t));
+  }
+  function chatCostTitle(t, prefix) {
+    return prefix + " Costs " + formatWholeNumber(nextChatCost(t)) + " Merit Stars.";
+  }
   function nextQuestionButtonLabel(t) {
     t = t || lastTelemetry;
     if (t && t.graduation_ready && !t.current) return "Ceremony";
     const round = t && t.active_round;
     const cur = t && t.current;
     const offlineClassroom = !!(authed && !teacherChatEnabled() && t && t.character && t.faculty !== LOUNGE_ID);
-    if (round && !round.resolved && cur) return offlineClassroom ? "Continue" : "Chat";
+    if (round && !round.resolved && cur) return offlineClassroom ? "Continue" : chatActionLabel(t);
     if (cur && (currentRevealMatches(t) || t.status === "revealed")) return "Continue";
     const postClass = postClassState(t);
     if (postClass.report && guestSignupRequired(t)) return "Sign up";
     if (postClass.socialReady) return "Reflect";
     if (postClass.report) return "Practice";
-    return offlineClassroom ? "Continue" : "Chat";
+    return offlineClassroom ? "Continue" : chatActionLabel(t);
   }
   function updateChatAction(mode) {
     if (!els.nextBtn) return;
@@ -132,7 +142,7 @@ export function runViewerClient(bootstrap) {
     const live = !!(round && !round.resolved && cur);
     const postClass = postClassState(t);
     els.nextBtn.title = live
-      ? (teacherChatEnabled() ? "Ask for a hint. Costs 1 Merit Star." : "Answer the board to continue")
+      ? (teacherChatEnabled() ? chatCostTitle(t, "Ask for a hint.") : "Answer the board to continue")
       : postClass.report && guestSignupRequired(t)
         ? "Sign up to continue past today's class"
       : cur && currentRevealCompletedClass(t)
@@ -146,7 +156,7 @@ export function runViewerClient(bootstrap) {
       : t && t.graduation_ready && !cur
         ? "Open the graduation ceremony"
         : teacherChatEnabled()
-          ? "Advance the room. Costs 1 Merit Star when it starts a chat."
+          ? chatCostTitle(t, "Advance the room when it starts a chat.")
           : "Advance the room";
   }
   function teachingFacultyIdsForSummary() {
@@ -3460,7 +3470,7 @@ export function runViewerClient(bootstrap) {
         const todayDone = progress && progress.today && progress.today.status === "complete";
         const todayActive = progress && progress.today && progress.today.status === "active";
         const teacherName = faculty ? teacherShortName(faculty, "today's teacher") : "today's teacher";
-        const advanceLabel = teacherChatEnabled() ? "Chat" : "Continue";
+        const advanceLabel = teacherChatEnabled() ? chatActionLabel(lastTelemetry) : "Continue";
         const lead = todayDone
           ? "Today's graded class is complete. Practice is open."
           : todayActive
@@ -9106,13 +9116,15 @@ export function runViewerClient(bootstrap) {
         };
       }
       const msgs = data.history || [];
-      const sig = chatHistorySignature(facultyId, msgs);
+      const summary = typeof data.summary === "string" ? data.summary.trim() : "";
+      const sig = chatHistorySignature(facultyId, summary ? [{ role: "system", content: summary }, ...msgs] : msgs);
       if (sig === renderedHistorySig) return;
       renderedHistorySig = sig;
       els.stream.innerHTML = "";
       const fac = (lastTelemetry && lastTelemetry.faculty_roster || []).find((f) => f.id === facultyId);
       const teacherName = fac ? fac.displayName : facultyId;
       const teacherAccent = fac ? fac.accent : "#d22a2a";
+      if (summary) appendSystem("Earlier room summary · " + summary);
       msgs.forEach((m) => {
         if (m.role === "user") {
           const isSelf = !!m.isSelf;
