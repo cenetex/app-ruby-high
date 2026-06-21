@@ -76,6 +76,11 @@ const CARD_COLLECTION_NAME = FIRST_BELL_SET_NAME;
 const CARD_COLLECTION_FAMILY = FIRST_BELL_SET_FAMILY;
 const CARD_COLLECTION_SERIES = "First Bell";
 const CARD_COLLECTION_EDITION = "First Bell Set";
+const GENERATED_COLLECTION_NAME = "Ruby High Generated";
+const GENERATED_COLLECTION_FAMILY = "Ruby High";
+const GENERATED_COLLECTION_SERIES = "Generated Profiles";
+const GENERATED_COLLECTION_EDITION = "Generated V2";
+const GENERATED_IMAGE_VERSION = "generated-v2";
 const CARD_COLLECTION_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-first-bell-collection.png?v=collection-v1";
 const CARD_COLLECTION_METADATA_URI_PATH = `${HALL_PASS_NFT_PREFIX}/metadata/hall-pass/collection.json`;
 const CARD_BACK_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-card-back.png?v=card-back-v1";
@@ -352,6 +357,12 @@ function metadataCreatorProperties(env: NodeJS.ProcessEnv = process.env): { crea
   return creators.length > 0 ? { creators } : {};
 }
 
+function compactMetadataRecord(fields: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(fields).filter(([, value]) => value !== undefined && value !== null && value !== ""),
+  );
+}
+
 function revealProvenanceFromCard(card: RubyHighHallPassCard): HallPassRevealProvenance {
   return {
     ...(card.packRevealVersion ? { packRevealVersion: card.packRevealVersion } : {}),
@@ -428,6 +439,16 @@ function hallPassRevealedNftMetadataUri(card: RubyHighHallPassCard, env: NodeJS.
 
 async function hallPassNftMetadataUriForMint(card: RubyHighHallPassCard): Promise<string> {
   const fallbackUri = hallPassNftMetadataUri(card);
+  const generatedMetadata = generatedHallPassCardMetadataForRoute({
+    card,
+  });
+  if (generatedMetadata) {
+    return durableNftMetadataUri({
+      fallbackUri,
+      metadata: generatedMetadata,
+      assetKey: `api/apps/ruby-high/nft/metadata/hall-pass/card/${encodeURIComponent(card.id)}.json`,
+    });
+  }
   const metadata = hallPassNftMetadataForRoute({
     characterId: card.characterId,
     serial: String(card.serial),
@@ -487,12 +508,13 @@ export function coreCardAssetPluginsForMint(args: {
 }) {
   const profile = hallPassCardCatalogEntry(args.card.characterId);
   const serial = normalizeSerial(String(args.card.serial || "1"));
+  const generatedKind = normalizedGeneratedNftKind(args.card.nftProfileKind);
   const attributeList = [
     { key: "School", value: "Ruby High" },
-    { key: "Collection", value: CARD_COLLECTION_NAME },
-    { key: "Set", value: CARD_COLLECTION_SERIES },
-    { key: "Set Code", value: FIRST_BELL_SET_CODE },
-    { key: "NFT Type", value: "Card" },
+    { key: "Collection", value: generatedKind ? GENERATED_COLLECTION_NAME : CARD_COLLECTION_NAME },
+    { key: "Set", value: generatedKind ? GENERATED_COLLECTION_SERIES : CARD_COLLECTION_SERIES },
+    { key: "Set Code", value: args.card.setCode || (generatedKind ? "GEN2" : FIRST_BELL_SET_CODE) },
+    { key: "NFT Type", value: generatedKind ? "Generated Profile Card" : "Card" },
     { key: "State", value: "Revealed" },
     { key: "Serial", value: serial },
   ];
@@ -506,6 +528,18 @@ export function coreCardAssetPluginsForMint(args: {
       { key: "Rarity", value: hallPassCardRarityLabel(profile.rarity) },
       { key: "Subject", value: hallPassCardSubject(profile) },
     );
+  } else if (generatedKind) {
+    attributeList.push(
+      { key: "Edition", value: GENERATED_COLLECTION_EDITION },
+      { key: "Profile Kind", value: generatedNftKindLabel(generatedKind) },
+      { key: "Character", value: args.card.characterName || "Ruby High" },
+      { key: "Role", value: args.card.role ? hallPassCardRoleLabel(args.card.role) : "Student" },
+      { key: "Rarity", value: args.card.rarity ? hallPassCardRarityLabel(args.card.rarity) : "Rare" },
+    );
+    if (args.card.cardName) attributeList.push({ key: "Card Name", value: args.card.cardName });
+    if (args.card.subject) attributeList.push({ key: "Subject", value: args.card.subject });
+    if (args.card.playbookId) attributeList.push({ key: "Playbook", value: args.card.playbookId });
+    if (args.card.grade) attributeList.push({ key: "Grade", value: args.card.grade });
   } else if (args.card.characterName) {
     attributeList.push({ key: "Character", value: args.card.characterName });
   }
@@ -562,6 +596,98 @@ export function hallPassCardBackMetadataForRoute(args: {
   };
 }
 
+export function generatedHallPassCardMetadataForRoute(args: {
+  card: RubyHighHallPassCard;
+  publicBaseUrl?: string;
+}): Record<string, unknown> | null {
+  const kind = normalizedGeneratedNftKind(args.card.nftProfileKind);
+  if (!kind) return null;
+  const publicBaseUrl = cleanBaseUrl(args.publicBaseUrl || publicBaseUrlFromEnv());
+  const website = publicWebsiteUrl(publicBaseUrl);
+  const image = generatedNftImageUri(publicBaseUrl, args.card.imageUrl || args.card.sourceImageUrl || "");
+  if (!image) return null;
+  const serial = normalizeSerial(String(args.card.serial || "1"));
+  const collection = {
+    name: GENERATED_COLLECTION_NAME,
+    family: GENERATED_COLLECTION_FAMILY,
+  };
+  const cardName = args.card.cardName?.trim() || generatedNftCardName(args.card.characterName, kind);
+  const kindLabel = generatedNftKindLabel(kind);
+  const sourceLabel = generatedNftSourceLabel(args.card.sourceImageUrl || args.card.imageUrl || "");
+  const canonicalCharacterId = args.card.canonicalCharacterId?.trim() || args.card.characterId;
+  return {
+    name: hallPassCardNftName(args.card.characterName, serial),
+    symbol: nftSymbol(process.env),
+    description: `${args.card.blurb || `${args.card.characterName} is part of Ruby High.`} Part of the ${GENERATED_COLLECTION_NAME} v2 profile series.`,
+    image,
+    category: "image",
+    external_url: website,
+    seller_fee_basis_points: NFT_SELLER_FEE_BASIS_POINTS,
+    collection,
+    attributes: [
+      { trait_type: "School", value: "Ruby High" },
+      { trait_type: "Collection", value: GENERATED_COLLECTION_NAME },
+      { trait_type: "Set", value: GENERATED_COLLECTION_SERIES },
+      { trait_type: "Set Code", value: args.card.setCode || "GEN2" },
+      ...(args.card.setNumber ? [{ trait_type: "Set Number", value: args.card.setNumber }] : []),
+      ...(args.card.profileId ? [{ trait_type: "Card Profile ID", value: args.card.profileId }] : []),
+      { trait_type: "NFT Type", value: "Generated Profile Card" },
+      { trait_type: "State", value: "Revealed" },
+      { trait_type: "Edition", value: GENERATED_COLLECTION_EDITION },
+      { trait_type: "Profile Kind", value: kindLabel },
+      { trait_type: "Card Name", value: cardName },
+      { trait_type: "Title", value: args.card.title },
+      { trait_type: "Character ID", value: args.card.characterId },
+      ...(canonicalCharacterId !== args.card.characterId
+        ? [{ trait_type: "Canonical Character ID", value: canonicalCharacterId }]
+        : []),
+      { trait_type: "Character", value: args.card.characterName },
+      { trait_type: "Role", value: hallPassCardRoleLabel(args.card.role) },
+      { trait_type: "Rarity", value: hallPassCardRarityLabel(args.card.rarity) },
+      ...(args.card.subject ? [{ trait_type: "Subject", value: args.card.subject }] : []),
+      ...(args.card.playbookId ? [{ trait_type: "Playbook", value: args.card.playbookId }] : []),
+      ...(args.card.grade ? [{ trait_type: "Grade", value: args.card.grade }] : []),
+      { trait_type: "Image Source", value: sourceLabel },
+      { trait_type: "Serial", value: serial },
+      { trait_type: "Website", value: website },
+    ],
+    properties: {
+      category: "image",
+      files: [{ uri: image, type: generatedNftImageMimeType(image) }],
+      website,
+      collection,
+      rubyHigh: compactMetadataRecord({
+        source: "ruby_high",
+        collection: "generated_profiles",
+        set: GENERATED_COLLECTION_SERIES,
+        setCode: args.card.setCode || "GEN2",
+        setNumber: args.card.setNumber,
+        cardId: args.card.id,
+        characterId: args.card.characterId,
+        canonicalCharacterId,
+        profileId: args.card.profileId,
+        profileKind: kind,
+        cardName,
+        title: args.card.title,
+        characterName: args.card.characterName,
+        role: args.card.role,
+        rarity: args.card.rarity,
+        subject: args.card.subject,
+        playbookId: args.card.playbookId,
+        grade: args.card.grade,
+        serial,
+        nftType: "generated_profile_card",
+        status: "revealed",
+      }),
+      ...metadataCreatorProperties(),
+      provenance: {
+        algorithm: HALL_PASS_PACK_REVEAL_ALGORITHM,
+        ...(revealProvenanceProperties(revealProvenanceFromCard(args.card)) ?? {}),
+      },
+    },
+  };
+}
+
 export function hallPassNftMetadataForRoute(args: {
   characterId: string;
   serial: string;
@@ -599,6 +725,7 @@ export function hallPassNftMetadataForRoute(args: {
       { trait_type: "Edition", value: CARD_COLLECTION_EDITION },
       { trait_type: "Card Name", value: cardName },
       { trait_type: "Title", value: profile.title },
+      { trait_type: "Character ID", value: profile.characterId },
       { trait_type: "Character", value: profile.characterName },
       { trait_type: "Role", value: hallPassCardRoleLabel(profile.role) },
       { trait_type: "Rarity", value: hallPassCardRarityLabel(profile.rarity) },
@@ -615,6 +742,27 @@ export function hallPassNftMetadataForRoute(args: {
       files: [{ uri: image, type: "image/png" }],
       website,
       collection,
+      rubyHigh: compactMetadataRecord({
+        source: "ruby_high",
+        collection: "first_bell",
+        set: CARD_COLLECTION_SERIES,
+        setCode: FIRST_BELL_SET_CODE,
+        setNumber: hallPassCardSetNumber(profile),
+        characterId: profile.characterId,
+        canonicalCharacterId: profile.characterId,
+        profileId: hallPassCardProfileId(profile),
+        cardName,
+        title: profile.title,
+        characterName: profile.characterName,
+        role: profile.role,
+        rarity: profile.rarity,
+        subject: hallPassCardSubject(profile),
+        mediaType: hallPassCardMediaType(profile),
+        aspectClass: hallPassCardAspectClass(profile),
+        serial,
+        nftType: "card",
+        status: "revealed",
+      }),
       ...metadataCreatorProperties(),
       provenance: {
         algorithm: HALL_PASS_PACK_REVEAL_ALGORITHM,
@@ -1442,8 +1590,66 @@ function versionedImagePath(path: string): string {
   return `${path}${path.includes("?") ? "&" : "?"}v=${CARD_IMAGE_VERSION}`;
 }
 
+function versionedGeneratedImagePath(path: string): string {
+  if (/[?&]v=/.test(path)) return path;
+  return `${path}${path.includes("?") ? "&" : "?"}v=${GENERATED_IMAGE_VERSION}`;
+}
+
 function hallPassCardNftName(characterName: string, serial: string): string {
   return `Ruby High: ${characterName} #${serial}`;
+}
+
+function normalizedGeneratedNftKind(value: unknown): RubyHighHallPassCard["nftProfileKind"] | null {
+  return value === "cast" || value === "player" || value === "yearbook" ? value : null;
+}
+
+function generatedNftKindLabel(kind: NonNullable<RubyHighHallPassCard["nftProfileKind"]>): string {
+  if (kind === "cast") return "Cast";
+  if (kind === "yearbook") return "Yearbook";
+  return "Player";
+}
+
+function generatedNftCardName(characterName: string, kind: NonNullable<RubyHighHallPassCard["nftProfileKind"]>): string {
+  if (kind === "cast") return `${characterName}: Cast Edition`;
+  if (kind === "yearbook") return `${characterName}: Yearbook Snapshot`;
+  return `${characterName}: Student ID`;
+}
+
+function generatedNftSourceLabel(rawImageUrl: string): string {
+  const imageUrl = rawImageUrl.trim();
+  if (!imageUrl) return "Ruby High";
+  if (imageUrl.startsWith("/api/apps/ruby-high/assets/nft/market-cards/")) return "Ruby High Cast Art";
+  if (imageUrl.startsWith("/api/apps/ruby-high/assets/students/")) return "Ruby High Playbook Art";
+  if (imageUrl.startsWith("/api/apps/ruby-high/assets/")) return "Ruby High Asset";
+  if (/^https?:\/\//i.test(imageUrl)) return "Hosted Image";
+  return "Ruby High";
+}
+
+function generatedNftImageUri(publicBaseUrl: string, rawImageUrl: string): string {
+  const imageUrl = rawImageUrl.trim();
+  if (!imageUrl || imageUrl.startsWith("data:image/")) return "";
+  if (imageUrl.startsWith("/")) return nftImageUri(publicBaseUrl, versionedGeneratedImagePath(imageUrl));
+  try {
+    const url = new URL(imageUrl);
+    if (url.protocol === "http:" || url.protocol === "https:") return imageUrl;
+  } catch {
+    return "";
+  }
+  return "";
+}
+
+function generatedNftImageMimeType(imageUrl: string): string {
+  let pathname = imageUrl;
+  try {
+    pathname = new URL(imageUrl).pathname;
+  } catch {
+    pathname = imageUrl;
+  }
+  const lower = pathname.toLowerCase();
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".gif")) return "image/gif";
+  return "image/png";
 }
 
 export function hallPassCardOnChainNameForMint(card: Pick<RubyHighHallPassCard, "characterName" | "serial">): string {

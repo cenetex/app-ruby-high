@@ -513,12 +513,14 @@ export type RubyHighWalletTransactionKind =
 export type RubyHighHallPassCardStatus = "active" | "redeemed" | "void";
 export type RubyHighHallPassCardRole = "student" | "teacher" | "item" | "location" | "special";
 export type RubyHighHallPassCardRarity = "common" | "rare" | "super-rare" | "ultra-rare";
+export type RubyHighGeneratedNftProfileKind = "cast" | "player" | "yearbook";
 
 export interface RubyHighHallPassCard {
   id: string;
   serial: number;
   title: string;
   characterId: string;
+  canonicalCharacterId?: string;
   characterName: string;
   setName?: string;
   setCode?: string;
@@ -531,6 +533,11 @@ export interface RubyHighHallPassCard {
   blurb: string;
   color: string;
   hallPasses: number;
+  imageUrl?: string;
+  sourceImageUrl?: string;
+  nftProfileKind?: RubyHighGeneratedNftProfileKind;
+  playbookId?: string;
+  grade?: Grade;
   status: RubyHighHallPassCardStatus;
   issuedAt: number;
   updatedAt: number;

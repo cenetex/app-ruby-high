@@ -111,6 +111,7 @@ import {
   type RubyHighHallPassCardRarity,
   type RubyHighHallPassCardRole,
   type RubyHighHallPassCardStatus,
+  type RubyHighGeneratedNftProfileKind,
   type RubyHighHallPassPack,
   type RubyHighHallPassPackStatus,
   type RubyHighWalletTransaction,
@@ -199,6 +200,8 @@ import {
   HALL_PASS_CARD_STUDENTS,
   HALL_PASS_CARD_SUPER_RARE_TEACHERS,
   HALL_PASS_CARD_TEACHERS,
+  hallPassCardCatalogEntry,
+  hallPassCardImagePath,
   hallPassCardName,
   hallPassCardProfileId,
   hallPassCardSetNumber,
@@ -306,6 +309,9 @@ const PHOTO_POST_RETRY_DELAY_MS = 15 * 60 * 1000;
 const PHOTO_POST_SCHEDULER_INTERVAL_MS = 60 * 1000;
 export const HALL_PASS_CARDS_PER_PACK = 5;
 export const HALL_PASS_CARD_BURN_HALL_PASS_VALUE = 5;
+const GENERATED_NFT_SET_NAME = "Ruby High Generated";
+const GENERATED_NFT_SET_CODE = "GEN2";
+const GENERATED_NFT_CARD_VERSION = "ruby-high-generated-nft-v2";
 export const CHAT_MERIT_STAR_COST = 100;
 export const DEFAULT_CHARACTER_SLOT_COUNT = 1;
 export const CHARACTER_SLOT_HALL_PASS_COST = 1;
@@ -568,6 +574,7 @@ export interface HallPassPackOpenInput {
   source?: RubyHighWalletTransaction["source"];
   description?: string;
   metadata?: RubyHighWalletTransaction["metadata"];
+  deferPersist?: boolean;
   at?: number;
 }
 
@@ -578,6 +585,25 @@ export interface HallPassMutationResult {
   cards?: RubyHighHallPassCard[];
   pack?: RubyHighHallPassPack;
   packs?: RubyHighHallPassPack[];
+}
+
+export interface GeneratedNftCardInput {
+  ownerWalletAddress?: string;
+  requestId?: string;
+  at?: number;
+}
+
+export interface GeneratedCastNftCardInput extends GeneratedNftCardInput {
+  characterId: string;
+}
+
+export interface GeneratedYearbookNftCardInput extends GeneratedNftCardInput {
+  grade: Grade;
+}
+
+export interface GeneratedNftCardResult extends HallPassMutationResult {
+  card: RubyHighHallPassCard;
+  cards: RubyHighHallPassCard[];
 }
 
 export interface HallPassCardBurnInput {
@@ -1386,11 +1412,27 @@ function gradeEssayPrompt(grade: Grade, ch: { name: string; playbookId?: string 
 export interface CosyWorldWalletCardExport {
   walletAddress: string;
   cardIds: string[];
+  packs: Array<{
+    id: string;
+    serial: number;
+    productId: string;
+    packCount: number;
+    cardCount: number;
+    status: "unopened" | "opened" | "void";
+    ownerWalletAddress: string;
+    assetAddress: string;
+    packAssetAddress: string;
+    mintSignature: string;
+    metadataUri: string;
+    source: "ruby_high";
+    transactionSource?: RubyHighWalletTransaction["source"];
+  }>;
   hallPassCards: Array<Pick<
     RubyHighHallPassCard,
     | "id"
     | "serial"
     | "characterId"
+    | "canonicalCharacterId"
     | "characterName"
     | "setName"
     | "setCode"
@@ -1406,7 +1448,15 @@ export interface CosyWorldWalletCardExport {
     | "metadataUri"
     | "artSheet"
     | "artPosition"
-  >>;
+    | "imageUrl"
+    | "sourceImageUrl"
+    | "nftProfileKind"
+    | "playbookId"
+    | "grade"
+  > & {
+    source: "ruby_high";
+    transactionSource?: RubyHighWalletTransaction["source"];
+  }>;
 }
 
 export interface CosyWorldWalletCardsExport {
@@ -1419,7 +1469,22 @@ export interface CosyWorldCardOwnership {
   ownerWalletAddress: string;
 }
 
+export interface CosyWorldPackOwnership {
+  assetAddress: string;
+  ownerWalletAddress: string;
+  metadataUri?: string;
+}
+
 const COSYWORLD_OWNERSHIP_LOOKUP_CONCURRENCY = 8;
+
+function cosyWorldCardIdsForCard(card: Pick<RubyHighHallPassCard, "characterId" | "canonicalCharacterId">): string[] {
+  return [
+    card.characterId,
+    card.canonicalCharacterId,
+  ]
+    .map((value) => typeof value === "string" ? value.trim() : "")
+    .filter((value, index, values) => !!value && values.indexOf(value) === index);
+}
 
 async function mapWithConcurrency<T, R>(
   items: readonly T[],
@@ -3516,6 +3581,215 @@ export class RubyHighService extends Service {
     return { state, applied: true, transaction, cards };
   }
 
+  createGeneratedCastNftCard(sessionId: string, input: GeneratedCastNftCardInput): GeneratedNftCardResult {
+    const profile = hallPassCardCatalogEntry(input.characterId);
+    if (!profile) throw new Error("Unknown Ruby High cast profile.");
+    const setNumber = hallPassCardSetNumber(profile);
+    const profileId = hallPassCardProfileId(profile);
+    const imageUrl = hallPassCardImagePath(profile);
+    return this.grantGeneratedNftCard(sessionId, {
+      kind: "cast",
+      stableKey: `cast:${profile.characterId}`,
+      requestId: input.requestId,
+      at: input.at,
+      ownerWalletAddress: input.ownerWalletAddress,
+      title: `${profile.characterName} Cast Edition`,
+      characterId: generatedNftCharacterId("cast", `${profile.characterId}:${profileId}`),
+      canonicalCharacterId: profile.characterId,
+      characterName: profile.characterName,
+      setNumber: `GEN-${setNumber}`,
+      profileId: `${profileId}-cast-v2`.slice(0, 96),
+      cardName: `${profile.characterName}: Cast Edition`,
+      subject: hallPassCardSubject(profile),
+      role: profile.role,
+      rarity: profile.rarity,
+      blurb: `${profile.characterName} joins the Ruby High generated profile series as official cast art.`,
+      color: "#d22a2a",
+      imageUrl,
+      sourceImageUrl: imageUrl,
+    });
+  }
+
+  createGeneratedPlayerNftCard(sessionId: string, input: GeneratedNftCardInput = {}): GeneratedNftCardResult {
+    const state = this.getOrCreate(sessionId);
+    const ch = state.character;
+    if (!ch) throw new Error("Create a player character before generating a player NFT.");
+    const fallbackImage = defaultPlayerPortraitUrl(ch.playbookId);
+    const imageUrl = nftSafeImageRef(ch.portraitDataUrl, fallbackImage);
+    const createdAt = Number.isFinite(Number(ch.createdAt)) ? Math.floor(Number(ch.createdAt)) : state.updatedAt;
+    const imageHash = shortHash(ch.portraitDataUrl || imageUrl);
+    return this.grantGeneratedNftCard(sessionId, {
+      kind: "player",
+      stableKey: `player:${createdAt}:${ch.name}:${ch.playbookId}:${imageHash}`,
+      requestId: input.requestId,
+      at: input.at,
+      ownerWalletAddress: input.ownerWalletAddress,
+      title: `${ch.name} Student ID`,
+      characterId: generatedNftCharacterId("player", `${createdAt}:${ch.name}:${ch.playbookId}`),
+      characterName: ch.name,
+      setNumber: `GEN-P-${imageHash.slice(0, 6).toUpperCase()}`,
+      profileId: `player-${imageHash}`.slice(0, 96),
+      cardName: `${ch.name}: Student ID`,
+      subject: "Student Life",
+      role: "student",
+      rarity: "rare",
+      blurb: `${ch.name}'s Ruby High student profile, generated from their current character image.`,
+      color: "#2b6cb0",
+      imageUrl,
+      sourceImageUrl: imageUrl,
+      playbookId: ch.playbookId,
+    });
+  }
+
+  createGeneratedYearbookNftCard(sessionId: string, input: GeneratedYearbookNftCardInput): GeneratedNftCardResult {
+    const state = this.getOrCreate(sessionId);
+    const ch = state.character;
+    if (!ch) throw new Error("Create a player character before generating a yearbook NFT.");
+    const grade = input.grade;
+    const entry = characterYearbookEntries(ch).find((candidate) => candidate.grade === grade);
+    if (!entry) throw new Error(`No sealed ${GRADE_LABELS[grade]} yearbook entry for this student.`);
+    const characterName = entry.name || ch.name;
+    const playbookId = entry.playbookId || ch.playbookId;
+    const fallbackImage = defaultPlayerPortraitUrl(playbookId);
+    const preferredImage = entry.yearbookImageUrl || entry.photo?.imageUrl || entry.portraitDataUrl || ch.portraitDataUrl;
+    const imageUrl = nftSafeImageRef(preferredImage, fallbackImage);
+    const completedAt = Number.isFinite(Number(entry.completedAt)) ? Math.floor(Number(entry.completedAt)) : Date.now();
+    const imageHash = shortHash(`${preferredImage || imageUrl}:${completedAt}`);
+    const label = GRADE_LABELS[grade] ?? `Grade ${grade}`;
+    return this.grantGeneratedNftCard(sessionId, {
+      kind: "yearbook",
+      stableKey: `yearbook:${grade}:${completedAt}:${characterName}:${playbookId}:${imageHash}`,
+      requestId: input.requestId,
+      at: input.at,
+      ownerWalletAddress: input.ownerWalletAddress,
+      title: `${label} Yearbook Snapshot`,
+      characterId: generatedNftCharacterId("yearbook", `${grade}:${completedAt}:${characterName}:${playbookId}`),
+      characterName,
+      setNumber: `GEN-Y-${grade}-${imageHash.slice(0, 6).toUpperCase()}`,
+      profileId: `yearbook-${grade}-${imageHash}`.slice(0, 96),
+      cardName: `${characterName}: ${label} Yearbook`,
+      subject: `${label} Yearbook`,
+      role: "student",
+      rarity: "super-rare",
+      blurb: `${characterName}'s ${label} Ruby High yearbook snapshot.`,
+      color: "#6b46c1",
+      imageUrl,
+      sourceImageUrl: imageUrl,
+      playbookId,
+      grade,
+    });
+  }
+
+  private grantGeneratedNftCard(sessionId: string, input: {
+    kind: RubyHighGeneratedNftProfileKind;
+    stableKey: string;
+    requestId?: string;
+    at?: number;
+    ownerWalletAddress?: string;
+    title: string;
+    characterId: string;
+    canonicalCharacterId?: string;
+    characterName: string;
+    setNumber: string;
+    profileId: string;
+    cardName: string;
+    subject: string;
+    role: RubyHighHallPassCardRole;
+    rarity: RubyHighHallPassCardRarity;
+    blurb: string;
+    color: string;
+    imageUrl: string;
+    sourceImageUrl: string;
+    playbookId?: string;
+    grade?: Grade;
+  }): GeneratedNftCardResult {
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const requestId = normalizeIdempotencyPart(input.requestId) || shortHash(input.stableKey);
+    const id = generatedNftTransactionId(sessionId, input.kind, input.stableKey, requestId);
+    const cards = normalizeHallPassCards(state.wallet.hallPassCards);
+    const existing = state.wallet.operationLedger?.[id] ?? state.wallet.transactions?.find((tx) => tx.id === id);
+    const existingCard = cards.find((card) => card.grantTransactionId === id);
+    if (existing && existingCard) {
+      return { state, applied: false, transaction: existing, card: existingCard, cards: [existingCard] };
+    }
+    if (existing && !existingCard) throw new Error("Generated NFT card record is incomplete.");
+
+    const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
+    const ownerWalletAddress = typeof input.ownerWalletAddress === "string"
+      ? input.ownerWalletAddress.trim().slice(0, 96)
+      : "";
+    const imageUrl = nftSafeImageRef(input.imageUrl, input.sourceImageUrl);
+    if (!imageUrl) throw new Error("Generated NFT image URL is required.");
+    const serial = hashInteger(`${id}:${input.characterId}:${imageUrl}`) % 900000 + 100000;
+    const card: RubyHighHallPassCard = {
+      id: hallPassCardId(id, 0),
+      serial,
+      title: input.title.trim().slice(0, 80) || "Ruby High Generated NFT",
+      characterId: input.characterId.trim().slice(0, 80),
+      ...(input.canonicalCharacterId ? { canonicalCharacterId: input.canonicalCharacterId.trim().slice(0, 80) } : {}),
+      characterName: input.characterName.trim().slice(0, 80) || "Ruby High",
+      setName: GENERATED_NFT_SET_NAME,
+      setCode: GENERATED_NFT_SET_CODE,
+      setNumber: input.setNumber.trim().slice(0, 40),
+      profileId: input.profileId.trim().slice(0, 96),
+      cardName: input.cardName.trim().slice(0, 120),
+      subject: input.subject.trim().slice(0, 80),
+      role: input.role,
+      rarity: input.rarity,
+      blurb: input.blurb.trim().slice(0, 160),
+      color: input.color,
+      hallPasses: 1,
+      imageUrl,
+      sourceImageUrl: nftSafeImageRef(input.sourceImageUrl, imageUrl),
+      nftProfileKind: input.kind,
+      ...(input.playbookId ? { playbookId: input.playbookId.trim().slice(0, 64) } : {}),
+      ...(input.grade ? { grade: input.grade } : {}),
+      status: "active",
+      issuedAt: at,
+      updatedAt: at,
+      source: "hall-pass-card",
+      grantTransactionId: id,
+      ...(ownerWalletAddress ? { ownerWalletAddress } : {}),
+    };
+    cards.push(card);
+    state.wallet.hallPassCards = normalizeHallPassCards(cards);
+    const transaction: RubyHighWalletTransaction = {
+      id,
+      kind: "hall-pass-grant",
+      at,
+      hallPasses: 0,
+      source: "hall-pass-card",
+      description: `${card.characterName} generated NFT card`,
+      metadata: {
+        cardCount: 1,
+        cardGrant: true,
+        generatedNftV2: true,
+        generatedNftKind: input.kind,
+        generatedNftVersion: GENERATED_NFT_CARD_VERSION,
+        hallPassCardId: card.id,
+        characterId: card.characterId,
+        ...(card.canonicalCharacterId ? { canonicalCharacterId: card.canonicalCharacterId } : {}),
+        imageUrl,
+        ...(card.playbookId ? { playbookId: card.playbookId } : {}),
+        ...(card.grade ? { grade: card.grade } : {}),
+        ...(ownerWalletAddress ? { ownerWalletAddress } : {}),
+      },
+    };
+    recordWalletTransaction(state, transaction);
+    this.recordMetricEvent("commerce", {
+      sessionId,
+      source: "hall-pass-card",
+      feature: "generated-nft-card-grant",
+      status: "success",
+      hallPassesDelta: 0,
+      metadata: { transactionId: transaction.id, cardId: card.id, kind: input.kind },
+    });
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return { state, applied: true, transaction, card, cards: [card] };
+  }
+
   recordHallPassPackMint(sessionId: string, input: HallPassPackMintInput): HallPassMutationResult {
     const state = this.getOrCreate(sessionId);
     const id = input.idempotencyKey.trim();
@@ -3712,7 +3986,7 @@ export class RubyHighService extends Service {
       metadata: { transactionId: transaction.id, packId: pack.id, cardCount: pack.cardCount },
     });
     state.updatedAt = Date.now();
-    void this.persistSession(sessionId);
+    if (!input.deferPersist) void this.persistSession(sessionId);
     return { state, applied: true, transaction, pack, cards };
   }
 
@@ -3885,9 +4159,11 @@ export class RubyHighService extends Service {
 
   async cosyWorldWalletCards(
     currentOwnershipForCard: (card: RubyHighHallPassCard) => Promise<CosyWorldCardOwnership | null>,
+    currentOwnershipForPack?: (pack: RubyHighHallPassPack) => Promise<CosyWorldPackOwnership | null>,
   ): Promise<CosyWorldWalletCardsExport> {
     const byWallet = new Map<string, CosyWorldWalletCardExport>();
     const cards: RubyHighHallPassCard[] = [];
+    const packs: RubyHighHallPassPack[] = [];
     for (const state of this.sessions.values()) {
       state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
       for (const card of normalizeHallPassCards(state.wallet.hallPassCards)) {
@@ -3902,6 +4178,18 @@ export class RubyHighService extends Service {
         }
         cards.push(card);
       }
+      for (const pack of normalizeHallPassPacks(state.wallet.hallPassPacks)) {
+        if (
+          pack.status === "void" ||
+          !pack.ownerWalletAddress ||
+          !pack.assetAddress ||
+          !pack.mintSignature ||
+          !pack.metadataUri
+        ) {
+          continue;
+        }
+        packs.push(pack);
+      }
     }
     const ownerships = await mapWithConcurrency(
       cards,
@@ -3914,17 +4202,22 @@ export class RubyHighService extends Service {
       const mintAddress = ownership.mintAddress.trim();
       const characterId = card.characterId.trim();
       if (!walletAddress || !mintAddress || !characterId) continue;
+      const cardIds = cosyWorldCardIdsForCard(card);
+      if (!cardIds.length) continue;
       const key = walletAddress;
       let entry = byWallet.get(key);
       if (!entry) {
-        entry = { walletAddress, cardIds: [], hallPassCards: [] };
+        entry = { walletAddress, cardIds: [], packs: [], hallPassCards: [] };
         byWallet.set(key, entry);
       }
-      if (!entry.cardIds.includes(characterId)) entry.cardIds.push(characterId);
+      for (const cardId of cardIds) {
+        if (!entry.cardIds.includes(cardId)) entry.cardIds.push(cardId);
+      }
       entry.hallPassCards.push({
         id: card.id,
         serial: card.serial,
         characterId: card.characterId,
+        canonicalCharacterId: card.canonicalCharacterId,
         characterName: card.characterName,
         setName: card.setName,
         setCode: card.setCode,
@@ -3940,12 +4233,56 @@ export class RubyHighService extends Service {
         metadataUri: card.metadataUri,
         artSheet: card.artSheet,
         artPosition: card.artPosition,
+        imageUrl: card.imageUrl,
+        sourceImageUrl: card.sourceImageUrl,
+        nftProfileKind: card.nftProfileKind,
+        playbookId: card.playbookId,
+        grade: card.grade,
+        source: "ruby_high",
+        transactionSource: card.source,
       });
+    }
+    if (currentOwnershipForPack) {
+      const packOwnerships = await mapWithConcurrency(
+        packs,
+        COSYWORLD_OWNERSHIP_LOOKUP_CONCURRENCY,
+        async (pack) => ({ pack, ownership: await currentOwnershipForPack(pack) }),
+      );
+      for (const { pack, ownership } of packOwnerships) {
+        if (!ownership?.ownerWalletAddress) continue;
+        const walletAddress = ownership.ownerWalletAddress.trim();
+        const assetAddress = ownership.assetAddress.trim();
+        if (!walletAddress || !assetAddress) continue;
+        const key = walletAddress;
+        let entry = byWallet.get(key);
+        if (!entry) {
+          entry = { walletAddress, cardIds: [], packs: [], hallPassCards: [] };
+          byWallet.set(key, entry);
+        }
+        entry.packs.push({
+          id: pack.id,
+          serial: pack.serial,
+          productId: pack.productId,
+          packCount: pack.packCount,
+          cardCount: pack.cardCount,
+          status: pack.status === "active" ? "unopened" : pack.status,
+          ownerWalletAddress: walletAddress,
+          assetAddress,
+          packAssetAddress: assetAddress,
+          mintSignature: pack.mintSignature,
+          metadataUri: ownership.metadataUri?.trim() || pack.metadataUri,
+          source: "ruby_high",
+          transactionSource: pack.source,
+        });
+      }
     }
     const wallets = [...byWallet.values()]
       .map((entry) => ({
         ...entry,
         cardIds: [...entry.cardIds].sort((a, b) => a.localeCompare(b)),
+        packs: [...entry.packs].sort((a, b) => (
+          a.assetAddress.localeCompare(b.assetAddress) || a.serial - b.serial || a.id.localeCompare(b.id)
+        )),
         hallPassCards: [...entry.hallPassCards].sort((a, b) => (
           a.characterId.localeCompare(b.characterId) || a.serial - b.serial || a.id.localeCompare(b.id)
         )),
@@ -9513,6 +9850,41 @@ function normalizeIdempotencyPart(value: unknown): string {
   return value.trim().replace(/[^a-zA-Z0-9:_-]+/g, "-").slice(0, 80);
 }
 
+function shortHash(seed: unknown): string {
+  return createHash("sha256").update(String(seed ?? "")).digest("hex").slice(0, 16);
+}
+
+function generatedNftCharacterId(kind: RubyHighGeneratedNftProfileKind, seed: string): string {
+  return `${kind}:${shortHash(seed)}`;
+}
+
+function generatedNftTransactionId(
+  sessionId: string,
+  kind: RubyHighGeneratedNftProfileKind,
+  stableKey: string,
+  requestId: string,
+): string {
+  return `hall-pass-card:nft-v2:${kind}:${shortHash(`${sessionId}:${stableKey}:${requestId}`)}`;
+}
+
+function isNftSafeImageRef(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const text = value.trim();
+  if (!text || text.startsWith("data:image/")) return false;
+  if (text.startsWith("/api/apps/ruby-high/assets/")) return true;
+  try {
+    const url = new URL(text);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function nftSafeImageRef(value: unknown, fallback: string): string {
+  if (isNftSafeImageRef(value)) return value.trim().slice(0, 1200);
+  return isNftSafeImageRef(fallback) ? fallback.trim().slice(0, 1200) : "";
+}
+
 function normalizeCharacterSlots(value: unknown): CharacterSlotEntitlements {
   const src = value && typeof value === "object" ? value as Partial<CharacterSlotEntitlements> : {};
   const unlockedSlots = Math.max(DEFAULT_CHARACTER_SLOT_COUNT, Math.floor(Number(src.unlockedSlots ?? DEFAULT_CHARACTER_SLOT_COUNT)));
@@ -9602,6 +9974,7 @@ function normalizeHallPassCard(raw: unknown): RubyHighHallPassCard | null {
     "profileId",
     "cardName",
     "subject",
+    "canonicalCharacterId",
     "grantTransactionId",
     "redeemTransactionId",
     "packId",
@@ -9627,6 +10000,19 @@ function normalizeHallPassCard(raw: unknown): RubyHighHallPassCard | null {
   ] as const) {
     const value = card[field];
     if (typeof value === "string" && value.trim()) entry[field] = value.trim().slice(0, 240);
+  }
+  for (const field of ["imageUrl", "sourceImageUrl"] as const) {
+    const value = card[field];
+    if (typeof value === "string" && value.trim()) entry[field] = value.trim().slice(0, 1200);
+  }
+  if (card.nftProfileKind === "cast" || card.nftProfileKind === "player" || card.nftProfileKind === "yearbook") {
+    entry.nftProfileKind = card.nftProfileKind;
+  }
+  if (typeof card.playbookId === "string" && card.playbookId.trim()) {
+    entry.playbookId = card.playbookId.trim().slice(0, 64);
+  }
+  if (typeof card.grade === "string" && (GRADES as readonly string[]).includes(card.grade)) {
+    entry.grade = card.grade as Grade;
   }
   const slotIndex = Math.floor(Number(card.slotIndex));
   if (Number.isFinite(slotIndex) && slotIndex >= 0) entry.slotIndex = slotIndex;

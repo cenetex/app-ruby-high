@@ -164,6 +164,12 @@ export interface OwnedCorePackNft {
   name: string;
 }
 
+export interface CorePackNftOwnership {
+  assetAddress: string;
+  ownerWalletAddress: string;
+  metadataUri: string;
+}
+
 interface CorePackInfo {
   productId: string;
   packCount: number;
@@ -178,12 +184,14 @@ type CorePackPurchaseTransactionBuilder = (
 ) => Promise<CorePackPurchaseTransactionResult>;
 type CorePackNftVerifier = (input: CorePackNftVerifyInput) => Promise<CorePackNftMintResult>;
 type CorePackNftOwnerFetcher = (ownerWalletAddress: string) => Promise<OwnedCorePackNft[]>;
+type CorePackNftCurrentOwnershipFetcher = (assetAddress: string) => Promise<CorePackNftOwnership | null>;
 
 let packMinterOverride: CorePackNftMinter | null = null;
 let packOpenedUpdaterOverride: CorePackNftOpenedUpdater | null = null;
 let packPurchaseTransactionBuilderOverride: CorePackPurchaseTransactionBuilder | null = null;
 let packVerifierOverride: CorePackNftVerifier | null = null;
 let packOwnerFetcherOverride: CorePackNftOwnerFetcher | null = null;
+let packCurrentOwnershipFetcherOverride: CorePackNftCurrentOwnershipFetcher | null = null;
 
 export function setCorePackNftMinterForTest(minter: CorePackNftMinter | null): () => void {
   const previous = packMinterOverride;
@@ -224,6 +232,14 @@ export function setOwnedCorePackNftFetcherForTest(fetcher: CorePackNftOwnerFetch
   packOwnerFetcherOverride = fetcher;
   return () => {
     packOwnerFetcherOverride = previous;
+  };
+}
+
+export function setCorePackCurrentOwnershipFetcherForTest(fetcher: CorePackNftCurrentOwnershipFetcher | null): () => void {
+  const previous = packCurrentOwnershipFetcherOverride;
+  packCurrentOwnershipFetcherOverride = fetcher;
+  return () => {
+    packCurrentOwnershipFetcherOverride = previous;
   };
 }
 
@@ -302,6 +318,12 @@ function nftMetadataCreators(env: NodeJS.ProcessEnv = process.env): Array<{ addr
 function metadataCreatorProperties(env: NodeJS.ProcessEnv = process.env): { creators?: Array<{ address: string; share: number; verified: boolean }> } {
   const creators = nftMetadataCreators(env);
   return creators.length > 0 ? { creators } : {};
+}
+
+function compactMetadataRecord(fields: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(fields).filter(([, value]) => value !== undefined && value !== null && value !== ""),
+  );
 }
 
 function revealProvenanceFromPack(pack: HallPassRevealProvenance): HallPassRevealProvenance {
@@ -484,6 +506,18 @@ export function corePackNftMetadataForRoute(args: {
       files: [{ uri: image, type: "image/png" }],
       website,
       collection,
+      rubyHigh: compactMetadataRecord({
+        source: "ruby_high",
+        collection: "first_bell_packs",
+        set: "First Bell",
+        setCode: FIRST_BELL_SET_CODE,
+        productId: cleanProductId(args.productId),
+        packCount,
+        cardCount,
+        serial,
+        nftType: "pack",
+        status: args.opened ? "opened" : "unopened",
+      }),
       ...metadataCreatorProperties(),
       provenance: {
         algorithm: HALL_PASS_PACK_REVEAL_ALGORITHM,
@@ -522,6 +556,13 @@ export function corePackCollectionMetadataForRoute(args: {
       collection: {
         name: PACK_COLLECTION_NAME,
         family: FIRST_BELL_SET_FAMILY,
+      },
+      rubyHigh: {
+        source: "ruby_high",
+        collection: "first_bell_packs",
+        set: "First Bell",
+        setCode: FIRST_BELL_SET_CODE,
+        nftType: "pack_collection",
       },
       ...metadataCreatorProperties(),
     },
@@ -770,6 +811,26 @@ export async function fetchOwnedCorePackNfts(ownerWalletAddress: string): Promis
   } catch (err) {
     if (das.ok) return das.items;
     throw err;
+  }
+}
+
+export async function fetchCorePackCurrentOwnershipOrNull(assetAddress: string): Promise<CorePackNftOwnership | null> {
+  if (packCurrentOwnershipFetcherOverride) return packCurrentOwnershipFetcherOverride(assetAddress);
+  try {
+    const config = readCoreSyncConfig();
+    const cleanAssetAddress = cleanSolanaAddress(assetAddress, "Pack asset address");
+    const umi = createUmi(config.rpcUrl).use(mplCore());
+    const asset = await fetchAssetV1(umi, publicKey(cleanAssetAddress), { commitment: "confirmed" });
+    if (coreAssetCollectionAddress(asset.updateAuthority) !== config.collectionAddress) return null;
+    const ownerWalletAddress = String(asset.owner ?? "").trim();
+    if (!ownerWalletAddress) return null;
+    return {
+      assetAddress: cleanAssetAddress,
+      ownerWalletAddress,
+      metadataUri: typeof asset.uri === "string" ? asset.uri.trim() : "",
+    };
+  } catch {
+    return null;
   }
 }
 

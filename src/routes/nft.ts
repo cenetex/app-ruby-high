@@ -2,6 +2,7 @@ import type { AuthService } from "../services/auth-service.js";
 import { createHash } from "node:crypto";
 import {
   corePackCollectionMetadataForRoute,
+  fetchCorePackCurrentOwnershipOrNull,
   corePackNftMetadataForRoute,
   type OwnedCorePackNft,
   fetchOwnedCorePackNfts,
@@ -15,6 +16,7 @@ import {
   hallPassNftMetadataUris,
   buildHallPassCardMintTransaction,
   buildHallPassCardsBurnTransaction,
+  generatedHallPassCardMetadataForRoute,
   hallPassNftMetadataForRoute,
   hallPassNftStatus,
   fetchHallPassCardCurrentOwnershipOrNull,
@@ -166,7 +168,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       const exportPayload = await deps.ruby.cosyWorldWalletCards(async (card) => {
         if (!card.mintAddress) return null;
         return fetchHallPassCardCurrentOwnershipOrNull(card.mintAddress);
-      });
+      }, async (pack) => fetchCorePackCurrentOwnershipOrNull(pack.assetAddress));
       setPrivateNoStoreHeaders(ctx.res);
       ctx.json(ctx.res, exportPayload);
     } catch (err) {
@@ -240,6 +242,9 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         serial: String(card.serial),
         publicBaseUrl: publicBaseUrlForRequest(ctx),
         ...revealProvenanceFromCard(card),
+      }) ?? generatedHallPassCardMetadataForRoute({
+        card,
+        publicBaseUrl: publicBaseUrlForRequest(ctx),
       });
       if (!metadata) {
         ctx.error(ctx.res, "Unknown Ruby High card character.", 404);
@@ -273,7 +278,12 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       serial,
       publicBaseUrl: publicBaseUrlForRequest(ctx),
       ...revealProvenanceFromCard(knownCard),
-    });
+    }) ?? (knownCard
+      ? generatedHallPassCardMetadataForRoute({
+        card: knownCard,
+        publicBaseUrl: publicBaseUrlForRequest(ctx),
+      })
+      : null);
     if (!metadata) {
       ctx.error(ctx.res, "Unknown Ruby High card character.", 404);
       return true;
@@ -288,6 +298,129 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       ...publicHallPassNftStatus(),
       corePacks: publicCorePackNftStatus(),
     });
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/v2/cast-card`) {
+    const token = deps.auth.parseSessionToken(ctx.cookieHeader);
+    const record = deps.auth.resolve(token);
+    if (!token || !record) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
+    const stateKey = deps.auth.stateKeyForRecord(record);
+    const ownerWalletAddress = cleanOwnerWalletAddress(
+      typeof body.ownerWalletAddress === "string" && body.ownerWalletAddress.trim()
+        ? body.ownerWalletAddress
+        : record.walletChainType === "solana"
+          ? deps.auth.walletAddressForRecord(record)
+          : "",
+    );
+    const characterId = typeof body.characterId === "string" ? body.characterId.trim().slice(0, 96) : "";
+    if (!characterId) {
+      ctx.error(ctx.res, "Cast character id is required.", 400);
+      return true;
+    }
+    try {
+      const result = deps.ruby.createGeneratedCastNftCard(stateKey, {
+        characterId,
+        ownerWalletAddress,
+        requestId: typeof body.requestId === "string" ? body.requestId : undefined,
+      });
+      await deps.ruby.flushSession(stateKey);
+      ctx.json(ctx.res, {
+        ok: true,
+        applied: result.applied,
+        card: revealedCardPayload(result.card),
+        minted: [],
+        remaining: deps.ruby.mintableHallPassCards(stateKey).length,
+        status: publicHallPassNftStatus(),
+      });
+    } catch (err) {
+      log.error("nft.v2-cast-card-failed", err, { sessionId: stateKey, characterId });
+      ctx.error(ctx.res, publicNftErrorMessage(err), 400);
+    }
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/v2/player-card`) {
+    const token = deps.auth.parseSessionToken(ctx.cookieHeader);
+    const record = deps.auth.resolve(token);
+    if (!token || !record) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
+    const stateKey = deps.auth.stateKeyForRecord(record);
+    const ownerWalletAddress = cleanOwnerWalletAddress(
+      typeof body.ownerWalletAddress === "string" && body.ownerWalletAddress.trim()
+        ? body.ownerWalletAddress
+        : record.walletChainType === "solana"
+          ? deps.auth.walletAddressForRecord(record)
+          : "",
+    );
+    try {
+      const result = deps.ruby.createGeneratedPlayerNftCard(stateKey, {
+        ownerWalletAddress,
+        requestId: typeof body.requestId === "string" ? body.requestId : undefined,
+      });
+      await deps.ruby.flushSession(stateKey);
+      ctx.json(ctx.res, {
+        ok: true,
+        applied: result.applied,
+        card: revealedCardPayload(result.card),
+        minted: [],
+        remaining: deps.ruby.mintableHallPassCards(stateKey).length,
+        status: publicHallPassNftStatus(),
+      });
+    } catch (err) {
+      log.error("nft.v2-player-card-failed", err, { sessionId: stateKey });
+      ctx.error(ctx.res, publicNftErrorMessage(err), 400);
+    }
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/v2/yearbook-card`) {
+    const token = deps.auth.parseSessionToken(ctx.cookieHeader);
+    const record = deps.auth.resolve(token);
+    if (!token || !record) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
+    const stateKey = deps.auth.stateKeyForRecord(record);
+    const ownerWalletAddress = cleanOwnerWalletAddress(
+      typeof body.ownerWalletAddress === "string" && body.ownerWalletAddress.trim()
+        ? body.ownerWalletAddress
+        : record.walletChainType === "solana"
+          ? deps.auth.walletAddressForRecord(record)
+          : "",
+    );
+    const grade = typeof body.grade === "string" ? body.grade.trim() : "";
+    if (grade !== "9" && grade !== "10" && grade !== "11" && grade !== "12") {
+      ctx.error(ctx.res, "Grade must be one of 9, 10, 11, or 12.", 400);
+      return true;
+    }
+    try {
+      const result = deps.ruby.createGeneratedYearbookNftCard(stateKey, {
+        grade,
+        ownerWalletAddress,
+        requestId: typeof body.requestId === "string" ? body.requestId : undefined,
+      });
+      await deps.ruby.flushSession(stateKey);
+      ctx.json(ctx.res, {
+        ok: true,
+        applied: result.applied,
+        card: revealedCardPayload(result.card),
+        minted: [],
+        remaining: deps.ruby.mintableHallPassCards(stateKey).length,
+        status: publicHallPassNftStatus(),
+      });
+    } catch (err) {
+      log.error("nft.v2-yearbook-card-failed", err, { sessionId: stateKey, grade });
+      ctx.error(ctx.res, publicNftErrorMessage(err), 400);
+    }
     return true;
   }
 
@@ -408,12 +541,20 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       return true;
     }
     const stateKey = deps.auth.stateKeyForRecord(record);
+    const state = deps.ruby.getOrCreate(stateKey);
+    const walletSnapshot = structuredClone(state.wallet);
+    const updatedAtSnapshot = state.updatedAt;
+    let packOpenMutated = false;
+    let corePackUpdated = false;
     try {
       const result = deps.ruby.openHallPassPack(stateKey, {
         packId,
         ownerWalletAddress,
+        deferPersist: true,
       });
+      packOpenMutated = true;
       const packUpdate = await updateOpenedCorePackNft(stateKey, result.pack);
+      corePackUpdated = true;
       await deps.ruby.flushSession(stateKey);
       ctx.json(ctx.res, {
         ok: true,
@@ -428,6 +569,16 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         cardCount: result.cards?.length ?? Number(result.transaction.metadata?.cardCount ?? 0),
       });
     } catch (err) {
+      if (packOpenMutated && !corePackUpdated) {
+        state.wallet = walletSnapshot;
+        state.updatedAt = updatedAtSnapshot;
+        await deps.ruby.flushSession(stateKey).catch((persistErr) => {
+          log.error("nft.pack-open-rollback-persist-failed", persistErr, {
+            sessionId: stateKey,
+            packId,
+          });
+        });
+      }
       log.error("nft.pack-open-failed", err, {
         sessionId: stateKey,
         packId,
@@ -1021,7 +1172,9 @@ async function updateOpenedCorePackNft(
   pack: RubyHighHallPassPack | null | undefined,
 ): Promise<Record<string, unknown> | null> {
   if (!pack?.assetAddress) return null;
-  if (!publicCorePackNftStatus().configured) return null;
+  if (!publicCorePackNftStatus().configured) {
+    throw new Error("Pack NFT updates are not configured. Your pack was not opened; try again in a minute.");
+  }
   try {
     const updated = await updateCorePackNftToOpened({
       assetAddress: pack.assetAddress,
@@ -1044,7 +1197,7 @@ async function updateOpenedCorePackNft(
       packId: pack.id,
       assetAddress: pack.assetAddress,
     });
-    return null;
+    throw new Error("Pack NFT update failed. Your pack was not opened; try again in a minute.");
   }
 }
 
@@ -1152,6 +1305,7 @@ function revealedCardPayload(card: RubyHighHallPassCard): Record<string, unknown
     serial: card.serial,
     title: card.title,
     characterId: card.characterId,
+    canonicalCharacterId: card.canonicalCharacterId ?? null,
     characterName: card.characterName,
     setName: card.setName ?? FIRST_BELL_SET_NAME,
     setCode: card.setCode ?? FIRST_BELL_SET_CODE,
@@ -1161,6 +1315,11 @@ function revealedCardPayload(card: RubyHighHallPassCard): Record<string, unknown
     subject: card.subject ?? (profile ? hallPassCardSubject(profile) : null),
     role: card.role,
     rarity: card.rarity,
+    imageUrl: card.imageUrl ?? null,
+    sourceImageUrl: card.sourceImageUrl ?? null,
+    nftProfileKind: card.nftProfileKind ?? null,
+    playbookId: card.playbookId ?? null,
+    grade: card.grade ?? null,
     status: card.status,
     artSheet: card.artSheet ?? null,
     artPosition: card.artPosition ?? null,

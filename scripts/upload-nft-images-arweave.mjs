@@ -120,6 +120,7 @@ async function selectedAssets(args) {
 
   const assets = [
     ...rootNftImages,
+    ...(await listPngFiles("assets/nft/market-cards")),
     ...(await listPngFiles("assets/nft/cards")),
   ];
 
