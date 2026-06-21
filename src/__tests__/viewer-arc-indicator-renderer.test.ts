@@ -32,7 +32,6 @@ function view(overrides?: Partial<ArcIndicatorView>): ArcIndicatorView {
     streakMet: true,
     subjectText: "✅ 3/3",
     subjectMet: true,
-    scoreText: "⭐ 1,200 · 🎫 4",
     ...overrides,
   };
 }
@@ -43,26 +42,23 @@ describe("arc indicator renderer", () => {
     const year = new FakeElement();
     const streak = new FakeElement();
     const subject = new FakeElement();
-    const score = new FakeElement();
     const calls: unknown[] = [];
     const renderer = createArcIndicatorRenderer({
       root: root as unknown as HTMLElement,
       year: year as unknown as HTMLElement,
       streak: streak as unknown as HTMLElement,
       subject: subject as unknown as HTMLElement,
-      score: score as unknown as HTMLElement,
-      viewFor(telemetry, subjects, walletText) {
-        calls.push(telemetry, subjects, walletText);
+      viewFor(telemetry, subjects) {
+        calls.push(telemetry, subjects);
         return view({ graduated: true });
       },
     });
 
     renderer.render({ character: true }, {
       subjects: { met: 3, total: 3 },
-      walletText: "⭐ 1,200 · 🎫 4",
     });
 
-    expect(calls).toEqual([{ character: true }, { met: 3, total: 3 }, "⭐ 1,200 · 🎫 4"]);
+    expect(calls).toEqual([{ character: true }, { met: 3, total: 3 }]);
     expect(root.hidden).toBe(false);
     expect([...root.classList.values]).toEqual(["is-graduated"]);
     expect(year.textContent).toBe("Sophomore");
@@ -70,7 +66,6 @@ describe("arc indicator renderer", () => {
     expect([...streak.classList.values]).toEqual(["is-met"]);
     expect(subject.textContent).toBe("✅ 3/3");
     expect([...subject.classList.values]).toEqual(["is-met"]);
-    expect(score.textContent).toBe("⭐ 1,200 · 🎫 4");
   });
 
   it("hides the root without mutating stale child text when the view is hidden", () => {
@@ -83,7 +78,7 @@ describe("arc indicator renderer", () => {
       viewFor: () => view({ hidden: true }),
     });
 
-    renderer.render({}, { subjects: {}, walletText: "" });
+    renderer.render({}, { subjects: {} });
 
     expect(root.hidden).toBe(true);
     expect(year.textContent).toBe("Junior");
@@ -109,7 +104,7 @@ describe("arc indicator renderer", () => {
       }),
     });
 
-    renderer.render({}, { subjects: {}, walletText: "" });
+    renderer.render({}, { subjects: {} });
 
     expect([...root.classList.values]).toEqual([]);
     expect(streak.textContent).toBe("📚 1/3");

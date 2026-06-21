@@ -35,7 +35,7 @@ The fastest wins are in the middle (Trial->Aha, Return->Share), and they are all
    product *generates* shareable artifacts: your character, your report card, a
    sealed Yearbook page, and especially **AI teacher/classmate reactions**
    (personalized, novel, screenshot-able — Noor's deadpan roasts and Professor
-   Edward's verdicts are built for this). Each share is a free ad with a link
+   Edward's teacher notes are built for this). Each share is a free ad with a link
    back. `yearbook_copy` is already instrumented. This is content marketing where
    the content is a byproduct of play, so it costs no marketing labor.
    *Honest caveat:* loops rarely reach k>1; treat as amplification + measurable,

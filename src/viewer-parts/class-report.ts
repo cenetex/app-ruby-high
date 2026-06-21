@@ -61,7 +61,7 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
       title.textContent = "Teacher " + teacherName;
       const subtitle = deps.document.createElement("div");
       subtitle.className = "class-report-subtitle";
-      subtitle.textContent = passedToday ? "daily class passed" : "practice open";
+      subtitle.textContent = passedToday ? "daily class passed" : "review open";
       titleWrap.appendChild(title);
       titleWrap.appendChild(subtitle);
       main.appendChild(badge);
@@ -112,8 +112,8 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
         title.textContent = "Homeroom reflection";
         body.textContent = "One short prompt before the next class.";
       } else if (state.practiceReady) {
-        title.textContent = "Practice open";
-        body.textContent = "Extra review, no change to today's grade.";
+        title.textContent = "Review open";
+        body.textContent = "Extra review stays outside today's class record.";
       } else {
         title.textContent = "Daily class complete";
       }

@@ -160,28 +160,28 @@ describe("parseTeacherGrades", () => {
 
 describe("detectGenericPraise", () => {
   it("rejects 'good job' in a comment", () => {
-    const verdict = parseTeacherGrades(
+    const response = parseTeacherGrades(
       "GRADE responder=player score=7 comment=good job thinking about the prompt\nBEST: player\nNice work everyone."
     );
-    expect(detectGenericPraise(verdict)).toBeTruthy();
+    expect(detectGenericPraise(response)).toBeTruthy();
   });
 
   it("rejects 'nice effort' in narrative", () => {
-    const verdict = parseTeacherGrades(
+    const response = parseTeacherGrades(
       "GRADE responder=player score=8 comment=you connected two ideas that don't normally touch\nBEST: player\nNice effort from the room today."
     );
-    expect(detectGenericPraise(verdict)).toBeTruthy();
+    expect(detectGenericPraise(response)).toBeTruthy();
   });
 
   it("rejects 'well done' in a comment", () => {
-    const verdict = parseTeacherGrades(
+    const response = parseTeacherGrades(
       "GRADE responder=player score=7 comment=well done on the structure\nBEST: player"
     );
-    expect(detectGenericPraise(verdict)).toBeTruthy();
+    expect(detectGenericPraise(response)).toBeTruthy();
   });
 
-  it("accepts a verdict with specific, pointed commentary", () => {
-    const verdict = parseTeacherGrades(
+  it("accepts specific, pointed commentary", () => {
+    const response = parseTeacherGrades(
       [
         "GRADE responder=player score=8 comment=measured, even where the second sentence wobbles",
         "GRADE responder=lyra score=6 comment=anxious in your prose; ease up",
@@ -192,11 +192,11 @@ describe("detectGenericPraise", () => {
         "you're still over-correcting. Sami, give yourself permission to commit.",
       ].join("\n")
     );
-    expect(detectGenericPraise(verdict)).toBeNull();
+    expect(detectGenericPraise(response)).toBeNull();
   });
 
-  it("accepts a verdict with earned sting", () => {
-    const verdict = parseTeacherGrades(
+  it("accepts earned sting", () => {
+    const response = parseTeacherGrades(
       [
         "GRADE responder=player score=9 comment=saw the paradox the prompt was built around",
         "GRADE responder=ravi score=4 comment=you summarized the question, then answered a different one",
@@ -207,27 +207,27 @@ describe("detectGenericPraise", () => {
         "difference between showing up and showing you can think.",
       ].join("\n")
     );
-    expect(detectGenericPraise(verdict)).toBeNull();
+    expect(detectGenericPraise(response)).toBeNull();
   });
 
   it("rejects 'keep it up'", () => {
-    const verdict = parseTeacherGrades(
+    const response = parseTeacherGrades(
       "GRADE responder=player score=7 comment=keep it up, you're getting there\nBEST: player"
     );
-    expect(detectGenericPraise(verdict)).toBeTruthy();
+    expect(detectGenericPraise(response)).toBeTruthy();
   });
 
   it("rejects 'great work' in narrative", () => {
-    const verdict = parseTeacherGrades(
+    const response = parseTeacherGrades(
       "GRADE responder=player score=8 comment=sharp take\nBEST: player\nGreat work from everyone today."
     );
-    expect(detectGenericPraise(verdict)).toBeTruthy();
+    expect(detectGenericPraise(response)).toBeTruthy();
   });
 
   it("rejects 'amazing job'", () => {
-    const verdict = parseTeacherGrades(
+    const response = parseTeacherGrades(
       "GRADE responder=player score=9 comment=amazing job connecting those ideas\nBEST: player"
     );
-    expect(detectGenericPraise(verdict)).toBeTruthy();
+    expect(detectGenericPraise(response)).toBeTruthy();
   });
 });

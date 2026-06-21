@@ -50,16 +50,32 @@ export function createChatMessageRenderer(deps: ChatMessageRendererDeps): ChatMe
     return tag;
   }
 
+  function applyAvatarImageAspectClass(avatar: HTMLElement, img: HTMLImageElement): void {
+    const update = () => {
+      const width = Number(img.naturalWidth || 0);
+      const height = Number(img.naturalHeight || 0);
+      avatar.classList.remove("is-tall-avatar", "is-square-avatar");
+      if (!width || !height) return;
+      const ratio = width / height;
+      if (ratio < 0.82) avatar.classList.add("is-tall-avatar");
+      else if (ratio >= 0.9 && ratio <= 1.1) avatar.classList.add("is-square-avatar");
+    };
+    img.onload = () => update();
+    if (img.complete) update();
+  }
+
   function appendAvatarImage(avatar: HTMLElement, spec: ChatMessageSpec, src: string): void {
     avatar.style.background = "#fff";
-    const img = deps.document.createElement("img");
+    const img = deps.document.createElement("img") as HTMLImageElement;
     img.src = src;
     img.alt = spec.name || "";
     img.onerror = () => {
+      avatar.classList.remove("is-tall-avatar", "is-square-avatar");
       if (img.parentNode === avatar) avatar.removeChild(img);
       avatar.style.background = spec.color || "var(--bg-elev)";
       avatar.textContent = initialFor(spec.name);
     };
+    applyAvatarImageAspectClass(avatar, img);
     avatar.appendChild(img);
   }
 

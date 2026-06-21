@@ -202,7 +202,12 @@ Every day at 17:00 UTC the daily-class window opens for the day's faculty. The g
 
 **Bell.** 17:00 UTC. Before the bell, the day-key still resolves to yesterday's class window.
 
-**Discoverability.** The always-on Next Question flow is the primary surface. There is no separate daily banner; the room itself tells the player whether today's graded class is available, active, complete, or in practice.
+**Discoverability.** The always-on Next Question flow is the primary surface. There is no separate daily banner; the room itself tells the player whether today's graded class is available, active, complete, or in after-class review.
+
+**Surface hierarchy.** The classroom owns daily play. The yearbook owns records,
+comics, graduation, and share artifacts. Account owns identity, wallet, Hall
+Passes, cards, packs, minting, receipts, trust, and settings. Economy and
+collection state should not sit beside class progress in the top bar.
 
 ### 1.6.8 Opinion mode — the moat
 
@@ -371,7 +376,7 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 
 > *Sequencing across the missing and partial buckets. Each step is sized to a small PR.*
 
-**Stabilization rule.** No new teachers, tournaments, multiplayer, public pack marketplace, or additional playbook-move surface until the daily-class loop, first-session path, yearbook artifact, and basic metrics feel seamless.
+**Stabilization rule.** No new teachers, tournaments, multiplayer, public pack marketplace, permanent top-level buttons, or additional playbook-move surface until the daily-class loop, first-session path, yearbook artifact, and basic metrics feel seamless.
 
 ### P0 — unblocks tuning (**event names done; dashboard layer next**)
 

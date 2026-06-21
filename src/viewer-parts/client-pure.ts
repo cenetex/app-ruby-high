@@ -45,7 +45,6 @@ export type ArcIndicatorView = {
   streakMet: boolean;
   subjectText: string;
   subjectMet: boolean;
-  scoreText: string;
 };
 export type GuestSpotlightView = {
   visible: boolean;
@@ -2028,7 +2027,7 @@ export function leaderboardFacultyLabel(facultyId: unknown): string {
 }
 
 // ── top-bar arc indicator helpers ─────────────────────────────────
-export function arcIndicatorView(t: unknown, subjects: unknown, walletText: unknown): ArcIndicatorView {
+export function arcIndicatorView(t: unknown, subjects: unknown): ArcIndicatorView {
   const telemetry = t && typeof t === "object" ? t as LooseRecord : {};
   const character = telemetry.character && typeof telemetry.character === "object" ? telemetry.character as LooseRecord : null;
   const grade = String(telemetry.current_grade || "");
@@ -2041,7 +2040,6 @@ export function arcIndicatorView(t: unknown, subjects: unknown, walletText: unkn
       streakMet: false,
       subjectText: "",
       subjectMet: false,
-      scoreText: "",
     };
   }
   const graduated = Array.isArray(character.yearbook) && character.yearbook.length >= 4;
@@ -2054,7 +2052,6 @@ export function arcIndicatorView(t: unknown, subjects: unknown, walletText: unkn
       streakMet: false,
       subjectText: "✅",
       subjectMet: false,
-      scoreText: String(walletText || ""),
     };
   }
   const streak = character.streak && typeof character.streak === "object" ? character.streak as LooseRecord : {};
@@ -2071,7 +2068,6 @@ export function arcIndicatorView(t: unknown, subjects: unknown, walletText: unkn
     streakMet: streakCount >= streakReq,
     subjectText: "✅ " + subjectMet + "/" + subjectTotal,
     subjectMet: subjectTotal > 0 && subjectMet >= subjectTotal,
-    scoreText: String(walletText || ""),
   };
 }
 

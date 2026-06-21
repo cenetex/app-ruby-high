@@ -198,6 +198,11 @@ function publicWorldEventId(kind: string, at: number, id: string): string {
   return `world:event:${createHash("sha256").update(`${kind}:${at}:${id}`).digest("hex").slice(0, 16)}`;
 }
 
+function useSchoolWorldFixtureTime(): void {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(Date.UTC(2026, 5, 14, 14));
+}
+
 beforeEach(async () => {
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-routes-"));
   resetActivePack();
@@ -496,6 +501,7 @@ describe("cohort route", () => {
 
 describe("school world route", () => {
   it("returns a public aggregate world snapshot without private or synthetic students", async () => {
+    useSchoolWorldFixtureTime();
     const publicStudent = await auth.createGuestSession();
     const privateStudent = await auth.createGuestSession();
     attachCohortStudent(auth.stateKeyForCookie(`rh_session=${publicStudent.token}`), "World Noor", "10", "A");
@@ -607,6 +613,7 @@ describe("school world route", () => {
   });
 
   it("streams sanitized public world snapshot and event frames for MMO clients", async () => {
+    useSchoolWorldFixtureTime();
     const publicStudent = await auth.createGuestSession();
     const privateStudent = await auth.createGuestSession();
     attachCohortStudent(auth.stateKeyForCookie(`rh_session=${publicStudent.token}`), "Stream Noor", "10", "A");
@@ -680,6 +687,7 @@ describe("school world route", () => {
   });
 
   it("does not drop distinct same-millisecond world events when clients replay the edge", async () => {
+    useSchoolWorldFixtureTime();
     const publicStudent = await auth.createGuestSession();
     attachCohortStudent(auth.stateKeyForCookie(`rh_session=${publicStudent.token}`), "Tie Noor", "10", "A");
     const publicState = ruby.getOrCreate(auth.stateKeyForCookie(`rh_session=${publicStudent.token}`));
@@ -724,6 +732,7 @@ describe("school world route", () => {
   });
 
   it("resumes world event streams from standard Last-Event-ID reconnect headers", async () => {
+    useSchoolWorldFixtureTime();
     const publicStudent = await auth.createGuestSession();
     attachCohortStudent(auth.stateKeyForCookie(`rh_session=${publicStudent.token}`), "Reconnect Noor", "10", "A");
     const publicState = ruby.getOrCreate(auth.stateKeyForCookie(`rh_session=${publicStudent.token}`));
@@ -785,6 +794,7 @@ describe("school world route", () => {
   });
 
   it("resumes world event streams from durable cursor Last-Event-ID headers", async () => {
+    useSchoolWorldFixtureTime();
     const publicStudent = await auth.createGuestSession();
     attachCohortStudent(auth.stateKeyForCookie(`rh_session=${publicStudent.token}`), "Cursor Noor", "10", "A");
     const publicState = ruby.getOrCreate(auth.stateKeyForCookie(`rh_session=${publicStudent.token}`));
@@ -866,6 +876,7 @@ describe("school world route", () => {
   });
 
   it("emits public world events from the durable school event outbox", async () => {
+    useSchoolWorldFixtureTime();
     const now = Date.UTC(2026, 5, 14, 12);
     const external = structuredClone(ruby.getOrCreate("test:world-route-outbox-template")) as QuizState;
     external.sessionId = "test:world-route-outbox";
@@ -1723,9 +1734,11 @@ describe("admin metrics route", () => {
   it("requires an admin token and returns auth, Ruby High, and log snapshots", async () => {
     await createSession();
     const publicSessionId = "rh:user:metrics-world-health";
+    const eventAt = Date.UTC(2026, 5, 14, 12);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(eventAt));
     attachCohortStudent(publicSessionId, "Metrics Noor", "10", "A");
     const publicState = ruby.getOrCreate(publicSessionId);
-    const eventAt = Date.UTC(2026, 5, 14, 12);
     publicState.faculty = "ruby";
     publicState.updatedAt = eventAt;
     publicState.schoolEvents.push({

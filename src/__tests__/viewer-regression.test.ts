@@ -507,6 +507,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(clientSource, "const arcIndicatorRenderer = createArcIndicatorRenderer({");
     expectScriptToContain(clientSource, "viewFor: arcIndicatorView");
     expectScriptToContain(clientSource, "arcIndicatorRenderer.render(t, {");
+    expect(clientSource).not.toContain("walletText: walletSummaryText(t)");
+    expect(clientSource).not.toContain("arcScore");
     expect(clientSource).not.toContain("els.arcIndicator.classList.toggle(\"is-graduated\", view.graduated);");
     expect(clientSource).not.toContain("els.arcStreak.classList.toggle(\"is-met\", view.streakMet);");
     expect(clientSource).not.toContain("els.arcXp.classList.toggle(\"is-met\", view.subjectMet);");
@@ -564,6 +566,9 @@ describe("viewer regression guardrails", () => {
     expect(html).not.toContain('id="account-use-pass"');
     expect(html).toContain('id="account-buy-passes"');
     expect(html).toContain('id="account-buy-card-packs"');
+    expect(html).not.toContain('id="pack-btn"');
+    expect(html).not.toContain("Packs &amp; collectibles");
+    expect(html).not.toContain('id="arc-score"');
     expect(html).not.toContain('id="account-get-ruby"');
     expect(html).not.toContain("Get $RUBY");
     expect(html).toContain('title="Account"');
@@ -953,6 +958,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function renderSignature(opts, shownPacks, shownCards)");
     expectScriptToContain(script, "if (nextSignature === previousRenderSignature && container.childElementCount > 0) return;");
     expectScriptToContain(script, "function syncComicUnlockModals(t)");
+    expectScriptToContain(script, "function syncFirstBellReportModal(t)");
+    expectScriptToContain(script, "First Bell Report");
     expectScriptToContain(script, "Comic Page Unlocked");
     expectScriptToContain(script, 'title.appendChild(deps.document.createTextNode(" "));');
     expect(script).not.toContain("FIRST BELL CARD");
@@ -964,6 +971,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "Ruby High never asks for a seed phrase.");
     expect(VIEWER_CSS).toContain(".account-tabs");
     expect(VIEWER_CSS).toContain(".comic-reader.is-reward");
+    expect(VIEWER_CSS).toContain(".first-bell-overlay");
+    expect(VIEWER_CSS).toContain(".first-bell-portrait img");
     expect(VIEWER_CSS).toContain(".account-workspace");
     expect(VIEWER_CSS).toContain("  .account-empty {\n    grid-column: 1 / -1;");
     expect(VIEWER_CSS).toContain(".account-trust-row");
@@ -1195,12 +1204,17 @@ describe("viewer regression guardrails", () => {
     expect(VIEWER_CSS).not.toContain("Stack links vertically in the channels footer");
   });
 
-  it("zooms compact chat avatars toward faces", () => {
+  it("only zooms compact chat avatars for tall portrait images", () => {
+    const script = inlineScript(renderedViewer());
     expect(cssRule(".msg .avatar")).toContain("overflow: hidden");
     expect(cssRule(".msg .avatar img")).toContain("object-fit: cover");
-    expect(cssRule(".msg .avatar img")).toContain("object-position: 50% 18%");
-    expect(cssRule(".msg .avatar img")).toContain("transform: scale(2.25)");
-    expect(cssRule(".msg .avatar img")).toContain("transform-origin: top center");
+    expect(cssRule(".msg .avatar img")).toContain("object-position: center");
+    expect(cssRule(".msg .avatar img")).toContain("transform: none");
+    expect(cssRule(".msg .avatar.is-tall-avatar img")).toContain("object-position: 50% 18%");
+    expect(cssRule(".msg .avatar.is-tall-avatar img")).toContain("transform: scale(2.05)");
+    expect(cssRule(".msg .avatar.is-tall-avatar img")).toContain("transform-origin: top center");
+    expectScriptToContain(script, "function applyChatAvatarAspectClass");
+    expectScriptToContain(script, 'avatar.classList.remove("is-tall-avatar", "is-square-avatar")');
   });
 
   it("explains public world visibility before the account toggle can publish a profile", () => {

@@ -72,18 +72,11 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="arc-streak" id="arc-streak" title="Passed daily classes needed for this year">📚 —</span>
         <span class="arc-sep">·</span>
         <span class="arc-xp" id="arc-xp" title="Subjects cleared with a C or better this year">✅ —</span>
-        <span class="arc-sep">·</span>
-        <span class="arc-score" id="arc-score" title="Merit Stars and Hall Passes">⭐ 0 · 🎫 0</span>
       </div>
       <button class="hall-pass-btn" id="hall-pass-btn" type="button" title="Account" aria-label="Open account">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M2 9a3 3 0 0 0 0 6v3a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3a3 3 0 0 0 0-6V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/>
-          <path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/>
-        </svg>
-      </button>
-      <button class="pack-btn" id="pack-btn" type="button" title="Packs & collectibles" aria-label="Packs &amp; collectibles">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/>
+          <circle cx="12" cy="8" r="4"/>
+          <path d="M6 21v-2a6 6 0 0 1 12 0v2"/>
         </svg>
       </button>
     </header>

@@ -1408,7 +1408,7 @@ export async function fetchHallPassCardCurrentOwnership(mintAddress: string): Pr
 
 export function isHallPassCardOwnershipLookupMiss(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err ?? "");
-  return /not found|account does not exist|account not found|could not find/i.test(message);
+  return /not found|account does not exist|account not found|could not find|not of the expected type|DeserializingEmptyBufferError|cannot deserialize empty buffers/i.test(message);
 }
 
 export async function fetchHallPassCardCurrentOwnershipOrNull(mintAddress: string): Promise<HallPassCardCurrentOwnership | null> {

@@ -13,6 +13,8 @@ Reference docs. The entry points stay at the repo root:
 
 ## Engineering roadmap
 - [`../ROADMAP.md`](../ROADMAP.md) — issue-backed MMO-readiness and revenue roadmap
+- [`agent-directive-class-spine.md`](./agent-directive-class-spine.md) — agent work order for implementing the class rhythm without adding another named payoff mechanic
+- [`game-redesign-class-spine.md`](./game-redesign-class-spine.md) — careful redesign brief that makes daily class, teacher response, and school records the product spine
 - [`issue-implementation-pr-draft-2026-06-18.md`](./issue-implementation-pr-draft-2026-06-18.md) — PR #138 implementation/review notes
 - [`world-state-runbook.md`](./world-state-runbook.md) — durable public-world state migration and rollback runbook
 

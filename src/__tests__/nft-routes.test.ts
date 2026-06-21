@@ -371,6 +371,57 @@ describe("Hall Pass NFT routes", () => {
     });
   });
 
+  it("skips stale on-chain card records instead of failing the CosyWorld export", async () => {
+    process.env.RUBY_HIGH_COSYWORLD_EXPORT_TOKEN = "cosy-test-token";
+    const state = ruby.getOrCreate(signInUser("cosy-stale-card"));
+    const activeCard = makeOwnedHallPassCard({
+      id: "cosy-active-rati",
+      serial: 1005,
+      characterId: "rati",
+      characterName: "Rati",
+      role: "student",
+    });
+    const staleCard = makeOwnedHallPassCard({
+      id: "cosy-stale-science",
+      serial: 1006,
+      characterId: "location-science-lab",
+      characterName: "Science Lab",
+      role: "location",
+      subject: "Science",
+    });
+    state.wallet.hallPassCards = [activeCard, staleCard];
+
+    restoreCardOwnershipFetcher?.();
+    restoreCardOwnershipFetcher = setHallPassCardOwnershipFetcherForTest(async (mintAddress) => {
+      if (mintAddress === staleCard.mintAddress) {
+        throw new Error(
+          "The account at the provided address [8KhcnVACpVRyrBnVLHijPZ2bHMgyZqYZpJppBHdkCSFa] is not of the expected type [AssetAccountData].\n\nCaused By: DeserializingEmptyBufferError: Serializer [publicKey] cannot deserialize empty buffers.",
+        );
+      }
+      return {
+        mintAddress,
+        ownerWalletAddress: OWNER,
+        collectionAddress: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
+      };
+    });
+
+    const handled = await handleNftRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/nft/internal/cosyworld/wallet-cards",
+      authorizationHeader: "Bearer cosy-test-token",
+    }), deps());
+
+    expect(handled).toBe(true);
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body.wallets).toHaveLength(1);
+    expect(lastResponse?.body.wallets[0].cardIds).toEqual(["rati"]);
+    expect(lastResponse?.body.wallets[0].hallPassCards).toHaveLength(1);
+    expect(lastResponse?.body.wallets[0].hallPassCards[0]).toMatchObject({
+      characterId: "rati",
+      mintAddress: activeCard.mintAddress,
+    });
+  });
+
   it("keeps case-distinct wallet addresses in separate CosyWorld export buckets", async () => {
     process.env.RUBY_HIGH_COSYWORLD_EXPORT_TOKEN = "cosy-test-token";
     const lowerState = ruby.getOrCreate(signInUser("cosy-case-lower"));

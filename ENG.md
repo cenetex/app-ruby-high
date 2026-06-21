@@ -63,6 +63,10 @@ Hall Passes remain active for hosted images, creator slots, extra student slots,
 
 Solana pack checkout no longer exposes the Get `$RUBY` link or NFT-payment language in the viewer. Checkout labels use Solana payment/pack copy, while the underlying Metaplex Core pack/card services and on-chain proof links remain intact.
 
+The main classroom header no longer exposes pack, collectible, wallet, or mint
+entry points. Those systems remain in Account or contextual archive surfaces so
+daily class progress stays visually primary.
+
 ## Verification
 
 Run before deploying:

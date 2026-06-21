@@ -319,6 +319,84 @@ describe("RubyHighService.dailyStatus + playDaily", () => {
     expect(after.activeRound?.stat).toBe(after.current?.stat);
     expect(after.faculty).toBe("ruby"); // Sat → Ruby in the rotation
   });
+
+  it("awards and exposes a First Bell report after the first answered board", async () => {
+    const { ruby, faculty } = await makeServices();
+    const sid = "rh:anonymous";
+    const realNow = Date.now;
+    Date.now = () => new Date("2026-05-06T18:00:00Z").getTime();
+    try {
+      attachCharacter(ruby, sid, "9", false);
+      ruby.pose(sid, {
+        prompt: "What does Ruby High call the first quick reward?",
+        options: { A: "First Bell", B: "Lunch bell", C: "Final bell", D: "No bell" },
+        correct: "A",
+        faculty: "ruby",
+        stat: "head",
+        questionId: "q_first_bell_report",
+      });
+
+      const after = ruby.submitAnswer(sid, "A");
+      const report = after.character?.firstBellReport;
+      expect(report).toMatchObject({
+        grade: "9",
+        facultyId: "ruby",
+        facultyName: "Ruby",
+        questionId: "q_first_bell_report",
+        prompt: "What does Ruby High call the first quick reward?",
+        answerText: "First Bell",
+        correctAnswerText: "First Bell",
+        wasCorrect: true,
+      });
+      expect(report?.reportId).toMatch(/^first-bell:/);
+      expect(report?.score).toBeGreaterThan(0);
+
+      ruby.pose(sid, {
+        prompt: "Does the first report duplicate?",
+        options: { A: "Yes", B: "No", C: "Maybe", D: "Later" },
+        correct: "B",
+        faculty: "ruby",
+        stat: "head",
+        questionId: "q_first_bell_report_second",
+      });
+      ruby.submitAnswer(sid, "B");
+      expect(ruby.getOrCreate(sid).character?.firstBellReport?.reportId).toBe(report?.reportId);
+      expect(ruby.analyticsSnapshot().events.funnel.firstBellReportAwarded).toBe(1);
+
+      const runtime = {
+        agentId: "test-agent",
+        character: { name: "Ruby" },
+        getService: (type: string) => {
+          if (type === RubyHighService.serviceType) return ruby;
+          if (type === FacultyService.serviceType) return faculty;
+          return null;
+        },
+      };
+      let response: any = null;
+      const handled = await handleAppRoutes({
+        method: "GET",
+        pathname: "/api/apps/ruby-high/session/test",
+        runtime,
+        res: {},
+        error: (_res, message, status = 500) => {
+          response = { status, error: message };
+        },
+        json: (_res, data, status = 200) => {
+          response = { status, data };
+        },
+        readJsonBody: async () => ({}),
+      });
+      expect(handled).toBe(true);
+      expect(response.status).toBe(200);
+      expect(response.data.telemetry.first_bell_report).toMatchObject({
+        reportId: report?.reportId,
+        questionId: "q_first_bell_report",
+        answerText: "First Bell",
+      });
+    } finally {
+      Date.now = realNow;
+    }
+  });
 });
 
 describe("RubyHighService.resetSession persistence", () => {
