@@ -1376,6 +1376,62 @@ function gradeEssayPrompt(grade: Grade, ch: { name: string; playbookId?: string 
   return pool[Math.abs(seed) % pool.length]!;
 }
 
+export interface CosyWorldWalletCardExport {
+  walletAddress: string;
+  cardIds: string[];
+  hallPassCards: Array<Pick<
+    RubyHighHallPassCard,
+    | "id"
+    | "serial"
+    | "characterId"
+    | "characterName"
+    | "setName"
+    | "setCode"
+    | "setNumber"
+    | "profileId"
+    | "cardName"
+    | "subject"
+    | "role"
+    | "rarity"
+    | "status"
+    | "ownerWalletAddress"
+    | "mintAddress"
+    | "metadataUri"
+    | "artSheet"
+    | "artPosition"
+  >>;
+}
+
+export interface CosyWorldWalletCardsExport {
+  generatedAt: string;
+  wallets: CosyWorldWalletCardExport[];
+}
+
+export interface CosyWorldCardOwnership {
+  mintAddress: string;
+  ownerWalletAddress: string;
+}
+
+const COSYWORLD_OWNERSHIP_LOOKUP_CONCURRENCY = 8;
+
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.max(1, Math.min(Math.floor(concurrency), items.length));
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      out[index] = await mapper(items[index]!, index);
+    }
+  }));
+  return out;
+}
+
 export class RubyHighService extends Service {
   static override readonly serviceType = "ruby-high";
 
@@ -3818,6 +3874,77 @@ export class RubyHighService extends Service {
         !!card.mintSignature &&
         (!owner || card.ownerWalletAddress === owner)
       ));
+  }
+
+  async cosyWorldWalletCards(
+    currentOwnershipForCard: (card: RubyHighHallPassCard) => Promise<CosyWorldCardOwnership | null>,
+  ): Promise<CosyWorldWalletCardsExport> {
+    const byWallet = new Map<string, CosyWorldWalletCardExport>();
+    const cards: RubyHighHallPassCard[] = [];
+    for (const state of this.sessions.values()) {
+      state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+      for (const card of normalizeHallPassCards(state.wallet.hallPassCards)) {
+        if (
+          card.status !== "active" ||
+          !card.ownerWalletAddress ||
+          !card.mintAddress ||
+          !card.mintSignature ||
+          !card.characterId
+        ) {
+          continue;
+        }
+        cards.push(card);
+      }
+    }
+    const ownerships = await mapWithConcurrency(
+      cards,
+      COSYWORLD_OWNERSHIP_LOOKUP_CONCURRENCY,
+      async (card) => ({ card, ownership: await currentOwnershipForCard(card) }),
+    );
+    for (const { card, ownership } of ownerships) {
+      if (!ownership?.ownerWalletAddress) continue;
+      const walletAddress = ownership.ownerWalletAddress.trim();
+      const mintAddress = ownership.mintAddress.trim();
+      const characterId = card.characterId.trim();
+      if (!walletAddress || !mintAddress || !characterId) continue;
+      const key = walletAddress;
+      let entry = byWallet.get(key);
+      if (!entry) {
+        entry = { walletAddress, cardIds: [], hallPassCards: [] };
+        byWallet.set(key, entry);
+      }
+      if (!entry.cardIds.includes(characterId)) entry.cardIds.push(characterId);
+      entry.hallPassCards.push({
+        id: card.id,
+        serial: card.serial,
+        characterId: card.characterId,
+        characterName: card.characterName,
+        setName: card.setName,
+        setCode: card.setCode,
+        setNumber: card.setNumber,
+        profileId: card.profileId,
+        cardName: card.cardName,
+        subject: card.subject,
+        role: card.role,
+        rarity: card.rarity,
+        status: card.status,
+        ownerWalletAddress: walletAddress,
+        mintAddress,
+        metadataUri: card.metadataUri,
+        artSheet: card.artSheet,
+        artPosition: card.artPosition,
+      });
+    }
+    const wallets = [...byWallet.values()]
+      .map((entry) => ({
+        ...entry,
+        cardIds: [...entry.cardIds].sort((a, b) => a.localeCompare(b)),
+        hallPassCards: [...entry.hallPassCards].sort((a, b) => (
+          a.characterId.localeCompare(b.characterId) || a.serial - b.serial || a.id.localeCompare(b.id)
+        )),
+      }))
+      .sort((a, b) => a.walletAddress.localeCompare(b.walletAddress));
+    return { generatedAt: new Date().toISOString(), wallets };
   }
 
   hallPassPacks(sessionId: string): RubyHighHallPassPack[] {

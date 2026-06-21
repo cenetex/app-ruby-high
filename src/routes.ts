@@ -186,6 +186,43 @@ function setNoStoreJsonHeaders(res: unknown): void {
   r.setHeader?.("Cache-Control", "no-store");
 }
 
+function sessionCommandOriginAllowed(ctx: RouteContext): boolean {
+  const origin = firstHeaderValue(ctx.originHeader);
+  if (!origin) return true;
+  try {
+    const originUrl = new URL(origin);
+    const candidates = [
+      ctx.callbackUrlBuilder ? ctx.callbackUrlBuilder("/") : null,
+      ctx.url?.origin ?? null,
+    ].filter(Boolean) as string[];
+    if (candidates.length === 0) return true;
+    return candidates.some((candidate) => {
+      const candidateUrl = new URL(candidate);
+      return candidateUrl.origin === originUrl.origin
+        || (originUrl.protocol === "https:" && candidateUrl.host === originUrl.host);
+    });
+  } catch {
+    return false;
+  }
+}
+
+function sessionCommandRequestLooksLikeJson(ctx: RouteContext): boolean {
+  const contentType = firstHeaderValue(ctx.contentTypeHeader).toLowerCase();
+  return !contentType || contentType.startsWith("application/json");
+}
+
+function rejectBadSessionCommandMutation(ctx: RouteContext): boolean {
+  if (!sessionCommandRequestLooksLikeJson(ctx)) {
+    ctx.error(ctx.res, "Command requests must be sent as JSON.", 415);
+    return true;
+  }
+  if (!sessionCommandOriginAllowed(ctx)) {
+    ctx.error(ctx.res, "Command request origin is not allowed.", 403);
+    return true;
+  }
+  return false;
+}
+
 function takePublicReadToken(ctx: RouteContext, scope: string): boolean {
   const now = Date.now();
   if (now - publicReadLimiterLastGcAt >= PUBLIC_READ_LIMITER_GC_INTERVAL_MS) {
@@ -787,6 +824,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   }
 
   if (ctx.method === "POST" && subroute === "command") {
+    if (rejectBadSessionCommandMutation(ctx)) return true;
     let commandStateKey = stateKey;
     let commandCookieHeader = ctx.cookieHeader;
     let commandAuthRecord = null;
