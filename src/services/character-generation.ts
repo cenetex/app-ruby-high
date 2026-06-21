@@ -15,6 +15,7 @@ import {
 const PORTRAIT_MODEL = process.env.RUBY_HIGH_PORTRAIT_MODEL ?? "google/gemini-3.1-flash-image-preview";
 const PORTRAIT_MAX_TOKENS = Number(process.env.RUBY_HIGH_PORTRAIT_MAX_TOKENS ?? 4000);
 const PORTRAIT_TIMEOUT_MS = 60_000;
+const DEFAULT_PUBLIC_BASE = "http://localhost:3000";
 
 interface PortraitResponse {
   choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>;
@@ -25,6 +26,30 @@ interface CharacterResponse {
 }
 
 type CharacterTextComponent = "name" | "personality" | "arcAnswer" | "flavorQuote";
+
+function publicBaseUrl(): string {
+  const raw = (
+    process.env.RUBY_HIGH_PUBLIC_BASE?.trim()
+    || process.env.RUBY_HIGH_PUBLIC_BASE_URL?.trim()
+    || DEFAULT_PUBLIC_BASE
+  );
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.toString().replace(/\/+$/, "");
+    }
+  } catch {
+    // Fall through to the local dev default.
+  }
+  return DEFAULT_PUBLIC_BASE;
+}
+
+function imageReferenceUrl(rawUrl: string): string {
+  const url = rawUrl.trim();
+  if (!url) return url;
+  if (/^https?:\/\//i.test(url) || url.startsWith("data:image/")) return url;
+  return new URL(url, publicBaseUrl() + "/").toString();
+}
 
 function characterResponseFormat(fields: CharacterTextComponent[]) {
   const descriptions: Record<CharacterTextComponent, string> = {
@@ -209,7 +234,7 @@ export async function renderClassPhoto(args: {
   for (const s of studentImages) {
     contentParts.push({
       type: "image_url",
-      image_url: { url: s.imageUrl },
+      image_url: { url: imageReferenceUrl(s.imageUrl) },
     });
   }
   const nameList = studentImages.map((s) => s.name).join(", ");
@@ -246,9 +271,9 @@ export async function renderGraduationPhoto(args: {
   classmate: { name: string; imageUrl: string };
 }): Promise<string> {
   const contentParts: Array<Record<string, unknown>> = [
-    { type: "image_url", image_url: { url: args.player.imageUrl } },
-    { type: "image_url", image_url: { url: args.teacher.imageUrl } },
-    { type: "image_url", image_url: { url: args.classmate.imageUrl } },
+    { type: "image_url", image_url: { url: imageReferenceUrl(args.player.imageUrl) } },
+    { type: "image_url", image_url: { url: imageReferenceUrl(args.teacher.imageUrl) } },
+    { type: "image_url", image_url: { url: imageReferenceUrl(args.classmate.imageUrl) } },
     {
       type: "text",
       text: [

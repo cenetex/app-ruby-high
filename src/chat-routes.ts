@@ -1393,6 +1393,16 @@ function hostedImageSpendKey(route: HostedImageChargeRoute, requestId: string): 
   return `hosted-image:${route}:${digest}`;
 }
 
+function imageRefKind(value: string | undefined): "empty" | "data" | "http" | "app-relative" | "relative" | "other" {
+  const text = value?.trim() ?? "";
+  if (!text) return "empty";
+  if (text.startsWith("data:image/")) return "data";
+  if (/^https?:\/\//i.test(text)) return "http";
+  if (text.startsWith("/api/apps/ruby-high/assets/")) return "app-relative";
+  if (text.startsWith("/")) return "relative";
+  return "other";
+}
+
 function hostedImageRequestId(body: Record<string, unknown> | null | undefined): string {
   const raw = typeof body?.requestId === "string"
     ? body.requestId
@@ -3593,6 +3603,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         imageUrl: url,
       });
     } catch (err) {
+      log.error("graduation-photo.generation-failed", err, {
+        grade: scene.grade,
+        playerImageRef: imageRefKind(scene.characterImageUrl),
+        teacherImageRef: imageRefKind(scene.teacher.imageUrl),
+        classmateImageRef: imageRefKind(scene.student.imageUrl),
+      });
       await refundHostedImageCharge({
         ruby,
         sessionId,

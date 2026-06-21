@@ -30,6 +30,7 @@ const originalPrivyClientId = process.env.RUBY_HIGH_PRIVY_CLIENT_ID;
 const originalPrivyLoginMethods = process.env.RUBY_HIGH_PRIVY_LOGIN_METHODS;
 const originalPrivyAppSecret = process.env.RUBY_HIGH_PRIVY_APP_SECRET;
 const originalPrivyVerificationKey = process.env.RUBY_HIGH_PRIVY_VERIFICATION_KEY;
+const originalPublicBase = process.env.RUBY_HIGH_PUBLIC_BASE;
 
 class TestResponse {
   statusCode = 0;
@@ -238,6 +239,7 @@ beforeEach(async () => {
   delete process.env.RUBY_HIGH_PRIVY_LOGIN_METHODS;
   delete process.env.RUBY_HIGH_PRIVY_APP_SECRET;
   delete process.env.RUBY_HIGH_PRIVY_VERIFICATION_KEY;
+  delete process.env.RUBY_HIGH_PUBLIC_BASE;
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-chat-routes-auth-"));
   capturedChatRequest = null;
   resetActivePack();
@@ -263,6 +265,7 @@ afterEach(async () => {
   restoreEnv("RUBY_HIGH_PRIVY_LOGIN_METHODS", originalPrivyLoginMethods);
   restoreEnv("RUBY_HIGH_PRIVY_APP_SECRET", originalPrivyAppSecret);
   restoreEnv("RUBY_HIGH_PRIVY_VERIFICATION_KEY", originalPrivyVerificationKey);
+  restoreEnv("RUBY_HIGH_PUBLIC_BASE", originalPublicBase);
   setPrivyAuthVerifierForTest(null);
   if (restoreHallPassBurnVerifier) restoreHallPassBurnVerifier();
   restoreHallPassBurnVerifier = null;
@@ -944,6 +947,7 @@ describe("hosted image Hall Passes", () => {
 
   it("spends a Hall Pass to generate the pending graduation photo before sealing the reward", async () => {
     process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
+    process.env.RUBY_HIGH_PUBLIC_BASE = "https://ruby-high.ai";
     const token = "hosted-graduation-photo";
     const record = {
       userId: "hosted-graduation-photo-user",
@@ -997,7 +1001,13 @@ describe("hosted image Hall Passes", () => {
       student: { id: "lyra", name: "Lyra" },
     });
     const content = capturedChatRequest?.body.messages?.[0]?.content;
-    expect(Array.isArray(content) ? content.filter((part: any) => part.type === "image_url") : []).toHaveLength(3);
+    const imageParts = Array.isArray(content) ? content.filter((part: any) => part.type === "image_url") : [];
+    expect(imageParts).toHaveLength(3);
+    expect(imageParts.map((part: any) => part.image_url?.url)).toEqual([
+      "https://ruby-high.ai/api/apps/ruby-high/assets/students/indra-full.png",
+      "https://ruby-high.ai/api/apps/ruby-high/assets/teachers/ruby-full.png",
+      "https://ruby-high.ai/api/apps/ruby-high/assets/students/lyra-full.png",
+    ]);
     expect(ruby.getOrCreate(stateKey).character?.pendingGraduation?.photoImageUrl).toBe("data:image/png;base64,GRADPHOTO");
     expect(ruby.hallPassBalance(stateKey)).toBe(0);
     expect(ruby.getOrCreate(stateKey).wallet.transactions?.some((tx) =>
