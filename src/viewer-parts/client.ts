@@ -827,6 +827,7 @@ export function runViewerClient(bootstrap) {
   // for the AI in offline mode.
   function shouldAutoStartClass(t) {
     if (!t || !t.character) return false;
+    if (creationSheetOpen()) return false;
     if (graduatedFor(t.character)) return false;
     if (t.character.pendingGraduation) return false;
     if (t.graduation_ready) return false;
@@ -5211,6 +5212,9 @@ export function runViewerClient(bootstrap) {
   // ── character sheet UI ──────────────────────────────────────────────────
   const sheetEl = $("sheet-overlay");
   const sheetCard = $("sheet-card");
+  function creationSheetOpen() {
+    return !!(sheetOverlayOpen && sheetCard.classList.contains("is-creation-sheet"));
+  }
   // Sign-in fallback surface. Normal boot creates a guest session and hides
   // this; it only opens if the app cannot establish a playable Ruby High
   // session.
@@ -5880,10 +5884,10 @@ export function runViewerClient(bootstrap) {
   // Every playbook owns one of the six unused student portraits in
   // assets/students/. The player picks a portrait by playbook before
   // ever paying for AI gen. If they upgrade ("✨ Generate AI portrait")
-  // and it succeeds, that data URL replaces the default in the create-
-  // character command. If they don't, the default ships with the
-  // character and the post-acceptance "background portrait gen" path is
-  // gone entirely — what you saw at creation is what you get.
+  // and it succeeds, that data URL replaces the default in the autosaved
+  // character. If they don't, the default ships with the character and the
+  // post-acceptance "background portrait gen" path is gone entirely - what
+  // you saw at creation is what you get.
   const PLAYBOOK_DEFAULT_PORTRAIT = {
     overachiever: "indra",
     slacker: "sami",
@@ -5998,6 +6002,11 @@ export function runViewerClient(bootstrap) {
     // is gone in this PR.
     const inFlight = { all: false, name: false, personality: false, arcAnswer: false, flavorQuote: false, stats: false, playbook: false, portrait: false, saving: false };
     let aiPortraitDataUrl = null; // when set, replaces the default at save-time
+    let characterPersisted = false;
+    let autosaveQueue = Promise.resolve(false);
+    let queuedAutosaves = 0;
+    let autosaveVersion = 0;
+    let savedAutosaveVersion = 0;
     const OFFLINE_NAMES = ["Iris", "Nova", "Vee", "Mara", "Jules", "Theo", "Rin", "Cass", "Ari", "Nico", "Sol", "Mina"];
     const OFFLINE_VOICES = [
       "Quietly intense, observant, and allergic to obvious answers.",
@@ -6098,7 +6107,7 @@ export function runViewerClient(bootstrap) {
           ? "Reroll student"
           : "Roll a student";
       saveBtn.hidden = !rolled;
-      saveBtn.disabled = !rolled || inFlight.all || inFlight.saving;
+      saveBtn.disabled = !rolled || inFlight.all || inFlight.saving || !latestVisibleCharacterSaved();
       [nameRow, playbookRow, statsRow, personalityRow, quoteRow].forEach(({ reroll }) => {
         const k = reroll.dataset.key;
         reroll.disabled = !rolled || inFlight.all || !!inFlight[k];
@@ -6108,6 +6117,10 @@ export function runViewerClient(bootstrap) {
       portraitBtn.hidden = !portraitGenerationVisible();
       portraitBtn.disabled = !rolled || inFlight.portrait || (!!portraitReason && !portraitHallPassNeeded);
       portraitBtn.title = portraitReason || "";
+    }
+
+    function latestVisibleCharacterSaved() {
+      return characterPersisted && savedAutosaveVersion >= autosaveVersion;
     }
 
     function portraitGenerationVisible() {
@@ -6164,6 +6177,7 @@ export function runViewerClient(bootstrap) {
       }
       applyDisabled();
       setStatus(isFullRoll ? "Rolling…" : "Rerolling " + components.join(", ") + "…");
+      let shouldAutosave = false;
       try {
         // If the player reroll-cycles the playbook OR the name AFTER
         // generating an AI portrait, the AI image no longer matches —
@@ -6177,6 +6191,7 @@ export function runViewerClient(bootstrap) {
           renderRolled(rolled);
           revealForm();
           setStatus("Offline mode — AI chat and custom portrait are disabled until you enable AI.");
+          shouldAutosave = true;
           return;
         }
         const body = isFullRoll
@@ -6188,6 +6203,7 @@ export function runViewerClient(bootstrap) {
         // First roll lands → swap from loading-state to form.
         revealForm();
         setStatus("");
+        shouldAutosave = true;
       } catch (err) {
         revealForm();
         setStatus(err && err.message ? err.message : "Roll failed — try again.", true);
@@ -6197,7 +6213,8 @@ export function runViewerClient(bootstrap) {
         } else {
           for (const c of components) inFlight[c] = false;
         }
-        applyDisabled();
+        if (shouldAutosave) void scheduleCharacterAutosave();
+        else applyDisabled();
       }
     }
 
@@ -6229,7 +6246,7 @@ export function runViewerClient(bootstrap) {
         await promptForHallPasses({
           title: "Hall Pass needed",
           copy: "Custom character portrait needs " + hallPassCostLabel(cost) + ". Claim your free starter Hall Passes or add more.",
-          detail: "Rolling and saving your student stays free.",
+          detail: "Rolling your student stays free.",
         });
         return;
       }
@@ -6275,6 +6292,7 @@ export function runViewerClient(bootstrap) {
         if (typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements, data.characterSlots);
         portraitBtn.textContent = "✨ Try again";
         portraitStatus.textContent = "AI portrait ready.";
+        void scheduleCharacterAutosave();
       } catch (err) {
         portraitStatus.textContent = err && err.message ? err.message : "Couldn't generate — keeping the default.";
         portraitStatus.classList.add("is-invalid");
@@ -6285,40 +6303,85 @@ export function runViewerClient(bootstrap) {
       }
     });
 
-    async function saveCharacter() {
-      if (!rolled || inFlight.saving || inFlight.all) return;
-      inFlight.saving = true;
-      saveBtn.disabled = true;
-      setStatus("Saving...");
-      // Lock-in shape: ship the rolled character + whichever portrait
-      // is currently visible (AI if generated, default otherwise). The
-      // post-save background portrait gen path that used to live
-      // here is GONE — what you see is what you get.
+    function currentCharacterAutosaveSnapshot() {
+      if (!rolled) return null;
       const portraitUrl = aiPortraitDataUrl || defaultPortraitFor(rolled.playbookId);
+      return {
+        name: rolled.name,
+        playbookId: rolled.playbookId,
+        stats: { ...rolled.stats },
+        arcAnswer: rolled.arcAnswer || "",
+        flavorQuote: rolled.flavorQuote,
+        personality: rolled.personality || "",
+        portraitDataUrl: portraitUrl,
+      };
+    }
+
+    async function persistCharacterSnapshot(snapshot, version) {
+      const commandType = characterPersisted ? "update-character" : "create-character";
+      setStatus(characterPersisted ? "Saving changes..." : "Saving...");
       try {
         const data = await command({
-          type: "create-character",
-          ...rolled,
-          portraitDataUrl: portraitUrl,
+          type: commandType,
+          ...snapshot,
         });
         if (data && data.session) {
-          closeSheet();
-          setTimeout(() => {
-            if (lastTelemetry && shouldAutoStartClass(lastTelemetry)) void pickNext();
-          }, 0);
-          return;
+          characterPersisted = true;
+          savedAutosaveVersion = Math.max(savedAutosaveVersion, version);
+          if (version === autosaveVersion) setStatus("Saved.");
+          return true;
         }
-        throw new Error("Save failed — try again.");
+        if (version === autosaveVersion) setStatus("Autosave failed - try again.", true);
+        return false;
       } catch (err) {
-        saveBtn.hidden = false;
-        setStatus(err && err.message ? err.message : "Save failed — try again.", true);
-      } finally {
-        inFlight.saving = false;
-        applyDisabled();
+        if (version === autosaveVersion) setStatus(err && err.message ? err.message : "Autosave failed - try again.", true);
+        return false;
       }
     }
 
-    saveBtn.addEventListener("click", () => { void saveCharacter(); });
+    function scheduleCharacterAutosave() {
+      const snapshot = currentCharacterAutosaveSnapshot();
+      if (!snapshot) return autosaveQueue;
+      const version = ++autosaveVersion;
+      queuedAutosaves += 1;
+      inFlight.saving = true;
+      applyDisabled();
+      autosaveQueue = autosaveQueue
+        .catch(() => false)
+        .then(async () => {
+          try {
+            return await persistCharacterSnapshot(snapshot, version);
+          } finally {
+            queuedAutosaves = Math.max(0, queuedAutosaves - 1);
+            inFlight.saving = queuedAutosaves > 0;
+            applyDisabled();
+          }
+        });
+      return autosaveQueue;
+    }
+
+    async function beginClassFromCharacter() {
+      if (!rolled || inFlight.all) return;
+      let saved = false;
+      try {
+        saved = await autosaveQueue;
+      } catch {
+        saved = false;
+      }
+      if (!saved || !latestVisibleCharacterSaved()) {
+        saved = await scheduleCharacterAutosave();
+      }
+      if (!saved || !latestVisibleCharacterSaved()) {
+        setStatus("Autosave failed - try again.", true);
+        return;
+      }
+      closeSheet();
+      setTimeout(() => {
+        if (lastTelemetry && shouldAutoStartClass(lastTelemetry)) void pickNext();
+      }, 0);
+    }
+
+    saveBtn.addEventListener("click", () => { void beginClassFromCharacter(); });
 
     // Auto-roll on first open. A guest Ruby High session is enough; AI is
     // only needed for LLM-backed rerolls and custom portraits.

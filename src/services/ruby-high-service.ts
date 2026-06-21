@@ -8001,6 +8001,62 @@ export class RubyHighService extends Service {
     return state;
   }
 
+  /** Update an autosaved character candidate while preserving live career
+   *  progress. Used by the creation sheet after the first background create. */
+  updateCharacter(
+    sessionId: string,
+    input: { name: string; playbookId: string; stats: CharacterStats; arcAnswer: string; flavorQuote?: string; personality: string; portraitDataUrl?: string },
+  ): QuizState {
+    const state = this.getOrCreate(sessionId);
+    const existing = state.character;
+    if (!existing) throw new Error("No character to update.");
+    const name = input.name.trim();
+    if (!name) throw new Error("Name is required.");
+    const flavorQuote = input.flavorQuote?.trim();
+    const next: PlayerCharacter = {
+      ...existing,
+      name,
+      playbookId: input.playbookId,
+      stats: { ...input.stats },
+      arcAnswer: input.arcAnswer.trim(),
+      personality: input.personality.trim(),
+    };
+    if (flavorQuote) next.flavorQuote = flavorQuote;
+    else delete next.flavorQuote;
+    if (input.portraitDataUrl != null) {
+      const portraitDataUrl = normalizeStoredImageRef(input.portraitDataUrl, "portraitDataUrl");
+      if (portraitDataUrl) next.portraitDataUrl = portraitDataUrl;
+    }
+    if (existing.playbookId !== input.playbookId) {
+      if (existing.playbookId === "lifer") {
+        const bonuses = { ...(next.advantageRollBonuses ?? {}) };
+        for (const grade of GRADES) {
+          const reduced = Math.max(0, Math.floor(Number(bonuses[grade] ?? 0)) - 1);
+          if (reduced > 0) bonuses[grade] = reduced;
+          else delete bonuses[grade];
+        }
+        if (Object.keys(bonuses).length > 0) next.advantageRollBonuses = bonuses;
+        else delete next.advantageRollBonuses;
+      }
+      if (input.playbookId === "lifer") {
+        const bonuses = { ...(next.advantageRollBonuses ?? {}) };
+        for (const grade of GRADES) {
+          bonuses[grade] = Math.max(0, Math.floor(Number(bonuses[grade] ?? 0))) + 1;
+        }
+        next.advantageRollBonuses = bonuses;
+      }
+    }
+    state.character = next;
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    log.event("character.updated", {
+      sessionId,
+      characterName: name,
+      playbookId: input.playbookId,
+    });
+    return state;
+  }
+
   /** Update only the portrait on the existing character. Used when portrait
    *  generation completes after createCharacter (which is fire-and-go). */
   setPortrait(sessionId: string, portraitDataUrl: string): QuizState {

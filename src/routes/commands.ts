@@ -193,6 +193,26 @@ export async function handleCommandRoute(args: {
       command,
       message,
     });
+  const characterInputFromBody = () => {
+    if (typeof body?.name !== "string" || typeof body.playbookId !== "string" || !body.stats) {
+      throw new Error("Missing name, playbookId, or stats.");
+    }
+    if (!PLAYBOOKS.some((p) => p.id === body.playbookId)) {
+      throw new Error(`Unknown playbookId: ${body.playbookId}`);
+    }
+    if (!isValidStatDistribution(body.stats)) {
+      throw new Error("Invalid stat distribution — must be one each of +2, +1, 0, -1.");
+    }
+    return {
+      name: body.name,
+      playbookId: body.playbookId,
+      stats: body.stats,
+      arcAnswer: body.arcAnswer ?? "",
+      flavorQuote: body.flavorQuote,
+      personality: body.personality ?? "",
+      portraitDataUrl: body.portraitDataUrl,
+    };
+  };
   const noteReveal = (state: QuizState) => {
     if (!state.lastReveal) return;
     noteGradedAnswer({
@@ -288,26 +308,16 @@ export async function handleCommandRoute(args: {
       return await persist(state, message);
     },
     "create-character": async () => {
-      if (!body?.name || !body.playbookId || !body.stats) {
-        throw new Error("Missing name, playbookId, or stats.");
-      }
-      if (!PLAYBOOKS.some((p) => p.id === body.playbookId)) {
-        throw new Error(`Unknown playbookId: ${body.playbookId}`);
-      }
-      if (!isValidStatDistribution(body.stats)) {
-        throw new Error("Invalid stat distribution — must be one each of +2, +1, 0, -1.");
-      }
+      const input = characterInputFromBody();
       const state = ruby.createCharacter(stateKey, {
-        name: body.name,
-        playbookId: body.playbookId,
-        stats: body.stats,
-        arcAnswer: body.arcAnswer ?? "",
-        flavorQuote: body.flavorQuote,
-        personality: body.personality ?? "",
-        portraitDataUrl: body.portraitDataUrl,
-        mentorAccepted: !!body.mentorAccepted,
+        ...input,
+        mentorAccepted: !!body?.mentorAccepted,
       });
       return await persist(state, "Character created");
+    },
+    "update-character": async () => {
+      const state = ruby.updateCharacter(stateKey, characterInputFromBody());
+      return await persist(state, "Character updated");
     },
     "clear-character": async () => {
       const state = ruby.clearCharacter(stateKey);

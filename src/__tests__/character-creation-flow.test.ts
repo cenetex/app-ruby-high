@@ -50,36 +50,53 @@ describe("character creation flow", () => {
       expect(CLIENT_SOURCE).not.toContain("Lock this student in to start today");
     });
 
-    it("renderSheetCreation scope uses a save button without the old accept button", () => {
+    it("renderSheetCreation scope uses autosave commands without the old accept button", () => {
       const creationFn = CLIENT_SOURCE.slice(
         CLIENT_SOURCE.indexOf("function renderSheetCreation"),
       );
-      expect(creationFn).toContain('type: "create-character"');
+      expect(creationFn).toContain('"create-character"');
+      expect(creationFn).toContain('"update-character"');
       // No separate acceptBtn event listener in this scope.
       expect(creationFn).not.toContain("acceptBtn");
       expect(creationFn).toContain("saveBtn");
     });
   });
 
-  describe("manual save after initial roll", () => {
-    it("does not create the character from rollComponents", () => {
+  describe("autosave after initial roll", () => {
+    it("schedules autosave from rollComponents without inlining command details", () => {
       const rollFn = CLIENT_SOURCE.slice(
         CLIENT_SOURCE.indexOf("async function rollComponents"),
         CLIENT_SOURCE.indexOf("// Wire per-row reroll buttons."),
       );
       expect(rollFn).toContain("renderRolled(rolled)");
       expect(rollFn).toContain("revealForm()");
+      expect(rollFn).toContain("scheduleCharacterAutosave()");
       expect(rollFn).not.toContain('type: "create-character"');
-      expect(rollFn).not.toContain("saveCharacter({ auto");
+      expect(rollFn).not.toContain('type: "update-character"');
     });
 
-    it("initial roll logic and manual save are present in the rendered viewer script", () => {
+    it("initial roll logic and autosave are present in the rendered viewer script", () => {
       const script = renderedViewerScript();
       expectScriptToContain(script, '"create-character"');
+      expectScriptToContain(script, '"update-character"');
       // The initial rollComponents() call should still exist.
       expectScriptToContain(script, "rollComponents()");
-      expectScriptToContain(script, "Save Character");
-      expectScriptNotToContain(script, "saveCharacter({ auto");
+      expectScriptToContain(script, "Start Freshman Year");
+      expectScriptNotToContain(script, "Save Character");
+    });
+
+    it("does not auto-start class while the creation sheet is still open", () => {
+      const autoStartFn = CLIENT_SOURCE.slice(
+        CLIENT_SOURCE.indexOf("function shouldAutoStartClass"),
+        CLIENT_SOURCE.indexOf("function hasCompletedAnyClass"),
+      );
+      const beginFn = CLIENT_SOURCE.slice(
+        CLIENT_SOURCE.indexOf("async function beginClassFromCharacter"),
+        CLIENT_SOURCE.indexOf("saveBtn.addEventListener"),
+      );
+
+      expect(autoStartFn).toContain("creationSheetOpen()");
+      expect(beginFn).toContain("void pickNext()");
     });
 
     it("does not leave a stale acceptBtn handler in the rendered viewer", () => {
@@ -122,18 +139,20 @@ describe("character creation flow", () => {
       expectScriptToContain(script, "Character Roll");
     });
 
-    it("renders one post-roll save action without the old confirmation copy", () => {
+    it("renders one post-roll start action without the old confirmation copy", () => {
       const script = renderedViewerScript();
 
       expectScriptToContain(script, '"create-character"');
-      expectScriptToContain(script, "Save Character");
+      expectScriptToContain(script, '"update-character"');
+      expectScriptToContain(script, "Start Freshman Year");
+      expectScriptNotToContain(script, "Save Character");
       // The old saving-character status text from the accept handler is gone.
       expectScriptNotToContain(script, '"Saving character"');
     });
 
-    it("renders a Save Character button for the final student choice", () => {
+    it("renders a Start Freshman Year button for the final student choice", () => {
       const script = renderedViewerScript();
-      expectScriptToContain(script, "Save Character");
+      expectScriptToContain(script, "Start Freshman Year");
     });
 
     it("routes unaffordable AI portrait requests to the Hall Pass flow", () => {
@@ -142,7 +161,7 @@ describe("character creation flow", () => {
       expectScriptNotToContain(script, "Hall Pass needed.");
       expectScriptToContain(script, 'title: "Hall Pass needed"');
       expectScriptToContain(script, "Custom character portrait needs");
-      expectScriptToContain(script, "Rolling and saving your student stays free.");
+      expectScriptToContain(script, "Rolling your student stays free.");
       expectScriptToContain(script, "openBilling({ mode: \"hall-passes\" })");
     });
 

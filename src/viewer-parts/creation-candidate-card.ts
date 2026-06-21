@@ -68,7 +68,7 @@ export function createCreationCandidateCardRenderer(
 
       const hint = deps.document.createElement("div");
       hint.className = "ccg-next-step";
-      hint.textContent = "Ruby will save this student and start today's class.";
+      hint.textContent = "Freshman year is ready when you are.";
       body.appendChild(hint);
       const portraitStatus = deps.document.createElement("div");
       portraitStatus.className = "creation-portrait-status";
@@ -83,7 +83,7 @@ export function createCreationCandidateCardRenderer(
       const saveBtn = deps.document.createElement("button");
       saveBtn.type = "button";
       saveBtn.className = "primary";
-      saveBtn.textContent = "Save Character";
+      saveBtn.textContent = "Start Freshman Year";
       saveBtn.disabled = true;
       saveBtn.hidden = true;
       actions.appendChild(portraitBtn);

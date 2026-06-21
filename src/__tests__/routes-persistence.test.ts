@@ -322,6 +322,45 @@ describe("command route persistence and scheduler misses", () => {
     }
   });
 
+  it("updates an autosaved character candidate without resetting career state", async () => {
+    await getActivePack();
+    const store = new MemorySessionStore();
+    const ruby = new RubyHighService({} as never, store);
+    const created = makeCommandCtx(ruby);
+
+    expect(await handleAppRoutes(created.ctx)).toBe(true);
+    expect(created.response?.status).toBe(200);
+
+    const state = ruby.getOrCreate("rh:anonymous");
+    state.character!.yearbook.push({
+      grade: "9",
+      completedAt: 123,
+      summary: { correct: 4, total: 5 },
+    });
+
+    const updated = makeCommandCtx(ruby, {
+      type: "update-character",
+      name: "Mina",
+      playbookId: "lifer",
+      stats: { head: -1, heart: 2, hustle: 1, honor: 0 },
+      arcAnswer: "I want to make this school impossible to ignore.",
+      flavorQuote: "homeroom is not ready for me",
+      personality: "warm, direct, and extremely prepared",
+      portraitDataUrl: "/api/apps/ruby-high/assets/students/lyra-full.png",
+    });
+
+    expect(await handleAppRoutes(updated.ctx)).toBe(true);
+    expect(updated.response?.status).toBe(200);
+
+    const character = ruby.getOrCreate("rh:anonymous").character!;
+    expect(character.name).toBe("Mina");
+    expect(character.playbookId).toBe("lifer");
+    expect(character.yearbook).toHaveLength(1);
+    expect(character.yearbook[0]?.grade).toBe("9");
+    expect(character.portraitDataUrl).toBe("/api/apps/ruby-high/assets/students/lyra-full.png");
+    expect(character.advantageRollBonuses).toEqual({ "9": 1, "10": 1, "11": 1, "12": 1 });
+  });
+
   it("rejects bad browser command mutations before minting a guest session", async () => {
     await getActivePack();
     const store = new MemorySessionStore();

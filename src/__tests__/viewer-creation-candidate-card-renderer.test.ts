@@ -43,9 +43,9 @@ describe("creation candidate card renderer", () => {
     expect(card.className).toBe("ccg-card is-character-card is-creation-candidate-card");
     expect(textTree(card)).toEqual([
       "player",
-      "Ruby will save this student and start today's class.",
+      "Freshman year is ready when you are.",
       "\u2728 Generate AI portrait",
-      "Save Character",
+      "Start Freshman Year",
     ]);
     expect(refs.role).toBe(card.children[0] as unknown as HTMLElement);
     expect(refs.portraitImg).toBe((card.children[1] as FakeElement).children[0] as unknown as HTMLImageElement);
@@ -62,7 +62,7 @@ describe("creation candidate card renderer", () => {
     expect(refs.portraitStatus).toBe(body.children[6] as unknown as HTMLElement);
   });
 
-  it("builds portrait and save actions with the expected initial state", () => {
+  it("builds portrait and start actions with the expected initial state", () => {
     const renderer = createCreationCandidateCardRenderer({ document: createDocument() });
 
     const refs = renderer.build();
@@ -74,7 +74,7 @@ describe("creation candidate card renderer", () => {
     expect(portraitBtn.textContent).toBe("\u2728 Generate AI portrait");
     expect(saveBtn.className).toBe("primary");
     expect(saveBtn.type).toBe("button");
-    expect(saveBtn.textContent).toBe("Save Character");
+    expect(saveBtn.textContent).toBe("Start Freshman Year");
     expect(saveBtn.disabled).toBe(true);
     expect(saveBtn.hidden).toBe(true);
   });
