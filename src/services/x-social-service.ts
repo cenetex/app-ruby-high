@@ -60,6 +60,7 @@ export interface XMilestoneContext {
   imageUrl?: string;
   portraitUrl?: string;
   diplomaUrl?: string;
+  reserveDailyPhotoSlot?: boolean;
   yearbookShareUrl?: string;
   fromGrade?: string;
   toGrade?: string;
@@ -107,6 +108,15 @@ const X_POST_RATE_LIMIT_RETRY_MS = 60 * 60 * 1000;
 const X_POST_TRANSIENT_RETRY_MS = 15 * 60 * 1000;
 const X_POST_NETWORK_RETRY_MS = 10 * 60 * 1000;
 const X_POST_ERROR_BODY_MAX = 500;
+const RUBY_HIGH_ASSET_PREFIX = "/api/apps/ruby-high/assets";
+const PLAYBOOK_DEFAULT_POST_IMAGE: Record<string, string> = {
+  overachiever: "indra",
+  slacker: "sami",
+  heart: "mika",
+  outsider: "noor",
+  "class-clown": "ravi",
+  lifer: "lyra",
+};
 function xClientId(): string { return process.env.RUBY_HIGH_X_CLIENT_ID ?? ""; }
 function xClientSecret(): string { return process.env.RUBY_HIGH_X_CLIENT_SECRET ?? ""; }
 
@@ -116,6 +126,22 @@ function xRedirectUri(): string {
 }
 
 const X_OAUTH_SCOPES = ["tweet.read", "tweet.write", "users.read", "offline.access", "media.write"].join(" ");
+
+function defaultTeacherPostImageUrl(teacherId: string): string | null {
+  if (teacherId === "ruby" || teacherId === "sally-science" || teacherId === "professor-edward") {
+    return `${RUBY_HIGH_ASSET_PREFIX}/teachers/${teacherId}-full.png`;
+  }
+  return null;
+}
+
+function defaultStudentPostImageUrl(playbookId: string | undefined): string {
+  const studentId = PLAYBOOK_DEFAULT_POST_IMAGE[playbookId || ""] || "indra";
+  return `${RUBY_HIGH_ASSET_PREFIX}/students/${studentId}-full.png`;
+}
+
+function milestoneUsesDailyPhotoSlot(kind: XMilestoneKind): boolean {
+  return kind === "portrait-set" || kind === "diploma-earned" || kind === "class-photo";
+}
 
 // ── Token Store Implementations ─────────────────────────────────────────────
 
@@ -602,8 +628,9 @@ export class XSocialService extends Service {
     if (!token) return null;
 
     const imageUrl = ctx.imageUrl ?? ctx.portraitUrl ?? ctx.diplomaUrl ?? null;
+    const reserveDailyPhotoSlot = !!imageUrl && (ctx.reserveDailyPhotoSlot ?? milestoneUsesDailyPhotoSlot(ctx.kind));
     let reservedPhotoSlot = false;
-    if (imageUrl) {
+    if (reserveDailyPhotoSlot) {
       if (this.photoAlreadyPostedToday(teacher.id)) {
         log.event("x-social.photo-already-today", { teacherId: teacher.id, kind: ctx.kind });
         return null;
@@ -665,22 +692,13 @@ export class XSocialService extends Service {
       return null;
     }
 
-    // Resolve and upload an image if the milestone carries one. The daily
-    // photo slot was reserved before text generation to prevent concurrency.
+    // Every real X post must carry media. The daily photo slot, when relevant,
+    // was reserved before text generation to prevent concurrency.
     let mediaId: string | null = null;
-    if (imageUrl) {
-      try {
-        const imageBytes = await this.resolveImageToBuffer(imageUrl);
-        mediaId = await this.uploadMedia(postToken, imageBytes);
-        if (!mediaId) {
-          await releasePhotoSlot();
-          return null;
-        }
-      } catch (err) {
-        // Release the reserved slot and retry later rather than posting a
-        // text-only "photo" milestone that would reveal an unposted artifact.
+    if (!isDryRun) {
+      mediaId = await this.uploadRequiredMedia(postToken, imageUrl, ctx.kind);
+      if (!mediaId) {
         await releasePhotoSlot();
-        log.error("x-social.media-upload-failed", err, { kind: ctx.kind });
         return null;
       }
     }
@@ -716,6 +734,20 @@ export class XSocialService extends Service {
   }
 
   // ── Media upload ────────────────────────────────────────────────────────
+
+  private async uploadRequiredMedia(token: XTokenRecord, imageUrl: string | null | undefined, kind: string): Promise<string | null> {
+    if (!imageUrl) {
+      log.event("x-social.media-required", { teacherId: token.teacherId, kind });
+      return null;
+    }
+    try {
+      const imageBytes = await this.resolveImageToBuffer(imageUrl);
+      return await this.uploadMedia(token, imageBytes);
+    } catch (err) {
+      log.error("x-social.media-upload-failed", err, { teacherId: token.teacherId, kind });
+      return null;
+    }
+  }
 
   /** Upload an image to X and return a media ID for tweet attachment. */
   private async uploadMedia(token: XTokenRecord, imageBytes: Buffer): Promise<string | null> {
@@ -1059,15 +1091,17 @@ export class XSocialService extends Service {
     return { logName: "x-social.post-rejected" };
   }
 
-  private async postTweet(token: XTokenRecord, text: string, mediaId?: string | null): Promise<string | null> {
+  private async postTweet(token: XTokenRecord, text: string, mediaId: string | null): Promise<string | null> {
     const postToken = await this.ensurePostAllowed(token);
     if (!postToken) return null;
+    if (!mediaId) {
+      log.event("x-social.media-required", { teacherId: postToken.teacherId, kind: "post" });
+      return null;
+    }
 
     try {
       const body: Record<string, unknown> = { text };
-      if (mediaId) {
-        body.media = { media_ids: [mediaId] };
-      }
+      body.media = { media_ids: [mediaId] };
       const res = await fetch(`${X_API_BASE}/tweets`, {
         method: "POST",
         headers: {
@@ -1228,7 +1262,7 @@ export class XSocialService extends Service {
   async postReflection(
     teacher: TeacherCharacter,
     memories: { date: string; charactersCreated: string[]; classesPassed: Array<{ studentName: string; facultyId?: string; letterGrade?: string }>; gradesAdvanced: Array<{ studentName: string; fromGrade?: string; toGrade?: string }>; graduations: string[]; totalStudents: number; totalQuestionsAnswered: number },
-    opts?: { dryRun?: boolean },
+    opts?: { dryRun?: boolean; imageUrl?: string },
   ): Promise<string | null> {
     const token = this.tokens.get(teacher.id);
     if (!token) return null;
@@ -1252,9 +1286,16 @@ export class XSocialService extends Service {
       return "dry-run:reflection";
     }
 
-    const tweetId = await this.postTweet(freshToken, text);
+    const mediaId = await this.uploadRequiredMedia(
+      freshToken,
+      opts?.imageUrl ?? defaultTeacherPostImageUrl(teacher.id),
+      "reflection",
+    );
+    if (!mediaId) return null;
+
+    const tweetId = await this.postTweet(freshToken, text, mediaId);
     if (tweetId) {
-      log.event("x-social.posted", { teacherId: teacher.id, xScreenName: token.xScreenName, kind: "reflection", tweetId });
+      log.event("x-social.posted", { teacherId: teacher.id, xScreenName: token.xScreenName, kind: "reflection", tweetId, mediaId });
     }
     return tweetId;
   }
@@ -1338,7 +1379,7 @@ export class XSocialService extends Service {
    *  class grades, and yearbook progress. */
   async postReportCard(
     teacher: TeacherCharacter,
-    student: { name: string; playbookId: string; grade: string; stats: Record<string, number>; classGrades: Record<string, string>; yearbookCount: number },
+    student: { name: string; playbookId: string; grade: string; stats: Record<string, number>; classGrades: Record<string, string>; yearbookCount: number; portraitUrl?: string },
   ): Promise<string | null> {
     const token = this.tokens.get(teacher.id);
     if (!token) return null;
@@ -1394,9 +1435,16 @@ export class XSocialService extends Service {
       if (text.length > 280) text = text.slice(0, 277) + "...";
     }
 
-    const tweetId = await this.postTweet(freshToken, text);
+    const mediaId = await this.uploadRequiredMedia(
+      freshToken,
+      student.portraitUrl ?? defaultStudentPostImageUrl(student.playbookId),
+      "report-card",
+    );
+    if (!mediaId) return null;
+
+    const tweetId = await this.postTweet(freshToken, text, mediaId);
     if (tweetId) {
-      log.event("x-social.posted", { teacherId: teacher.id, xScreenName: token.xScreenName, kind: "report-card", tweetId });
+      log.event("x-social.posted", { teacherId: teacher.id, xScreenName: token.xScreenName, kind: "report-card", tweetId, mediaId });
     }
     return tweetId;
   }

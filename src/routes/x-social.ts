@@ -96,6 +96,19 @@ function publicClassPhotoCandidates(candidates: readonly ClassPhotoCandidate[]):
   return out;
 }
 
+function defaultTeacherPostImageUrl(teacherId: string): string | undefined {
+  if (teacherId === "ruby" || teacherId === "sally-science" || teacherId === "professor-edward") {
+    return `/api/apps/ruby-high/assets/teachers/${teacherId}-full.png`;
+  }
+  return undefined;
+}
+
+function reflectionPostImageUrl(snapshot: SchoolSnapshot | null, teacherId: string): string | undefined {
+  const students = Object.values(snapshot?.topByYear ?? {}).flat();
+  return students.find((student) => typeof student.portraitUrl === "string" && student.portraitUrl.trim())?.portraitUrl
+    ?? defaultTeacherPostImageUrl(teacherId);
+}
+
 export async function handleXSocialRoutes(
   ctx: RouteContext,
   xSocial: XSocialService,
@@ -227,7 +240,9 @@ export async function handleXSocialRoutes(
       const { teacherById } = await import("../characters/teachers.js");
       const teacher = teacherById(teacherId);
       if (!teacher) { sendError(ctx.res, "Unknown teacher: " + teacherId, 404); return true; }
-      const tweetId = await xSocial.postReflection(teacher, memories);
+      const tweetId = await xSocial.postReflection(teacher, memories, {
+        imageUrl: reflectionPostImageUrl(snapshot, teacherId),
+      });
       if (tweetId) { ctx.json(ctx.res, { ok: true, tweetId }); }
       else { ctx.json(ctx.res, { ok: false, error: "Post failed or teacher not connected." }, 400); }
     } catch (err) {

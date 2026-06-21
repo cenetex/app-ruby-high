@@ -45,6 +45,19 @@ const RUBY_TEACHER: TeacherCharacter = {
   systemPrompt: "You are Ruby, a warm and mischievous teacher.",
 };
 
+const PNG_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+
+function withImage(ctx: XMilestoneContext): XMilestoneContext {
+  return { imageUrl: PNG_URL, ...ctx };
+}
+
+function mockMediaUpload(mediaId = "media-test"): void {
+  mockFetch.mockResolvedValueOnce({
+    ok: true,
+    json: async () => ({ data: { id: mediaId } }),
+  });
+}
+
 async function connectRuby(svc: XSocialService, scope = "tweet.read tweet.write users.read offline.access media.write"): Promise<void> {
   const { state } = svc.beginConnect("ruby");
   mockFetch
@@ -244,35 +257,37 @@ describe("XSocialService", () => {
         });
       await svc.handleCallback("code", state);
 
+      mockMediaUpload();
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: { id: "tweet-123" } }),
       });
 
-      const result = await svc.maybePostMilestone(RUBY_TEACHER, {
+      const result = await svc.maybePostMilestone(RUBY_TEACHER, withImage({
         kind: "graduated",
         characterName: "Valedictorian",
         arcAnswer: "To prove them wrong",
-      });
+      }));
       expect(result).toBe("tweet-123");
     });
 
     it("pauses future posts after X rejects a teacher token", async () => {
       await connectRuby(svc);
 
+      mockMediaUpload();
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 403,
         text: async () => JSON.stringify({ title: "Forbidden", detail: "Client is not permitted to post tweets." }),
       });
 
-      const result = await svc.maybePostMilestone(RUBY_TEACHER, {
+      const result = await svc.maybePostMilestone(RUBY_TEACHER, withImage({
         kind: "class-passed",
         characterName: "Reach Kid",
         letterGrade: "A",
-      });
+      }));
       expect(result).toBeNull();
-      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(svc.getStatus("ruby")).toMatchObject({
         connected: true,
         hasTweetWrite: true,
@@ -288,19 +303,20 @@ describe("XSocialService", () => {
         lastPostFailureStatus: 403,
       });
 
-      const second = await restarted.maybePostMilestone(RUBY_TEACHER, {
+      const second = await restarted.maybePostMilestone(RUBY_TEACHER, withImage({
         kind: "class-passed",
         characterName: "Second Reach Kid",
         letterGrade: "B",
-      });
+      }));
       expect(second).toBeNull();
-      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
       expect((restarted as any).postCounts.get("ruby")).toBeUndefined();
     });
 
     it("backs off repeated posts while X rate limits the account", async () => {
       await connectRuby(svc);
 
+      mockMediaUpload();
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 429,
@@ -308,11 +324,11 @@ describe("XSocialService", () => {
         text: async () => "Too Many Requests",
       });
 
-      const result = await svc.maybePostMilestone(RUBY_TEACHER, {
+      const result = await svc.maybePostMilestone(RUBY_TEACHER, withImage({
         kind: "class-passed",
         characterName: "Rate Limit Kid",
         letterGrade: "A",
-      });
+      }));
       expect(result).toBeNull();
       const status = svc.getStatus("ruby");
       expect(status).toMatchObject({
@@ -323,11 +339,11 @@ describe("XSocialService", () => {
       expect(status.postPausedUntil).toBeLessThan(Date.now() + 130_000);
 
       const callsAfterRateLimit = mockFetch.mock.calls.length;
-      const second = await svc.maybePostMilestone(RUBY_TEACHER, {
+      const second = await svc.maybePostMilestone(RUBY_TEACHER, withImage({
         kind: "class-passed",
         characterName: "Still Rate Limited",
         letterGrade: "B",
-      });
+      }));
       expect(second).toBeNull();
       expect(mockFetch.mock.calls).toHaveLength(callsAfterRateLimit);
       expect((svc as any).postCounts.get("ruby")).toBeUndefined();
@@ -336,28 +352,30 @@ describe("XSocialService", () => {
     it("does not pause all future posts for duplicate-content rejections", async () => {
       await connectRuby(svc);
 
+      mockMediaUpload();
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 403,
         text: async () => "You are not allowed to create a Tweet with duplicate content.",
       });
 
-      await expect(svc.maybePostMilestone(RUBY_TEACHER, {
+      await expect(svc.maybePostMilestone(RUBY_TEACHER, withImage({
         kind: "class-passed",
         characterName: "Duplicate Kid",
         letterGrade: "A",
-      })).resolves.toBeNull();
+      }))).resolves.toBeNull();
       expect(svc.getStatus("ruby").postPausedReason).toBeUndefined();
 
+      mockMediaUpload();
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: { id: "tweet-after-duplicate" } }),
       });
-      await expect(svc.maybePostMilestone(RUBY_TEACHER, {
+      await expect(svc.maybePostMilestone(RUBY_TEACHER, withImage({
         kind: "class-passed",
         characterName: "Fresh Copy Kid",
         letterGrade: "A",
-      })).resolves.toBe("tweet-after-duplicate");
+      }))).resolves.toBe("tweet-after-duplicate");
     });
   });
 
@@ -369,7 +387,7 @@ describe("XSocialService", () => {
           ok: true,
           json: async () => ({
             access_token: "tok", expires_in: 7200,
-            scope: "tweet.read tweet.write",
+            scope: "tweet.read tweet.write users.read offline.access media.write",
           }),
         })
         .mockResolvedValueOnce({
@@ -379,25 +397,26 @@ describe("XSocialService", () => {
       await svc.handleCallback("code", state);
 
       for (let i = 0; i < 50; i++) {
+        mockMediaUpload(`media-${i}`);
         mockFetch.mockResolvedValueOnce({
           ok: true,
           json: async () => ({ data: { id: `tweet-${i}` } }),
         });
       }
       for (let i = 0; i < 50; i++) {
-        const result = await svc.maybePostMilestone(RUBY_TEACHER, {
+        const result = await svc.maybePostMilestone(RUBY_TEACHER, withImage({
           kind: "class-passed",
           characterName: `Student ${i}`,
           letterGrade: "B",
-        });
+        }));
         expect(result).toBe(`tweet-${i}`);
       }
 
-      const result = await svc.maybePostMilestone(RUBY_TEACHER, {
+      const result = await svc.maybePostMilestone(RUBY_TEACHER, withImage({
         kind: "class-passed",
         characterName: "Student 51",
         letterGrade: "B",
-      });
+      }));
       expect(result).toBeNull();
     });
 
@@ -431,16 +450,17 @@ describe("XSocialService", () => {
 
       expect((svc as any).postCounts.get("ruby")).toBeUndefined();
 
+      mockMediaUpload();
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: { id: "tweet-after-photo-deferrals" } }),
       });
 
-      const result = await svc.maybePostMilestone(RUBY_TEACHER, {
+      const result = await svc.maybePostMilestone(RUBY_TEACHER, withImage({
         kind: "class-passed",
         characterName: "Still Can Post",
         letterGrade: "A",
-      });
+      }));
       expect(result).toBe("tweet-after-photo-deferrals");
     });
   });
@@ -453,7 +473,7 @@ describe("XSocialService", () => {
           ok: true,
           json: async () => ({
             access_token: "tok", expires_in: 7200,
-            scope: "tweet.read tweet.write",
+            scope: "tweet.read tweet.write users.read offline.access media.write",
           }),
         })
         .mockResolvedValueOnce({
@@ -462,17 +482,18 @@ describe("XSocialService", () => {
         });
       await svc.handleCallback("code", state);
 
+      mockMediaUpload();
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: { id: "tweet-fallback" } }),
       });
 
-      const result = await svc.maybePostMilestone(RUBY_TEACHER, {
+      const result = await svc.maybePostMilestone(RUBY_TEACHER, withImage({
         kind: "class-passed",
         characterName: "Lyra",
         teacherName: "Professor Edward",
         letterGrade: "A",
-      });
+      }));
       expect(result).toBe("tweet-fallback");
     });
   });
@@ -583,15 +604,16 @@ describe("XSocialService", () => {
       })).resolves.toBeNull();
       expect(mockFetch.mock.calls).toHaveLength(fetchCallsAfterFirstPhoto);
 
+      mockMediaUpload("media-text-after-photo-slot");
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ data: { id: "tweet-text-after-photo-slot" } }),
       });
-      await expect(restarted.maybePostMilestone(RUBY_TEACHER, {
+      await expect(restarted.maybePostMilestone(RUBY_TEACHER, withImage({
         kind: "class-passed",
         characterName: "Still Can Text",
         letterGrade: "A",
-      })).resolves.toBe("tweet-text-after-photo-slot");
+      }))).resolves.toBe("tweet-text-after-photo-slot");
     });
 
     it("keeps the durable image slot when the access token refreshes during posting", async () => {
@@ -657,6 +679,31 @@ describe("XSocialService", () => {
         imageUrl: pngUrl,
       })).resolves.toBeNull();
       expect(mockFetch.mock.calls).toHaveLength(fetchCallsAfterFirstPhoto);
+    });
+
+    it("uses the daily photo slot for explicitly reserved graduation reveals", async () => {
+      await connectRuby(svc);
+
+      mockMediaUpload("media-graduation-photo");
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { id: "tweet-graduation-photo" } }),
+      });
+
+      await expect(svc.maybePostMilestone(RUBY_TEACHER, {
+        kind: "graduated",
+        characterName: "Photo Graduate",
+        imageUrl: PNG_URL,
+        reserveDailyPhotoSlot: true,
+      })).resolves.toBe("tweet-graduation-photo");
+
+      const fetchCallsAfterGraduationPhoto = mockFetch.mock.calls.length;
+      await expect(svc.maybePostMilestone(RUBY_TEACHER, {
+        kind: "class-photo",
+        characterName: "Same Day Homeroom",
+        imageUrl: PNG_URL,
+      })).resolves.toBeNull();
+      expect(mockFetch.mock.calls).toHaveLength(fetchCallsAfterGraduationPhoto);
     });
 
     it("attaches generic imageUrl media for class-photo tweets", async () => {
@@ -771,7 +818,7 @@ describe("XSocialService", () => {
       expect(tweetCall).toBeUndefined();
     });
 
-    it("skips media when no image URL is provided", async () => {
+    it("does not tweet when no image URL is provided", async () => {
       const { state } = svc.beginConnect("ruby");
       mockFetch
         .mockResolvedValueOnce({
@@ -787,24 +834,80 @@ describe("XSocialService", () => {
         });
       await svc.handleCallback("code", state);
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: { id: "tweet-no-media" } }),
-      });
-
       const result = await svc.maybePostMilestone(RUBY_TEACHER, {
         kind: "class-passed",
         characterName: "No Pic",
         teacherName: "Ruby",
         letterGrade: "B",
       });
-      expect(result).toBe("tweet-no-media");
+      expect(result).toBeNull();
 
-      // No media upload call should have been made.
       const mediaCalls = mockFetch.mock.calls.filter(
         (c: unknown[]) => String((c as string[])[0]).includes("media/upload"),
       );
       expect(mediaCalls).toHaveLength(0);
+      const tweetCall = mockFetch.mock.calls.find(
+        (c: unknown[]) => String((c as string[])[0]).includes("/tweets"),
+      );
+      expect(tweetCall).toBeUndefined();
+    });
+
+    it("attaches media to reflection posts", async () => {
+      await connectRuby(svc);
+
+      mockMediaUpload("media-reflection");
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { id: "tweet-reflection" } }),
+      });
+
+      const result = await svc.postReflection(
+        RUBY_TEACHER,
+        {
+          date: "2026-06-21",
+          charactersCreated: ["Mika"],
+          classesPassed: [],
+          gradesAdvanced: [],
+          graduations: [],
+          totalStudents: 1,
+          totalQuestionsAnswered: 4,
+        },
+        { imageUrl: PNG_URL },
+      );
+      expect(result).toBe("tweet-reflection");
+
+      const tweetCall = mockFetch.mock.calls.find(
+        (c: unknown[]) => String((c as string[])[0]).includes("/tweets"),
+      );
+      const body = JSON.parse((tweetCall![1] as RequestInit).body as string);
+      expect(body.media.media_ids).toEqual(["media-reflection"]);
+    });
+
+    it("attaches media to report-card posts", async () => {
+      await connectRuby(svc);
+
+      mockMediaUpload("media-report-card");
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { id: "tweet-report-card" } }),
+      });
+
+      const result = await svc.postReportCard(RUBY_TEACHER, {
+        name: "Noor",
+        playbookId: "outsider",
+        grade: "10",
+        stats: { head: 3, heart: 2, hustle: 1, honor: 0 },
+        classGrades: { ruby: "A" },
+        yearbookCount: 1,
+        portraitUrl: PNG_URL,
+      });
+      expect(result).toBe("tweet-report-card");
+
+      const tweetCall = mockFetch.mock.calls.find(
+        (c: unknown[]) => String((c as string[])[0]).includes("/tweets"),
+      );
+      const body = JSON.parse((tweetCall![1] as RequestInit).body as string);
+      expect(body.media.media_ids).toEqual(["media-report-card"]);
     });
   });
 

@@ -120,7 +120,11 @@ describe("X social routes", () => {
     expect(await handleXSocialRoutes(harness.ctx, xSocial as any)).toBe(true);
 
     expect(fresh).toHaveBeenCalledTimes(2);
-    expect(postReflection).toHaveBeenCalledWith(expect.objectContaining({ id: "ruby" }), snapshot.dailyMemories);
+    expect(postReflection).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "ruby" }),
+      snapshot.dailyMemories,
+      { imageUrl: "/api/apps/ruby-high/assets/teachers/ruby-full.png" },
+    );
     expect(harness.body()).toEqual({ status: 200, body: { ok: true, tweetId: "tweet:fresh" } });
   });
 

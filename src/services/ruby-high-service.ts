@@ -8828,9 +8828,10 @@ export class RubyHighService extends Service {
           : pick.photo.kind === "class-photo" ? "class-photo"
           : "graduated",
       characterName: this.sessions.get(pick.sessionId)?.character?.name ?? "A student",
-      imageUrl: pick.photo.kind === "class-photo" ? pick.photo.imageUrl : undefined,
+      imageUrl: pick.photo.imageUrl,
       portraitUrl: pick.photo.kind === "portrait" ? pick.photo.imageUrl : undefined,
       diplomaUrl: pick.photo.kind === "diploma" ? pick.photo.imageUrl : undefined,
+      reserveDailyPhotoSlot: true,
     };
     try {
       const tweetId = await xSocial.maybePostMilestone(teacher, ctx);
@@ -9697,13 +9698,23 @@ export class RubyHighService extends Service {
     if (!teacher) return;
 
     // Post the tweet. On success, record the date for the daily budget.
-    xSocial.maybePostMilestone(teacher, ctx).then((tweetId) => {
+    const postCtx = this.xMilestoneContextWithImage(ctx, state);
+    xSocial.maybePostMilestone(teacher, postCtx).then((tweetId) => {
       if (tweetId && ch && ctx.kind !== "character-created" && ctx.kind !== "graduated") {
         ch.lastTextTweetDate = new Date().toISOString().slice(0, 10);
         state.updatedAt = Date.now();
         void this.persistSession(state.sessionId);
       }
     }).catch(() => {});
+  }
+
+  private xMilestoneContextWithImage(ctx: XMilestoneContext, state: QuizState): XMilestoneContext {
+    if (ctx.imageUrl || ctx.portraitUrl || ctx.diplomaUrl) return ctx;
+    const ch = state.character;
+    return {
+      ...ctx,
+      imageUrl: ch?.portraitDataUrl || defaultPlayerPortraitUrl(ch?.playbookId),
+    };
   }
 
 }
