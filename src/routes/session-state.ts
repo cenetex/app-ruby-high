@@ -5,6 +5,7 @@ import type {
 import {
   CHARACTER_SLOT_HALL_PASS_COST,
   CHARACTER_SLOT_PHOTO_DAY_CREDITS,
+  CHAT_MERIT_STAR_COST,
   RubyHighService,
   advantageRollsForState,
   dailyStatusForState,
@@ -82,6 +83,7 @@ interface SessionTelemetry extends Record<string, unknown> {
   scorePoints: number;
   scorePossible: number;
   meritStars: number;
+  next_chat_cost: number;
   hallPasses: number;
   wallet: RubyHighWallet;
   hosted_ai: HostedEntitlementStatus["hosted_ai"];
@@ -348,6 +350,7 @@ export function buildSessionState(args: {
     scorePoints: state.score.points ?? 0,
     scorePossible: state.score.possible ?? 0,
     meritStars: wallet.meritStars,
+    next_chat_cost: ruby?.chatMeritStarQuote(sessionId, state.faculty).amount ?? CHAT_MERIT_STAR_COST,
     hallPasses: wallet.hallPasses,
     wallet,
     hosted_ai: entitlements.hosted_ai,

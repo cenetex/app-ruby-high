@@ -1630,6 +1630,59 @@ describe("chat event context", () => {
     });
   });
 
+  it("increases Merit Star chat cost for repeated chats on the same question", async () => {
+    const token = "route-chat-star-ladder-token";
+    const record = {
+      userId: "route-chat-star-ladder-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Chat Star Ladder",
+    };
+    auth.injectSessionForTest(token, record);
+    const stateKey = auth.stateKeyForRecord(record);
+    grantChatStars(stateKey, CHAT_MERIT_STAR_COST * 3 + 1);
+    ruby.createCharacter(stateKey, {
+      name: "Vince",
+      playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "I want the room to notice when I am actually trying.",
+      personality: "Restless, social, and eager to keep the room moving.",
+    });
+    ruby.selectGrade(stateKey, "9");
+    ruby.pickAndPose(stateKey, { faculty: "ruby" });
+    (globalThis.fetch as any).mockImplementation(async () => llmSseTextResponse("Look at the wording."));
+
+    for (const clientTurnSeq of [11, 12]) {
+      const res = new TestResponse();
+      const handled = await handleChatRoutes(makeCtx(
+        new URL("http://localhost:3000/api/apps/ruby-high/chat"),
+        res,
+        {
+          method: "POST",
+          cookieHeader: `rh_session=${token}`,
+          apiKeyHeader: "sk-test",
+          body: {
+            faculty: "ruby",
+            message: "Can I buy another hint?",
+            clientTurnSeq,
+          },
+        },
+      ));
+      expect(handled).toBe(true);
+      expect(res.statusCode).toBe(200);
+    }
+
+    const spends = ruby.getOrCreate(stateKey).wallet.transactions?.filter((tx) =>
+      tx.kind === "merit-star-spend" && tx.source === "chat"
+    ) ?? [];
+    expect(spends.map((tx) => tx.meritStars)).toEqual([
+      -CHAT_MERIT_STAR_COST,
+      -(CHAT_MERIT_STAR_COST * 2),
+    ]);
+    expect(spends.map((tx) => tx.metadata?.chatTurnForQuestion)).toEqual([1, 2]);
+    expect(ruby.getOrCreate(stateKey).wallet.meritStars).toBe(1);
+  });
+
   it("rejects typed classroom chat without enough Merit Stars", async () => {
     const token = "route-chat-star-empty-token";
     const record = {

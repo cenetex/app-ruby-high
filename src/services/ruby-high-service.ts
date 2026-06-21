@@ -539,6 +539,13 @@ export interface MeritStarMutationResult {
   transaction: RubyHighWalletTransaction;
 }
 
+export interface ChatMeritStarQuote {
+  amount: number;
+  baseAmount: number;
+  questionId: string | null;
+  chatCount: number;
+}
+
 export interface HallPassCardGrantInput {
   cardCount: number;
   idempotencyKey: string;
@@ -4139,6 +4146,41 @@ export class RubyHighService extends Service {
     return this.applyMeritStarTransaction(sessionId, "merit-star-spend", input);
   }
 
+  chatMeritStarQuote(sessionId: string, facultyId?: string | null): ChatMeritStarQuote {
+    const state = this.getOrCreate(sessionId);
+    const faculty = facultyId || state.faculty;
+    const questionId = state.current && state.activeRound && !state.activeRound.resolved && state.faculty === faculty
+      ? state.current.id
+      : null;
+    const chatCount = questionId ? this.countChatSpendsForQuestion(state, faculty, questionId) : 0;
+    return {
+      amount: CHAT_MERIT_STAR_COST * (chatCount + 1),
+      baseAmount: CHAT_MERIT_STAR_COST,
+      questionId,
+      chatCount,
+    };
+  }
+
+  private countChatSpendsForQuestion(state: QuizState, faculty: string, questionId: string): number {
+    const transactions = Object.values(state.wallet.operationLedger ?? {});
+    const fallback = state.wallet.transactions ?? [];
+    const seen = new Set<string>();
+    let count = 0;
+    for (const tx of transactions.length > 0 ? transactions : fallback) {
+      if (seen.has(tx.id)) continue;
+      seen.add(tx.id);
+      if (
+        tx.kind === "merit-star-spend" &&
+        tx.source === "chat" &&
+        tx.metadata?.faculty === faculty &&
+        tx.metadata?.questionId === questionId
+      ) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
   private applyMeritStarTransaction(
     sessionId: string,
     kind: Extract<RubyHighWalletTransactionKind, "merit-star-grant" | "merit-star-spend">,
@@ -4398,6 +4440,10 @@ export class RubyHighService extends Service {
    */
   setFacultyService(faculty: FacultyService): void {
     this.faculty = faculty;
+  }
+
+  chatPersistenceStore(): StateStoreLike {
+    return this.store;
   }
 
   hasFaculty(): boolean {
