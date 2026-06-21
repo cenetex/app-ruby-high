@@ -104,7 +104,7 @@ export function runViewerClient(bootstrap) {
     return Number.isFinite(value) && value > 0 ? Math.floor(value) : 100;
   }
   function chatActionLabel(t) {
-    return "Chat *x" + formatWholeNumber(nextChatCost(t));
+    return "Chat " + formatWholeNumber(nextChatCost(t)) + " ⭐";
   }
   function chatCostTitle(t, prefix) {
     return prefix + " Costs " + formatWholeNumber(nextChatCost(t)) + " Merit Stars.";

@@ -1007,7 +1007,7 @@ describe("viewer regression guardrails", () => {
   it("labels offline classroom advance as Continue instead of Chat", () => {
     const script = inlineScript(renderedViewer());
 
-    expectScriptToContain(script, 'return "Chat *x" + formatWholeNumber(nextChatCost(t));');
+    expectScriptToContain(script, 'return "Chat " + formatWholeNumber(nextChatCost(t)) + " ⭐";');
     expectScriptToContain(script, 'offlineClassroom ? "Continue" : chatActionLabel(t)');
     expectScriptToContain(script, 'const advanceLabel = teacherChatEnabled() ? chatActionLabel(lastTelemetry) : "Continue";');
     expectScriptToContain(script, "Connect AI for hints.");
