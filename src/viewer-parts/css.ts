@@ -2369,7 +2369,9 @@ export const VIEWER_CSS = `
     width: 100%;
     height: 100%;
     object-fit: cover;
-    object-position: center top;
+    object-position: 50% 18%;
+    transform: scale(2.25);
+    transform-origin: top center;
     display: block;
   }
   .msg .avatar.is-teacher {

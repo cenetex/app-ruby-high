@@ -4,6 +4,7 @@ import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
 import { handleAppRoutes, type RouteContext } from "../routes.js";
 import { assetCacheControlFor } from "../routes/assets.js";
+import { setGeneratedPortraitAssetLoaderForTest } from "../services/generated-portrait-assets.js";
 import { renderViewerHtml } from "../viewer.js";
 
 function makeResponse() {
@@ -166,6 +167,54 @@ describe("PWA surface", () => {
     expect(body.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true);
     expect(body.subarray(12, 16).toString("ascii")).toBe("IHDR");
     expect(body[25]).toBe(6);
+  });
+
+  it("serves generated portrait assets through the app route", async () => {
+    const restore = setGeneratedPortraitAssetLoaderForTest(async (name) => {
+      expect(name).toBe("graduation-photo/e68eb7327208097ea3088baab551269c.png");
+      return {
+        body: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        mime: "image/png",
+        etag: "\"generated-test\"",
+        cacheControl: "public, max-age=31536000, immutable",
+      };
+    });
+    try {
+      const getResponse = makeResponse();
+      const getHandled = await handleAppRoutes(makeCtx(
+        "/api/apps/ruby-high/assets/generated/graduation-photo/e68eb7327208097ea3088baab551269c.png",
+        getResponse,
+      ));
+      expect(getHandled).toBe(true);
+      expect(getResponse.res.statusCode).toBe(200);
+      expect(getResponse.headers.get("content-type")).toBe("image/png");
+      expect(getResponse.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+      expect(getResponse.headers.get("etag")).toBe("\"generated-test\"");
+      expect((getResponse.raw as Buffer).subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+
+      const headResponse = makeResponse();
+      const headHandled = await handleAppRoutes(makeCtx(
+        "/api/apps/ruby-high/assets/generated/graduation-photo/e68eb7327208097ea3088baab551269c.png",
+        headResponse,
+        "HEAD",
+      ));
+      expect(headHandled).toBe(true);
+      expect(headResponse.res.statusCode).toBe(200);
+      expect(headResponse.text).toBe("");
+
+      const notModifiedResponse = makeResponse();
+      const notModifiedCtx = makeCtx(
+        "/api/apps/ruby-high/assets/generated/graduation-photo/e68eb7327208097ea3088baab551269c.png",
+        notModifiedResponse,
+      );
+      notModifiedCtx.ifNoneMatch = "\"generated-test\"";
+      const notModifiedHandled = await handleAppRoutes(notModifiedCtx);
+      expect(notModifiedHandled).toBe(true);
+      expect(notModifiedResponse.res.statusCode).toBe(304);
+      expect(notModifiedResponse.text).toBe("");
+    } finally {
+      restore();
+    }
   });
 
   it("serves a scoped service worker that leaves stateful APIs network-only", async () => {

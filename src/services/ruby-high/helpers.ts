@@ -15,6 +15,7 @@ import {
   packForSession,
   resolveFacultyIdForSession,
 } from "../../content/registry.js";
+import { rewriteGeneratedPortraitS3Url } from "../generated-portrait-assets.js";
 
 export interface TypedAnswerJudgeResult {
   correct: boolean;
@@ -256,6 +257,8 @@ export function normalizeStoredImageRef(
   }
   if (text.startsWith("data:image/")) return text;
   if (text.startsWith("/api/apps/ruby-high/assets/")) return text;
+  const generatedPortraitAsset = rewriteGeneratedPortraitS3Url(text);
+  if (generatedPortraitAsset) return generatedPortraitAsset;
   try {
     const url = new URL(text);
     if (url.protocol === "http:" || url.protocol === "https:") return text;

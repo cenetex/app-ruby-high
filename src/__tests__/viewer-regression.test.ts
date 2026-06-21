@@ -1195,6 +1195,14 @@ describe("viewer regression guardrails", () => {
     expect(VIEWER_CSS).not.toContain("Stack links vertically in the channels footer");
   });
 
+  it("zooms compact chat avatars toward faces", () => {
+    expect(cssRule(".msg .avatar")).toContain("overflow: hidden");
+    expect(cssRule(".msg .avatar img")).toContain("object-fit: cover");
+    expect(cssRule(".msg .avatar img")).toContain("object-position: 50% 18%");
+    expect(cssRule(".msg .avatar img")).toContain("transform: scale(2.25)");
+    expect(cssRule(".msg .avatar img")).toContain("transform-origin: top center");
+  });
+
   it("explains public world visibility before the account toggle can publish a profile", () => {
     const html = renderedViewer();
     const script = inlineScript(html);

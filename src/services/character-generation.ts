@@ -1,7 +1,7 @@
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { createHash } from "node:crypto";
 import { PLAYBOOKS } from "../characters/playbooks.js";
 import type { CharacterStats } from "../types.js";
+import { publicBaseUrl } from "./generated-portrait-assets.js";
+export { maybeUploadPortrait } from "./generated-portrait-assets.js";
 import { log } from "./logger.js";
 import {
   openRouterJson,
@@ -15,7 +15,6 @@ import {
 const PORTRAIT_MODEL = process.env.RUBY_HIGH_PORTRAIT_MODEL ?? "google/gemini-3.1-flash-image-preview";
 const PORTRAIT_MAX_TOKENS = Number(process.env.RUBY_HIGH_PORTRAIT_MAX_TOKENS ?? 4000);
 const PORTRAIT_TIMEOUT_MS = 60_000;
-const DEFAULT_PUBLIC_BASE = "http://localhost:3000";
 
 interface PortraitResponse {
   choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>;
@@ -26,23 +25,6 @@ interface CharacterResponse {
 }
 
 type CharacterTextComponent = "name" | "personality" | "arcAnswer" | "flavorQuote";
-
-function publicBaseUrl(): string {
-  const raw = (
-    process.env.RUBY_HIGH_PUBLIC_BASE?.trim()
-    || process.env.RUBY_HIGH_PUBLIC_BASE_URL?.trim()
-    || DEFAULT_PUBLIC_BASE
-  );
-  try {
-    const parsed = new URL(raw);
-    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-      return parsed.toString().replace(/\/+$/, "");
-    }
-  } catch {
-    // Fall through to the local dev default.
-  }
-  return DEFAULT_PUBLIC_BASE;
-}
 
 function imageReferenceUrl(rawUrl: string): string {
   const url = rawUrl.trim();
@@ -94,52 +76,6 @@ async function fetchPortraitOnce(args: {
   const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
   if (!url) throw new Error("OpenRouter returned no image (likely a content-filter trip; try a different name/personality).");
   return url;
-}
-
-let portraitS3Client: S3Client | null = null;
-
-function getPortraitS3Client(): S3Client | null {
-  const bucket = process.env.RUBY_HIGH_PORTRAITS_BUCKET;
-  if (!bucket) return null;
-  if (portraitS3Client) return portraitS3Client;
-  portraitS3Client = new S3Client({
-    region: process.env.RUBY_HIGH_PORTRAITS_REGION ?? process.env.AWS_REGION ?? "us-east-1",
-    ...(process.env.AWS_ENDPOINT_URL_S3 ? { endpoint: process.env.AWS_ENDPOINT_URL_S3, forcePathStyle: true } : {}),
-  });
-  return portraitS3Client;
-}
-
-export async function maybeUploadPortrait(dataUrl: string, kind: "portrait" | "diploma" | "graduation-photo"): Promise<string> {
-  const bucket = process.env.RUBY_HIGH_PORTRAITS_BUCKET;
-  const client = getPortraitS3Client();
-  if (!bucket || !client) return dataUrl;
-
-  const match = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl);
-  if (!match) return dataUrl;
-
-  const mime = match[1] ?? "image/png";
-  const bytes = Buffer.from(match[2] ?? "", "base64");
-  const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 32);
-  const ext = mime === "image/jpeg" ? "jpg" : mime === "image/webp" ? "webp" : "png";
-  const key = `${kind}/${hash}.${ext}`;
-  try {
-    await client.send(new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: bytes,
-      ContentType: mime,
-      CacheControl: "public, max-age=31536000, immutable",
-    }));
-  } catch (err) {
-    log.error("portrait.s3-upload-failed", err, { kind, bucket, key, bytes: bytes.length });
-    throw new Error("portrait upload failed: " + (err instanceof Error ? err.message : String(err)));
-  }
-  const s3Endpoint = process.env.AWS_ENDPOINT_URL_S3;
-  const defaultBase = s3Endpoint
-    ? s3Endpoint.replace(/\/+$/, '') + '/' + bucket
-    : `https://${bucket}.s3.${process.env.RUBY_HIGH_PORTRAITS_REGION ?? process.env.AWS_REGION ?? "us-east-1"}.amazonaws.com`;
-  const base = process.env.RUBY_HIGH_PORTRAITS_PUBLIC_BASE ?? defaultBase;
-  return base.replace(/\/+$/, "") + "/" + key;
 }
 
 export async function renderCharacterPortrait(args: {

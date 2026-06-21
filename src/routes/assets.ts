@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
+import { loadGeneratedPortraitAsset } from "../services/generated-portrait-assets.js";
 import { VIEWER_FRAME_ANCESTORS_DIRECTIVE } from "../viewer.js";
 import {
   APP_ROUTE_PREFIX,
@@ -295,6 +296,9 @@ export async function sendAsset(
   includeBody = true,
   versioned = false,
 ): Promise<boolean> {
+  if (name.startsWith("generated/")) {
+    return sendGeneratedPortraitAsset(res, name.slice("generated/".length), ifNoneMatch, includeBody);
+  }
   if (!(name in ASSET_FILES)) return false;
   const asset = await loadAsset(name);
   if (!asset) return false;
@@ -306,6 +310,32 @@ export async function sendAsset(
   response.setHeader("Content-Type", asset.mime);
   response.setHeader("ETag", asset.etag);
   response.setHeader("Cache-Control", assetCacheControlFor(name, versioned) ?? DEFAULT_ASSET_CACHE_CONTROL);
+  if (ifNoneMatch && ifNoneMatch === asset.etag) {
+    response.statusCode = 304;
+    response.end();
+    return true;
+  }
+  response.statusCode = 200;
+  response.end(includeBody ? asset.body : undefined);
+  return true;
+}
+
+async function sendGeneratedPortraitAsset(
+  res: unknown,
+  name: string,
+  ifNoneMatch?: string | null,
+  includeBody = true,
+): Promise<boolean> {
+  const asset = await loadGeneratedPortraitAsset(name);
+  if (!asset) return false;
+  const response = res as {
+    end: (body?: Buffer) => void;
+    setHeader: (name: string, value: string) => void;
+    statusCode: number;
+  };
+  response.setHeader("Content-Type", asset.mime);
+  response.setHeader("ETag", asset.etag);
+  response.setHeader("Cache-Control", asset.cacheControl);
   if (ifNoneMatch && ifNoneMatch === asset.etag) {
     response.statusCode = 304;
     response.end();

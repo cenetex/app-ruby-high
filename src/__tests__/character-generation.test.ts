@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 
-describe("portrait upload — AWS → Tigris exit", () => {
+const GENERATED_PHOTO_HASH = "e68eb7327208097ea3088baab551269c";
+
+describe("generated portrait asset URLs", () => {
   const OLD_ENV = { ...process.env };
 
   afterEach(() => {
@@ -13,38 +15,40 @@ describe("portrait upload — AWS → Tigris exit", () => {
     vi.resetModules();
   });
 
-  it("S3Client is configured with an endpoint when AWS_ENDPOINT_URL_S3 is set", async () => {
-    vi.stubEnv("RUBY_HIGH_PORTRAITS_BUCKET", "ruby-high-portraits");
-    vi.stubEnv("RUBY_HIGH_PORTRAITS_REGION", "auto");
-    vi.stubEnv("AWS_ENDPOINT_URL_S3", "https://fly.storage.tigris.dev");
+  it("builds app-hosted URLs for generated portrait objects", async () => {
+    vi.stubEnv("RUBY_HIGH_PUBLIC_BASE", "https://ruby-high.ai/");
+    const { generatedPortraitAssetPath, generatedPortraitAssetUrl } = await import("../services/generated-portrait-assets.js");
 
-    const fs = await import("node:fs");
-    const path = await import("node:path");
-    const { fileURLToPath } = await import("node:url");
-    const srcPath = path.resolve(
-      path.dirname(fileURLToPath(import.meta.url)),
-      "../services/character-generation.ts",
+    expect(generatedPortraitAssetPath("graduation-photo", GENERATED_PHOTO_HASH, "png")).toBe(
+      `/api/apps/ruby-high/assets/generated/graduation-photo/${GENERATED_PHOTO_HASH}.png`,
     );
-    const src = fs.readFileSync(srcPath, "utf8");
-
-    const hasEndpointRead = /AWS_ENDPOINT_URL_S3/.test(src);
-    expect(hasEndpointRead).toBe(true);
+    expect(generatedPortraitAssetUrl("graduation-photo", GENERATED_PHOTO_HASH, "png")).toBe(
+      `https://ruby-high.ai/api/apps/ruby-high/assets/generated/graduation-photo/${GENERATED_PHOTO_HASH}.png`,
+    );
   });
 
-  it("portrait public URL does not contain amazonaws.com when AWS_ENDPOINT_URL_S3 is set", async () => {
+  it("rewrites private S3 generated portrait URLs to the app asset route", async () => {
     vi.stubEnv("RUBY_HIGH_PORTRAITS_BUCKET", "ruby-high-portraits");
-    vi.stubEnv("RUBY_HIGH_PORTRAITS_REGION", "auto");
+    const {
+      rewriteGeneratedPortraitS3Url,
+    } = await import("../services/generated-portrait-assets.js");
 
-    const fs = await import("node:fs");
-    const path = await import("node:path");
-    const { fileURLToPath } = await import("node:url");
-    const srcPath = path.resolve(
-      path.dirname(fileURLToPath(import.meta.url)),
-      "../services/character-generation.ts",
+    expect(rewriteGeneratedPortraitS3Url(
+      `https://ruby-high-portraits.s3.us-east-1.amazonaws.com/graduation-photo/${GENERATED_PHOTO_HASH}.png`,
+    )).toBe(
+      `/api/apps/ruby-high/assets/generated/graduation-photo/${GENERATED_PHOTO_HASH}.png`,
     );
-    const src = fs.readFileSync(srcPath, "utf8");
+    expect(rewriteGeneratedPortraitS3Url("https://cdn.example.test/graduation-photo/elsewhere.png")).toBeNull();
+  });
 
-    expect(src).toContain("AWS_ENDPOINT_URL_S3");
+  it("normalizes stored private S3 generated portrait URLs", async () => {
+    const { normalizeStoredImageRef } = await import("../services/ruby-high/helpers.js");
+
+    expect(normalizeStoredImageRef(
+      `https://ruby-high-portraits.s3.us-east-1.amazonaws.com/graduation-photo/${GENERATED_PHOTO_HASH}.png`,
+      "graduationPhotoImageUrl",
+    )).toBe(
+      `/api/apps/ruby-high/assets/generated/graduation-photo/${GENERATED_PHOTO_HASH}.png`,
+    );
   });
 });
-

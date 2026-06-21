@@ -135,6 +135,7 @@ import {
   type StoredTeacherRecord,
 } from "./state-store.js";
 import { log, setLogSink, type LogSinkRecord } from "./logger.js";
+import { rewriteGeneratedPortraitS3Url } from "./generated-portrait-assets.js";
 import { PLAYBOOKS } from "../characters/playbooks.js";
 import {
   applyTick as applyMashTick,
@@ -4860,6 +4861,7 @@ export class RubyHighService extends Service {
     let repaired = false;
     for (const [k, v] of loaded) {
       const state = normalizeLoaded(v);
+      repaired = repairGeneratedPortraitAssetRefs(state) || repaired;
       repaired = this.reconcileLoadedPackState(state) || repaired;
       this.sessions.set(k, state);
     }
@@ -11668,6 +11670,41 @@ function isPersistedBuiltInPackOverride(record: StoredContentPackRecord): boolea
 
 function packInstallationRecordKey(userId: string, packId: string): string {
   return `${userId}:${packId}`;
+}
+
+function repairGeneratedPortraitAssetRefs(value: unknown, seen = new Set<object>()): boolean {
+  if (!value || typeof value !== "object") return false;
+  if (seen.has(value)) return false;
+  seen.add(value);
+  let repaired = false;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      const current = value[i];
+      if (typeof current === "string") {
+        const rewritten = rewriteGeneratedPortraitS3Url(current);
+        if (rewritten) {
+          value[i] = rewritten;
+          repaired = true;
+        }
+      } else if (repairGeneratedPortraitAssetRefs(current, seen)) {
+        repaired = true;
+      }
+    }
+    return repaired;
+  }
+  const record = value as Record<string, unknown>;
+  for (const [key, current] of Object.entries(record)) {
+    if (typeof current === "string") {
+      const rewritten = rewriteGeneratedPortraitS3Url(current);
+      if (rewritten) {
+        record[key] = rewritten;
+        repaired = true;
+      }
+    } else if (repairGeneratedPortraitAssetRefs(current, seen)) {
+      repaired = true;
+    }
+  }
+  return repaired;
 }
 
 function normalizeLoaded(s: QuizState): QuizState {
