@@ -4739,6 +4739,55 @@ export const VIEWER_CSS = `
   .creation-reroll:hover { background: var(--bg-elev-2); }
   .creation-reroll:disabled { opacity: 0.4; cursor: not-allowed; }
 
+  .sheet-card.is-creation-sheet .is-creation-control-card .ccg-body {
+    gap: 10px;
+  }
+  .sheet-card.is-creation-sheet .is-creation-control-card .ccg-name {
+    font-size: 20px;
+    line-height: 1.05;
+  }
+  .sheet-card.is-creation-sheet .is-creation-control-card .ccg-subtitle {
+    max-width: 25ch;
+    line-height: 1.45;
+  }
+  .sheet-card.is-creation-sheet .is-creation-control-card .creation-fields {
+    gap: 10px;
+    margin: 8px 0 6px;
+  }
+  .sheet-card.is-creation-sheet .is-creation-control-card .creation-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px 10px;
+    padding: 11px 12px;
+    border-radius: 12px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018)),
+      var(--bg-elev);
+  }
+  .sheet-card.is-creation-sheet .is-creation-control-card .creation-row-label {
+    grid-column: 1;
+    grid-row: 1;
+    padding-top: 0;
+    font-size: 9.5px;
+    line-height: 1;
+  }
+  .sheet-card.is-creation-sheet .is-creation-control-card .creation-row-value {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    font-size: 14px;
+    line-height: 1.48;
+  }
+  .sheet-card.is-creation-sheet .is-creation-control-card .creation-reroll {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    width: 30px;
+    height: 30px;
+    margin: -4px -4px 0 0;
+    border-color: rgba(255,255,255,0.12);
+    background: rgba(0,0,0,0.18);
+  }
+
   /* ── in-card actions strip ───────────────────────────────────────────── */
   /* Replaces the legacy .sheet-actions row that used to render OUTSIDE
      the card. Lives inside .ccg-body so the card stays a single
