@@ -132,7 +132,7 @@ export function runViewerClient(bootstrap) {
     const live = !!(round && !round.resolved && cur);
     const postClass = postClassState(t);
     els.nextBtn.title = live
-      ? (teacherChatEnabled() ? "Ask for a hint. Costs 1 Merit Star." : "Answer the board to continue")
+      ? (teacherChatEnabled() ? "Ask for a hint. Costs 100 Merit Stars." : "Answer the board to continue")
       : postClass.report && guestSignupRequired(t)
         ? "Sign up to continue past today's class"
       : cur && currentRevealCompletedClass(t)
@@ -146,7 +146,7 @@ export function runViewerClient(bootstrap) {
       : t && t.graduation_ready && !cur
         ? "Open the graduation ceremony"
         : teacherChatEnabled()
-          ? "Advance the room. Costs 1 Merit Star when it starts a chat."
+          ? "Advance the room. Costs 100 Merit Stars when it starts a chat."
           : "Advance the room";
   }
   function teachingFacultyIdsForSummary() {

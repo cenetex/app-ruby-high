@@ -112,7 +112,7 @@ function emptyWelcomeHallPasses(stateKey: string): void {
   expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(0);
 }
 
-function grantChatStars(stateKey: string, amount = 3): void {
+function grantChatStars(stateKey: string, amount = CHAT_MERIT_STAR_COST * 3): void {
   ruby.grantMeritStars(stateKey, {
     amount,
     idempotencyKey: `test:chat-stars:${stateKey}:${amount}`,
@@ -1589,7 +1589,7 @@ describe("chat event context", () => {
     };
     auth.injectSessionForTest(token, record);
     const stateKey = auth.stateKeyForRecord(record);
-    grantChatStars(stateKey, 2);
+    grantChatStars(stateKey, CHAT_MERIT_STAR_COST + 1);
     (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
       const [input, init] = args;
       capturedChatRequest = {
@@ -1618,7 +1618,7 @@ describe("chat event context", () => {
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain("Start with the wording.");
-    expect(ruby.getOrCreate(stateKey).wallet.meritStars).toBe(2 - CHAT_MERIT_STAR_COST);
+    expect(ruby.getOrCreate(stateKey).wallet.meritStars).toBe(1);
     expect(ruby.getOrCreate(stateKey).wallet.transactions?.find((tx) => tx.kind === "merit-star-spend")).toMatchObject({
       meritStars: -CHAT_MERIT_STAR_COST,
       source: "chat",
