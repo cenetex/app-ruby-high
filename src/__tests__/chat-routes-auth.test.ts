@@ -1640,6 +1640,58 @@ describe("chat event context", () => {
     });
   });
 
+  it("refunds Merit Stars when typed classroom chat fails before a response", async () => {
+    const token = "route-chat-star-refund-token";
+    const record = {
+      userId: "route-chat-star-refund-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Chat Star Refund",
+    };
+    auth.injectSessionForTest(token, record);
+    const stateKey = auth.stateKeyForRecord(record);
+    grantChatStars(stateKey, CHAT_MERIT_STAR_COST);
+    (globalThis.fetch as any).mockImplementation(async () => {
+      return new Response("model down", { status: 500, statusText: "Bad Gateway" });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "ruby",
+          message: "What should I look at first?",
+          clientTurnSeq: 8,
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("event: error");
+    expect(res.body).toContain("Stars were refunded");
+    expect(ruby.getOrCreate(stateKey).wallet.meritStars).toBe(CHAT_MERIT_STAR_COST);
+    const txs = ruby.getOrCreate(stateKey).wallet.transactions ?? [];
+    expect(txs.find((tx) => tx.kind === "merit-star-spend" && tx.source === "chat")).toMatchObject({
+      meritStars: -CHAT_MERIT_STAR_COST,
+      metadata: expect.objectContaining({
+        route: "typed",
+        status: "failed",
+      }),
+    });
+    expect(txs.find((tx) => tx.kind === "merit-star-grant" && tx.source === "chat" && tx.id.endsWith(":refund"))).toMatchObject({
+      meritStars: CHAT_MERIT_STAR_COST,
+      metadata: expect.objectContaining({
+        requestId: "8",
+      }),
+    });
+  });
+
   it("increases Merit Star chat cost for repeated chats on the same question", async () => {
     const token = "route-chat-star-ladder-token";
     const record = {
@@ -1796,6 +1848,67 @@ describe("chat event context", () => {
     expect(studentPrompt).toContain("Situation: player-asked-hint");
     expect(studentPrompt).toContain("Room scene context");
     expect(studentPrompt).toContain("Vince said");
+  });
+
+  it("refunds Chat button Merit Stars when the room response fails", async () => {
+    const token = "route-room-turn-refund-token";
+    const record = {
+      userId: "route-room-turn-refund-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Room Turn Refund",
+    };
+    auth.injectSessionForTest(token, record);
+    const stateKey = auth.stateKeyForRecord(record);
+    grantChatStars(stateKey, CHAT_MERIT_STAR_COST);
+    ruby.createCharacter(stateKey, {
+      name: "Vince",
+      playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "I want the room to notice when I am actually trying.",
+      personality: "Restless, social, and eager to keep the room moving.",
+    });
+    ruby.selectGrade(stateKey, "9");
+    ruby.pickAndPose(stateKey, { faculty: "ruby" });
+    vi.spyOn(Math, "random").mockReturnValue(0.9);
+    let calls = 0;
+    (globalThis.fetch as any).mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) return llmSseTextResponse("Can someone give me the first clue without saying it outright?");
+      return new Response("teacher model down", { status: 500, statusText: "Bad Gateway" });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/room-turn"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "ruby",
+          context: { intent: "hint" },
+          clientTurnSeq: 91,
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("event: player-line");
+    expect(res.body).toContain("event: error");
+    expect(res.body).toContain("Stars were refunded");
+    expect(ruby.getOrCreate(stateKey).wallet.meritStars).toBe(CHAT_MERIT_STAR_COST);
+    const spends = ruby.getOrCreate(stateKey).wallet.transactions?.filter((tx) =>
+      tx.kind === "merit-star-spend" && tx.source === "chat"
+    ) ?? [];
+    expect(spends).toHaveLength(1);
+    expect(spends[0]?.metadata).toMatchObject({
+      route: "room-turn",
+      status: "failed",
+      clientTurnSeq: "91",
+    });
   });
 
   it("keeps room turns usable when player-line generation falls back", async () => {

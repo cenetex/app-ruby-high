@@ -4172,6 +4172,7 @@ export class RubyHighService extends Service {
       if (
         tx.kind === "merit-star-spend" &&
         tx.source === "chat" &&
+        tx.metadata?.status !== "failed" &&
         tx.metadata?.faculty === faculty &&
         tx.metadata?.questionId === questionId
       ) {

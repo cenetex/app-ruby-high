@@ -1240,17 +1240,20 @@ describe("ChatService.send — message composition", () => {
         at: 1,
         authorSessionToken: "speaker-token",
         authorName: "Avery",
+        authorAvatarUrl: "/api/apps/ruby-high/assets/portrait/avery.png",
       },
     ] as any;
 
     expect(publicChatHistory(messages, "speaker-token")[0]).toMatchObject({
       role: "user",
       authorName: "Avery",
+      avatarUrl: "/api/apps/ruby-high/assets/portrait/avery.png",
       isSelf: true,
     });
     expect(publicChatHistory(messages, "listener-token")[0]).toMatchObject({
       role: "user",
       authorName: "Avery",
+      avatarUrl: "/api/apps/ruby-high/assets/portrait/avery.png",
       isSelf: false,
     });
   });

@@ -37,6 +37,8 @@ export interface ChatMessage {
   authorSessionToken?: string;
   /** Display name for the player that authored a user message. */
   authorName?: string;
+  /** Public-safe avatar URL for the player that authored a user message. */
+  authorAvatarUrl?: string;
   /** Local timestamp for UI ordering. */
   at: number;
 }
@@ -58,6 +60,7 @@ export interface ChatHistoryKey {
   sessionToken: string;
   faculty: string;
   authorName?: string;
+  authorAvatarUrl?: string;
 }
 
 /**
@@ -149,6 +152,8 @@ export interface SendOpts {
   /** Display name for the userMessage author. Chatrooms are global, so
    *  user-role messages need explicit attribution. */
   authorName?: string;
+  /** Public-safe avatar URL for the userMessage author. */
+  authorAvatarUrl?: string;
   /** Optional. If provided, appended as a system note before the model runs.
    *  Use this to drive a teacher turn from a state event (channel-enter,
    *  answer-graded, etc.) without the student saying anything. */
@@ -297,6 +302,7 @@ export class ChatService extends Service {
       faculty: key.faculty,
       authorSessionToken: key.sessionToken,
       authorName: cleanAuthorName(key.authorName),
+      authorAvatarUrl: cleanAuthorAvatarUrl(key.authorAvatarUrl),
       at,
     });
     this.trim(key);
@@ -402,6 +408,7 @@ export class ChatService extends Service {
         faculty: bucketFaculty,
         authorSessionToken: opts.sessionToken,
         authorName: cleanAuthorName(opts.authorName),
+        authorAvatarUrl: cleanAuthorAvatarUrl(opts.authorAvatarUrl),
         at: Date.now(),
       });
       this.trim(key);
@@ -976,6 +983,20 @@ function cleanAuthorName(value: string | undefined | null): string | undefined {
   return text || undefined;
 }
 
+function cleanAuthorAvatarUrl(value: unknown): string | undefined {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text || text.length > 2048 || text.startsWith("//") || /[\r\n]/.test(text)) return undefined;
+  if (text.startsWith("data:")) return undefined;
+  if (text.startsWith("/")) return text;
+  try {
+    const url = new URL(text);
+    if (url.protocol === "http:" || url.protocol === "https:") return text;
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 function normalizeHistoryForProvider(list: ChatMessage[], limit: number): ChatMessage[] {
   const groups = providerSafeHistoryGroups(list);
   const kept: ChatMessage[][] = [];
@@ -1085,6 +1106,8 @@ function normalizeChatMessage(raw: unknown): ChatMessage | null {
   if (typeof row.faculty === "string" && row.faculty) message.faculty = row.faculty;
   if (typeof row.authorSessionToken === "string" && row.authorSessionToken) message.authorSessionToken = row.authorSessionToken;
   if (typeof row.authorName === "string" && row.authorName.trim()) message.authorName = row.authorName.trim().slice(0, 80);
+  const authorAvatarUrl = cleanAuthorAvatarUrl(row.authorAvatarUrl);
+  if (authorAvatarUrl) message.authorAvatarUrl = authorAvatarUrl;
   return message;
 }
 

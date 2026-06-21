@@ -165,6 +165,7 @@ export function publicChatHistory(
         faculty: m.faculty,
         at: m.at,
         authorName: m.authorName ?? (isSelf ? "You" : "Student"),
+        ...(m.authorAvatarUrl ? { avatarUrl: m.authorAvatarUrl } : {}),
         isSelf,
       });
       continue;
@@ -235,7 +236,49 @@ function fallbackChatChargeId(input: { sessionId: string; route: string; faculty
   return `${input.at}:${digest}`;
 }
 
-function chargePlayerChatTurn(
+const PLAYBOOK_DEFAULT_PORTRAIT: Record<string, string> = {
+  overachiever: "indra",
+  slacker: "sami",
+  heart: "mika",
+  outsider: "noor",
+  "class-clown": "ravi",
+  lifer: "lyra",
+};
+
+function defaultPlayerPortraitUrl(playbookId: string | undefined): string {
+  const studentId = PLAYBOOK_DEFAULT_PORTRAIT[playbookId || ""] || "indra";
+  return `/api/apps/ruby-high/assets/students/${encodeURIComponent(studentId)}-full.png`;
+}
+
+function publicAvatarUrl(value: unknown): string | undefined {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text || text.length > 2048 || text.startsWith("//") || /[\r\n]/.test(text)) return undefined;
+  if (text.startsWith("data:")) return undefined;
+  if (text.startsWith("/")) return text;
+  try {
+    const url = new URL(text);
+    if (url.protocol === "http:" || url.protocol === "https:") return text;
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function publicPlayerAvatarUrl(ruby: RubyHighService, sessionId: string): string | undefined {
+  const character = ruby.getOrCreate(sessionId).character;
+  const stored = publicAvatarUrl(character?.portraitDataUrl);
+  if (stored) return stored;
+  if (character?.playbookId) return defaultPlayerPortraitUrl(character.playbookId);
+  return undefined;
+}
+
+interface PlayerChatTurnCharge {
+  amount: number;
+  requestId: string;
+  spendKey: string;
+}
+
+function preparePlayerChatTurnCharge(
   ruby: RubyHighService,
   sessionId: string,
   input: {
@@ -246,7 +289,7 @@ function chargePlayerChatTurn(
     intent?: string;
     text?: string;
   },
-): { ok: true } | { ok: false; message: string } {
+): { ok: true; charge: PlayerChatTurnCharge } | { ok: false; message: string } {
   const at = Date.now();
   const clientTurnSeq = chatChargeIdPart(input.clientTurnSeq);
   const requestId = clientTurnSeq || fallbackChatChargeId({
@@ -257,14 +300,16 @@ function chargePlayerChatTurn(
     at,
   });
   const quote = ruby.chatMeritStarQuote(sessionId, input.faculty);
+  const spendKey = `chat:${sessionId}:${input.route}:${input.faculty}:${requestId}`;
   try {
-    ruby.spendMeritStars(sessionId, {
+    const spend = ruby.spendMeritStars(sessionId, {
       amount: quote.amount,
-      idempotencyKey: `chat:${sessionId}:${input.route}:${input.faculty}:${requestId}`,
+      idempotencyKey: spendKey,
       source: "chat",
       description: "Classroom chat",
       at,
       metadata: {
+        status: "pending",
         route: input.route,
         faculty: input.faculty,
         chatCost: quote.amount,
@@ -277,10 +322,75 @@ function chargePlayerChatTurn(
         ...(clientTurnSeq ? { clientTurnSeq } : {}),
       },
     });
-    return { ok: true };
+    if (!spend.applied && spend.transaction.metadata?.status === "failed") {
+      return { ok: false, message: "That chat turn already failed. Try again." };
+    }
+    return { ok: true, charge: { amount: quote.amount, requestId, spendKey } };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
+}
+
+async function completePlayerChatTurnCharge(
+  ruby: RubyHighService,
+  sessionId: string,
+  charge: PlayerChatTurnCharge | null,
+): Promise<void> {
+  if (!charge) return;
+  const tx = ruby.walletTransaction(sessionId, charge.spendKey);
+  if (tx?.metadata?.status === "failed" || tx?.metadata?.status === "completed") return;
+  ruby.annotateWalletTransaction(sessionId, charge.spendKey, { status: "completed" });
+  await ruby.flushSession(sessionId);
+}
+
+async function refundPlayerChatTurnCharge(
+  ruby: RubyHighService,
+  sessionId: string,
+  charge: PlayerChatTurnCharge | null,
+  reason: string,
+): Promise<void> {
+  if (!charge) return;
+  try {
+    const tx = ruby.walletTransaction(sessionId, charge.spendKey);
+    if (tx?.metadata?.status === "completed" || tx?.metadata?.status === "failed") return;
+    ruby.annotateWalletTransaction(sessionId, charge.spendKey, {
+      status: "failed",
+      error: reason.slice(0, 160),
+    });
+    ruby.grantMeritStars(sessionId, {
+      amount: charge.amount,
+      idempotencyKey: `${charge.spendKey}:refund`,
+      source: "chat",
+      description: "Chat refund",
+      metadata: {
+        spendKey: charge.spendKey,
+        requestId: charge.requestId,
+        reason: reason.slice(0, 160),
+      },
+    });
+    await ruby.flushSession(sessionId);
+  } catch (err) {
+    log.error("chat.refund-failed", err, {
+      sessionId,
+      spendKey: charge.spendKey,
+    });
+  }
+}
+
+function chatStreamFinishFailed(reason: string | null | undefined): boolean {
+  return reason === "no-input" || reason === "empty-response" || reason === "stale-turn" || reason === "stale-room";
+}
+
+function chatStreamFailureReason(ev: ChatStreamEvent): string | null {
+  if (ev.type === "error") return ev.message || "chat stream error";
+  if (ev.type === "done" && chatStreamFinishFailed(ev.finishReason)) return ev.finishReason || "chat stream ended before a response";
+  return null;
+}
+
+function chatStreamEventSucceeded(ev: ChatStreamEvent): boolean {
+  if (ev.type === "delta" || ev.type === "tool" || ev.type === "state") return true;
+  if (ev.type === "done") return !chatStreamFinishFailed(ev.finishReason);
+  return false;
 }
 
 function characterGraduated(state: { character?: { yearbook?: unknown[] } | null }): boolean {
@@ -2234,20 +2344,22 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(ctx.res, "Missing 'message'.", 400);
       return true;
     }
-    const charge = chargePlayerChatTurn(ruby, sessionId, {
+    const preparedCharge = preparePlayerChatTurnCharge(ruby, sessionId, {
       route: "typed",
       faculty,
       clientTurnSeq: body?.clientTurnSeq,
       text: message,
     });
-    if (!charge.ok) {
-      ctx.error(ctx.res, charge.message, 402);
+    if (!preparedCharge.ok) {
+      ctx.error(ctx.res, preparedCharge.message, 402);
       return true;
     }
 
     const { send, end } = openSse(ctx.res);
 
     try {
+      let streamFailed: string | null = null;
+      let streamSucceeded = false;
       const bank = ruby.questionBankStatus(getSessionId(runtime, ctx.cookieHeader), faculty);
       for await (const ev of streamTeacherAvatarTurn(chat, {
         apiKey,
@@ -2256,14 +2368,30 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         faculty,
         userMessage: message,
         authorName,
+        authorAvatarUrl: publicPlayerAvatarUrl(ruby, sessionId),
         model: body?.model,
         disableTools: schedulerOwnsBoard(bank),
         toolAccessGuard: guestToolAccessGuard(ruby, stateKey, guestAccess),
       })) {
+        const failureReason = chatStreamFailureReason(ev);
+        if (failureReason) {
+          streamFailed = failureReason;
+          if (ev.type === "error") continue;
+        }
+        if (chatStreamEventSucceeded(ev)) streamSucceeded = true;
         send(ev.type, ev);
       }
+      if (streamFailed || !streamSucceeded) {
+        const reason = streamFailed || "chat produced no usable response";
+        await refundPlayerChatTurnCharge(ruby, sessionId, preparedCharge.charge, reason);
+        send("error", { type: "error", message: `${streamFailed || "Chat failed before a response."} Stars were refunded.`, refunded: true });
+      } else {
+        await completePlayerChatTurnCharge(ruby, sessionId, preparedCharge.charge);
+      }
     } catch (err) {
-      send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
+      const message = err instanceof Error ? err.message : String(err);
+      await refundPlayerChatTurnCharge(ruby, sessionId, preparedCharge.charge, message);
+      send("error", { type: "error", message: `${message} Stars were refunded.`, refunded: true });
     } finally {
       end();
     }
@@ -2299,12 +2427,13 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const isStaleChatEvent = chatEventTurnGuard(sessionId, faculty, body?.clientTurnSeq);
     const { send, end } = openSse(ctx.res);
 
+    let preparedCharge: PlayerChatTurnCharge | null = null;
     try {
       if (isStaleChatEvent()) {
         send("done", { type: "done", finishReason: "stale-turn" });
         return true;
       }
-      const charge = chargePlayerChatTurn(ruby, sessionId, {
+      const charge = preparePlayerChatTurnCharge(ruby, sessionId, {
         route: "room-turn",
         faculty,
         clientTurnSeq: body?.clientTurnSeq,
@@ -2314,6 +2443,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         send("error", { type: "error", message: charge.message });
         return true;
       }
+      preparedCharge = charge.charge;
+      let turnSucceeded = false;
+      let turnFailure: string | null = null;
       let playerLine: string;
       const historyFaculty = faculty === "lounge" ? "lounge" : faculty;
       const playerAvatarContext = chat.avatarPromptContext({
@@ -2348,13 +2480,20 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         playerLine = fallbackPlayerLine({ intent, state, bankStatus, recentTexts: playerAvatarContext.recentTexts });
       }
       if (isStaleChatEvent()) {
+        await refundPlayerChatTurnCharge(ruby, sessionId, preparedCharge, "stale chat turn");
         send("done", { type: "done", finishReason: "stale-turn" });
         return true;
       }
       send("player-line", { text: playerLine, intent, replace: true });
-      chat.appendPlayerMessage({ sessionToken: token, faculty: historyFaculty, authorName }, playerLine);
+      chat.appendPlayerMessage({
+        sessionToken: token,
+        faculty: historyFaculty,
+        authorName,
+        authorAvatarUrl: publicPlayerAvatarUrl(ruby, sessionId),
+      }, playerLine);
 
       if (isStaleChatEvent()) {
+        await refundPlayerChatTurnCharge(ruby, sessionId, preparedCharge, "stale chat turn");
         send("done", { type: "done", finishReason: "stale-turn" });
         return true;
       }
@@ -2420,6 +2559,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           });
         }
         if (isStaleChatEvent()) {
+          await refundPlayerChatTurnCharge(ruby, sessionId, preparedCharge, "stale chat turn");
           send("done", { type: "done", finishReason: "stale-turn" });
           return true;
         }
@@ -2429,12 +2569,19 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           replace: true,
         });
         if (line) {
+          turnSucceeded = true;
           chat.appendEvent(
             { sessionToken: token, faculty },
             { kind: "chime", text: `${responder.student.name} (classmate) chimed in: "${line}"` },
           );
         }
         if (intent !== "advance") {
+          if (turnSucceeded) {
+            await completePlayerChatTurnCharge(ruby, sessionId, preparedCharge);
+          } else {
+            await refundPlayerChatTurnCharge(ruby, sessionId, preparedCharge, "chat produced no usable response");
+            send("error", { type: "error", message: "Chat failed before a response. Stars were refunded.", refunded: true });
+          }
           send("done", { type: "done", finishReason: "student-response" });
           return true;
         }
@@ -2460,7 +2607,19 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           maxTokens: 220,
           isStale: isStaleChatEvent,
         })) {
+          const failureReason = chatStreamFailureReason(ev);
+          if (failureReason) {
+            turnFailure = failureReason;
+            if (ev.type === "error") continue;
+          }
+          if (chatStreamEventSucceeded(ev)) turnSucceeded = true;
           send(ev.type, ev);
+        }
+        if (turnFailure || !turnSucceeded) {
+          await refundPlayerChatTurnCharge(ruby, sessionId, preparedCharge, turnFailure || "chat produced no usable response");
+          send("error", { type: "error", message: `${turnFailure || "Chat failed before a response."} Stars were refunded.`, refunded: true });
+        } else {
+          await completePlayerChatTurnCharge(ruby, sessionId, preparedCharge);
         }
         return true;
       }
@@ -2481,6 +2640,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         isStale: isStaleChatEvent,
         toolAccessGuard: guestToolAccessGuard(ruby, stateKey, guestAccess),
       })) {
+        const failureReason = chatStreamFailureReason(ev);
+        if (failureReason) {
+          turnFailure = failureReason;
+          if (ev.type === "error") continue;
+        }
+        if (chatStreamEventSucceeded(ev)) turnSucceeded = true;
         if (ev.type === "tool") {
           if (toolPlacedFreshQuestion(ev)) questionPosted = true;
           if (ev.tool === "handoff_faculty" && ev.result.ok) handoffFired = true;
@@ -2501,6 +2666,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
               result: { ok: true, message: "fallback: auto-posed next question (model narrated manual without tool)" },
               state: nextState,
             });
+            turnSucceeded = true;
             fallbackPosted = true;
           } catch (err) {
             log.event("chat.bank-exhausted", { faculty, trigger: "room-turn", reason: err instanceof Error ? err.message : String(err) });
@@ -2530,13 +2696,27 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             isStale: isStaleChatEvent,
             toolAccessGuard: guestToolAccessGuard(ruby, stateKey, guestAccess),
           })) {
+            const failureReason = chatStreamFailureReason(ev);
+            if (failureReason) {
+              turnFailure = failureReason;
+              if (ev.type === "error") continue;
+            }
+            if (chatStreamEventSucceeded(ev)) turnSucceeded = true;
             send(ev.type, ev);
           }
         }
       }
+      if (turnFailure || !turnSucceeded) {
+        await refundPlayerChatTurnCharge(ruby, sessionId, preparedCharge, turnFailure || "chat produced no usable response");
+        send("error", { type: "error", message: `${turnFailure || "Chat failed before a response."} Stars were refunded.`, refunded: true });
+      } else {
+        await completePlayerChatTurnCharge(ruby, sessionId, preparedCharge);
+      }
     } catch (err) {
       log.error("chat.room-turn-failed", err, { faculty });
-      send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
+      const message = err instanceof Error ? err.message : String(err);
+      await refundPlayerChatTurnCharge(ruby, sessionId, preparedCharge, message);
+      send("error", { type: "error", message: `${message} Stars were refunded.`, refunded: !!preparedCharge });
     } finally {
       end();
     }
@@ -2636,8 +2816,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       end();
       return true;
     }
+    let manualCharge: PlayerChatTurnCharge | null = null;
     if (manualPlayerLine) {
-      const charge = chargePlayerChatTurn(ruby, sessionId, {
+      const charge = preparePlayerChatTurnCharge(ruby, sessionId, {
         route: "manual-event",
         faculty,
         clientTurnSeq: body?.clientTurnSeq,
@@ -2650,6 +2831,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         end();
         return true;
       }
+      manualCharge = charge.charge;
     }
 
     // ── Teachers' Lounge: round-robin active faculty in a shared bucket. ───
@@ -2674,6 +2856,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         );
       }
       try {
+        let streamFailed: string | null = null;
+        let streamSucceeded = false;
         for (const speaker of order) {
           send("speaker", { facultyId: speaker });
           // The "Ruby goes first" kickoff is a per-turn directive for
@@ -2695,17 +2879,36 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             bucketKey: "lounge",
             userMessage: playerLine,
             authorName,
+            authorAvatarUrl: publicPlayerAvatarUrl(ruby, sessionId),
             disableTools: true,
             extraSystemContext: loungeSystem,
             systemEventNote: turnDirective,
             maxTokens: 220,
             isStale: isStaleChatEvent,
           })) {
+            const failureReason = chatStreamFailureReason(ev);
+            if (failureReason) {
+              streamFailed = failureReason;
+              if (ev.type === "error") continue;
+            }
+            if (chatStreamEventSucceeded(ev)) streamSucceeded = true;
             send(ev.type, ev);
           }
         }
+        if (manualCharge) {
+          if (streamFailed || !streamSucceeded) {
+            await refundPlayerChatTurnCharge(ruby, sessionId, manualCharge, streamFailed || "chat produced no usable response");
+            send("error", { type: "error", message: `${streamFailed || "Chat failed before a response."} Stars were refunded.`, refunded: true });
+          } else {
+            await completePlayerChatTurnCharge(ruby, sessionId, manualCharge);
+          }
+        } else if (streamFailed) {
+          send("error", { type: "error", message: streamFailed });
+        }
       } catch (err) {
-        send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
+        const message = err instanceof Error ? err.message : String(err);
+        await refundPlayerChatTurnCharge(ruby, sessionId, manualCharge, message);
+        send("error", { type: "error", message: manualCharge ? `${message} Stars were refunded.` : message, refunded: !!manualCharge });
       } finally {
         end();
       }
@@ -2843,6 +3046,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       send("speaker", { facultyId: faculty });
       let questionPosted = false;
       let handoffFired = false;
+      let streamFailed: string | null = null;
+      let streamSucceeded = false;
       const allowOpinionTool = true;  // opinion rounds are the spine now
       for await (const ev of streamTeacherAvatarTurn(chat, {
         apiKey,
@@ -2851,6 +3056,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         faculty,
         userMessage: playerLine,
         authorName,
+        authorAvatarUrl: publicPlayerAvatarUrl(ruby, sessionId),
         disableTools: disableToolsForTurn,
         allowOpinionTool,
         extraSystemContext,
@@ -2858,6 +3064,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         isStale: isStaleChatEvent,
         toolAccessGuard: guestToolAccessGuard(ruby, stateKey, guestAccess),
       })) {
+        const failureReason = chatStreamFailureReason(ev);
+        if (failureReason) {
+          streamFailed = failureReason;
+          if (ev.type === "error") continue;
+        }
+        if (chatStreamEventSucceeded(ev)) streamSucceeded = true;
         if (ev.type === "tool") {
           if (toolPlacedFreshQuestion(ev)) questionPosted = true;
           if (ev.tool === "handoff_faculty" && ev.result.ok) handoffFired = true;
@@ -2884,6 +3096,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
               result: { ok: true, message: `fallback: auto-posed next question (model narrated ${trigger} without tool)` },
               state,
             });
+            streamSucceeded = true;
             fallbackPosted = true;
           } catch (err) {
             log.event("chat.bank-exhausted", { faculty, trigger, reason: err instanceof Error ? err.message : String(err) });
@@ -2913,13 +3126,31 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             isStale: isStaleChatEvent,
             toolAccessGuard: guestToolAccessGuard(ruby, stateKey, guestAccess),
           })) {
+            const failureReason = chatStreamFailureReason(ev);
+            if (failureReason) {
+              streamFailed = failureReason;
+              if (ev.type === "error") continue;
+            }
+            if (chatStreamEventSucceeded(ev)) streamSucceeded = true;
             send(ev.type, ev);
           }
         }
       }
+      if (manualCharge) {
+        if (streamFailed || !streamSucceeded) {
+          await refundPlayerChatTurnCharge(ruby, sessionId, manualCharge, streamFailed || "chat produced no usable response");
+          send("error", { type: "error", message: `${streamFailed || "Chat failed before a response."} Stars were refunded.`, refunded: true });
+        } else {
+          await completePlayerChatTurnCharge(ruby, sessionId, manualCharge);
+        }
+      } else if (streamFailed) {
+        send("error", { type: "error", message: streamFailed });
+      }
     } catch (err) {
       log.error("chat.event-failed", err, { faculty, trigger });
-      send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
+      const message = err instanceof Error ? err.message : String(err);
+      await refundPlayerChatTurnCharge(ruby, sessionId, manualCharge, message);
+      send("error", { type: "error", message: manualCharge ? `${message} Stars were refunded.` : message, refunded: !!manualCharge });
     } finally {
       end();
     }
@@ -2988,7 +3219,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     }
     const playerText = body?.playerText?.trim() || undefined;
     if (playerText && faculty && body?.recordPlayerText) {
-      chat.appendPlayerMessage({ sessionToken: token, faculty, authorName }, playerText);
+      chat.appendPlayerMessage({
+        sessionToken: token,
+        faculty,
+        authorName,
+        authorAvatarUrl: publicPlayerAvatarUrl(ruby, sessionId),
+      }, playerText);
     }
     if (playerText && faculty) {
       chat.appendEvent(

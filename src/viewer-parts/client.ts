@@ -943,6 +943,7 @@ export function runViewerClient(bootstrap) {
       m && m.faculty,
       m && m.content,
       m && m.authorName,
+      m && m.avatarUrl,
       m && m.isSelf ? "self" : "other",
       m && m.tool,
       m && m.result && m.result.ok ? "ok" : "",
@@ -1027,9 +1028,18 @@ export function runViewerClient(bootstrap) {
     if (intent === "lounge") return "lounge";
     return "player-chat";
   }
+  function setPaidChatPendingFeedback() {
+    if (!els.nextBtn || els.nextBtn.hidden) return;
+    const cost = formatWholeNumber(nextChatCost(lastTelemetry));
+    els.nextBtn.textContent = "Chatting...";
+    els.nextBtn.title = "Reserving " + cost + " Merit Stars. Refunded if chat fails.";
+  }
   async function runPlayerChatTurn(intent, extraContext) {
     const manualTurn = turnController.beginManual();
-    if (!manualTurn) return;
+    if (!manualTurn) {
+      appendSystem("Chat is already working.");
+      return;
+    }
     try {
       if (!teacherChatEnabled()) {
         const playerLine = playerChatLine(intent);
@@ -1037,6 +1047,7 @@ export function runViewerClient(bootstrap) {
         appendSystem(intent === "hint" ? "Answer the board to continue. Connect AI for teacher hints." : "Connect AI for teacher replies.");
         return;
       }
+      setPaidChatPendingFeedback();
       const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || "ruby";
       const streamGuard = turnController.nextStreamGuard(targetFaculty);
       const context = Object.assign({}, extraContext || {}, {
@@ -1052,6 +1063,7 @@ export function runViewerClient(bootstrap) {
       await consumeSseStream(r, streamGuard);
     } finally {
       manualTurn.finish();
+      if (lastTelemetry) updateChatAction(deriveViewMode(lastTelemetry));
     }
   }
   function syncPlayerMessageHeaders() {
@@ -1560,8 +1572,8 @@ export function runViewerClient(bootstrap) {
     if (!studentId) return null;
     return apiBase + "/assets/students/" + encodeURIComponent(studentId) + "-face.png";
   }
-  function appendMsg({ kind, name, body, color, facultyId, studentId }) {
-    let avatarImgSrc = null;
+  function appendMsg({ kind, name, body, color, facultyId, studentId, avatarUrl }) {
+    let avatarImgSrc = avatarUrl || null;
     if (kind === "teacher" && facultyId) avatarImgSrc = teacherSmallAvatarUrl(facultyId);
     else if (kind === "student" && studentId) avatarImgSrc = studentStickerUrl(studentId);
     else if (kind === "you" && lastTelemetry?.character?.portraitDataUrl) avatarImgSrc = lastTelemetry.character.portraitDataUrl;
@@ -4268,13 +4280,22 @@ export function runViewerClient(bootstrap) {
     }
     // When the round clock expired but the room-idle DM turn hasn't resolved
     // the board yet, suppress extra chat turns — the teacher is already on it.
-    if (lastTelemetry && lastTelemetry.active_round && lastTelemetry.active_round.idleTriggered && !lastTelemetry.active_round.resolved) return;
-    if (turnController.isBusy()) return;
+    if (lastTelemetry && lastTelemetry.active_round && lastTelemetry.active_round.idleTriggered && !lastTelemetry.active_round.resolved) {
+      appendSystem("Teacher is already resolving this board.");
+      return;
+    }
+    if (turnController.isBusy()) {
+      appendSystem("Chat is already working.");
+      return;
+    }
     const now = Date.now();
     if (now - lastChatButtonAt < 900) return;
     lastChatButtonAt = now;
     const buttonTurn = turnController.beginButtonAction();
-    if (!buttonTurn) return;
+    if (!buttonTurn) {
+      appendSystem("Chat is already working.");
+      return;
+    }
     try {
       const phase = telemetryPhase(lastTelemetry);
       if (!teacherChatEnabled()) {
@@ -9196,6 +9217,7 @@ export function runViewerClient(bootstrap) {
             name: isSelf ? playerDisplayName() : (m.authorName || "Student"),
             body: m.content,
             color: isSelf ? "var(--accent)" : "#3aa3e0",
+            avatarUrl: m.avatarUrl || null,
           });
         }
         else if (m.role === "assistant" && m.content) {
@@ -9334,7 +9356,8 @@ export function runViewerClient(bootstrap) {
           refreshSessionAfterStreamEvent();
           streamMsgEl = null;
         } else if (event === "error") {
-          appendSystem("error · " + (parsed.message || "unknown"));
+          const message = parsed && parsed.message ? parsed.message : "unknown";
+          appendSystem((parsed && parsed.refunded ? "chat failed · " : "error · ") + message);
           refreshSessionAfterStreamEvent();
           playerStreamMsgEl = null;
           studentStreamMsgEl = null;
@@ -9356,7 +9379,10 @@ export function runViewerClient(bootstrap) {
   async function sendChatMessage(text) {
     if (!teacherChatEnabled() || !text.trim()) return;
     const agentTurn = turnController.beginAgent(false);
-    if (!agentTurn) return;
+    if (!agentTurn) {
+      appendSystem("Chat is already working.");
+      return;
+    }
     // While the room-idle DM turn is in progress (clock expired, round not
     // yet resolved), hold player chat so it doesn't race the teacher.
     if (lastTelemetry && lastTelemetry.active_round && lastTelemetry.active_round.idleTriggered && !lastTelemetry.active_round.resolved) {
