@@ -29,6 +29,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   if (activeRuby) await activeRuby.stop();
   await rm(tmpDir, { recursive: true, force: true });
@@ -79,6 +80,11 @@ function completedClassRecord(
     completedAt: Date.now(),
     updatedAt: Date.now(),
   };
+}
+
+function usePublicWorldFixtureTime(now: number): void {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(now);
 }
 
 function serviceStateOnlyStore(record: StoredServiceStateRecord | StoredServiceStateRecord[]): StateStoreLike {
@@ -2175,6 +2181,7 @@ describe("RubyHighService Phase 1", () => {
   it("exposes shared live-room goal progress through the public world feed", async () => {
     const { ruby } = await makeServices();
     const now = Date.UTC(2026, 5, 15, 12);
+    usePublicWorldFixtureTime(now + 60_000);
 
     const first = attachTestCharacter(ruby, "test:world-room-goal-a");
     first.sessionId = "test:world-room-goal-a";
@@ -2424,6 +2431,7 @@ describe("RubyHighService Phase 1", () => {
   it("uses term progress to reduce the next live-room goal target", async () => {
     const { ruby } = await makeServices();
     const start = Date.UTC(2026, 5, 15, 12);
+    usePublicWorldFixtureTime(start + 3 * 24 * 60 * 60 * 1000 + 60_000);
     const sessions = ["test:term-room-a", "test:term-room-b", "test:term-room-c"].map((sid, index) => {
       const state = attachTestCharacter(ruby, sid);
       state.sessionId = sid;
@@ -2763,6 +2771,7 @@ describe("RubyHighService Phase 1", () => {
   it("replays sanitized public world events from durable service state without private sessions", async () => {
     const { ruby } = await makeServices();
     const now = Date.UTC(2026, 5, 15, 12);
+    usePublicWorldFixtureTime(now + 60_000);
     const state = attachTestCharacter(ruby, "test:world-public-event-log");
     state.sessionId = "test:world-public-event-log";
     state.currentGrade = "10";

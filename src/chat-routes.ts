@@ -655,6 +655,58 @@ function buildResolvedAnswerBriefing(args: {
   };
 }
 
+function buildOpenRoundIdleBriefing(args: {
+  state: QuizState;
+  playerName: string;
+}): {
+  eventText: string;
+  extraSystemContext: string;
+} {
+  const { state, playerName } = args;
+  const q = state.current;
+  const round = state.activeRound;
+  const options = cleanOptions(q?.options);
+  const prompt = q?.prompt;
+  const questionId = q?.id ?? round?.questionId ?? "unknown";
+  const lockedNpcs = (round?.npcs ?? []).filter((entry) => entry.answeredAt != null);
+  const pendingNpcs = (round?.npcs ?? []).filter((entry) => entry.answeredAt == null);
+  const lockedNames = lockedNpcs
+    .map((entry) => STUDENTS[entry.studentId]?.name ?? entry.studentId)
+    .filter(Boolean);
+  const pendingNames = pendingNpcs
+    .map((entry) => STUDENTS[entry.studentId]?.name ?? entry.studentId)
+    .filter(Boolean);
+  const eventText = [
+    prompt ? `The soft answer window elapsed on "${clipped(prompt, 180)}".` : "The soft answer window elapsed.",
+    `${playerName} can still answer.`,
+    lockedNames.length > 0 ? `Classmates already locked: ${lockedNames.join(", ")}.` : "",
+  ].filter(Boolean).join(" ");
+  const contextLines = [
+    "SOFT IDLE SNAPSHOT for this live card.",
+    "The timer is soft: the player can still answer. Do not resolve the round, do not reveal the correct answer, and do not put a new question on the board.",
+    "Classmates who answered before the player may affect race/class standing once the player submits.",
+    `Question ID: ${questionId}`,
+    prompt ? `Question: ${prompt}` : "",
+  ];
+  if (options) {
+    contextLines.push("Visible answer choices:");
+    for (const key of ["A", "B", "C", "D"]) {
+      if (options[key]) contextLines.push(`  ${key}) ${options[key]}`);
+    }
+  }
+  contextLines.push(`${playerName}'s answer: not submitted yet.`);
+  if (lockedNames.length > 0) {
+    contextLines.push(`Classmates already locked: ${lockedNames.join(", ")}.`);
+  }
+  if (pendingNames.length > 0) {
+    contextLines.push(`Classmates still thinking: ${pendingNames.join(", ")}.`);
+  }
+  return {
+    eventText,
+    extraSystemContext: contextLines.filter(Boolean).join("\n"),
+  };
+}
+
 function answerGradedContextMatchesReveal(state: QuizState, context: AnswerGradedContext | undefined): boolean {
   const questionId = cleanText(context?.questionId);
   if (!questionId) return true;
@@ -1440,8 +1492,7 @@ function openSse(response: unknown): SseStream {
 /** Whether the AI teacher may NOT call tools this turn.
  * Priority order:
  *  1. Class report always blocks tools (post-class board is read-only).
- *  2. room-idle always gets tools — it must call pick_from_bank even when
- *     the scheduler owns the board.
+ *  2. room-idle is a soft-timeout nudge while the current board stays live.
  *  3. Scheduler ownership blocks tools for every other trigger.
  * Callers may still set disableToolsForTurn=true afterwards for
  * graduation / hint / report overrides that are computed mid-branch. */
@@ -1451,7 +1502,7 @@ function shouldDisableTools(opts: {
   classReportBlocksBoard: boolean;
 }): boolean {
   if (opts.classReportBlocksBoard) return true;
-  if (opts.trigger === "room-idle") return false;
+  if (opts.trigger === "room-idle") return true;
   return opts.schedulerControlsBoard;
 }
 
@@ -2999,9 +3050,6 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         directive = `React in ONE short sentence to the round that just resolved: ${pickedLine} Name whoever did something interesting (the player or a classmate by name). Do not call tools or put another question on the board; the player will continue when ready.`;
       }
     } else if (trigger === "room-idle") {
-      // disableToolsForTurn is already correct: shouldDisableTools() lets
-      // room-idle override the scheduler's block while still respecting the
-      // class report block. No manual override needed here.
       const state = ruby.getOrCreate(sessionId);
       // Guard against concurrent or duplicate room-idle requests for the same round.
       if (!state.activeRound || state.activeRound.resolved || !state.activeRound.idleTriggered) {
@@ -3010,14 +3058,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         return true;
       }
       const playerName = state.character?.name ?? "the student";
-      // forceAdvanceRound must come before buildResolvedAnswerBriefing because
-      // the briefing reads state.lastReveal, which is only populated after the
-      // round resolves. The ordering is intentional: the teacher's directive
-      // describes a just-forfeited round, not an open one.
-      ruby.forceAdvanceRound(sessionId);
-      const resolvedState = ruby.getOrCreate(sessionId);
-      const resolved = buildResolvedAnswerBriefing({ state: resolvedState, playerName });
-      extraSystemContext = resolved.extraSystemContext;
+      const idle = buildOpenRoundIdleBriefing({ state, playerName });
+      extraSystemContext = idle.extraSystemContext;
       // Layer essay context on top.
       const essayCtx2 = buildEssayContext(state);
       if (essayCtx2) extraSystemContext = extraSystemContext
@@ -3025,11 +3067,10 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         : essayCtx2;
       chat.appendEvent(
         { sessionToken: token, faculty },
-        { kind: "answer-resolved", text: `Nobody answered in time. ${resolved.eventText}` },
+        { kind: "note", text: idle.eventText },
       );
-      directive = classReportBlocksBoard
-        ? `Nobody answered the question in time. React briefly as yourself — call on someone by name, make it a moment — then acknowledge the class report on the board. Do not call tools.`
-        : `Nobody answered the question in time. This is your DM moment: call on a student by name, make it a beat, then put the next question on the board. ${nextBoardInstruction(bank, "Use pick_from_bank for the next question.")}`;
+      disableToolsForTurn = true;
+      directive = `The answer window elapsed, but it is soft. React in ONE short sentence as yourself: nudge ${playerName} to answer when ready, and if useful mention that classmates may already be locked in. Do not reveal the correct answer, do not resolve the round, and do not call tools or put another question on the board.`;
     } else if (trigger === "manual") {
       const manualPlan = manualClassroomTurnPlan({
         ruby,
@@ -3082,7 +3123,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       // when available or asking it once for a custom practice challenge.
       const manualAdvanceNeedsFreshQuestion = trigger === "manual" && contextIntent === "advance" && !classReportBlocksBoard;
       const needsFreshQuestion = manualAdvanceNeedsFreshQuestion
-        || (!disableToolsForTurn && (trigger === "channel-enter" || trigger === "room-idle"));
+        || (!disableToolsForTurn && trigger === "channel-enter");
       if (needsFreshQuestion && !questionPosted && !handoffFired && activeFacultyMatches(ruby, sessionId, faculty)) {
         const agentSessionId = getSessionId(runtime, ctx.cookieHeader);
         const latestBank = ruby.questionBankStatus(agentSessionId, faculty);

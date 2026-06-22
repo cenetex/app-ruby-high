@@ -63,6 +63,38 @@ describe("viewer race strip pure helpers", () => {
     ]);
   });
 
+  it("shows an open soft timer after the idle window without timing out the player", () => {
+    const view = raceStripView({
+      current: { id: "q-live" },
+      active_round: {
+        questionId: "q-live",
+        remainingMs: 0,
+        idleTriggered: true,
+        resolved: false,
+        player: { isLocked: false, picked: null, timedOut: false },
+        npcs: [
+          { studentId: "lyra", isLocked: true, pick: "A", isCorrect: null },
+        ],
+      },
+      lastReveal: null,
+    }, students, ["lyra"], "Mina");
+
+    expect(view?.timer).toEqual({ label: "open", warn: false, danger: false, locked: false, soft: true });
+    expect(view?.cards[0]).toMatchObject({
+      id: "player",
+      isLocked: false,
+      isTimedOut: false,
+      pickText: "",
+      showThinking: true,
+    });
+    expect(view?.cards[1]).toMatchObject({
+      id: "lyra",
+      isLocked: true,
+      pickText: "✓",
+      showThinking: false,
+    });
+  });
+
   it("builds resolved race cards with pick, correctness, and timeout display", () => {
     const view = raceStripView({
       current: { id: "q-live" },

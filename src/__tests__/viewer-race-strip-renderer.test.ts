@@ -105,6 +105,7 @@ describe("race strip renderer", () => {
     expect(calls).toEqual([{ round: true }, [{ id: "noor" }], ["noor"], "Mina"]);
     expect(timerLabel.textContent).toBe("4s");
     expect([...timerPill.classList.values].sort()).toEqual(["is-danger"]);
+    expect(timerPill.title).toBe("");
     expect(row.children.map((child) => child.className)).toEqual([
       "race-card is-locked",
       "race-card",
@@ -140,6 +141,7 @@ describe("race strip renderer", () => {
     const timerPill = new FakeElement("span");
     timerPill.classList.add("is-warn");
     timerPill.classList.add("is-danger");
+    timerPill.classList.add("is-soft");
     const row = new FakeElement("div");
     const renderer = createRaceStripRenderer({
       document: createDocument(),
@@ -168,7 +170,29 @@ describe("race strip renderer", () => {
 
     expect(timerLabel.textContent).toBe("done");
     expect([...timerPill.classList.values]).toEqual(["is-locked"]);
+    expect(timerPill.title).toBe("");
     expect(row.children[0]!.children[2]!.title).toBe("Timed out");
     expect([...row.children[0]!.classList.values]).toEqual(["is-wrong"]);
+  });
+
+  it("marks the timer as soft after the answer window stays open", () => {
+    const timerLabel = new FakeElement("span");
+    const timerPill = new FakeElement("span");
+    const row = new FakeElement("div");
+    const renderer = createRaceStripRenderer({
+      document: createDocument(),
+      timerLabel: timerLabel as unknown as HTMLElement,
+      timerPill: timerPill as unknown as HTMLElement,
+      row: row as unknown as HTMLElement,
+      viewFor: () => panelView({
+        timer: { label: "open", warn: false, danger: false, locked: false, soft: true },
+      }),
+    });
+
+    renderer.render({}, { students: [], visibleStudentIds: [], playerName: "You" });
+
+    expect(timerLabel.textContent).toBe("open");
+    expect([...timerPill.classList.values]).toEqual(["is-soft"]);
+    expect(timerPill.title).toBe("Timer is soft: answer when ready. Classmates may already be locked in.");
   });
 });

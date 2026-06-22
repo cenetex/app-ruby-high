@@ -594,8 +594,8 @@ export class ChatService extends Service {
                 call,
                 liveState,
                 boardPostAcceptedThisBatch
-                  ? "Question already posted by this turn; wait for the student answer or timeout before changing it."
-                  : "Question already on the board; wait for the student answer or timeout before changing it.",
+                  ? "Question already posted by this turn; wait for the student answer before changing it."
+                  : "Question already on the board; wait for the student answer before changing it.",
               )
             : await this.dispatchTool(opts.agentSessionId, call);
         if (!turnStillOwnsRoom) staleRoomTurn = true;
@@ -1700,9 +1700,9 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
   // re-read — in that case .current is the new question and lastReveal
   // points at the previous one; the WAITING branch is correct.
   const round = state.activeRound;
-  // A round may have expired on the clock but not yet been resolved by the
-  // server tick. Treat clock-expired rounds as timed out so the AI doesn't
-  // tell students to keep waiting.
+  // A round may pass its answer window without being resolved. That is a soft
+  // timeout: classmates may already be locked in, but the player can still
+  // answer and the teacher must not reveal the correct answer.
   const clockExpired = !!round && round.questionId === q.id && !round.resolved &&
     !!round.expiresAt && Date.now() >= round.expiresAt;
   const resolvedThisQ =
@@ -1718,8 +1718,8 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
       ]
     : clockExpired
     ? [
-        "BOARD STATUS: TIMED_OUT.",
-        "The timer has expired. No student answered in time. The round is being resolved server-side.",
+        "BOARD STATUS: SOFT_IDLE.",
+        "The soft answer window has elapsed. The player can still answer; do not reveal the correct answer or put another question on the board.",
       ]
     : [
         "BOARD STATUS: WAITING_FOR_STUDENT_ANSWER.",

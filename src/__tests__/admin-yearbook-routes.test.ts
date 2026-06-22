@@ -336,6 +336,8 @@ describe("cohort route", () => {
 
   it("refreshes explicit grade cohorts from durable sessions", async () => {
     const now = Date.UTC(2026, 5, 15, 12);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now + 60_000);
     const external = structuredClone(ruby.getOrCreate("test:cohort-template")) as QuizState;
     external.sessionId = "test:cohort-external";
     external.currentGrade = "10";
@@ -1521,6 +1523,8 @@ describe("admin metrics route", () => {
 
   it("serves authenticated public world moderation reports without raw session ids", async () => {
     const now = Date.UTC(2026, 5, 15, 14);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now + 60_000);
     const sessionId = "rh:user:moderation-reporter";
     const secondSessionId = "rh:user:moderation-second-reporter";
     attachCohortStudent(sessionId, "Report Noor", "10", "A");

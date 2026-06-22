@@ -1875,15 +1875,17 @@ export function worldFeedEventsUrl(apiBase: unknown, opts: { force?: boolean; la
 
 // ── race strip view helpers ─────────────────────────────────────────
 export function raceStripView(t: unknown, students: unknown, visibleStudentIds: unknown, playerName: unknown): {
-  timer: { label: string; warn: boolean; danger: boolean; locked: boolean };
+  timer: { label: string; warn: boolean; danger: boolean; locked: boolean; soft?: boolean };
   cards: RaceStripCardView[];
 } | null {
   const telemetry = t && typeof t === "object" ? t as LooseRecord : {};
   const round = telemetry.active_round && typeof telemetry.active_round === "object" ? telemetry.active_round as LooseRecord : null;
   const current = telemetry.current && typeof telemetry.current === "object" ? telemetry.current as LooseRecord : null;
   if (!round || !current || round.questionId !== current.id) return null;
-  const remainingS = Math.max(0, Math.ceil(Number(round.remainingMs ?? 0) / 1000));
   const resolved = !!round.resolved;
+  const remainingMs = Math.max(0, Number(round.remainingMs ?? 0));
+  const remainingS = Math.ceil(remainingMs / 1000);
+  const softExpired = !resolved && (!!round.idleTriggered || remainingMs <= 0);
   const visibleIds = new Set((Array.isArray(visibleStudentIds) ? visibleStudentIds : []).map((id) => String(id)));
   const studentList = Array.isArray(students) ? students : [];
   const studentById = new Map(studentList
@@ -1930,10 +1932,11 @@ export function raceStripView(t: unknown, students: unknown, visibleStudentIds: 
     });
   return {
     timer: {
-      label: resolved ? "done" : remainingS + "s",
-      warn: !resolved && remainingS <= 10 && remainingS > 5,
-      danger: !resolved && remainingS <= 5,
+      label: resolved ? "done" : softExpired ? "open" : remainingS + "s",
+      warn: !resolved && !softExpired && remainingS <= 10 && remainingS > 5,
+      danger: !resolved && !softExpired && remainingS <= 5,
       locked: resolved,
+      ...(softExpired ? { soft: true } : {}),
     },
     cards,
   };

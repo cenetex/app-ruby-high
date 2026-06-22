@@ -5567,11 +5567,14 @@ export class RubyHighService extends Service {
   private assertBoardMutationAllowed(state: QuizState, action: "post" | "clear"): void {
     // getOrCreate() ticks expired rounds before mutators run. If this is still
     // unresolved, the board is live and the scheduler/AI must wait for the
-    // player answer or timer resolution before replacing it.
+    // player answer before replacing it. The timer is only a soft idle window.
     if (state.activeRound && !state.activeRound.resolved) {
       const remaining = Math.max(0, state.activeRound.expiresAt - Date.now());
       const verb = action === "clear" ? "clear the board" : "post another question";
-      throw new Error(`Cannot ${verb} while a question is live. Wait for the answer or timeout (${Math.ceil(remaining / 1000)}s left).`);
+      const waitDetail = remaining > 0
+        ? ` (${Math.ceil(remaining / 1000)}s before the soft window)`
+        : "";
+      throw new Error(`Cannot ${verb} while a question is live. Wait for the student answer${waitDetail}.`);
     }
   }
 

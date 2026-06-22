@@ -48,6 +48,7 @@ export const VIEWER_CSS = `
     --board-frame-light: #8a5a30;
     --ink: #f4f4f0;
     --ink-soft: rgba(244, 244, 240, 0.72);
+    --board-font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
     --shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
     --rail-w: 60px;
     --channels-w: 280px;
@@ -2162,6 +2163,7 @@ export const VIEWER_CSS = `
   }
   .timer-pill.is-warn { background: #f0922a; }
   .timer-pill.is-danger { background: #d22a2a; animation: timer-pulse 0.7s ease-in-out infinite; }
+  .timer-pill.is-soft { background: var(--bg-elev-2); }
   @keyframes timer-pulse {
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.05); }
@@ -2261,7 +2263,7 @@ export const VIEWER_CSS = `
     border-radius: 8px;
     background: rgba(5, 31, 20, 0.26);
     color: var(--ink);
-    font-family: "RubyHighCraftyGirls", "Patrick Hand", "Segoe Print", cursive;
+    font-family: var(--board-font);
     box-shadow: inset 0 0 12px rgba(0,0,0,0.10);
     min-width: 0;
   }
@@ -2557,9 +2559,9 @@ export const VIEWER_CSS = `
     border-radius: 6px;
     min-height: 100px;
     padding: 16px 18px;
-    font-family: "RubyHighCraftyGirls", "Caveat", "Patrick Hand", "Segoe Print", cursive;
-    font-size: 22px;
-    line-height: 1.3;
+    font-family: var(--board-font);
+    font-size: 20px;
+    line-height: 1.38;
     box-shadow: inset 0 0 60px rgba(0,0,0,0.35);
     min-width: 0;
     overflow-y: auto;
@@ -2577,18 +2579,18 @@ export const VIEWER_CSS = `
     .board-frame-host:has(.teacher-figure:not([hidden])) .board { padding-right: 136px; }
   }
   .blackboard-panel[data-faculty="ruby"] .board {
-    font-family: "RubyHighCaveat", "Caveat", "Patrick Hand", "Segoe Print", cursive;
-    font-size: 26px;
-    line-height: 1.22;
+    font-family: var(--board-font);
+    font-size: 20px;
+    line-height: 1.38;
   }
   .blackboard-panel[data-faculty="sally-science"] .board {
-    font-family: "RubyHighSchoolbell", "Patrick Hand", "Segoe Print", cursive;
-    font-size: 21px;
-    line-height: 1.42;
+    font-family: var(--board-font);
+    font-size: 20px;
+    line-height: 1.38;
   }
   .blackboard-panel[data-faculty="professor-edward"] .board {
-    font-family: "RubyHighGiveYouGlory", "Segoe Print", cursive;
-    font-size: 24px;
+    font-family: var(--board-font);
+    font-size: 20px;
     line-height: 1.38;
   }
   .board .prompt {
@@ -4946,7 +4948,7 @@ export const VIEWER_CSS = `
   }
   .board .graduation-board-title {
     color: var(--ink);
-    font-family: "RubyHighSchoolbell", "Patrick Hand", "Segoe Print", cursive;
+    font-family: var(--board-font);
     font-size: clamp(24px, 4vw, 38px);
     line-height: 1.04;
   }
@@ -5074,13 +5076,13 @@ export const VIEWER_CSS = `
   }
   .board .graduation-ceremony.is-on-board .graduation-title {
     color: var(--ink);
-    font-family: "RubyHighSchoolbell", "Patrick Hand", "Segoe Print", cursive;
+    font-family: var(--board-font);
     font-size: 30px;
     line-height: 1.08;
   }
   .board .graduation-ceremony.is-on-board .graduation-note {
     color: var(--ink-soft);
-    font-family: "RubyHighCraftyGirls", "Patrick Hand", "Segoe Print", cursive;
+    font-family: var(--board-font);
     font-size: 18px;
     line-height: 1.25;
     margin: 8px auto 0;
@@ -5161,7 +5163,7 @@ export const VIEWER_CSS = `
     align-self: center;
   }
   .board .class-report-title {
-    font-family: "RubyHighSchoolbell", "Patrick Hand", "Segoe Print", cursive;
+    font-family: var(--board-font);
     font-size: clamp(18px, 3vw, 27px);
     line-height: 1.05;
     white-space: nowrap;
@@ -5171,7 +5173,7 @@ export const VIEWER_CSS = `
   }
   .board .class-report-subtitle {
     color: var(--ink-soft);
-    font-family: "RubyHighCraftyGirls", "Patrick Hand", "Segoe Print", cursive;
+    font-family: var(--board-font);
     font-size: clamp(12px, 1.9vw, 16px);
     line-height: 1.14;
     margin-top: 4px;
@@ -7253,12 +7255,12 @@ export const VIEWER_CSS = `
     }
     .blackboard-panel[data-faculty="ruby"] .board,
     .blackboard-panel[data-faculty="professor-edward"] .board {
-      font-size: 19px;
-      line-height: 1.28;
+      font-size: 18px;
+      line-height: 1.35;
     }
     .blackboard-panel[data-faculty="sally-science"] .board {
       font-size: 18px;
-      line-height: 1.33;
+      line-height: 1.35;
     }
     .blackboard-panel.is-long-prompt .board {
       max-height: 29dvh;

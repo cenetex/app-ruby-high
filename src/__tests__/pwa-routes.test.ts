@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { access, mkdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
 import { handleAppRoutes, type RouteContext } from "../routes.js";
 import { assetCacheControlFor } from "../routes/assets.js";
@@ -167,6 +167,19 @@ describe("PWA surface", () => {
     expect(body.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true);
     expect(body.subarray(12, 16).toString("ascii")).toBe("IHDR");
     expect(body[25]).toBe(6);
+  });
+
+  it("keeps built-in student face portraits square PNGs", async () => {
+    const studentIds = ["lyra", "sami", "ravi", "indra", "mika", "noor"] as const;
+    const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+    for (const studentId of studentIds) {
+      const body = await readFile(new URL(`../../assets/students/${studentId}-face.png`, import.meta.url));
+      expect(body.subarray(0, 8).equals(pngSignature), `${studentId}-face.png should be encoded as PNG`).toBe(true);
+      expect(body.subarray(12, 16).toString("ascii"), `${studentId}-face.png should start with IHDR`).toBe("IHDR");
+      expect(body.readUInt32BE(16), `${studentId}-face.png width`).toBe(1024);
+      expect(body.readUInt32BE(20), `${studentId}-face.png height`).toBe(1024);
+    }
   });
 
   it("serves generated portrait assets through the app route", async () => {

@@ -2818,6 +2818,76 @@ describe("chat event context", () => {
     expect(promptText).not.toContain("answered A");
     expect(promptText).not.toContain("Player answer: A");
   });
+
+  it("treats room-idle as a soft timeout without resolving the board", async () => {
+    const token = "route-room-idle-soft-token";
+    auth.injectSessionForTest(token, {
+      userId: "route-room-idle-soft-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Room Idle Soft",
+    });
+    const sessionId = auth.stateKeyForToken(token);
+    grantChatStars(sessionId);
+    ruby.createCharacter(sessionId, {
+      name: "Mina",
+      playbookId: "outsider",
+      stats: { head: 2, heart: 1, hustle: 0, honor: -1 },
+      arcAnswer: "I need time to actually read the question.",
+      personality: "Careful, slower-reading, and allergic to fake certainty.",
+    });
+    ruby.pickAndPose(sessionId, { faculty: "ruby" });
+    const state = ruby.getOrCreate(sessionId);
+    const questionId = state.current!.id;
+    state.activeRound!.startedAt = Date.now() - 30_000;
+    state.activeRound!.expiresAt = Date.now() - 1;
+    ruby.getOrCreate(sessionId);
+    expect(ruby.getOrCreate(sessionId).activeRound?.idleTriggered).toBe(true);
+
+    (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
+      const [input, init] = args;
+      capturedChatRequest = {
+        url: typeof input === "string" ? input : input.url,
+        body: init?.body ? JSON.parse(init.body) : null,
+      };
+      return new Response(buildSseChunk("Mina, take the extra beat and answer when ready.") as BodyInit, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/event"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          faculty: "ruby",
+          trigger: "room-idle",
+          context: { grade: "9", questionId },
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(capturedChatRequest).not.toBeNull();
+    expect(capturedChatRequest.body.tools).toEqual([]);
+    const promptText = JSON.stringify(capturedChatRequest.body.messages);
+    expect(promptText).toContain("SOFT IDLE SNAPSHOT");
+    expect(promptText).toContain("The timer is soft: the player can still answer.");
+    expect(promptText).toContain("Do not reveal the correct answer");
+    expect(res.body).not.toContain("pick_from_bank");
+    expect(res.body).not.toContain("fallback: auto-posed next question");
+    const after = ruby.getOrCreate(sessionId);
+    expect(after.current?.id).toBe(questionId);
+    expect(after.lastReveal).toBeNull();
+    expect(after.activeRound?.resolved).toBe(false);
+    expect(after.activeRound?.idleTriggered).toBe(true);
+  });
 });
 
 describe("guest access gates", () => {

@@ -1,7 +1,7 @@
 import type { RaceStripCardView } from "./client-pure.js";
 
 export interface RaceStripPanelView {
-  timer: { label: string; warn: boolean; danger: boolean; locked: boolean };
+  timer: { label: string; warn: boolean; danger: boolean; locked: boolean; soft?: boolean };
   cards: RaceStripCardView[];
 }
 
@@ -35,6 +35,10 @@ export function createRaceStripRenderer(deps: RaceStripRendererDeps): RaceStripR
       deps.timerPill.classList.toggle("is-warn", view.timer.warn);
       deps.timerPill.classList.toggle("is-danger", view.timer.danger);
       deps.timerPill.classList.toggle("is-locked", view.timer.locked);
+      deps.timerPill.classList.toggle("is-soft", !!view.timer.soft);
+      deps.timerPill.title = view.timer.soft
+        ? "Timer is soft: answer when ready. Classmates may already be locked in."
+        : "";
     }
   }
 
