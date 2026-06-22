@@ -5,13 +5,11 @@ export interface ArcIndicatorRendererDeps {
   year?: HTMLElement | null;
   streak?: HTMLElement | null;
   subject?: HTMLElement | null;
-  score?: HTMLElement | null;
-  viewFor(telemetry: unknown, subjects: unknown, walletText: unknown): ArcIndicatorView;
+  viewFor(telemetry: unknown, subjects: unknown): ArcIndicatorView;
 }
 
 export interface ArcIndicatorRendererRenderOptions {
   subjects: unknown;
-  walletText: unknown;
 }
 
 export interface ArcIndicatorRenderer {
@@ -23,7 +21,7 @@ export function createArcIndicatorRenderer(deps: ArcIndicatorRendererDeps): ArcI
     render(telemetry: unknown, opts: ArcIndicatorRendererRenderOptions): void {
       const root = deps.root;
       if (!root) return;
-      const view = deps.viewFor(telemetry, opts.subjects, opts.walletText);
+      const view = deps.viewFor(telemetry, opts.subjects);
       if (view.hidden) {
         root.hidden = true;
         return;
@@ -39,7 +37,6 @@ export function createArcIndicatorRenderer(deps: ArcIndicatorRendererDeps): ArcI
         deps.subject.textContent = view.subjectText;
         deps.subject.classList.toggle("is-met", view.subjectMet);
       }
-      if (deps.score) deps.score.textContent = view.scoreText;
     },
   };
 }

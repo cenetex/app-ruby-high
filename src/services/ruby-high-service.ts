@@ -84,10 +84,12 @@ import {
   type DifficultyWeights,
   type EssayReport,
   type FacultyMember,
+  type FirstBellReport,
   type Grade,
   type GradeDiplomaCollectible,
   type GraduationPhotoCollectible,
   type GraduationReward,
+  type LastReveal,
   type MashAxis,
   type MashCard,
   type MashTickReason,
@@ -319,6 +321,8 @@ export const CHARACTER_SLOT_HALL_PASS_COST = 1;
 export const CHARACTER_SLOT_PHOTO_DAY_CREDITS = 1;
 export const WELCOME_HALL_PASS_GRANT = 5;
 export const WELCOME_HALL_PASS_GRANT_ID = "system:welcome-hall-passes:v1";
+const FIRST_BELL_EASY_QUESTION_COUNT = 3;
+const FIRST_BELL_DIFFICULTY_WEIGHTS: DifficultyWeights = { easy: 0.75, medium: 0.25, hard: 0 };
 const RUBY_HIGH_ASSET_PREFIX = "/api/apps/ruby-high/assets";
 const DIPLOMA_ASSET_VERSION = "ruby-high-grade-diplomas-v1";
 const DIPLOMA_GRADE_LABELS: Record<Grade, string> = {
@@ -388,11 +392,11 @@ function gradeDiplomaCollectibleFor(parts: {
   characterCreatedAt: number;
   grade: Grade;
   completedAt: number;
-  verdictQuote?: string | null;
+  teacherResponseQuote?: string | null;
 }): GradeDiplomaCollectible {
   const label = DIPLOMA_GRADE_LABELS[parts.grade] ?? `Grade ${parts.grade}`;
-  const verdictLine = parts.verdictQuote
-    ? `\n\n"${parts.verdictQuote}"`
+  const teacherResponseLine = parts.teacherResponseQuote
+    ? `\n\n"${parts.teacherResponseQuote}"`
     : "";
   return {
     kind: "grade-diploma",
@@ -401,11 +405,11 @@ function gradeDiplomaCollectibleFor(parts: {
       createdAt: parts.characterCreatedAt,
       grade: parts.grade,
       completedAt: parts.completedAt,
-      extra: parts.verdictQuote ?? undefined,
+      extra: parts.teacherResponseQuote ?? undefined,
     }),
     grade: parts.grade,
     title: `Ruby High ${label} Diploma`,
-    description: `${parts.characterName} completed ${label} at Ruby High.${verdictLine}`,
+    description: `${parts.characterName} completed ${label} at Ruby High.${teacherResponseLine}`,
     imageUrl: DIPLOMA_IMAGE_URL_BY_GRADE[parts.grade],
     issuedAt: parts.completedAt,
     assetVersion: DIPLOMA_ASSET_VERSION,
@@ -726,6 +730,7 @@ export interface RubyHighAnalyticsSnapshot {
       appOpenSessions: number;
       firstCharacterCreated: number;
       firstQuestionAnswered: number;
+      firstBellReportAwarded: number;
       firstDailyClassPassed: number;
       firstGradeCompleted: number;
     };
@@ -881,6 +886,7 @@ export interface RubyHighMetricEventsSnapshot {
   funnel: {
     firstCharacterCreated: number;
     firstQuestionAnswered: number;
+    firstBellReportAwarded: number;
     firstEssaySubmitted: number;
     firstDailyClassPassed: number;
     firstGradeCompleted: number;
@@ -889,6 +895,7 @@ export interface RubyHighMetricEventsSnapshot {
     appOpenSessions: number;
     firstCharacterCreated: number;
     firstQuestionAnswered: number;
+    firstBellReportAwarded: number;
     firstDailyClassPassed: number;
     firstGradeCompleted: number;
   };
@@ -6049,6 +6056,61 @@ export class RubyHighService extends Service {
     };
   }
 
+  private firstBellQuestionBiasApplies(state: QuizState): boolean {
+    return !!state.character && state.score.total < FIRST_BELL_EASY_QUESTION_COUNT;
+  }
+
+  private firstBellFacultyName(state: QuizState, facultyId: string): string {
+    return teacherById(facultyId)?.displayName
+      ?? facultyForSession(state).find((faculty) => faculty.id === facultyId)?.displayName
+      ?? facultyId;
+  }
+
+  private maybeAwardFirstBellReport(
+    state: QuizState,
+    question: Question,
+    reveal: LastReveal,
+    now = Date.now(),
+  ): FirstBellReport | null {
+    const ch = state.character;
+    if (!ch || ch.firstBellReport) return null;
+    const facultyId = question.faculty ?? state.faculty;
+    const pickedAnswer = reveal.answerText
+      ?? (reveal.forfeit ? "No answer" : question.options?.[reveal.picked])
+      ?? reveal.picked;
+    const correctAnswer = reveal.expectedAnswer
+      ?? question.expectedAnswer
+      ?? question.options?.[reveal.correct]
+      ?? reveal.correct;
+    const report: FirstBellReport = {
+      reportId: `first-bell:${createHash("sha256").update(`${state.sessionId}:${question.id}:${now}`).digest("hex").slice(0, 16)}`,
+      awardedAt: now,
+      grade: state.currentGrade ?? null,
+      facultyId,
+      facultyName: this.firstBellFacultyName(state, facultyId),
+      questionId: question.id,
+      prompt: question.prompt,
+      answerText: pickedAnswer,
+      correctAnswerText: correctAnswer,
+      wasCorrect: reveal.wasCorrect,
+      ...(reveal.encouragement ? { encouragement: reveal.encouragement } : {}),
+      ...(reveal.scoreAward ? { score: reveal.scoreAward.points } : {}),
+    };
+    ch.firstBellReport = report;
+    this.recordFunnelStep(state, "first_bell_report_awarded", {
+      faculty: facultyId,
+      grade: state.currentGrade ?? null,
+      wasCorrect: reveal.wasCorrect,
+    });
+    log.event("first-bell.report-awarded", {
+      sessionId: state.sessionId,
+      faculty: facultyId,
+      grade: state.currentGrade,
+      wasCorrect: reveal.wasCorrect,
+    });
+    return report;
+  }
+
   private mediaForQuestion(card: PackSourceCard): QuestionMediaAsset[] | undefined {
     const media = (card.media ?? [])
       .filter((asset) =>
@@ -6705,6 +6767,7 @@ export class RubyHighService extends Service {
           : { mode: "fuzzy" as const, score: 0 },
       } : {}),
     };
+    this.maybeAwardFirstBellReport(state, q, state.lastReveal, reviewAt);
     round.resolved = true;
     round.resolvedAt = Date.now();
     this.transition(state, { kind: "resolve-round" });
@@ -6866,10 +6929,10 @@ export class RubyHighService extends Service {
     // entries see fewer lines, the Senior entry sees all of them.
     const newResolutions = this.resolveMashAxesForGrade(ch, grade);
     const superlatives = this.buildMashSuperlativesFor(ch);
-    // Find the player's best opinion verdict for this grade to quote on the diploma.
+    // Find the player's best teacher response for this grade to quote on the diploma.
     const essayReports = Array.isArray(state.essayReports) ? state.essayReports : [];
     const playerReports = essayReports.filter((r) => r.grade === grade && r.passed && r.comment);
-    const bestVerdict = playerReports.length > 0
+    const bestTeacherResponse = playerReports.length > 0
       ? playerReports.reduce((best, r) => (r.score ?? 0) > (best.score ?? 0) ? r : best).comment
       : null;
 
@@ -6878,7 +6941,7 @@ export class RubyHighService extends Service {
       characterCreatedAt: ch.createdAt,
       grade,
       completedAt,
-      verdictQuote: bestVerdict,
+      teacherResponseQuote: bestTeacherResponse,
     });
     const photo = this.graduationPhotoCollectibleFor(state, ch, grade, completedAt, pending.photoImageUrl);
 
@@ -7852,8 +7915,9 @@ export class RubyHighService extends Service {
     const allowedDifficulties = !filter.difficulty && state.currentGrade && !importedReviewCourse
       ? difficultiesForGrade(state.currentGrade)
       : undefined;
+    const earlyQuestionBias = !filter.difficulty && !importedReviewCourse && this.firstBellQuestionBiasApplies(state);
     const difficultyWeights = !filter.difficulty && state.currentGrade && !importedReviewCourse
-      ? difficultyWeightsForGrade(state.currentGrade)
+      ? earlyQuestionBias ? FIRST_BELL_DIFFICULTY_WEIGHTS : difficultyWeightsForGrade(state.currentGrade)
       : undefined;
     const displayDifficulty = explicitDifficulty
       ?? (state.currentGrade && !importedReviewCourse ? difficultyForGrade(state.currentGrade) : undefined);
@@ -11838,12 +11902,14 @@ function buildMetricEventsSnapshot(
     appOpenSessions: 0,
     firstCharacterCreated: 0,
     firstQuestionAnswered: 0,
+    firstBellReportAwarded: 0,
     firstDailyClassPassed: 0,
     firstGradeCompleted: 0,
   };
   const funnel = {
     firstCharacterCreated: 0,
     firstQuestionAnswered: 0,
+    firstBellReportAwarded: 0,
     firstEssaySubmitted: 0,
     firstDailyClassPassed: 0,
     firstGradeCompleted: 0,
@@ -11913,6 +11979,7 @@ function buildMetricEventsSnapshot(
       if (day) day.funnelSteps += 1;
       if (event.step === "first_character_created") funnel.firstCharacterCreated += 1;
       else if (event.step === "first_question_answered") funnel.firstQuestionAnswered += 1;
+      else if (event.step === "first_bell_report_awarded") funnel.firstBellReportAwarded += 1;
       else if (event.step === "first_essay_submitted") funnel.firstEssaySubmitted += 1;
       else if (event.step === "first_daily_class_passed") funnel.firstDailyClassPassed += 1;
       else if (event.step === "first_grade_completed") funnel.firstGradeCompleted += 1;
@@ -11923,6 +11990,7 @@ function buildMetricEventsSnapshot(
           seenFirst10mSteps.add(key);
           if (event.step === "first_character_created") first10m.firstCharacterCreated += 1;
           else if (event.step === "first_question_answered") first10m.firstQuestionAnswered += 1;
+          else if (event.step === "first_bell_report_awarded") first10m.firstBellReportAwarded += 1;
           else if (event.step === "first_daily_class_passed") first10m.firstDailyClassPassed += 1;
           else if (event.step === "first_grade_completed") first10m.firstGradeCompleted += 1;
         }

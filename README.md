@@ -102,7 +102,7 @@ No hosted account or OpenRouter key is needed for these:
 
 ## Service Wiring
 
-The standalone server starts four services (`FacultyService`, `RubyHighService`, `AuthService`, `ChatService`) backed by the content-pack registry under `src/content/`. Ruby High Original is always the base school; public creator packs rotate into one Guest Faculty course automatically each week, or can be set as a user override from the Guest Faculty screen.
+The standalone server starts four services (`FacultyService`, `RubyHighService`, `AuthService`, `ChatService`) backed by the content-pack registry under `src/content/`. Ruby High Original is always the base school; public creator packs rotate into one Guest Faculty course automatically each week. Guest Faculty management stays out of permanent classroom chrome.
 
 ## Configuration
 

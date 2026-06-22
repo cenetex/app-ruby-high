@@ -24,6 +24,7 @@ import {
   type Difficulty,
   type EssayReport,
   type FacultyMember,
+  type FirstBellReport,
   type Grade,
   type NpcStudentState,
   type PlayerCharacter,
@@ -142,6 +143,7 @@ interface SessionTelemetry extends Record<string, unknown> {
   active_round: ReturnType<typeof deriveActiveRound>;
   is_opinion: boolean;
   character: PlayerCharacter | null;
+  first_bell_report: FirstBellReport | null;
   student_pool: StudentPoolEntry[];
   character_slots: CharacterSlotEntitlements & {
     costHallPasses: number;
@@ -440,6 +442,7 @@ export function buildSessionState(args: {
     active_round: deriveActiveRound(state),
     is_opinion: state.current?.type === "opinion",
     character: state.character,
+    first_bell_report: state.character?.firstBellReport ?? null,
     pending_photo_count: Array.isArray(state.character?.pendingPhotos) ? state.character.pendingPhotos.length : 0,
     pending_photo_pool_size: ruby?.pendingPhotoPoolSize() ?? 0,
     student_pool: state.studentPool ?? [],

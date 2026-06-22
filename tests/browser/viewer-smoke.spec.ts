@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { closeBlockingSheetIfVisible, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
+import { closeBlockingSheetIfVisible, closeFirstBellReportIfVisible, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
 
 test("rolls a first student without showing the old Lock it in action", async ({ page }) => {
   const { errors } = await openViewer(page);
@@ -14,10 +14,16 @@ test("rolls a first student without showing the old Lock it in action", async ({
     await expect(page.locator("#sheet-card").getByText("Character Roll", { exact: true })).toBeVisible({ timeout: 45_000 });
     await expect(page.locator("#sheet-card .creation-reroll").first()).toBeVisible();
     const saveCharacter = page.locator("#sheet-card").getByRole("button", { name: "Save Character" });
-    await expect(saveCharacter).toBeVisible();
-    await expect(saveCharacter).toBeEnabled();
+    const startFreshmanYear = page.locator("#sheet-card").getByRole("button", { name: "Start Freshman Year" });
     await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
-    await saveCharacter.click();
+    if (await saveCharacter.isVisible().catch(() => false)) {
+      await expect(saveCharacter).toBeEnabled();
+      await saveCharacter.click();
+    } else {
+      await expect(startFreshmanYear).toBeVisible();
+      await expect(startFreshmanYear).toBeEnabled();
+      await startFreshmanYear.click();
+    }
   }
 
   await expect(page.getByRole("button", { name: "Lock it in" })).toHaveCount(0);
@@ -36,6 +42,7 @@ test("boots as a guest, creates a character, answers a card, and opens account t
   await expect(firstAnswer).toBeVisible();
   await firstAnswer.click();
   await expect(page.locator("#board-reveal")).toBeVisible();
+  await closeFirstBellReportIfVisible(page);
 
   await expect(page.locator("#privy-action")).toBeVisible();
   await page.locator("#privy-action").click();

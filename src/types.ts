@@ -948,6 +948,21 @@ export interface PendingPhotoReveal {
   tweetedAt?: number;
 }
 
+export interface FirstBellReport {
+  reportId: string;
+  awardedAt: number;
+  grade: Grade | null;
+  facultyId: string;
+  facultyName: string;
+  questionId: string;
+  prompt: string;
+  answerText: string;
+  correctAnswerText?: string;
+  wasCorrect: boolean;
+  encouragement?: string;
+  score?: number;
+}
+
 export interface ClassPhotoArchive {
   photoId: string;
   imageUrl: string;
@@ -988,6 +1003,10 @@ export interface PlayerCharacter {
    *  is moved from this queue to the character's permanent fields. If no
    *  teacher is connected to X, photos reveal immediately. */
   pendingPhotos?: PendingPhotoReveal[];
+  /** The first quick keepsake. Awarded after the player's first answered
+   *  board so the first session produces something visible before the
+   *  yearbook loop completes. */
+  firstBellReport?: FirstBellReport;
   /** Class photos revealed by teacher/social posting. Unlike portraits and
    *  diplomas, these do not map to a single permanent character image field,
    *  so a small history is kept for admin/social audit surfaces. */

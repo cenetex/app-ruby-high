@@ -115,7 +115,7 @@ describe("class report renderer", () => {
     expect(report.className).toBe("class-report-card needs-work");
     expect(textTree(report)).toContain("D");
     expect(textTree(report)).toContain("Teacher Sally");
-    expect(textTree(report)).toContain("practice open");
+    expect(textTree(report)).toContain("review open");
   });
 
   it("renders next-step copy for signup, social, practice, and complete states", () => {
@@ -136,8 +136,8 @@ describe("class report renderer", () => {
     ]);
     expect((practice as unknown as FakeElement).className).toBe("class-report-next is-practice");
     expect(textTree(practice as unknown as FakeElement)).toEqual([
-      "Practice open",
-      "Extra review, no change to today's grade.",
+      "Review open",
+      "Extra review stays outside today's class record.",
     ]);
     expect((complete as unknown as FakeElement).className).toBe("class-report-next");
     expect(textTree(complete as unknown as FakeElement)).toEqual(["Daily class complete"]);

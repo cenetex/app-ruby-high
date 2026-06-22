@@ -3,7 +3,7 @@ import { arcIndicatorView } from "../viewer-parts/client-pure.js";
 
 describe("viewer arc indicator pure helpers", () => {
   it("hides the arc indicator before a character and grade exist", () => {
-    expect(arcIndicatorView({}, { met: 0, total: 3 }, "⭐ 0 · 🎫 0")).toEqual({
+    expect(arcIndicatorView({}, { met: 0, total: 3 })).toEqual({
       hidden: true,
       graduated: false,
       yearText: "",
@@ -11,7 +11,6 @@ describe("viewer arc indicator pure helpers", () => {
       streakMet: false,
       subjectText: "",
       subjectMet: false,
-      scoreText: "",
     });
   });
 
@@ -19,7 +18,7 @@ describe("viewer arc indicator pure helpers", () => {
     expect(arcIndicatorView({
       current_grade: "10",
       character: { streak: { grade: "10", count: 2 }, yearbook: [{ grade: "9" }] },
-    }, { met: 3, total: 3 }, "⭐ 1,200 · 🎫 4")).toEqual({
+    }, { met: 3, total: 3 })).toEqual({
       hidden: false,
       graduated: false,
       yearText: "Sophomore",
@@ -27,7 +26,6 @@ describe("viewer arc indicator pure helpers", () => {
       streakMet: true,
       subjectText: "✅ 3/3",
       subjectMet: true,
-      scoreText: "⭐ 1,200 · 🎫 4",
     });
   });
 
@@ -35,13 +33,12 @@ describe("viewer arc indicator pure helpers", () => {
     expect(arcIndicatorView({
       current_grade: "11",
       character: { streak: { grade: "10", count: 2 }, yearbook: [{ grade: "9" }, { grade: "10" }] },
-    }, { met: 1, total: 3 }, "⭐ 10 · 🎫 1")).toMatchObject({
+    }, { met: 1, total: 3 })).toMatchObject({
       yearText: "Junior",
       streakText: "📚 0/3",
       streakMet: false,
       subjectText: "✅ 1/3",
       subjectMet: false,
-      scoreText: "⭐ 10 · 🎫 1",
     });
   });
 
@@ -49,7 +46,7 @@ describe("viewer arc indicator pure helpers", () => {
     expect(arcIndicatorView({
       current_grade: "12",
       character: { yearbook: [{}, {}, {}, {}] },
-    }, { met: 0, total: 3 }, "⭐ 99 · 🎫 7")).toEqual({
+    }, { met: 0, total: 3 })).toEqual({
       hidden: false,
       graduated: true,
       yearText: "Graduated",
@@ -57,7 +54,6 @@ describe("viewer arc indicator pure helpers", () => {
       streakMet: false,
       subjectText: "✅",
       subjectMet: false,
-      scoreText: "⭐ 99 · 🎫 7",
     });
   });
 });

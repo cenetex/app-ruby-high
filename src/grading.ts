@@ -9,7 +9,7 @@
  *   - resilient to model deviation (extra prose, blank lines, headers)
  *   - case-insensitive on the keywords
  *   - clamping (score is clamped to [0, 10])
- *   - lossless for the narrative half (the teacher's verdict stays intact)
+ *   - lossless for the narrative half (the teacher response stays intact)
  *
  * It's a pure function with no I/O, so it's exhaustively testable without
  * touching OpenRouter.
@@ -26,7 +26,7 @@ export interface ParsedTeacherGrades {
   grades: ParsedGrade[];
   bestResponder: string | null;
   /** Lines that weren't a GRADE/BEST directive, joined with newlines and
-   *  trimmed. This is the human-readable verdict the viewer renders as
+   *  trimmed. This is the human-readable response the viewer renders as
    *  the teacher's "delta" stream. */
   narrativeText: string;
 }
@@ -60,7 +60,7 @@ export function parseTeacherGrades(text: string): ParsedTeacherGrades {
     const bm = line.match(BEST_LINE);
     if (bm) {
       // First BEST: line wins. Subsequent ones are dropped on the floor —
-      // we don't want to silently overwrite the teacher's first verdict.
+      // we don't want to silently overwrite the teacher's first BEST line.
       if (bestResponder == null) bestResponder = bm[1] ?? null;
       continue;
     }
@@ -79,9 +79,9 @@ function clampScore(n: number): number {
   if (n > 10) return 10;
   return n;
 }
-/** Generic-praise patterns that should never appear in a grading verdict.
- *  A verdict containing any of these is a regression — the teacher is
- *  handing out participation credit instead of judging. */
+/** Generic-praise patterns that should never appear in a teacher response.
+ *  A response containing any of these is a regression: the teacher is
+ *  handing out participation credit instead of offering a real standard. */
 const GENERIC_PRAISE_PATTERNS = [
   /\bgood job\b/i,
   /\bnice (try|effort|work|one)\b/i,
@@ -96,11 +96,11 @@ const GENERIC_PRAISE_PATTERNS = [
 ];
 
 /** Check every comment and the narrative text for generic praise. Returns
- *  the first matched pattern or null if the verdict has real substance. */
-export function detectGenericPraise(verdict: ParsedTeacherGrades): string | null {
+ *  the first matched pattern or null if the response has real substance. */
+export function detectGenericPraise(response: ParsedTeacherGrades): string | null {
   const texts = [
-    verdict.narrativeText,
-    ...verdict.grades.map((g) => g.comment),
+    response.narrativeText,
+    ...response.grades.map((g) => g.comment),
   ];
   for (const text of texts) {
     for (const pattern of GENERIC_PRAISE_PATTERNS) {
@@ -111,7 +111,7 @@ export function detectGenericPraise(verdict: ParsedTeacherGrades): string | null
 }
 
 /** Lazy-signal patterns that suggest the teacher is generating generic
- *  commentary without actually reading the student's response. A verdict
+ *  commentary without actually reading the student's response. A response
  *  where EVERY grade comment hits one of these is likely a hallucinated
  *  grade — it doesn't reference anything specific to what the student wrote. */
 const VAGUE_COMMENT_PATTERNS = [
@@ -127,12 +127,12 @@ const VAGUE_COMMENT_PATTERNS = [
 ];
 
 /** Check whether every grade comment is vague — none reference anything specific
- *  to the student's actual response. Returns true if the verdict has real
- *  substance (at least one comment is specific). Returns false if all comments
+ *  to the student's actual response. Returns true if the teacher response has
+ *  real substance (at least one comment is specific). Returns false if all comments
  *  could apply to any response. */
-export function verdictHasSubstance(verdict: ParsedTeacherGrades): boolean {
-  if (verdict.grades.length === 0) return false;
-  return verdict.grades.some((g) => {
+export function teacherResponseHasSubstance(response: ParsedTeacherGrades): boolean {
+  if (response.grades.length === 0) return false;
+  return response.grades.some((g) => {
     const comment = g.comment;
     if (!comment || comment.length < 15) return false;
     return !VAGUE_COMMENT_PATTERNS.some((p) => p.test(comment));
@@ -140,8 +140,8 @@ export function verdictHasSubstance(verdict: ParsedTeacherGrades): boolean {
 }
 
 /** Returns all grade comments that are too vague to be meaningful. */
-export function vagueComments(verdict: ParsedTeacherGrades): string[] {
-  return verdict.grades
+export function vagueComments(response: ParsedTeacherGrades): string[] {
+  return response.grades
     .filter((g) => {
       if (!g.comment || g.comment.length < 15) return true;
       return VAGUE_COMMENT_PATTERNS.some((p) => p.test(g.comment));

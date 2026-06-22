@@ -38,6 +38,7 @@ The viewer should no longer expose the legacy shared-school panel, event suppres
 Expected behavior:
 
 - The main classroom surface has no legacy shared-school panel or world-event suppression option.
+- The main classroom header keeps class progress primary and does not expose packs, collectibles, wallet balances, or minting as peer actions.
 - Account profile sharing is framed as School Presence with Join/Leave language.
 - Server-hosted text AI is sponsored when the server OpenRouter key is configured; player-authored chat remains paid by Merit Stars.
 - Hall Passes stay in the product for hosted images, creator tools, extra student slots, card burns, and related card features.

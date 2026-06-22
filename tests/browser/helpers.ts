@@ -100,6 +100,7 @@ export async function dismissAnnouncements(page: Page) {
 export async function createCharacter(page: Page) {
   const rollAStudent = page.getByRole("button", { name: /roll a student/i });
   const saveCharacter = page.locator("#sheet-card").getByRole("button", { name: "Save Character" });
+  const startFreshmanYear = page.locator("#sheet-card").getByRole("button", { name: "Start Freshman Year" });
 
   // Capture console errors for debugging.
   const errors: string[] = [];
@@ -115,10 +116,15 @@ export async function createCharacter(page: Page) {
 
   // Try Save Character if it appears.
   try {
-    await expect(saveCharacter).toBeEnabled({ timeout: 5000 });
+    await expect(saveCharacter).toBeEnabled({ timeout: 3000 });
     await saveCharacter.click();
   } catch {
-    // No Save Character button — the test may already have a character.
+    try {
+      await expect(startFreshmanYear).toBeEnabled({ timeout: 5000 });
+      await startFreshmanYear.click();
+    } catch {
+      // No creation commit button — the test may already have a character.
+    }
   }
 
   // Creation can render inline or in the sheet. If the sheet remains open,
@@ -198,6 +204,14 @@ export async function closeBlockingSheetIfVisible(page: Page) {
     await expect(close).not.toBeVisible({ timeout: 5000 });
   } catch {
     // No blocking sheet is open.
+  }
+}
+
+export async function closeFirstBellReportIfVisible(page: Page) {
+  const modal = page.locator(".first-bell-overlay").first();
+  if (await modal.isVisible().catch(() => false)) {
+    await modal.getByRole("button", { name: "Continue" }).click();
+    await expect(modal).not.toBeVisible({ timeout: 5000 });
   }
 }
 

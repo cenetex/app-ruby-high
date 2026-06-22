@@ -13,12 +13,34 @@ class FakeElement {
   dataset: Record<string, string> = {};
   attributes = new Map<string, string>();
   listeners = new Map<string, (event: Event) => void>();
+  classList = {
+    add: (...names: string[]) => {
+      const classes = new Set(this.classNames());
+      names.forEach((name) => {
+        if (name) classes.add(name);
+      });
+      this.className = Array.from(classes).join(" ");
+    },
+    remove: (...names: string[]) => {
+      const removals = new Set(names);
+      this.className = this.classNames().filter((name) => !removals.has(name)).join(" ");
+    },
+    contains: (name: string) => this.classNames().includes(name),
+  };
   style = {
     background: "",
   };
   onerror: (() => void) | null = null;
+  onload: (() => void) | null = null;
+  naturalWidth = 0;
+  naturalHeight = 0;
+  complete = false;
 
   constructor(readonly tagName: string) {}
+
+  private classNames(): string[] {
+    return this.className.split(/\s+/).filter(Boolean);
+  }
 
   appendChild(child: FakeElement): FakeElement {
     child.parentNode = this;
@@ -93,6 +115,14 @@ describe("chat message renderer", () => {
     expect(avatar.style.background).toBe("#fff");
     expect(avatar.children[0]!.src).toBe("/ruby-face.png");
     expect(avatar.children[0]!.alt).toBe("Ruby");
+    avatar.children[0]!.naturalWidth = 512;
+    avatar.children[0]!.naturalHeight = 512;
+    avatar.children[0]!.onload?.();
+    expect(avatar.className).toBe("avatar is-teacher is-square-avatar");
+    avatar.children[0]!.naturalWidth = 512;
+    avatar.children[0]!.naturalHeight = 1024;
+    avatar.children[0]!.onload?.();
+    expect(avatar.className).toBe("avatar is-teacher is-tall-avatar");
     expect(rendered.body).toBe(wrap.children[2] as unknown as HTMLElement);
     expect((rendered.body as unknown as FakeElement).dataset.markdownRaw).toBe("good answer");
     expect(markdownCalls.map((call) => call.markdown)).toEqual(["good answer"]);
@@ -113,6 +143,7 @@ describe("chat message renderer", () => {
     img.onerror?.();
 
     expect(avatar.children).toEqual([]);
+    expect(avatar.className).toBe("avatar");
     expect(avatar.style.background).toBe("#0c0");
     expect(avatar.textContent).toBe("N");
   });

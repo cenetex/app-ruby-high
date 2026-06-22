@@ -152,7 +152,7 @@ export function runViewerClient(bootstrap) {
       : postClass.socialReady
         ? "Start a short homeroom reflection"
         : postClass.report
-        ? "Start practice"
+        ? "Start after-class review"
       : t && t.graduation_ready && !cur
         ? "Open the graduation ceremony"
         : teacherChatEnabled()
@@ -470,9 +470,7 @@ export function runViewerClient(bootstrap) {
     arcYear: $("arc-year"),
     arcStreak: $("arc-streak"),
     arcXp: $("arc-xp"),
-    arcScore: $("arc-score"),
     hallPassBtn: $("hall-pass-btn"),
-    packBtn: $("pack-btn"),
     stream: $("stream"),
     blackboardPanel: $("blackboard-panel"),
     loungeStage: $("lounge-stage"),
@@ -738,6 +736,7 @@ export function runViewerClient(bootstrap) {
   let activeAccountPane = "account";
   let comicUnlockEventsPrimed = false;
   let comicUnlockModalOpen = false;
+  let firstBellReportModalOpen = false;
   const seenComicUnlockEventIds = new Set();
   const pendingComicUnlocks = [];
   let packSyncBusy = false;
@@ -855,10 +854,6 @@ export function runViewerClient(bootstrap) {
     if (graduatedFor(t.character)) return true;
     if (t.character.pendingGraduation || t.graduation_ready) return true;
     return hasCompletedAnyClass(t);
-  }
-  function packStoreUnlocked(t) {
-    if (!t || !t.character) return false;
-    return secondarySurfacesUnlocked(t);
   }
   async function maybeAutoStartClass(t) {
     if (autoPickInFlight) return;
@@ -1066,6 +1061,20 @@ export function runViewerClient(bootstrap) {
       if (lastTelemetry) updateChatAction(deriveViewMode(lastTelemetry));
     }
   }
+  function applyChatAvatarAspectClass(avatar, img) {
+    if (!avatar || !img) return;
+    const update = () => {
+      const width = Number(img.naturalWidth || 0);
+      const height = Number(img.naturalHeight || 0);
+      avatar.classList.remove("is-tall-avatar", "is-square-avatar");
+      if (!width || !height) return;
+      const ratio = width / height;
+      if (ratio < 0.82) avatar.classList.add("is-tall-avatar");
+      else if (ratio >= 0.9 && ratio <= 1.1) avatar.classList.add("is-square-avatar");
+    };
+    img.onload = () => update();
+    if (img.complete) update();
+  }
   function syncPlayerMessageHeaders() {
     if (!els.stream) return;
     const displayName = playerDisplayName();
@@ -1083,14 +1092,17 @@ export function runViewerClient(bootstrap) {
         if (img) {
           if (img.src !== portraitSrc) img.src = portraitSrc;
           if (img.alt !== displayName) img.alt = displayName;
+          applyChatAvatarAspectClass(avatar, img);
         } else {
           avatar.textContent = "";
           const nextImg = document.createElement("img");
           nextImg.src = portraitSrc;
           nextImg.alt = displayName;
+          applyChatAvatarAspectClass(avatar, nextImg);
           avatar.appendChild(nextImg);
         }
       } else {
+        avatar.classList.remove("is-tall-avatar", "is-square-avatar");
         avatar.style.background = "var(--accent)";
         if (img) avatar.replaceChildren();
         if (avatar.textContent !== initial) avatar.textContent = initial;
@@ -1485,7 +1497,6 @@ export function runViewerClient(bootstrap) {
     year: els.arcYear,
     streak: els.arcStreak,
     subject: els.arcXp,
-    score: els.arcScore,
     viewFor: arcIndicatorView,
   });
   const guestSpotlightRenderer = createGuestSpotlightRenderer({
@@ -1760,7 +1771,6 @@ export function runViewerClient(bootstrap) {
   function renderArcIndicator(t) {
     arcIndicatorRenderer.render(t, {
       subjects: subjectClearSummary(),
-      walletText: walletSummaryText(t),
     });
   }
 
@@ -2063,7 +2073,6 @@ export function runViewerClient(bootstrap) {
         hosted_ai: entitlements.hosted_ai || lastTelemetry.hosted_ai,
       } : {}),
     };
-    if (els.arcScore) els.arcScore.textContent = walletSummaryText(lastTelemetry);
     syncBillingWallet(lastTelemetry);
     renderAccountPage();
   }
@@ -3485,14 +3494,14 @@ export function runViewerClient(bootstrap) {
         const teacherName = faculty ? teacherShortName(faculty, "today's teacher") : "today's teacher";
         const advanceLabel = teacherChatEnabled() ? chatActionLabel(lastTelemetry) : "Continue";
         const lead = todayDone
-          ? "Today's graded class is complete. Practice is open."
+          ? "Today's graded class is complete. Review is open."
           : todayActive
             ? "Continue today's class — tap " + advanceLabel + " to start."
             : "Start today's graded class — tap " + advanceLabel + " to start.";
         const welcome = showWelcomeBackCopy ? "Welcome back — " + teacherName + " is ready. " : "";
         const infoText = hint ? welcome + lead + " " + hint : welcome + lead;
         const statusText = todayDone
-          ? "Class complete · practice open"
+          ? "Class complete · review open"
           : todayActive
             ? "Class in progress"
             : "Today's class ready";
@@ -3639,11 +3648,11 @@ export function runViewerClient(bootstrap) {
     els.boardReveal.classList.toggle("correct", passed);
     els.boardReveal.classList.toggle("wrong", !passed);
     els.boardReveal.replaceChildren();
-    const verdict = document.createElement("span");
-    verdict.className = "reveal-verdict";
+    const result = document.createElement("span");
+    result.className = "reveal-result";
     const isBest = round.bestResponder === "player";
-    verdict.textContent = (isBest ? "★ " : "") + "Your grade: " + playerGrade.score.toFixed(1) + "/10";
-    els.boardReveal.appendChild(verdict);
+    result.textContent = (isBest ? "★ " : "") + "Your grade: " + playerGrade.score.toFixed(1) + "/10";
+    els.boardReveal.appendChild(result);
     if (playerGrade.comment) {
       const expl = document.createElement("div");
       expl.className = "reveal-explanation";
@@ -3684,11 +3693,11 @@ export function runViewerClient(bootstrap) {
     els.boardReveal.hidden = false;
     els.boardReveal.classList.toggle("correct", !!reveal.wasCorrect);
     els.boardReveal.classList.toggle("wrong", !reveal.wasCorrect);
-    // Build the reveal block by parts so the dice render alongside the verdict.
+    // Build the reveal block by parts so the dice render alongside the result.
     els.boardReveal.replaceChildren();
-    const verdict = document.createElement("span");
-    verdict.className = "reveal-verdict";
-    verdict.textContent = reveal.forfeit
+    const result = document.createElement("span");
+    result.className = "reveal-result";
+    result.textContent = reveal.forfeit
       ? "⏱ Time's up — answer was " + (isTypedReveal ? (reveal.expectedAnswer || reveal.correct) : reveal.correct)
       : isTypedReveal
       ? (reveal.wasCorrect ? "✓ Correct" : "✗ Not quite")
@@ -3697,7 +3706,7 @@ export function runViewerClient(bootstrap) {
       : reveal.wasCorrect
       ? "✓ Correct (" + reveal.picked + ")"
       : "✗ You picked " + reveal.picked + " — answer was " + reveal.correct;
-    els.boardReveal.appendChild(verdict);
+    els.boardReveal.appendChild(result);
     if (isTypedReveal) {
       const answerBlock = document.createElement("div");
       answerBlock.className = "typed-reveal";
@@ -4705,6 +4714,7 @@ export function runViewerClient(bootstrap) {
     syncBillingWallet(t);
     renderAccountPage();
     syncComicUnlockModals(t);
+    syncFirstBellReportModal(t);
     if (teacherChatEnabled() && t.faculty && (!renderedHistorySig || !renderedHistorySig.startsWith(t.faculty + ":"))) {
       loadHistory(t.faculty);
     }
@@ -4723,8 +4733,8 @@ export function runViewerClient(bootstrap) {
         showOnboarding();
       }
     }
-    // Always show account/pack buttons so a visitor can support immediately.
-    if (els.packBtn) els.packBtn.hidden = false;
+    // Keep top-bar chrome focused on class progress. Economy and collection
+    // systems live under Account.
     if (els.hallPassBtn) els.hallPassBtn.hidden = false;
 
     setAccent(t.facultyAccent);
@@ -5798,6 +5808,166 @@ export function runViewerClient(bootstrap) {
     maybeShowNextComicUnlockModal();
   }
 
+  function firstBellReportKey(report) {
+    if (!report) return "";
+    return String(report.reportId || report.questionId || report.awardedAt || "unknown")
+      .replace(/[^a-zA-Z0-9:._-]/g, "_");
+  }
+
+  function firstBellReportSeenKey(report) {
+    return "ruby-high:first-bell-report-seen:" + firstBellReportKey(report);
+  }
+
+  function hasSeenFirstBellReport(report) {
+    return !!report && storageGet("local", firstBellReportSeenKey(report)) === "1";
+  }
+
+  function markFirstBellReportSeen(report) {
+    if (report) storageSet("local", firstBellReportSeenKey(report), "1");
+  }
+
+  function firstBellGradeLabel(grade) {
+    if (!grade) return "";
+    if (typeof GRADE_LABELS !== "undefined" && GRADE_LABELS[grade]) return GRADE_LABELS[grade];
+    return "Grade " + grade;
+  }
+
+  function firstBellPortraitUrl(character) {
+    const portrait = character && typeof character.portraitDataUrl === "string"
+      ? character.portraitDataUrl.trim()
+      : "";
+    if (portrait) return portrait;
+    return defaultPortraitFor(character && character.playbookId);
+  }
+
+  function appendFirstBellFact(list, label, value, emphatic) {
+    if (!list || value == null || value === "") return;
+    const row = document.createElement("div");
+    row.className = "first-bell-fact" + (emphatic ? " is-emphatic" : "");
+    const key = document.createElement("span");
+    key.className = "first-bell-fact-key";
+    key.textContent = label;
+    const val = document.createElement("span");
+    val.className = "first-bell-fact-value";
+    val.textContent = String(value);
+    row.append(key, val);
+    list.appendChild(row);
+  }
+
+  function closeFirstBellReportModal(overlay, onKeyDown) {
+    if (onKeyDown) document.removeEventListener("keydown", onKeyDown);
+    if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    firstBellReportModalOpen = false;
+  }
+
+  function showFirstBellReport(report, character) {
+    if (!report || firstBellReportModalOpen) return;
+    firstBellReportModalOpen = true;
+
+    const overlay = document.createElement("div");
+    overlay.className = "first-bell-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-labelledby", "first-bell-title");
+
+    const card = document.createElement("section");
+    card.className = "first-bell-card";
+    card.tabIndex = -1;
+
+    const hero = document.createElement("div");
+    hero.className = "first-bell-hero";
+
+    const portraitWrap = document.createElement("div");
+    portraitWrap.className = "first-bell-portrait";
+    const img = document.createElement("img");
+    img.src = firstBellPortraitUrl(character);
+    img.alt = "";
+    portraitWrap.appendChild(img);
+
+    const titleBlock = document.createElement("div");
+    titleBlock.className = "first-bell-title";
+    const kicker = document.createElement("div");
+    kicker.className = "first-bell-kicker";
+    kicker.textContent = "First Bell";
+    const title = document.createElement("h2");
+    title.id = "first-bell-title";
+    title.textContent = "First Bell Report";
+    const meta = document.createElement("p");
+    meta.className = "first-bell-meta";
+    const metaParts = [
+      report.facultyName || report.facultyId || "Ruby High",
+      firstBellGradeLabel(report.grade),
+      report.wasCorrect ? "Marked correct" : "Needs a review",
+    ].filter(Boolean);
+    meta.textContent = metaParts.join(" / ");
+    titleBlock.append(kicker, title, meta);
+    hero.append(portraitWrap, titleBlock);
+
+    const body = document.createElement("div");
+    body.className = "first-bell-body";
+
+    const prompt = document.createElement("blockquote");
+    prompt.className = "first-bell-prompt";
+    prompt.textContent = report.prompt || "First question answered.";
+
+    const facts = document.createElement("div");
+    facts.className = "first-bell-facts";
+    appendFirstBellFact(facts, "Answer", report.answerText, true);
+    if (!report.wasCorrect && report.correctAnswerText) {
+      appendFirstBellFact(facts, "Correct", report.correctAnswerText, false);
+    }
+    if (Number.isFinite(Number(report.score))) {
+      appendFirstBellFact(facts, "Score", String(report.score), false);
+    }
+
+    body.append(prompt, facts);
+    if (report.encouragement) {
+      const note = document.createElement("p");
+      note.className = "first-bell-note";
+      note.textContent = report.encouragement;
+      body.appendChild(note);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "first-bell-actions";
+    const secondary = document.createElement("button");
+    secondary.type = "button";
+    secondary.className = "secondary";
+    secondary.textContent = "Open student card";
+    const primary = document.createElement("button");
+    primary.type = "button";
+    primary.className = "primary";
+    primary.textContent = "Continue";
+    actions.append(secondary, primary);
+
+    let onKeyDown = null;
+    const close = () => closeFirstBellReportModal(overlay, onKeyDown);
+    onKeyDown = (event) => {
+      if (event.key === "Escape") close();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) close();
+    });
+    primary.addEventListener("click", close);
+    secondary.addEventListener("click", () => {
+      close();
+      openSheet();
+    });
+
+    card.append(hero, body, actions);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    card.focus({ preventScroll: true });
+  }
+
+  function syncFirstBellReportModal(t) {
+    const report = t && t.first_bell_report;
+    if (!report || firstBellReportModalOpen || hasSeenFirstBellReport(report)) return;
+    markFirstBellReportSeen(report);
+    showFirstBellReport(report, t.character);
+  }
+
   function showComicReader(collection, unlock, options) {
     comicReaderRenderer.show(collection, unlock, options);
   }
@@ -6460,7 +6630,6 @@ export function runViewerClient(bootstrap) {
   const packImportTitleEl = $("pack-import-title");
   const packImportDetailEl = $("pack-import-detail");
   const packProgressFillEl = $("pack-progress-fill");
-  const packBtn = els.packBtn;
   let packImportBusy = false;
   let packImportTimer = null;
   let packLibraryState = null;
@@ -6730,10 +6899,6 @@ export function runViewerClient(bootstrap) {
     },
   };
 
-  function openPackStore() {
-    packEl.classList.add("is-open");
-    refreshPackLibrary();
-  }
   function closePackStore() {
     if (packImportBusy) {
       packStatusEl.textContent = "Finish this library update before closing.";
@@ -6804,7 +6969,6 @@ export function runViewerClient(bootstrap) {
     if (packEditEl) packEditEl.classList.toggle("is-busy", packImportBusy);
     if (packCloseBtn) packCloseBtn.disabled = packImportBusy;
     if (packEditCloseBtn) packEditCloseBtn.disabled = packImportBusy;
-    if (packBtn) packBtn.disabled = packImportBusy;
     packEl.querySelectorAll("button.pack-action").forEach((btn) => { btn.disabled = packImportBusy; });
     packEditEl.querySelectorAll("button.pack-action, button.secondary, button.pack-teacher-row-action, button.pack-teacher-select").forEach((btn) => { btn.disabled = packImportBusy; });
     if (packCreateBtn) packCreateBtn.disabled = packImportBusy;
@@ -8508,7 +8672,6 @@ export function runViewerClient(bootstrap) {
   packEl.addEventListener("click", (e) => { if (e.target === packEl) closePackStore(); });
   if (packEditCloseBtn) packEditCloseBtn.addEventListener("click", closePackEditor);
   if (packEditEl) packEditEl.addEventListener("click", (e) => { if (e.target === packEditEl) closePackEditor(); });
-  packBtn.addEventListener("click", openPackStore);
   if (packCreateBtn) packCreateBtn.addEventListener("click", createDraftPack);
   if (packSearchBtn) packSearchBtn.addEventListener("click", searchCreatorPacks);
   if (packAutoBtn) packAutoBtn.addEventListener("click", setGuestAutoMode);
@@ -9515,7 +9678,7 @@ export function runViewerClient(bootstrap) {
   // ── opinion-mode helpers ────────────────────────────────────────────────
   // The player's opinion submission is just a regular chat message routed to
   // the opinion endpoint. NPC responses appear as chat messages too. The
-  // teacher's verdict streams as a normal chat reply when grading fires.
+  // teacher's response streams as a normal chat reply when grading fires.
   function renderOpinionsIntoChat(round) {
     if (!round || round.type !== "opinion") return;
     // Render any new NPC responses (deduped by responder id) as student

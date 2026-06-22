@@ -56,7 +56,7 @@ import {
   type RolledCharacter,
 } from "./services/character-generation.js";
 import { renderYearbookCard } from "./services/yearbook-image.js";
-import { detectGenericPraise, parseTeacherGrades, verdictHasSubstance } from "./grading.js";
+import { detectGenericPraise, parseTeacherGrades, teacherResponseHasSubstance } from "./grading.js";
 import {
   GRADES,
   GRADE_LABELS,
@@ -568,14 +568,14 @@ function buildResolvedAnswerBriefing(args: {
     const essayText = playerResp?.text?.trim() || "(no response)";
     const score = typeof playerGrade?.score === "number" ? playerGrade.score : null;
     const passed = typeof reveal?.wasCorrect === "boolean" ? reveal.wasCorrect : (score != null && score >= 7);
-    const verdict = passed ? "passed" : "needs another swing";
+    const classResult = passed ? "passed" : "needs another swing";
     const scoreLine = score != null ? ` graded ${score.toFixed(1)}/10` : "";
     const commentLine = playerGrade?.comment ? ` — your note was: "${clipped(playerGrade.comment, 160)}"` : "";
     const pickedLine = `${playerName} wrote: "${clipped(essayText, 220)}"${scoreLine}${commentLine}.`;
     const eventText = [
       prompt ? `Opinion round resolved for "${clipped(prompt, 180)}".` : "Opinion round resolved.",
       pickedLine,
-      `Verdict: ${verdict}.`,
+      `Class result: ${classResult}.`,
     ].join(" ");
     const contextLines = [
       "RESOLVED OPINION SNAPSHOT for this answer-graded reaction.",
@@ -586,7 +586,7 @@ function buildResolvedAnswerBriefing(args: {
       `${playerName}'s answer: ${essayText}`,
       score != null ? `Grade you assigned: ${score.toFixed(1)}/10` : "",
       playerGrade?.comment ? `Your grading comment: ${playerGrade.comment}` : "",
-      `Verdict: ${verdict} (≥7/10 passes).`,
+      `Class result: ${classResult} (>=7/10 passes).`,
     ].filter(Boolean);
     return {
       correctChoice: "A",
@@ -736,7 +736,7 @@ function pickNextLoungeSpeaker(chat: ChatService, sessionToken: string, teacherI
  *  their own pre-rolled outcomes from when the round was opened. The
  *  point is to keep the player from getting trapped on a Social card
  *  when AI is off, and to keep stat investments meaningful. */
-function buildOfflineOpinionVerdict(args: {
+function buildOfflineOpinionClassResult(args: {
   state: QuizState;
 }): import("./grading.js").ParsedTeacherGrades & {
   playerRoll: { stat: keyof CharacterStats; dice: [number, number]; total: number; outcome: RoundOutcome };
@@ -819,7 +819,7 @@ async function gradeOpinionResponses(args: {
     "",
     "Below are the student responses (the player + your AI students).",
     "",
-    "This is the grade essay — the milestone the student must pass to advance. Judge them. Not grade them — JUDGE them. In your voice. Through your worldview. You are not a rubric. You are a teacher whose approval is worth chasing precisely because you do not hand it out.",
+    "This is the grade essay, the milestone the student must pass to advance. Respond to them in your voice, through your worldview. You are not a rubric. You are a teacher whose approval is worth chasing precisely because you do not hand it out.",
     "",
     "Scale: 5 = showed up. 7 = actually thought. 9 = saw something the others missed. 10 = made you reconsider the question.",
     "",
@@ -836,7 +836,7 @@ async function gradeOpinionResponses(args: {
     "(repeat for each responder)",
     "BEST: <responder id>",
     "",
-    "Then 2-3 sentences as the verdict. Reference at least one student by name. Disappointment is earned. Approval is earned. No generic wrap-up. The verdict should be worth screenshotting.",
+    "Then 2-3 sentences as the teacher response. Reference at least one student by name. Disappointment is earned. Approval is earned. No generic wrap-up. The response should be specific enough to keep.",
   ].filter(Boolean).join("\n");
   const body = await llmJson<OpenRouterChatCompletion>({
     apiKey: args.apiKey,
@@ -3297,7 +3297,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
 
   // Player submits their written response to an opinion question. If all
   // responses are in (player + both NPCs), this also runs the grading turn
-  // and streams the teacher's verdict as SSE. Works in offline (non-AI)
+  // and streams the teacher's response as SSE. Works in offline (non-AI)
   // mode too — without an apiKey we use a deterministic auto-grade so the
   // player isn't trapped on a reflection prompt with no way forward.
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/opinion-submit`) {
@@ -3397,16 +3397,16 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       let grades: import("./grading.js").ParsedGrade[] = [];
       let bestResponder: string | null = null;
       let narrativeText = "";
-      const useOfflineVerdict = () => {
-        const verdict = buildOfflineOpinionVerdict({ state });
-        grades = verdict.grades;
-        bestResponder = verdict.bestResponder;
-        narrativeText = verdict.narrativeText;
-        offlinePlayerRoll = verdict.playerRoll;
+      const useOfflineClassResult = () => {
+        const classResult = buildOfflineOpinionClassResult({ state });
+        grades = classResult.grades;
+        bestResponder = classResult.bestResponder;
+        narrativeText = classResult.narrativeText;
+        offlinePlayerRoll = classResult.playerRoll;
       };
       if (apiKey) {
         try {
-          const verdict = await gradeOpinionResponses({
+          const teacherResponse = await gradeOpinionResponses({
             apiKey,
             facultyId,
             question: state.current.prompt,
@@ -3414,21 +3414,21 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             responses,
             playerName: "the player",
           });
-          if (!verdict.grades.some((g) => g.responder === "player")) {
+          if (!teacherResponse.grades.some((g) => g.responder === "player")) {
             throw new Error("Teacher grading omitted the player grade.");
           }
-          grades = verdict.grades;
-          bestResponder = verdict.bestResponder;
-          narrativeText = verdict.narrativeText;
+          grades = teacherResponse.grades;
+          bestResponder = teacherResponse.bestResponder;
+          narrativeText = teacherResponse.narrativeText;
 
-          // Praise-gate: if the verdict contains generic praise ("good job",
+          // Praise-gate: if the teacher response contains generic praise ("good job",
           // "nice effort", etc.), retry once with a stricter instruction.
           // A single retry is cheap (<1s) and almost always fixes it.
-          const platitudeHit = detectGenericPraise(verdict);
+          const platitudeHit = detectGenericPraise(teacherResponse);
           if (platitudeHit) {
             log.event("opinion.platitude-detected", { facultyId, pattern: platitudeHit, sessionId });
             try {
-              const retryVerdict = await gradeOpinionResponses({
+              const retryResponse = await gradeOpinionResponses({
                 apiKey,
                 facultyId,
                 question: state.current.prompt,
@@ -3436,14 +3436,14 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
                 responses,
                 playerName: "the player",
               });
-              if (!detectGenericPraise(retryVerdict)) {
-                grades = retryVerdict.grades;
-                bestResponder = retryVerdict.bestResponder;
-                narrativeText = retryVerdict.narrativeText;
+              if (!detectGenericPraise(retryResponse)) {
+                grades = retryResponse.grades;
+                bestResponder = retryResponse.bestResponder;
+                narrativeText = retryResponse.narrativeText;
                 log.event("opinion.platitude-corrected", { facultyId, sessionId });
               } else {
                 // Second strike — log it but don't retry again. The model
-                // is in a platitude loop; better to ship the imperfect verdict
+                // is in a platitude loop; better to ship the imperfect response
                 // than burn more tokens.
                 log.event("opinion.platitude-persisted", { facultyId, sessionId });
               }
@@ -3454,12 +3454,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
 
           // Substance gate: if no grade comment references anything specific
           // to the student's actual response (all comments are vague templates),
-          // retry once. Vague verdicts are just as bad as platitudes — they
+          // retry once. Vague teacher responses are just as bad as platitudes:
           // mean the teacher didn't actually read the responses.
-          if (!verdictHasSubstance({ grades, bestResponder, narrativeText })) {
-            log.event("opinion.vague-verdict-detected", { facultyId, sessionId });
+          if (!teacherResponseHasSubstance({ grades, bestResponder, narrativeText })) {
+            log.event("opinion.vague-teacher-response-detected", { facultyId, sessionId });
             try {
-              const retryVerdict = await gradeOpinionResponses({
+              const retryResponse = await gradeOpinionResponses({
                 apiKey,
                 facultyId,
                 question: state.current.prompt,
@@ -3467,11 +3467,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
                 responses,
                 playerName: "the player",
               });
-              if (verdictHasSubstance(retryVerdict) && !detectGenericPraise(retryVerdict)) {
-                grades = retryVerdict.grades;
-                bestResponder = retryVerdict.bestResponder;
-                narrativeText = retryVerdict.narrativeText;
-                log.event("opinion.vague-verdict-corrected", { facultyId, sessionId });
+              if (teacherResponseHasSubstance(retryResponse) && !detectGenericPraise(retryResponse)) {
+                grades = retryResponse.grades;
+                bestResponder = retryResponse.bestResponder;
+                narrativeText = retryResponse.narrativeText;
+                log.event("opinion.vague-teacher-response-corrected", { facultyId, sessionId });
               }
             } catch {
               // Retry failed; keep the original.
@@ -3480,10 +3480,10 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           }
         } catch (err) {
           log.error("opinion.grade-ai-failed", err, { sessionId, facultyId, questionId: state.current.id });
-          useOfflineVerdict();
+          useOfflineClassResult();
         }
       } else {
-        useOfflineVerdict();
+        useOfflineClassResult();
       }
       // Stream the narrative as deltas (chunked by sentence so the typewriter
       // effect lands).
@@ -3497,7 +3497,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       if (offlinePlayerRoll) {
         // recordGrades doesn't know about the offline dice; attach the
         // roll to the freshly-set lastReveal so the reveal renders the
-        // dice chip alongside the verdict.
+        // dice chip alongside the class result.
         const finalState = ruby.getOrCreate(sessionId);
         if (finalState.lastReveal) {
           finalState.lastReveal.playerRoll = offlinePlayerRoll;

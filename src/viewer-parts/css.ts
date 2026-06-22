@@ -672,9 +672,7 @@ export const VIEWER_CSS = `
     white-space: nowrap;
   }
   /* Arc indicator — the player's live progress through the 4-year arc.
-   * Replaces the old session-score chip and includes the wallet. This is
-   * the only thing that should be in the top-right. Hidden until a
-   * character exists. */
+   * Keep it about school progress; wallet and collection state live in Account. */
   .arc-indicator {
     display: inline-flex;
     align-items: center;
@@ -685,9 +683,8 @@ export const VIEWER_CSS = `
     font-size: 12px;
     font-weight: 700;
     color: var(--text);
-    /* Shrink-fit so a long "Sophomore 3800 Merit Stars" never pushes the
-       hamburger or chalkboard labels off-screen. Truncate with ellipsis
-       rather than clip when the available room runs out. */
+    /* Shrink-fit so long year/progress labels never push the hamburger or
+       chalkboard labels off-screen. */
     flex: 0 1 auto;
     min-width: 0;
     max-width: 50%;
@@ -699,7 +696,6 @@ export const VIEWER_CSS = `
   .arc-indicator .arc-sep { color: var(--text-mute); font-weight: 400; }
   .arc-indicator .arc-streak.is-met { color: var(--accent); }
   .arc-indicator .arc-xp.is-met { color: var(--accent); }
-  .arc-indicator .arc-score { color: #ffe08a; font-variant-numeric: tabular-nums; }
   .arc-indicator.is-graduated .arc-year { color: #f0b441; }
   /* Mobile: hide the daily/subject detail, keep just the year tag. The full
    * progress is one tap away on the character sheet. */
@@ -711,39 +707,19 @@ export const VIEWER_CSS = `
   .hall-pass-btn {
     appearance: none;
     background: var(--bg-elev);
-    color: #ffe08a;
-    border: none;
-    border-radius: 999px;
-    width: 32px;
-    height: 32px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-  }
-  .hall-pass-btn:hover { color: #fff1b5; background: var(--bg-elev-2); }
-  .hall-pass-btn[hidden] { display: none; }
-  .hall-pass-btn svg { width: 18px; height: 18px; }
-  /* Pack-store button — sits next to the arc chip in the top bar. Opens
-   * the pack-overlay where the user can switch curricula. It stays hidden
-   * during first-run setup so today's class remains the only obvious path. */
-  .pack-btn {
-    appearance: none;
-    background: var(--bg-elev);
     color: var(--text-soft);
     border: none;
     border-radius: 999px;
     width: 32px;
     height: 32px;
-    margin-right: calc(var(--safe-right));
     display: inline-flex;
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
   }
-  .pack-btn:hover { color: var(--text); background: var(--bg-elev-2); }
-  .pack-btn[hidden] { display: none; }
-  .pack-btn svg { width: 18px; height: 18px; }
+  .hall-pass-btn:hover { color: var(--text); background: var(--bg-elev-2); }
+  .hall-pass-btn[hidden] { display: none; }
+  .hall-pass-btn svg { width: 18px; height: 18px; }
   /* Pack library sections and draft teacher editor rail. */
   .pack-section-title {
     margin-top: 14px;
@@ -2369,10 +2345,15 @@ export const VIEWER_CSS = `
     width: 100%;
     height: 100%;
     object-fit: cover;
-    object-position: 50% 18%;
-    transform: scale(2.25);
-    transform-origin: top center;
+    object-position: center;
+    transform: none;
+    transform-origin: center;
     display: block;
+  }
+  .msg .avatar.is-tall-avatar img {
+    object-position: 50% 18%;
+    transform: scale(2.05);
+    transform-origin: top center;
   }
   .msg .avatar.is-teacher {
     background: #fff;
@@ -2655,7 +2636,7 @@ export const VIEWER_CSS = `
   }
   .board .reveal.correct { color: #b6f5b9; border-left-color: #4cb555; }
   .board .reveal.wrong { color: #ffb1b1; border-left-color: #d22a2a; }
-  .board .reveal .reveal-verdict { font-weight: 700; }
+  .board .reveal .reveal-result { font-weight: 700; }
   .board .reveal .reveal-explanation {
     margin-top: 6px;
     font-size: 14px;
@@ -2673,7 +2654,7 @@ export const VIEWER_CSS = `
     opacity: 0.8;
   }
   /* The roll chip already has 6px left margin; inside .reveal it inherits
-     the hit/mixed/miss color so the dice land beside the verdict legibly. */
+     the hit/mixed/miss color so the dice land beside the result legibly. */
   .board .reveal .roll-chip { vertical-align: middle; }
   .answers {
     display: grid;
@@ -6588,6 +6569,174 @@ export const VIEWER_CSS = `
     background: #b92b2b;
   }
 
+  .first-bell-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 132;
+    display: grid;
+    place-items: center;
+    padding: calc(var(--safe-top) + 18px) calc(var(--safe-right) + 18px) calc(var(--safe-bot) + 18px) calc(var(--safe-left) + 18px);
+    background: rgba(8, 10, 16, 0.72);
+    backdrop-filter: blur(9px);
+    -webkit-backdrop-filter: blur(9px);
+  }
+  .first-bell-card {
+    width: min(520px, 100%);
+    max-height: min(760px, calc(100dvh - var(--safe-top) - var(--safe-bot) - 28px));
+    overflow: auto;
+    border: 1px solid color-mix(in srgb, var(--accent) 38%, rgba(255,255,255,0.18));
+    border-radius: 8px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.018)),
+      rgba(24, 27, 38, 0.98);
+    color: var(--text);
+    box-shadow: 0 24px 74px rgba(0,0,0,0.58);
+    padding: 18px;
+  }
+  .first-bell-card:focus {
+    outline: none;
+  }
+  .first-bell-hero {
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr);
+    gap: 14px;
+    align-items: center;
+  }
+  .first-bell-portrait {
+    width: 84px;
+    height: 84px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: #fff;
+    border: 3px solid rgba(255,255,255,0.92);
+    box-shadow: 0 12px 28px rgba(0,0,0,0.36);
+  }
+  .first-bell-portrait img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 50% 18%;
+    transform: scale(1.65);
+    transform-origin: center 18%;
+  }
+  .first-bell-title {
+    min-width: 0;
+  }
+  .first-bell-kicker {
+    color: #ffe08a;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+  .first-bell-title h2 {
+    margin: 7px 0 0;
+    color: var(--text);
+    font-size: 24px;
+    line-height: 1.08;
+    letter-spacing: 0;
+    overflow-wrap: anywhere;
+  }
+  .first-bell-meta {
+    margin: 7px 0 0;
+    color: var(--text-soft);
+    font-size: 13px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+  .first-bell-body {
+    display: grid;
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .first-bell-prompt {
+    margin: 0;
+    border-left: 3px solid color-mix(in srgb, var(--accent) 72%, #fff 10%);
+    padding: 2px 0 2px 12px;
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 1.32;
+    overflow-wrap: anywhere;
+  }
+  .first-bell-facts {
+    display: grid;
+    gap: 8px;
+  }
+  .first-bell-fact {
+    display: grid;
+    grid-template-columns: minmax(72px, 0.28fr) minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    padding-top: 8px;
+  }
+  .first-bell-fact:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+  .first-bell-fact-key {
+    color: var(--text-mute);
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .first-bell-fact-value {
+    color: var(--text-soft);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+  .first-bell-fact.is-emphatic .first-bell-fact-value {
+    color: var(--text);
+    font-weight: 900;
+  }
+  .first-bell-note {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 14px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+  .first-bell-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 9px;
+    margin-top: 18px;
+  }
+  .first-bell-actions button {
+    appearance: none;
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 8px;
+    min-height: 40px;
+    padding: 0 14px;
+    color: var(--text);
+    font-weight: 900;
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+  .first-bell-actions button.secondary {
+    background: rgba(255,255,255,0.06);
+    color: var(--text-soft);
+  }
+  .first-bell-actions button.primary {
+    border-color: color-mix(in srgb, var(--accent) 58%, rgba(255,255,255,0.16));
+    background: var(--accent);
+    color: #fff;
+  }
+  .first-bell-actions button:focus-visible {
+    outline: 2px solid rgba(255,255,255,0.65);
+    outline-offset: 2px;
+  }
+  .first-bell-actions button:not(:disabled):hover {
+    border-color: rgba(255,255,255,0.28);
+    filter: brightness(1.05);
+  }
+
   .pack-mint-overlay {
     position: fixed;
     inset: 0;
@@ -7204,6 +7353,31 @@ export const VIEWER_CSS = `
     .composer-form {
       border-radius: 16px;
       padding: 4px 5px 4px 12px;
+    }
+    .first-bell-card {
+      padding: 16px;
+    }
+    .first-bell-hero {
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 12px;
+    }
+    .first-bell-portrait {
+      width: 72px;
+      height: 72px;
+    }
+    .first-bell-title h2 {
+      font-size: 21px;
+    }
+    .first-bell-fact {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+    .first-bell-actions {
+      display: grid;
+      grid-template-columns: 1fr;
+    }
+    .first-bell-actions button {
+      width: 100%;
     }
   }
 
