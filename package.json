@@ -71,8 +71,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.61.0",
-    "@privy-io/react-auth": "^3.32.1",
-    "@tanstack/react-query": "^5.101.0",
+    "@privy-io/react-auth": "^3.32.2",
+    "@tanstack/react-query": "^5.101.1",
     "@types/node": "^26.0.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
