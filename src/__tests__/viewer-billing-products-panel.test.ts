@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { billingProductsPanelView } from "../viewer-parts/client-pure.js";
+import {
+  billingProductsPanelView,
+  billingRubyMigrationChoiceView,
+} from "../viewer-parts/client-pure.js";
 
 describe("billingProductsPanelView", () => {
   it("describes Hall Pass checkout and Stripe configuration status", () => {
@@ -22,7 +25,6 @@ describe("billingProductsPanelView", () => {
   it("describes Solana card-pack checkout and burn rate", () => {
     expect(billingProductsPanelView("card-packs", {}, { configured: true }, {
       hallPassesPerBurnedCard: 7,
-      hasRubyToken: true,
     })).toEqual({
       titleText: "Buy Card Packs",
       subtitleText: "Card packs are Solana collectibles. Open a pack to create five face-down Ruby High cards.",
@@ -37,19 +39,55 @@ describe("billingProductsPanelView", () => {
     });
   });
 
-  it("keeps card-pack configuration failures distinct from missing token configuration", () => {
-    expect(billingProductsPanelView("card-packs", {}, { configured: false }, {
-      hasRubyToken: true,
-    })).toMatchObject({
+  it("reports card-pack configuration failures", () => {
+    expect(billingProductsPanelView("card-packs", {}, { configured: false })).toMatchObject({
       checkoutStatusText: "Card pack checkout is not configured on this server.",
       checkoutStatusError: true,
     });
 
-    expect(billingProductsPanelView("card-packs", {}, { configured: true }, {
-      hasRubyToken: false,
+    expect(billingProductsPanelView("card-packs", {}, { configured: true })).toMatchObject({
+      checkoutStatusText: "",
+      checkoutStatusError: false,
+    });
+  });
+});
+
+describe("billingRubyMigrationChoiceView", () => {
+  it("renders a wallet-ready Ruby migration action", () => {
+    expect(billingRubyMigrationChoiceView({
+      configured: true,
+      enabled: true,
+      sourceSymbol: "RUBY",
+      destinationSymbol: "Ruby",
+    }, {
+      hasWallet: true,
+      authed: true,
+      billingBusy: false,
+      cryptoUnavailable: false,
+    })).toEqual({
+      titleText: "Migrate RUBY to Ruby",
+      metaText: "Burn old RUBY · mint Ruby",
+      buttonText: "Migrate",
+      buttonDisabled: false,
+      buttonTitle: "Burn old RUBY for Ruby.",
+      noteText: "",
+    });
+  });
+
+  it("keeps disabled migration visibly unavailable", () => {
+    expect(billingRubyMigrationChoiceView({
+      configured: false,
+      enabled: false,
+      reason: "Ruby token migration is disabled.",
+    }, {
+      hasWallet: false,
+      authed: true,
     })).toMatchObject({
-      checkoutStatusText: "Solana pack checkout is missing token configuration.",
-      checkoutStatusError: true,
+      titleText: "Migrate RUBY to Ruby",
+      metaText: "Ruby token migration is disabled.",
+      buttonText: "Not Live",
+      buttonDisabled: true,
+      noteText: "Ruby token migration is disabled.",
     });
   });
 });

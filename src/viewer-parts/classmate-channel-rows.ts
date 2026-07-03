@@ -10,6 +10,7 @@ export interface ClassmateChannelRowView {
   npc: unknown;
   student: unknown;
   studentId: string;
+  kind?: "npc" | "human";
   name: string;
   color: string;
   gradeTitle: string;
@@ -18,6 +19,8 @@ export interface ClassmateChannelRowView {
   progress: ClassmateArcProgress | null;
   progressLabel: string;
   social: ClassmateSocialMarkView | null;
+  portraitUrl?: string;
+  clickable?: boolean;
 }
 
 export interface ClassmateChannelGroupView {
@@ -39,6 +42,42 @@ export interface ClassmateChannelRowsRenderer {
 export function createClassmateChannelRowsRenderer(
   deps: ClassmateChannelRowsRendererDeps,
 ): ClassmateChannelRowsRenderer {
+  function addClass(el: HTMLElement, className: string): void {
+    const classes = String(el.className || "").split(/\s+/).filter(Boolean);
+    if (!classes.includes(className)) classes.push(className);
+    el.className = classes.join(" ");
+  }
+
+  function removePortraitAspectClasses(el: HTMLElement): void {
+    el.className = String(el.className || "")
+      .split(/\s+/)
+      .filter((name) => name !== "is-tall-portrait" && name !== "is-square-portrait" && name !== "is-wide-portrait")
+      .join(" ");
+  }
+
+  function removeCustomPortraitClasses(el: HTMLElement): void {
+    removePortraitAspectClasses(el);
+    el.className = String(el.className || "")
+      .split(/\s+/)
+      .filter((name) => name !== "is-custom-portrait")
+      .join(" ");
+  }
+
+  function applyStudentThumbPortraitClass(thumb: HTMLElement, img: HTMLImageElement): void {
+    const update = () => {
+      const width = Number(img.naturalWidth || 0);
+      const height = Number(img.naturalHeight || 0);
+      removePortraitAspectClasses(thumb);
+      if (!width || !height) return;
+      const ratio = width / height;
+      if (ratio < 0.82) addClass(thumb, "is-tall-portrait");
+      else if (ratio > 1.18) addClass(thumb, "is-wide-portrait");
+      else addClass(thumb, "is-square-portrait");
+    };
+    img.onload = () => update();
+    if (img.complete) update();
+  }
+
   function appendTitle(parent: HTMLElement): void {
     const title = deps.document.createElement("div");
     title.className = "channel-section-title";
@@ -64,15 +103,19 @@ export function createClassmateChannelRowsRenderer(
   function appendThumb(parent: HTMLElement, rowView: ClassmateChannelRowView): void {
     const thumb = deps.document.createElement("span");
     thumb.className = "teacher-thumb student-thumb";
+    if (rowView.portraitUrl) thumb.className += " is-custom-portrait";
     thumb.style.setProperty("--student-accent", rowView.color);
     thumb.style.background = "#222";
     const img = deps.document.createElement("img");
-    img.src = deps.faceUrl(rowView.studentId);
+    img.src = rowView.portraitUrl || deps.faceUrl(rowView.studentId);
     img.alt = "";
     img.onerror = () => {
       thumb.style.background = rowView.color;
       if (img.parentNode === thumb) thumb.removeChild(img);
+      thumb.textContent = rowView.name.slice(0, 1).toUpperCase() || "?";
+      removeCustomPortraitClasses(thumb);
     };
+    if (rowView.portraitUrl) applyStudentThumbPortraitClass(thumb, img);
     thumb.appendChild(img);
     parent.appendChild(thumb);
   }
@@ -109,14 +152,18 @@ export function createClassmateChannelRowsRenderer(
   }
 
   function appendRow(parent: HTMLElement, rowView: ClassmateChannelRowView): void {
-    const row = deps.document.createElement("button");
-    row.className = "channel-row student-row";
-    row.type = "button";
+    const row = deps.document.createElement(rowView.clickable === false ? "div" : "button");
+    row.className = "channel-row student-row" + (rowView.kind === "human" ? " human-student-row" : "");
+    if (rowView.clickable !== false) {
+      (row as HTMLButtonElement).type = "button";
+    }
     row.setAttribute("aria-label", rowView.ariaLabel);
     appendThumb(row, rowView);
     appendMeta(row, rowView);
     appendSocial(row, rowView);
-    row.addEventListener("click", () => deps.openStudentProfile(rowView.npc, rowView.student));
+    if (rowView.clickable !== false) {
+      row.addEventListener("click", () => deps.openStudentProfile(rowView.npc, rowView.student));
+    }
     parent.appendChild(row);
   }
 

@@ -1,4 +1,4 @@
-import type { RoomChannelRowView } from "./client-pure.js";
+import type { RoomChannelRowView, RoomChannelStudentView } from "./client-pure.js";
 
 export interface RoomChannelFacultyView {
   id?: string;
@@ -10,7 +10,7 @@ export interface RoomChannelRowsControllerDeps {
   document: Pick<Document, "createElement">;
   teacherSmallAvatarUrl(faculty: RoomChannelFacultyView): string;
   teacherInitial(faculty: RoomChannelFacultyView): string;
-  buildStudentFaceChip(studentId: string, className: string): HTMLElement;
+  buildStudentFaceChip(student: RoomChannelStudentView, className: string): HTMLElement;
   openTeacherProfile(facultyId: string): void;
   setFaculty(facultyId: string): void;
 }
@@ -90,7 +90,7 @@ export function createRoomChannelRowsController(deps: RoomChannelRowsControllerD
     students.title = "Students here: " + studentNames;
     students.setAttribute("aria-label", students.title);
     roomView.students.forEach((student) => {
-      students.appendChild(deps.buildStudentFaceChip(student.id, "room-student-chip"));
+      students.appendChild(deps.buildStudentFaceChip(student, "room-student-chip"));
     });
     row.appendChild(students);
   }

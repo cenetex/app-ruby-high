@@ -3,6 +3,7 @@ import type {
   BillingCardPackPaymentChoiceView,
   BillingHallPassPaymentChoiceView,
   BillingProductRowView,
+  BillingRubyMigrationChoiceView,
 } from "./client-pure.js";
 
 export interface BillingProductsRendererDeps {
@@ -26,12 +27,17 @@ export interface BillingProductsRendererDeps {
     authed: boolean;
     billingBusy: boolean;
   }): BillingCardBurnChoiceView;
+  rubyMigrationChoiceView(
+    status: unknown,
+    opts: { hasWallet: boolean; authed: boolean; cryptoUnavailable: boolean; billingBusy: boolean },
+  ): BillingRubyMigrationChoiceView;
   isPrivyConfigured(): boolean;
   canPackCheckout(solana: unknown): boolean;
   onSelectProduct(productId: unknown): void;
   onStartCheckout(productId: unknown): void;
   onStartSolanaPayment(productId: unknown): void;
   onBurnCard(): void;
+  onMigrateRuby(): void;
 }
 
 export interface BillingProductsRenderer {
@@ -45,6 +51,7 @@ export interface BillingProductsRenderer {
     authed: boolean;
     billingBusy: boolean;
   }): HTMLElement;
+  buildRubyMigrationChoice(status: unknown, opts: { hasWallet: boolean; authed: boolean; billingBusy: boolean }): HTMLElement;
 }
 
 export function createBillingProductsRenderer(deps: BillingProductsRendererDeps): BillingProductsRenderer {
@@ -142,6 +149,24 @@ export function createBillingProductsRenderer(deps: BillingProductsRendererDeps)
       burn.title = view.buttonTitle;
       burn.addEventListener("click", () => deps.onBurnCard());
       row.appendChild(burn);
+      return row;
+    },
+    buildRubyMigrationChoice(status, opts): HTMLElement {
+      const view = deps.rubyMigrationChoiceView(status, {
+        ...opts,
+        cryptoUnavailable: !deps.isPrivyConfigured(),
+      });
+      const row = deps.document.createElement("div");
+      row.className = "billing-product billing-ruby-migration";
+      appendProductCopy(row, view.titleText, view.metaText);
+      const migrate = deps.document.createElement("button");
+      migrate.type = "button";
+      migrate.className = "billing-buy is-secondary";
+      migrate.textContent = view.buttonText;
+      migrate.disabled = view.buttonDisabled;
+      migrate.title = view.buttonTitle;
+      migrate.addEventListener("click", () => deps.onMigrateRuby());
+      row.appendChild(migrate);
       return row;
     },
   };

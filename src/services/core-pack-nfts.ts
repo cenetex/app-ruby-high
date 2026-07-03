@@ -1341,8 +1341,7 @@ async function findOwnerTokenAccountForPayment(input: {
     }
   }
   if (!best) {
-    const amount = input.tokenAmount.trim() || input.requiredBaseUnits.toString();
-    throw new Error(`Need ${amount} ${input.tokenSymbol || DEFAULT_SYMBOL} in this Solana wallet before minting a pack.`);
+    throw new Error("This Solana wallet does not have enough of the configured pack payment token to mint a pack.");
   }
   return best;
 }

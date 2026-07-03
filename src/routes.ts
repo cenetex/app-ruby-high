@@ -47,6 +47,7 @@ import {
 } from "./routes/admin.js";
 import type { AdminOpsSnapshot } from "./routes/admin.js";
 import { handleYearbookRoutes } from "./routes/yearbook.js";
+import { handleFirstBellRoutes, FIRST_BELL_PREFIX } from "./routes/first-bell.js";
 import { buildSessionState, getCharacterName } from "./routes/session-state.js";
 import { handleMetricsEventRoute, METRICS_EVENT_PATH } from "./routes/metrics-events.js";
 import { handleNftRoutes } from "./routes/nft.js";
@@ -515,6 +516,15 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     return handleBugReportRoute(ctx);
   }
 
+  if (ctx.pathname.startsWith(FIRST_BELL_PREFIX)) {
+    const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
+    if (!ruby) {
+      ctx.error(ctx.res, "RubyHighService unavailable", 503);
+      return true;
+    }
+    return handleFirstBellRoutes(ctx, ruby);
+  }
+
   if (ctx.pathname.startsWith("/api/apps/ruby-high/yearbook")) {
     const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
     if (!ruby) {
@@ -809,6 +819,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   const stateKey = getSessionId(runtime, ctx.cookieHeader);
 
   if (ctx.method === "GET" && !subroute) {
+    await ruby.refreshPublicWorldSessions(Date.now());
     const state = ruby.getOrCreate(stateKey);
     ctx.json(ctx.res, buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }));
     return true;

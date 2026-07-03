@@ -303,7 +303,24 @@ export const VIEWER_CSS = `
     height: 100%;
     object-fit: cover;
     object-position: center top;
+    transform: none;
+    transform-origin: center;
     display: block;
+  }
+  .channel-row .student-thumb.is-custom-portrait img {
+    object-position: 50% 18%;
+    transform: scale(2.1);
+    transform-origin: 50% 18%;
+  }
+  .channel-row .student-thumb.is-custom-portrait.is-tall-portrait img {
+    object-position: 50% 14%;
+    transform: scale(2.45);
+    transform-origin: 50% 14%;
+  }
+  .channel-row .student-thumb.is-custom-portrait.is-wide-portrait img {
+    object-position: 50% 28%;
+    transform: scale(1.6);
+    transform-origin: 50% 28%;
   }
   .channel-row:active { background: var(--bg-elev); }
   .channel-row.is-active {
@@ -376,10 +393,35 @@ export const VIEWER_CSS = `
     height: 100%;
     object-fit: cover;
     object-position: center top;
+    transform: none;
+    transform-origin: center;
     display: block;
+  }
+  .room-student-chip.is-custom-portrait img {
+    object-position: 50% 18%;
+    transform: scale(2.15);
+    transform-origin: 50% 18%;
+  }
+  .room-student-chip.is-custom-portrait.is-tall-portrait img {
+    object-position: 50% 14%;
+    transform: scale(2.45);
+    transform-origin: 50% 14%;
+  }
+  .room-student-chip.is-custom-portrait.is-wide-portrait img {
+    object-position: 50% 28%;
+    transform: scale(1.55);
+    transform-origin: 50% 28%;
   }
   .room-student-chip.is-fallback img {
     display: none;
+  }
+  .room-student-chip.is-clickable {
+    cursor: pointer;
+  }
+  .room-student-chip.is-clickable:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    z-index: 1;
   }
   .channel-row .roster-grade {
     margin-left: auto;
@@ -705,22 +747,6 @@ export const VIEWER_CSS = `
     .arc-indicator .arc-streak,
     .arc-indicator .arc-xp { display: none; }
   }
-  .hall-pass-btn {
-    appearance: none;
-    background: var(--bg-elev);
-    color: var(--text-soft);
-    border: none;
-    border-radius: 999px;
-    width: 32px;
-    height: 32px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-  }
-  .hall-pass-btn:hover { color: var(--text); background: var(--bg-elev-2); }
-  .hall-pass-btn[hidden] { display: none; }
-  .hall-pass-btn svg { width: 18px; height: 18px; }
   /* Pack library sections and draft teacher editor rail. */
   .pack-section-title {
     margin-top: 14px;
@@ -2854,21 +2880,6 @@ export const VIEWER_CSS = `
     color: #ffe08a;
     font-family: "SF Mono", "Menlo", monospace;
   }
-  .mash-tick-chip {
-    display: inline-flex;
-    align-items: center;
-    margin-left: 6px;
-    padding: 1px 7px;
-    border-radius: 999px;
-    font-size: 10px;
-    font-weight: 900;
-    font-family: "SF Mono", "Menlo", monospace;
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--text-soft);
-  }
-  .mash-tick-chip.up { background: rgba(82,198,115,0.2); color: #b6f5b9; }
-  .mash-tick-chip.down { background: rgba(210,42,42,0.2); color: #ffb1b1; }
-  .mash-tick-chip.steady { background: rgba(58,163,224,0.18); color: #b8e4ff; }
   .msg.social-summary .social-summary-avatar {
     background: rgba(184,228,255,0.18);
     border: 1px solid rgba(184,228,255,0.42);
@@ -2894,6 +2905,7 @@ export const VIEWER_CSS = `
   }
   .social-summary-row.is-up { border-color: rgba(82,198,115,0.22); }
   .social-summary-row.is-down { border-color: rgba(210,42,42,0.24); }
+  .social-summary-row.is-primary { background: rgba(255,255,255,0.035); }
   .social-summary-dot {
     width: 9px;
     height: 9px;
@@ -6342,6 +6354,43 @@ export const VIEWER_CSS = `
   }
   .msg.result .body .badge-mini.ok { background: rgba(76,181,85,0.22); color: #b6f5b9; }
   .msg.result .body .badge-mini.bad { background: rgba(210,42,42,0.22); color: #ffb1b1; }
+  .msg.result.class-note-result .body {
+    display: grid;
+    justify-self: end;
+    align-self: flex-start;
+    gap: 4px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    max-width: min(420px, 100%);
+  }
+  .class-note-main {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+  }
+  .class-note-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .class-note-receipts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    min-width: 0;
+    color: var(--text-mute);
+    opacity: 0.72;
+  }
+  .class-note-receipts .roll-chip,
+  .class-note-receipts .score-multiplier-chip {
+    margin-left: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--text-mute);
+    font-weight: 700;
+  }
 
   /* ── empty / welcome state ─────────────────────────────────────────────── */
   .empty-state {

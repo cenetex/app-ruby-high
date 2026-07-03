@@ -470,7 +470,6 @@ export function runViewerClient(bootstrap) {
     arcYear: $("arc-year"),
     arcStreak: $("arc-streak"),
     arcXp: $("arc-xp"),
-    hallPassBtn: $("hall-pass-btn"),
     stream: $("stream"),
     blackboardPanel: $("blackboard-panel"),
     loungeStage: $("lounge-stage"),
@@ -902,6 +901,8 @@ export function runViewerClient(bootstrap) {
   const gradedResponderIds = new Set(); // responders whose grade-tag we've stamped on
   let sheetOverlayOpen = false;
   let returnToAccountAfterSheet = false;
+  const chatHistoryHumanStudentsByFaculty = new Map();
+  let roomHumanHistorySig = "";
 
   // Track scroll-to-bottom intent: only auto-scroll if user is near bottom.
   // The player's display name in chat + race UI. Falls back to "You" only
@@ -1267,16 +1268,18 @@ export function runViewerClient(bootstrap) {
     hallPassPaymentChoiceView: billingHallPassPaymentChoiceView,
     cardPackPaymentChoiceView: billingCardPackPaymentChoiceView,
     cardBurnChoiceView: billingCardBurnChoiceView,
+    rubyMigrationChoiceView: billingRubyMigrationChoiceView,
     isPrivyConfigured() {
       return !!privyState.configured;
     },
     canPackCheckout(solana) {
-      return !!(solana && solana.configured && currentRubyTokenMintFromSolana(solana));
+      return !!(solana && solana.configured);
     },
     onSelectProduct: selectBillingProduct,
     onStartCheckout: startCheckout,
     onStartSolanaPayment: startSolanaPayment,
     onBurnCard: burnHallPassCardFromBilling,
+    onMigrateRuby: migrateRubyFromBilling,
   });
   const accountHistoryRenderer = createAccountHistoryPanelRenderer({
     document,
@@ -1411,9 +1414,7 @@ export function runViewerClient(bootstrap) {
     document,
     statLabel,
     scoreAwardLabel,
-    mashTickLabel,
     mashTickStory,
-    studentNameById,
     studentColorById,
   });
   const reportCardRenderer = createReportCardRenderer({
@@ -1875,6 +1876,22 @@ export function runViewerClient(bootstrap) {
     return product.name || packCountLabel(product.packCount);
   }
 
+  function tokenBaseUnitsDisplay(amountBaseUnits, decimals) {
+    const raw = String(amountBaseUnits || "").trim();
+    const places = Math.max(0, Math.min(18, Math.floor(Number(decimals || 0))));
+    if (!/^\d+$/.test(raw)) return formatTokenDisplayAmount(raw);
+    if (places <= 0) return formatTokenDisplayAmount(raw);
+    const padded = raw.padStart(places + 1, "0");
+    const whole = padded.slice(0, -places) || "0";
+    const fractional = padded.slice(-places).replace(/0+$/, "");
+    return formatTokenDisplayAmount(fractional ? whole + "." + fractional : whole);
+  }
+
+  function rubyMigrationAmountLabel(data, symbolKey) {
+    const symbol = String(data && data[symbolKey] || "").trim() || (symbolKey === "sourceSymbol" ? "RUBY" : "Ruby");
+    return tokenBaseUnitsDisplay(data && data.amountBaseUnits, data && data.decimals) + " " + symbol;
+  }
+
   function responseErrorText(data) {
     return data && typeof data === "object" && data.error != null
       ? String(data.error).trim()
@@ -1898,8 +1915,12 @@ export function runViewerClient(bootstrap) {
   function friendlySolanaActionError(err, unchanged) {
     const message = err && err.message ? String(err.message) : String(err || "error");
     if (/user rejected|rejected|canceled|cancelled/i.test(message)) return "Wallet request canceled.";
-    if (/Need\s+[\d,.]+\s+RUBY|needs?\s+[\d,.]+\s+RUBY|not enough\s+RUBY/i.test(message)) {
-      return message.replace(/^Card pack checkout\s*·\s*/i, "") + " Add funds in the connected Solana wallet, then try again.";
+    if (/does not have(?: enough)?\s+(?:RUBY|Ruby)\s+to migrate/i.test(message)) {
+      return "This wallet has no old RUBY ready to migrate.";
+    }
+    if (/Ruby token migration|migrat/i.test(message)) return message;
+    if (/Need\s+[\d,.]+\s+[A-Z0-9_$-]+|needs?\s+[\d,.]+\s+[A-Z0-9_$-]+|not enough\s+[A-Z0-9_$-]+|payment token/i.test(message)) {
+      return "This Solana wallet needs the configured pack payment token before minting a pack. Add funds in the connected wallet, then try again.";
     }
     if (/needs more SOL|insufficient funds|insufficient lamports|Attempt to debit|0x1\b|needs at least|balance is .*needs/i.test(message)) {
       return "This mint needs more SOL for Solana rent and fees. Your card was not changed.";
@@ -2097,11 +2118,6 @@ export function runViewerClient(bootstrap) {
   // formatTokenDisplayAmount, cardPackTokenSymbol, cardPackDebitLabel,
   // cardPackCreditLabel, cardPackPaymentDeltaLabel, cardPackProductMeta,
   // formatMoney, formatTokenAmount are in client-pure.ts.
-  function currentRubyTokenMintFromSolana(solana) {
-    if (!solana || typeof solana !== "object") return "";
-    const mint = typeof solana.mint === "string" ? solana.mint.trim() : "";
-    return mint || "";
-  }
 
   function cardPackCheckoutState() {
     const solana = billingProductsCache && billingProductsCache.solana && typeof billingProductsCache.solana === "object"
@@ -2109,8 +2125,6 @@ export function runViewerClient(bootstrap) {
       : null;
     if (!solana) return { loaded: false, ready: true, reason: "" };
     if (!solana.configured) return { loaded: true, ready: false, reason: "Solana pack checkout is not configured on this server." };
-    const mint = currentRubyTokenMintFromSolana(solana);
-    if (!mint) return { loaded: true, ready: false, reason: "Solana pack checkout is missing token configuration." };
     return { loaded: true, ready: true, reason: "" };
   }
 
@@ -2743,7 +2757,6 @@ export function runViewerClient(bootstrap) {
     const solana = payload && payload.solana && typeof payload.solana === "object" ? payload.solana : null;
     const panelView = billingProductsPanelView(mode, payload, solana, {
       hallPassesPerBurnedCard,
-      hasRubyToken: !!currentRubyTokenMintFromSolana(solana),
     });
     if (els.billingTitle) els.billingTitle.textContent = panelView.titleText;
     if (els.billingSub) els.billingSub.textContent = panelView.subtitleText;
@@ -2780,6 +2793,9 @@ export function runViewerClient(bootstrap) {
     const shownProducts = mode === "card-packs" ? solanaProducts : products;
     if (mode === "hall-passes") {
       els.billingProducts.appendChild(buildHallPassCardBurnChoice(hallPassesPerBurnedCard));
+    }
+    if (mode === "card-packs" && payload && payload.rubyMigration) {
+      els.billingProducts.appendChild(buildRubyMigrationChoice(payload.rubyMigration));
     }
     if (shownProducts.length === 0) {
       setBillingStatus(panelView.emptyStatusText, true);
@@ -2839,6 +2855,81 @@ export function runViewerClient(bootstrap) {
 
   function buildCardPackPaymentChoice(solana, product) {
     return billingProductsRenderer.buildCardPackPaymentChoice(solana, product, { billingBusy });
+  }
+
+  function buildRubyMigrationChoice(status) {
+    return billingProductsRenderer.buildRubyMigrationChoice(status, {
+      hasWallet: !!connectedSolanaWalletAddress(),
+      authed,
+      billingBusy,
+    });
+  }
+
+  async function migrateRubyFromBilling() {
+    if (billingBusy) return;
+    billingBusy = true;
+    let finalBillingStatus = null;
+    if (billingProductsCache) renderBillingProducts(billingProductsCache);
+    setBillingStatus("Starting Ruby migration...", false);
+    try {
+      if (!connectedSolanaWalletAddress()) {
+        const connected = await ensureSolanaWalletForBilling({ actionLabel: "Ruby migration" });
+        if (!connected) {
+          finalBillingStatus = ["Ruby migration canceled.", false];
+          setBillingStatus(finalBillingStatus[0], finalBillingStatus[1]);
+          return;
+        }
+      }
+      const ownerWalletAddress = connectedSolanaWalletAddress();
+      setBillingStatus("Preparing Ruby migration...", false);
+      const r = await apiFetch(apiBase + "/billing/ruby-migration/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        timeoutMs: 15000,
+        body: JSON.stringify({ ownerWalletAddress }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data || !data.ok) {
+        throw new Error(nftHttpErrorMessage("Ruby migration", r, data, "No Ruby was migrated; try again in a minute."));
+      }
+      const client = await getPrivyClient();
+      if (!client || typeof client.signAndSendSolanaTransaction !== "function") {
+        throw new Error("Ruby migration wallet signing is unavailable.");
+      }
+      const burnLabel = rubyMigrationAmountLabel(data, "sourceSymbol");
+      const mintLabel = rubyMigrationAmountLabel(data, "destinationSymbol");
+      const approved = await confirmWalletTransactionPreview({
+        title: "Migrate Ruby?",
+        action: "Migrate " + (data.sourceSymbol || "RUBY") + " to " + (data.destinationSymbol || "Ruby"),
+        walletAddress: ownerWalletAddress,
+        cost: "Burn " + burnLabel,
+        credit: "Mint " + mintLabel,
+        mint: data.destinationMint,
+        reference: data.sourceTokenAccountAddress,
+        prompt: "Your wallet should show one Ruby migration transaction.",
+        copy: "Ruby High will ask your wallet to burn old RUBY and mint canonical Ruby.",
+        confirmText: "Open wallet",
+      });
+      if (!approved) {
+        finalBillingStatus = ["Ruby migration canceled.", false];
+        setBillingStatus(finalBillingStatus[0], finalBillingStatus[1]);
+        return;
+      }
+      setBillingStatus("Confirm the Ruby migration in your wallet...", false);
+      const payment = await client.signAndSendSolanaTransaction(data);
+      const signature = payment && payment.signature ? payment.signature : "";
+      finalBillingStatus = ["Ruby migration sent" + (signature ? " · " + shortWallet(signature) : "."), false];
+      setBillingStatus(finalBillingStatus[0], finalBillingStatus[1]);
+      setPrivyStatus(finalBillingStatus[0], finalBillingStatus[1]);
+    } catch (err) {
+      finalBillingStatus = ["Ruby migration failed · " + friendlySolanaActionError(err, "No Ruby was migrated; try again in a minute."), true];
+      setBillingStatus(finalBillingStatus[0], finalBillingStatus[1]);
+      setPrivyStatus(finalBillingStatus[0], finalBillingStatus[1]);
+    } finally {
+      billingBusy = false;
+      if (billingProductsCache) renderBillingProducts(billingProductsCache);
+      if (finalBillingStatus) setBillingStatus(finalBillingStatus[0], finalBillingStatus[1]);
+    }
   }
 
   async function burnHallPassCardFromBilling() {
@@ -3017,16 +3108,17 @@ export function runViewerClient(bootstrap) {
     }
   }
 
-  async function ensureSolanaWalletForBilling() {
+  async function ensureSolanaWalletForBilling(opts) {
     if (connectedSolanaWalletAddress()) return true;
-    if (!privyConfig) throw new Error("Card pack checkout is not configured.");
+    const actionLabel = opts && opts.actionLabel ? String(opts.actionLabel) : "card pack checkout";
+    if (!privyConfig) throw new Error(actionLabel + " is not configured.");
     if (!privyState.authenticated) {
-      setBillingStatus("Opening sign-in for card pack checkout...", false);
+      setBillingStatus("Opening sign-in for " + actionLabel + "...", false);
       const loginSnapshot = await startPrivyLogin({ source: "billing" });
       if (!loginSnapshot && !privyState.authenticated) return false;
     }
     if (connectedSolanaWalletAddress()) return true;
-    setBillingStatus("Opening wallet connection for card pack checkout...", false);
+    setBillingStatus("Opening wallet connection for " + actionLabel + "...", false);
     const approved = await confirmWalletTransactionPreview({
       title: "Connect Solana wallet?",
       action: "Connect wallet",
@@ -3829,13 +3921,6 @@ export function runViewerClient(bootstrap) {
     return s ? s.color : "#888";
   }
 
-  function mashTickLabel(event) {
-    const name = studentNameById(event.studentId);
-    if (event.reason === "pep-talk") return name + " steady";
-    const delta = Number(event.delta || 0);
-    const sign = delta > 0 ? "+" + delta : String(delta);
-    return "Social " + sign + " " + name;
-  }
   // Story-style version of a relationship tick. Used in the Social card
   // recent-activity list so the player sees what happened, not "+1/-2"
   // numerics that are meaningless out of context.
@@ -3908,6 +3993,7 @@ export function runViewerClient(bootstrap) {
     const roster = Array.isArray(t && t.npc_roster) ? t.npc_roster : [];
     const cohort = Array.isArray(t && t.npc_cohort) ? t.npc_cohort : [];
     const cells = t && t.character && t.character.mashCard && t.character.mashCard.cells;
+    const humans = publicRoomStudentsForRail(t);
     const rosterSig = roster.map((n) => n.id + ":" + (n.currentRoom || "")).join(",");
     const cohortSig = cohort.map((n) =>
       n.id + ":" + n.grade + ":" + (n.graduated ? "1" : "0") + ":" + ((n.streak && n.streak.count) || 0)
@@ -3916,7 +4002,14 @@ export function runViewerClient(bootstrap) {
       const cell = cells && cells[s.id];
       return s.id + ":" + (cell ? [cell.affinity || 0, cell.circled ? 1 : 0, cell.scratched ? 1 : 0].join("/") : "");
     }).join(",");
-    return rosterSig + "::" + cohortSig + "::" + socialSig + "::hidden=" + (hiddenNpcStudentId() || "");
+    const humanSig = humans.map((student) => [
+      student && student.id,
+      student && student.name,
+      student && student.grade,
+      student && student.facultyId,
+      student && student.portraitUrl,
+    ].join(":")).join(",");
+    return rosterSig + "::" + cohortSig + "::" + socialSig + "::humans=" + humanSig + "::hidden=" + (hiddenNpcStudentId() || "");
   }
   function studentCohortKey(entry) {
     if (entry.arc && entry.arc.graduated) return "graduated";
@@ -3941,6 +4034,139 @@ export function runViewerClient(bootstrap) {
   function studentArcProgressLabel(progress) {
     return classmateArcProgressLabel(progress);
   }
+  function playbookAccent(playbookId) {
+    const playbooks = Array.isArray(lastTelemetry && lastTelemetry.playbooks) ? lastTelemetry.playbooks : [];
+    const hit = playbooks.find((p) => p && p.id === playbookId);
+    return (hit && hit.accent) || "#4a6fa5";
+  }
+  function playbookLabel(playbookId) {
+    const playbooks = Array.isArray(lastTelemetry && lastTelemetry.playbooks) ? lastTelemetry.playbooks : [];
+    const hit = playbooks.find((p) => p && p.id === playbookId);
+    return (hit && (hit.shortName || hit.name)) || "Student";
+  }
+  function humanRoomName(facultyId) {
+    const fid = String(facultyId || "");
+    const roster = Array.isArray(lastTelemetry && lastTelemetry.faculty_roster) ? lastTelemetry.faculty_roster : [];
+    const fac = roster.find((f) => f && f.id === fid);
+    return channelNameFor(fac || { id: fid });
+  }
+  function isDefaultStudentAvatarUrl(value) {
+    return /\/assets\/students\/[^/?#]+-(?:face|full)\.png(?:[?#].*)?$/i.test(String(value || ""));
+  }
+  function customChatHumanPortraitUrl(raw) {
+    const portraitUrl = String(raw || "").trim();
+    if (!portraitUrl || portraitUrl.length > 2048 || /[\r\n]/.test(portraitUrl)) return "";
+    if (portraitUrl.startsWith("//") || /^data:/i.test(portraitUrl)) return "";
+    if (!(portraitUrl.startsWith("/") || /^https?:\/\//i.test(portraitUrl))) return "";
+    if (isDefaultStudentAvatarUrl(portraitUrl)) return "";
+    return portraitUrl;
+  }
+  function chatHumanStudentKey(name, portraitUrl) {
+    return String(name || "Student").trim().toLowerCase() + "|" + String(portraitUrl || "").trim();
+  }
+  function rememberChatHistoryHumanStudent(facultyId, message) {
+    if (!message || message.role !== "user" || message.isSelf) return false;
+    const faculty = String(facultyId || message.faculty || "").trim();
+    if (!faculty) return false;
+    const portraitUrl = customChatHumanPortraitUrl(message.avatarUrl);
+    if (!portraitUrl) return false;
+    const name = String(message.authorName || "Student").trim() || "Student";
+    if (name === "You") return false;
+    const lastActive = Number.isFinite(Number(message.at)) ? Math.floor(Number(message.at)) : Date.now();
+    const key = chatHumanStudentKey(name, portraitUrl);
+    const idSlug = key.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 72) || "student";
+    const entry = {
+      key,
+      id: "chat-human:" + idSlug,
+      name,
+      playbookId: "",
+      grade: "",
+      facultyId: faculty,
+      portraitUrl,
+      stats: {},
+      classGrades: {},
+      yearbookCount: 0,
+      lastActive,
+    };
+    const rows = chatHistoryHumanStudentsByFaculty.get(faculty) || [];
+    const existingIndex = rows.findIndex((row) => row && row.key === key);
+    if (existingIndex >= 0) {
+      const current = rows[existingIndex];
+      if (current && current.lastActive >= lastActive) return false;
+      rows[existingIndex] = { ...current, ...entry };
+    } else {
+      rows.push(entry);
+    }
+    rows.sort((a, b) => Number(b.lastActive || 0) - Number(a.lastActive || 0) || String(a.name).localeCompare(String(b.name)));
+    chatHistoryHumanStudentsByFaculty.set(faculty, rows.slice(0, 8));
+    return true;
+  }
+  function rememberChatHistoryHumanStudents(facultyId, messages) {
+    let changed = false;
+    (Array.isArray(messages) ? messages : []).forEach((message) => {
+      if (rememberChatHistoryHumanStudent(facultyId, message)) changed = true;
+    });
+    return changed;
+  }
+  function publicRoomStudentsForRail(t) {
+    const out = [];
+    const seenIds = new Set();
+    const seenPeople = new Set();
+    const seenNames = new Set();
+    const seenPortraits = new Set();
+    const add = (student) => {
+      if (!student || typeof student !== "object") return;
+      const portraitUrl = String(student.portraitUrl || "").trim();
+      const facultyId = String(student.facultyId || "").trim();
+      if (!portraitUrl || !facultyId) return;
+      const name = String(student.name || "Student").trim() || "Student";
+      const id = String(student.id || ("human:" + chatHumanStudentKey(name, portraitUrl))).trim();
+      const personKey = chatHumanStudentKey(name, portraitUrl);
+      const nameKey = name.toLowerCase();
+      const portraitKey = portraitUrl.toLowerCase();
+      if (seenIds.has(id) || seenPeople.has(personKey) || (nameKey !== "student" && seenNames.has(nameKey)) || seenPortraits.has(portraitKey)) return;
+      seenIds.add(id);
+      seenPeople.add(personKey);
+      if (nameKey !== "student") seenNames.add(nameKey);
+      seenPortraits.add(portraitKey);
+      out.push({ ...student, id, name, facultyId, portraitUrl });
+    };
+    (Array.isArray(t && t.public_room_students) ? t.public_room_students : []).forEach(add);
+    chatHistoryHumanStudentsByFaculty.forEach((rows) => {
+      (Array.isArray(rows) ? rows : []).forEach(add);
+    });
+    return out;
+  }
+  function publicRoomHumanRows(t, grade) {
+    const activeFaculty = String((t && t.faculty) || "");
+    const rows = publicRoomStudentsForRail(t).filter((student) => !activeFaculty || student.facultyId === activeFaculty);
+    return rows
+      .map((student) => {
+        const portraitUrl = String((student && student.portraitUrl) || "").trim();
+        if (!portraitUrl) return null;
+        const name = String((student && student.name) || "Student").trim() || "Student";
+        const rowGrade = String((student && student.grade) || grade || "");
+        const gradeTitle = GRADE_LABELS[rowGrade] || (rowGrade ? "Grade " + rowGrade : "Student");
+        const id = String((student && student.id) || ("human:" + name));
+        return {
+          npc: { ...student, kind: "human", currentRoom: student && student.facultyId },
+          student: { ...student, kind: "human", color: playbookAccent(student && student.playbookId) },
+          studentId: id,
+          kind: "human",
+          name,
+          color: playbookAccent(student && student.playbookId),
+          gradeTitle,
+          ariaLabel: name + ", " + gradeTitle + ", in this channel",
+          subtitle: gradeTitle + " · in channel",
+          progress: null,
+          progressLabel: "",
+          social: null,
+          portraitUrl,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  }
   function roomCompletionProgress(fac) {
     return roomCompletionProgressView(fac);
   }
@@ -3950,20 +4176,58 @@ export function runViewerClient(bootstrap) {
   function studentFaceUrl(studentId) {
     return apiBase + "/assets/students/" + encodeURIComponent(studentId) + "-face.png";
   }
-  function buildStudentFaceChip(studentId, className) {
+  function applyRoomStudentChipPortraitClass(chip, img) {
+    if (!chip || !img) return;
+    const update = () => {
+      const width = Number(img.naturalWidth || 0);
+      const height = Number(img.naturalHeight || 0);
+      chip.classList.remove("is-tall-portrait", "is-square-portrait", "is-wide-portrait");
+      if (!width || !height) return;
+      const ratio = width / height;
+      if (ratio < 0.82) chip.classList.add("is-tall-portrait");
+      else if (ratio > 1.18) chip.classList.add("is-wide-portrait");
+      else chip.classList.add("is-square-portrait");
+    };
+    img.onload = () => update();
+    if (img.complete) update();
+  }
+  function buildStudentFaceChip(student, className) {
+    const record = student && typeof student === "object" ? student : { id: student };
+    const studentId = String((record && record.id) || "");
+    const name = String((record && record.name) || "").trim();
+    const portraitUrl = String((record && record.portraitUrl) || "").trim();
     const s = STUDENTS.find((x) => x.id === studentId);
     const chip = document.createElement("span");
     chip.className = className || "student-face-chip";
     chip.style.setProperty("--student-accent", s ? s.color : "#888");
-    chip.title = s ? s.name : studentId;
+    chip.title = name || (s ? s.name : studentId);
     chip.setAttribute("aria-label", chip.title);
+    if (portraitUrl) chip.classList.add("is-custom-portrait");
+    if (record && record.kind === "human") {
+      chip.classList.add("is-clickable");
+      chip.setAttribute("role", "button");
+      chip.setAttribute("tabindex", "0");
+      const openHuman = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openHumanStudentProfile(record);
+      };
+      chip.addEventListener("click", openHuman);
+      chip.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        openHuman(event);
+      });
+    }
     const img = document.createElement("img");
-    img.src = studentFaceUrl(studentId);
+    img.src = portraitUrl || studentFaceUrl(studentId);
     img.alt = "";
     img.onerror = () => {
       chip.classList.add("is-fallback");
-      chip.textContent = s ? s.name.slice(0, 1) : "?";
+      chip.classList.remove("is-custom-portrait", "is-tall-portrait", "is-square-portrait", "is-wide-portrait");
+      const fallbackName = name || (s ? s.name : "");
+      chip.textContent = fallbackName.slice(0, 1).toUpperCase() || "?";
     };
+    if (portraitUrl) applyRoomStudentChipPortraitClass(chip, img);
     chip.appendChild(img);
     return chip;
   }
@@ -4032,13 +4296,17 @@ export function runViewerClient(bootstrap) {
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(entry);
     });
-    return Array.from(groups.entries())
+    const npcGroups = Array.from(groups.entries())
       .sort((a, b) => studentCohortSortValue(a[0]) - studentCohortSortValue(b[0]))
       .map(([key, entries]) => ({
         key,
         label: studentCohortLabel(key),
         rows: entries,
       }));
+    const humanRows = publicRoomHumanRows(t, grade);
+    return humanRows.length
+      ? [{ key: "public-room-humans", label: "This channel", rows: humanRows }, ...npcGroups]
+      : npcGroups;
   }
   function rebuildChannelsRail() {
     const t = lastTelemetry || {};
@@ -4079,7 +4347,8 @@ export function runViewerClient(bootstrap) {
     }
     const cohort = t.room_cohort || {};
     const visibleStudentIds = STUDENTS.filter((s) => shouldShowStudentId(s.id)).map((s) => s.id);
-    const roomViews = roomChannelRowViews(t.rooms || [], roster, cohort, t.faculty, STUDENTS, visibleStudentIds);
+    const railHumanStudents = publicRoomStudentsForRail(t);
+    const roomViews = roomChannelRowViews(t.rooms || [], roster, cohort, t.faculty, STUDENTS, visibleStudentIds, railHumanStudents);
     roomChannelRowsController.appendRows(els.channelsList, roomViews, roster);
 
     // The Teachers' Lounge and class roster stay out of the first-session
@@ -4208,6 +4477,7 @@ export function runViewerClient(bootstrap) {
       }
     }
     closeRails();
+  }
 
   async function showLeaderboard() {
     closeRails();
@@ -4237,7 +4507,6 @@ export function runViewerClient(bootstrap) {
     leaderboardPanelRenderer.render(data, playbooks);
   }
 
-  }
   async function startPostClassPractice(postClass) {
     if (!postClass || !postClass.report) return false;
     if (guestSignupRequired(lastTelemetry)) {
@@ -4718,6 +4987,7 @@ export function runViewerClient(bootstrap) {
     if (teacherChatEnabled() && t.faculty && (!renderedHistorySig || !renderedHistorySig.startsWith(t.faculty + ":"))) {
       loadHistory(t.faculty);
     }
+    loadRoomHumanHistories(t);
     applyViewMode(deriveViewMode(t));
     // Morning announcements — shown once per day on first visit.
     // Fires after the first telemetry tick, before class content renders.
@@ -4733,10 +5003,6 @@ export function runViewerClient(bootstrap) {
         showOnboarding();
       }
     }
-    // Keep top-bar chrome focused on class progress. Economy and collection
-    // systems live under Account.
-    if (els.hallPassBtn) els.hallPassBtn.hidden = false;
-
     setAccent(t.facultyAccent);
     rebuildServersRail();
     rebuildChannelsRail();
@@ -5192,7 +5458,55 @@ export function runViewerClient(bootstrap) {
   }
 
   // ── student profile card ─────────────────────────────────────────────────
+  function openHumanStudentProfile(human) {
+    if (!human || typeof human !== "object") return;
+    sheetOverlayOpen = true;
+    sheetEl.classList.add("is-open");
+    const name = String(human.name || "Student").trim() || "Student";
+    const gradeKey = String(human.grade || "");
+    const gradeTitle = GRADE_LABELS[gradeKey] || (gradeKey ? "Grade " + gradeKey : "Student");
+    const facultyId = String(human.facultyId || human.currentRoom || "");
+    const roomName = humanRoomName(facultyId);
+    const portraitUrl = String(human.portraitUrl || "").trim();
+    const accent = playbookAccent(human.playbookId);
+    const playbook = playbookLabel(human.playbookId);
+    const stats = human.stats && typeof human.stats === "object" ? human.stats : {};
+    const classGrades = human.classGrades && typeof human.classGrades === "object" && !Array.isArray(human.classGrades)
+      ? human.classGrades
+      : {};
+    const completedClasses = Object.keys(classGrades).length;
+    const yearbookCount = Math.max(0, Math.floor(Number(human.yearbookCount || 0)));
+    const subtitle = gradeTitle + (roomName ? " · #" + roomName : "");
+    renderCardDeck([
+      buildCharacterCard({
+        role: "student",
+        name,
+        subtitle,
+        portraitUrl,
+        accent,
+        stats,
+        quote: playbook + " at Ruby High.",
+        footer: { title: "Current room", content: roomName ? "#" + roomName : "Ruby High" },
+      }),
+      buildProfileCareerCard({
+        badgeLabel: "student",
+        name: "Student Page",
+        subtitle: playbook,
+        metrics: [
+          { label: "room", value: roomName ? "#" + roomName : "Ruby High", detail: "current channel", met: !!roomName },
+          { label: "year", value: gradeTitle, detail: "current year", met: !!gradeKey },
+          { label: "classes", value: String(completedClasses), detail: "completed", met: completedClasses > 0 },
+          { label: "yearbook", value: String(yearbookCount), detail: "entries", met: yearbookCount > 0 },
+        ],
+      }),
+    ]);
+  }
+
   function openStudentProfile(npc, s) {
+    if ((npc && npc.kind === "human") || (s && s.kind === "human")) {
+      openHumanStudentProfile(npc && npc.kind === "human" ? npc : s);
+      return;
+    }
     sheetOverlayOpen = true;
     sheetEl.classList.add("is-open");
     // Pull this NPC's parallel-arc state from the cohort. That's the
@@ -5860,7 +6174,7 @@ export function runViewerClient(bootstrap) {
     firstBellReportModalOpen = false;
   }
 
-  function showFirstBellReport(report, character) {
+  function showFirstBellReport(report, character, share) {
     if (!report || firstBellReportModalOpen) return;
     firstBellReportModalOpen = true;
 
@@ -5934,11 +6248,20 @@ export function runViewerClient(bootstrap) {
     secondary.type = "button";
     secondary.className = "secondary";
     secondary.textContent = "Open student card";
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "secondary";
+    copy.textContent = "Copy link";
+    copy.title = "Copy First Bell report link";
     const primary = document.createElement("button");
     primary.type = "button";
     primary.className = "primary";
     primary.textContent = "Continue";
-    actions.append(secondary, primary);
+    actions.append(secondary);
+    const shareId = share && share.shareId ? String(share.shareId) : "";
+    const shareUrl = share && share.url ? absoluteViewerUrl(share.url) : "";
+    if (shareId && shareUrl) actions.appendChild(copy);
+    actions.appendChild(primary);
 
     let onKeyDown = null;
     const close = () => closeFirstBellReportModal(overlay, onKeyDown);
@@ -5954,6 +6277,24 @@ export function runViewerClient(bootstrap) {
       close();
       openSheet();
     });
+    copy.addEventListener("click", async () => {
+      const original = copy.textContent || "Copy link";
+      try {
+        await copyTextToClipboard(shareUrl);
+        const payload = {
+          shareId: shareId,
+          destination: "copy",
+          kind: "first_bell_report",
+          ...(share && share.grade ? { grade: String(share.grade) } : {}),
+        };
+        postViewerMetricEvent("share_initiated", payload);
+        copy.textContent = "Copied";
+      } catch (_err) {
+        copy.textContent = "Failed";
+      } finally {
+        setTimeout(() => { copy.textContent = original; }, 1200);
+      }
+    });
 
     card.append(hero, body, actions);
     overlay.appendChild(card);
@@ -5965,7 +6306,7 @@ export function runViewerClient(bootstrap) {
     const report = t && t.first_bell_report;
     if (!report || firstBellReportModalOpen || hasSeenFirstBellReport(report)) return;
     markFirstBellReportSeen(report);
-    showFirstBellReport(report, t.character);
+    showFirstBellReport(report, t.character, t.first_bell_share);
   }
 
   function showComicReader(collection, unlock, options) {
@@ -9281,7 +9622,6 @@ export function runViewerClient(bootstrap) {
     if (authed === null) {
       els.chatForm.hidden = true;
       if (els.nextBtn) els.nextBtn.hidden = true;
-      if (els.hallPassBtn) els.hallPassBtn.hidden = true;
       els.checking.hidden = false;
       els.youState.textContent = "checking…";
       els.footerAction.hidden = true;
@@ -9300,7 +9640,6 @@ export function runViewerClient(bootstrap) {
         els.privyAction.textContent = "Account";
         els.privyAction.hidden = false;
       }
-      if (els.hallPassBtn) els.hallPassBtn.hidden = false;
       els.chatForm.hidden = true;
       setChatComposerDisabled(true);
     } else {
@@ -9309,7 +9648,6 @@ export function runViewerClient(bootstrap) {
       els.youState.textContent = "signed out";
       els.footerAction.hidden = true;
       if (els.privyAction) els.privyAction.hidden = true;
-      if (els.hallPassBtn) els.hallPassBtn.hidden = false;
       els.chatForm.hidden = true;
       setChatComposerDisabled(true);
       if (els.nextBtn) els.nextBtn.hidden = true;
@@ -9341,9 +9679,45 @@ export function runViewerClient(bootstrap) {
     localAiEnabled = false;
     hostedAiActive = false;
     lastAuthState = null;
+    lastRosterSig = null;
+    roomHumanHistorySig = "";
+    chatHistoryHumanStudentsByFaculty.clear();
     await deriveAuth();
     applyAuthUI();
     if (teacherChatEnabled() && lastTelemetry) loadHistory(lastTelemetry.faculty);
+  }
+  function roomHumanHistoryFacultyIds(t) {
+    const ids = [];
+    const seen = new Set();
+    (Array.isArray(t && t.rooms) ? t.rooms : []).forEach((room) => {
+      const facultyId = String((room && (room.teacherId || room.facultyId)) || "").trim();
+      if (!facultyId || facultyId === LOUNGE_ID || seen.has(facultyId)) return;
+      seen.add(facultyId);
+      ids.push(facultyId);
+    });
+    return ids;
+  }
+  async function loadRoomHumanHistories(t) {
+    if (!teacherChatEnabled() || !t) return;
+    const faculties = roomHumanHistoryFacultyIds(t);
+    if (!faculties.length) return;
+    const sig = faculties.join("|");
+    if (sig === roomHumanHistorySig) return;
+    roomHumanHistorySig = sig;
+    let changed = false;
+    await Promise.all(faculties.map(async (facultyId) => {
+      try {
+        const r = await apiFetch("/api/apps/ruby-high/chat/history?faculty=" + encodeURIComponent(facultyId));
+        const data = await r.json();
+        if (rememberChatHistoryHumanStudents(facultyId, data && data.history)) changed = true;
+      } catch (_err) {
+        // Best-effort only; server presence still renders the room.
+      }
+    }));
+    if (changed) {
+      lastRosterSig = null;
+      rebuildChannelsRail();
+    }
   }
   async function loadHistory(facultyId) {
     if (!teacherChatEnabled() || !facultyId) return;
@@ -9367,6 +9741,7 @@ export function runViewerClient(bootstrap) {
       const sig = chatHistorySignature(facultyId, summary ? [{ role: "system", content: summary }, ...msgs] : msgs);
       if (sig === renderedHistorySig) return;
       renderedHistorySig = sig;
+      const rememberedRoomHumans = rememberChatHistoryHumanStudents(facultyId, msgs);
       els.stream.innerHTML = "";
       const fac = (lastTelemetry && lastTelemetry.faculty_roster || []).find((f) => f.id === facultyId);
       const teacherName = fac ? fac.displayName : facultyId;
@@ -9395,6 +9770,10 @@ export function runViewerClient(bootstrap) {
       syncPlayerMessageHeaders();
       scrollIfPinned(true);
       applyAuthUI();
+      if (rememberedRoomHumans) {
+        lastRosterSig = null;
+        rebuildChannelsRail();
+      }
     } catch (err) { /* ignore */ }
   }
   // Shared SSE consumer — used for /chat (user-initiated) and /chat/event
@@ -9882,10 +10261,6 @@ export function runViewerClient(bootstrap) {
   if (els.bugReportCancel) els.bugReportCancel.addEventListener("click", closeBugReport);
   if (els.bugReportOverlay) els.bugReportOverlay.addEventListener("click", (e) => {
     if (e.target === els.bugReportOverlay) closeBugReport();
-  });
-  if (els.hallPassBtn) els.hallPassBtn.addEventListener("click", () => {
-    setAccountPane("account");
-    void openPrivyAccount();
   });
   if (Array.isArray(els.accountTabs)) {
     els.accountTabs.forEach((tab) => {

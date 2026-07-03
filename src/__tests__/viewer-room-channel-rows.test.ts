@@ -75,11 +75,12 @@ function makeHarness() {
     teacherInitial(faculty) {
       return String(faculty.displayName || faculty.id || "?").slice(0, 1).toUpperCase();
     },
-    buildStudentFaceChip(studentId, className) {
+    buildStudentFaceChip(student, className) {
       const chip = new FakeElement("span");
       chip.className = className;
-      chip.dataset.studentId = studentId;
-      chip.textContent = studentId.slice(0, 1).toUpperCase();
+      chip.dataset.studentId = student.id;
+      chip.dataset.portraitUrl = student.portraitUrl || "";
+      chip.textContent = student.name.slice(0, 1).toUpperCase();
       return chip as unknown as HTMLElement;
     },
     openTeacherProfile,
@@ -156,5 +157,32 @@ describe("room channel rows controller", () => {
     (thumb.listeners.click || [])[0]?.({ stopPropagation } as unknown as Event);
     expect(stopPropagation).toHaveBeenCalled();
     expect(harness.openTeacherProfile).toHaveBeenCalledWith("sally-science");
+  });
+
+  it("renders human room chips with custom portrait metadata", () => {
+    const harness = makeHarness();
+    harness.controller.appendRows(harness.parent as unknown as HTMLElement, [{
+      roomId: "homeroom",
+      facultyId: "ruby",
+      channelName: "homeroom",
+      isActive: true,
+      completionProgress: null,
+      completionLabel: "",
+      students: [
+        { id: "lyra", name: "Lyra", kind: "npc" },
+        {
+          id: "world:session:abc123abc123abcd",
+          name: "Sloan",
+          kind: "human",
+          portraitUrl: "/api/apps/ruby-high/assets/portrait/sloan.png",
+        },
+      ],
+    }], [{ id: "ruby", displayName: "Ruby", accent: "#c00" }]);
+
+    const stack = harness.parent.children[0]!.children[3]!;
+    expect(stack.attributes["aria-label"]).toBe("Students here: Lyra, Sloan");
+    expect(stack.children.map((child) => child.dataset.studentId)).toEqual(["lyra", "world:session:abc123abc123abcd"]);
+    expect(stack.children[1]!.dataset.portraitUrl).toBe("/api/apps/ruby-high/assets/portrait/sloan.png");
+    expect(textTree(stack)).toEqual(["L", "S"]);
   });
 });

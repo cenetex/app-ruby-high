@@ -148,6 +148,7 @@ const PURE_HELPER_NAMES = [
   "hallPassCardProfile",
   "accountHallPassCardReaderView",
   "billingCardBurnChoiceView",
+  "billingRubyMigrationChoiceView",
   "comicPageTitle",
   "accountComicPanelView",
   "formatSealedDate",

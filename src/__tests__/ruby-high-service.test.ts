@@ -2029,6 +2029,104 @@ describe("RubyHighService Phase 1", () => {
     expect(JSON.stringify(world)).not.toContain("No Class Noor");
   });
 
+  it("lists same-grade human students by their current room only when they have custom public portraits", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+    const viewer = attachTestCharacter(ruby, "test:room-human-viewer");
+    viewer.sessionId = "test:room-human-viewer";
+    viewer.currentGrade = "10";
+    viewer.faculty = "ruby";
+    viewer.character!.name = "Viewer Mina";
+    viewer.character!.createdAt = now;
+    viewer.character!.portraitDataUrl = "/api/apps/ruby-high/assets/portrait/viewer-mina.png";
+    const viewerClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    viewerClass.completedAt = now;
+    viewerClass.updatedAt = now;
+    viewer.character!.dailyClasses = { ruby: viewerClass };
+
+    const custom = attachTestCharacter(ruby, "test:room-human-custom");
+    custom.sessionId = "test:room-human-custom";
+    custom.currentGrade = "10";
+    custom.faculty = "ruby";
+    custom.character!.name = "Sloan";
+    custom.character!.playbookId = "slacker";
+    custom.character!.createdAt = now;
+    custom.character!.portraitDataUrl = "/api/apps/ruby-high/assets/portrait/sloan.png";
+
+    const defaultPortrait = attachTestCharacter(ruby, "test:room-human-default");
+    defaultPortrait.sessionId = "test:room-human-default";
+    defaultPortrait.currentGrade = "10";
+    defaultPortrait.faculty = "ruby";
+    defaultPortrait.character!.name = "Default Lyra";
+    defaultPortrait.character!.playbookId = "lifer";
+    defaultPortrait.character!.createdAt = now;
+    defaultPortrait.character!.portraitDataUrl = "/api/apps/ruby-high/assets/students/lyra-full.png";
+    const defaultClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    defaultClass.completedAt = now;
+    defaultClass.updatedAt = now;
+    defaultPortrait.character!.dailyClasses = { ruby: defaultClass };
+
+    const otherRoom = attachTestCharacter(ruby, "test:room-human-other-room");
+    otherRoom.sessionId = "test:room-human-other-room";
+    otherRoom.currentGrade = "10";
+    otherRoom.faculty = "sally-science";
+    otherRoom.character!.name = "Other Room Noor";
+    otherRoom.character!.createdAt = now;
+    otherRoom.character!.portraitDataUrl = "https://ruby-high-portraits.s3.us-east-1.amazonaws.com/portrait/other-room-noor.png";
+    const otherRoomClass = completedClassRecord("10", "sally-science", "2026-06-15", "A", 300);
+    otherRoomClass.completedAt = now;
+    otherRoomClass.updatedAt = now;
+    otherRoom.character!.dailyClasses = { "sally-science": otherRoomClass };
+
+    const crossGrade = attachTestCharacter(ruby, "test:room-human-cross-grade");
+    crossGrade.sessionId = "test:room-human-cross-grade";
+    crossGrade.currentGrade = "12";
+    crossGrade.faculty = "ruby";
+    crossGrade.character!.name = "Tariq";
+    crossGrade.character!.playbookId = "outsider";
+    crossGrade.character!.createdAt = now;
+    crossGrade.character!.portraitDataUrl = "https://ruby-high-portraits.s3.us-east-1.amazonaws.com/portrait/tariq.png";
+
+    expect(ruby.getPublicRoomHumanStudentsForSession("test:room-human-viewer", now)).toEqual([
+      {
+        id: expect.stringMatching(/^world:session:[a-f0-9]{16}$/),
+        name: "Other Room Noor",
+        playbookId: "lifer",
+        grade: "10",
+        facultyId: "sally-science",
+        portraitUrl: "https://ruby-high-portraits.s3.us-east-1.amazonaws.com/portrait/other-room-noor.png",
+        stats: { head: 99, heart: 99, hustle: 99, honor: 99 },
+        classGrades: { "sally-science": "A" },
+        yearbookCount: 0,
+        lastActive: now,
+      },
+      {
+        id: expect.stringMatching(/^world:session:[a-f0-9]{16}$/),
+        name: "Sloan",
+        playbookId: "slacker",
+        grade: "10",
+        facultyId: "ruby",
+        portraitUrl: "/api/apps/ruby-high/assets/portrait/sloan.png",
+        stats: { head: 99, heart: 99, hustle: 99, honor: 99 },
+        classGrades: {},
+        yearbookCount: 0,
+        lastActive: now,
+      },
+      {
+        id: expect.stringMatching(/^world:session:[a-f0-9]{16}$/),
+        name: "Tariq",
+        playbookId: "outsider",
+        grade: "12",
+        facultyId: "ruby",
+        portraitUrl: "https://ruby-high-portraits.s3.us-east-1.amazonaws.com/portrait/tariq.png",
+        stats: { head: 99, heart: 99, hustle: 99, honor: 99 },
+        classGrades: {},
+        yearbookCount: 0,
+        lastActive: now,
+      },
+    ]);
+  });
+
   it("keeps public-world-hidden characters out of rooms while preserving social consent", async () => {
     const { ruby } = await makeServices();
     const now = Date.UTC(2026, 5, 15, 12);

@@ -342,12 +342,15 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(clientSource, "const wrap = revealFeedbackRenderer.buildSocialSummary(events);");
     expectScriptToContain(clientSource, "const wrap = revealFeedbackRenderer.buildResult(reveal, questionCounter, relationshipEventsForQuestion(reveal && reveal.questionId));");
     expectScriptToContain(script, 'wrap.className = "msg social-summary";');
-    expectScriptToContain(script, 'wrap.className = "msg result";');
-    expectScriptToContain(script, 'chip.className = "mash-tick-chip " + deltaClass(event.delta, "");');
-    expect(clientSource).not.toContain('function appendMashTickChips(body, reveal)');
+    expectScriptToContain(script, 'name.textContent = "Classmate Note";');
+    expectScriptToContain(script, 'wrap.className = "msg result class-note-result";');
+    expectScriptToContain(script, 'main.className = "class-note-main";');
+    expectScriptToContain(script, 'receipts.className = "class-note-receipts";');
+    expect(clientSource).not.toContain('function appendMashTickChips');
     expect(clientSource).not.toContain('wrap.className = "msg social-summary";');
     expect(clientSource).not.toContain('wrap.className = "msg result";');
     expect(clientSource).not.toContain('badge.className = "badge-mini " + (reveal.wasCorrect ? "ok" : "bad");');
+    expect(script).not.toContain("mash-tick-chip");
   });
 
   it("builds report cards from a typed renderer", () => {
@@ -492,7 +495,15 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function createLeaderboardPanelRenderer(deps)");
     expectScriptToContain(clientSource, "const leaderboardPanelRenderer = createLeaderboardPanelRenderer({");
     expectScriptToContain(clientSource, "viewFor: leaderboardView");
+    expectScriptToContain(clientSource, 'honorRow.addEventListener("click", () => showLeaderboard());');
     expectScriptToContain(clientSource, "leaderboardPanelRenderer.render(data, playbooks);");
+    const enterLoungeStart = clientSource.indexOf("async function enterLounge()");
+    const showLeaderboardStart = clientSource.indexOf("async function showLeaderboard()");
+    const postClassStart = clientSource.indexOf("async function startPostClassPractice");
+    expect(enterLoungeStart).toBeGreaterThan(-1);
+    expect(showLeaderboardStart).toBeGreaterThan(enterLoungeStart);
+    expect(postClassStart).toBeGreaterThan(showLeaderboardStart);
+    expect(clientSource.slice(enterLoungeStart, showLeaderboardStart).trimEnd()).toMatch(/closeRails\(\);\s*}$/);
     expect(clientSource).not.toContain("header.appendChild(document.createTextNode(view.gradeLabel + \" Classroom \"));");
     expect(clientSource).not.toContain("view.rows.forEach((s) =>");
     expect(clientSource).not.toContain("header.innerHTML = labels[grade]");
@@ -532,12 +543,28 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(clientSource, "return classmateArcProgressLabel(progress);");
     expectScriptToContain(clientSource, "return roomCompletionProgressView(fac);");
     expectScriptToContain(clientSource, "return roomCompletionProgressLabel(fac, progress);");
-    expectScriptToContain(clientSource, "const roomViews = roomChannelRowViews(t.rooms || [], roster, cohort, t.faculty, STUDENTS, visibleStudentIds);");
+    expectScriptToContain(clientSource, "const railHumanStudents = publicRoomStudentsForRail(t);");
+    expectScriptToContain(clientSource, "const roomViews = roomChannelRowViews(t.rooms || [], roster, cohort, t.faculty, STUDENTS, visibleStudentIds, railHumanStudents);");
     expectScriptToContain(clientSource, "roomChannelRowsController.appendRows(els.channelsList, roomViews, roster);");
     expectScriptToContain(clientSource, "const classmateChannelRowsRenderer = createClassmateChannelRowsRenderer({");
     expectScriptToContain(clientSource, "classmateChannelRowsRenderer.appendSection(els.channelsList, classmateChannelGroups(t, grade));");
     expect(clientSource).not.toContain('row.className = "channel-row student-row";');
     expect(clientSource).not.toContain('meter.className = "student-year-meter";');
+  });
+
+  it("keeps human sidebar room placement tied to server presence, not chat history", () => {
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+
+    expectScriptToContain(clientSource, "function publicRoomStudentsForRail(t)");
+    expectScriptToContain(clientSource, "(Array.isArray(t && t.public_room_students) ? t.public_room_students : []).forEach(add);");
+    expectScriptToContain(clientSource, "function openHumanStudentProfile(human)");
+    expectScriptToContain(clientSource, 'if ((npc && npc.kind === "human") || (s && s.kind === "human"))');
+    expectScriptToContain(clientSource, 'if (record && record.kind === "human")');
+    expectScriptToContain(clientSource, "openHumanStudentProfile(record);");
+    expectScriptToContain(clientSource, "const chatHistoryHumanStudentsByFaculty = new Map();");
+    expectScriptToContain(clientSource, "function loadRoomHumanHistories(t)");
+    expectScriptToContain(clientSource, "chatHistoryHumanStudentsByFaculty.forEach((rows) =>");
+    expect(clientSource).not.toContain("chatRoomHumanStudentsByFaculty");
   });
 
   it("keeps lounge mode out of the empty-board class-start CTA", () => {
@@ -556,6 +583,7 @@ describe("viewer regression guardrails", () => {
 
     expect(() => new Function(script)).not.toThrow();
     expect(html).toContain('id="privy-action"');
+    expect(html).not.toContain('id="hall-pass-btn"');
     expect(html).toContain('id="signin-privy"');
     expect(html).toContain('id="privy-overlay"');
     expect(html).not.toContain('id="privy-phantom-login"');
@@ -566,12 +594,13 @@ describe("viewer regression guardrails", () => {
     expect(html).not.toContain('id="account-use-pass"');
     expect(html).toContain('id="account-buy-passes"');
     expect(html).toContain('id="account-buy-card-packs"');
+    expect(script).not.toContain("hallPassBtn");
+    expect(VIEWER_CSS).not.toContain(".hall-pass-btn");
     expect(html).not.toContain('id="pack-btn"');
     expect(html).not.toContain("Packs &amp; collectibles");
     expect(html).not.toContain('id="arc-score"');
     expect(html).not.toContain('id="account-get-ruby"');
     expect(html).not.toContain("Get $RUBY");
-    expect(html).toContain('title="Account"');
     expect(html).toContain("School Presence");
     expect(html).toContain("Burn Card");
     expect(html).toContain('id="account-create-character"');
@@ -703,6 +732,12 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function billingCardPackPaymentChoiceView(");
     expectScriptToContain(script, "buildCardPackPaymentChoice(solana, product, opts)");
     expectScriptToContain(clientSource, "return billingProductsRenderer.buildCardPackPaymentChoice(solana, product, { billingBusy });");
+    expectScriptToContain(script, "function billingRubyMigrationChoiceView(statusInput, opts)");
+    expectScriptToContain(script, "buildRubyMigrationChoice(status, opts)");
+    expectScriptToContain(script, 'row.className = "billing-product billing-ruby-migration"');
+    expectScriptToContain(clientSource, "function buildRubyMigrationChoice(status)");
+    expectScriptToContain(clientSource, "async function migrateRubyFromBilling()");
+    expectScriptToContain(clientSource, 'apiBase + "/billing/ruby-migration/quote"');
     expect(clientSource).not.toContain('panel.className = "billing-payment-choice";');
     expect(clientSource).not.toContain('row.className = "billing-product";');
     expect(script).not.toContain("buildGetRubyLink");
@@ -713,7 +748,7 @@ describe("viewer regression guardrails", () => {
     expect(VIEWER_CSS).toContain(".account-hall-pass-card");
     expect(script).not.toContain('"Buy " + formatWholeNumber(product.hallPasses || 0) + " Hall Passes."');
     expect(script).not.toContain("Number(entry.hallPasses");
-    expectScriptToContain(script, "async function ensureSolanaWalletForBilling()");
+    expectScriptToContain(script, "async function ensureSolanaWalletForBilling(opts)");
     expectScriptToContain(script, "function connectedSolanaWalletAddress() {\n    return privyState.solanaWalletAddress || null;\n  }");
     expectScriptToContain(script, "function knownSolanaOwnerWalletAddress()");
     expectScriptToContain(script, "function appendSolanaProofLink(parent, address, label)");
@@ -819,6 +854,9 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'typeof client.paySolanaQuote !== "function"');
     expectScriptToContain(script, 'title: "Connect Solana wallet?"');
     expectScriptToContain(script, 'title: "Confirm card pack payment?"');
+    expectScriptToContain(script, 'title: "Migrate Ruby?"');
+    expectScriptToContain(script, "Your wallet should show one Ruby migration transaction.");
+    expectScriptToContain(script, "await client.signAndSendSolanaTransaction(data)");
     expectScriptToContain(script, "Your wallet should show a Solana pack payment and Ruby High pack creation. The network fee is paid by this wallet.");
     expectScriptToContain(script, 'setBillingStatus("Starting card pack checkout...", false)');
     expectScriptToContain(script, "let finalBillingStatus = null");
@@ -960,6 +998,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function syncComicUnlockModals(t)");
     expectScriptToContain(script, "function syncFirstBellReportModal(t)");
     expectScriptToContain(script, "First Bell Report");
+    expectScriptToContain(script, "Copy link");
+    expectScriptToContain(script, 'kind: "first_bell_report"');
     expectScriptToContain(script, "Comic Page Unlocked");
     expectScriptToContain(script, 'title.appendChild(deps.document.createTextNode(" "));');
     expect(script).not.toContain("FIRST BELL CARD");
@@ -1215,6 +1255,24 @@ describe("viewer regression guardrails", () => {
     expect(cssRule(".msg .avatar.is-tall-avatar img")).toContain("transform-origin: top center");
     expectScriptToContain(script, "function applyChatAvatarAspectClass");
     expectScriptToContain(script, 'avatar.classList.remove("is-tall-avatar", "is-square-avatar")');
+  });
+
+  it("face-crops custom student portraits in compact channel avatars", () => {
+    const script = inlineScript(renderedViewer());
+
+    expect(cssRule(".room-student-chip img")).toContain("transform: none");
+    expect(cssRule(".room-student-chip.is-custom-portrait img")).toContain("object-position: 50% 18%");
+    expect(cssRule(".room-student-chip.is-custom-portrait img")).toContain("transform: scale(2.15)");
+    expect(cssRule(".room-student-chip.is-custom-portrait.is-tall-portrait img")).toContain("transform: scale(2.45)");
+    expect(cssRule(".room-student-chip.is-custom-portrait.is-wide-portrait img")).toContain("transform: scale(1.55)");
+    expect(cssRule(".channel-row .student-thumb.is-custom-portrait img")).toContain("object-position: 50% 18%");
+    expect(cssRule(".channel-row .student-thumb.is-custom-portrait img")).toContain("transform: scale(2.1)");
+    expect(cssRule(".channel-row .student-thumb.is-custom-portrait.is-tall-portrait img")).toContain("transform: scale(2.45)");
+    expect(cssRule(".channel-row .student-thumb.is-custom-portrait.is-wide-portrait img")).toContain("transform: scale(1.6)");
+    expectScriptToContain(script, "function applyStudentThumbPortraitClass");
+    expectScriptToContain(script, "function applyRoomStudentChipPortraitClass");
+    expectScriptToContain(script, 'if (portraitUrl) chip.classList.add("is-custom-portrait")');
+    expectScriptToContain(script, "if (portraitUrl) applyRoomStudentChipPortraitClass(chip, img);");
   });
 
   it("explains public world visibility before the account toggle can publish a profile", () => {

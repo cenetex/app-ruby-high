@@ -393,6 +393,42 @@ describe("RubyHighService.dailyStatus + playDaily", () => {
         questionId: "q_first_bell_report",
         answerText: "First Bell",
       });
+      expect(response.data.telemetry.first_bell_share).toMatchObject({
+        shareId: expect.any(String),
+        grade: "9",
+        url: expect.stringMatching(/^\/api\/apps\/ruby-high\/first-bell\/[a-f0-9]{20}$/),
+      });
+      expect(ruby.analyticsSnapshot().events.referral).toMatchObject({
+        artifactsCreated: 1,
+        sharesInitiated: 0,
+        linkVisits: 0,
+        shareClickThroughRate: null,
+      });
+
+      const shareId = response.data.telemetry.first_bell_share.shareId;
+      let shareResponse: any = null;
+      const shareHandled = await handleAppRoutes({
+        method: "GET",
+        pathname: `/api/apps/ruby-high/first-bell/${shareId}`,
+        url: new URL(`https://ruby.test/api/apps/ruby-high/first-bell/${shareId}?format=json`),
+        runtime,
+        res: {},
+        error: (_res, message, status = 500) => {
+          shareResponse = { status, error: message };
+        },
+        json: (_res, data, status = 200) => {
+          shareResponse = { status, data };
+        },
+        readJsonBody: async () => ({}),
+      });
+      expect(shareHandled).toBe(true);
+      expect(shareResponse.status).toBe(200);
+      expect(shareResponse.data.card).toMatchObject({
+        shareId,
+        characterName: "Pip",
+        prompt: "What does Ruby High call the first quick reward?",
+        answerText: "First Bell",
+      });
     } finally {
       Date.now = realNow;
     }

@@ -47,6 +47,14 @@ const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
   RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS,
   RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS,
+  RUBY_HIGH_RUBY_MIGRATION_ENABLED: process.env.RUBY_HIGH_RUBY_MIGRATION_ENABLED,
+  RUBY_HIGH_RUBY_MIGRATION_RPC_URL: process.env.RUBY_HIGH_RUBY_MIGRATION_RPC_URL,
+  RUBY_HIGH_RUBY_MIGRATION_PROGRAM_ID: process.env.RUBY_HIGH_RUBY_MIGRATION_PROGRAM_ID,
+  RUBY_HIGH_RUBY_MIGRATION_SOURCE_MINT: process.env.RUBY_HIGH_RUBY_MIGRATION_SOURCE_MINT,
+  RUBY_HIGH_RUBY_MIGRATION_DESTINATION_MINT: process.env.RUBY_HIGH_RUBY_MIGRATION_DESTINATION_MINT,
+  RUBY_HIGH_RUBY_MIGRATION_SOURCE_SYMBOL: process.env.RUBY_HIGH_RUBY_MIGRATION_SOURCE_SYMBOL,
+  RUBY_HIGH_RUBY_MIGRATION_DESTINATION_SYMBOL: process.env.RUBY_HIGH_RUBY_MIGRATION_DESTINATION_SYMBOL,
+  RUBY_HIGH_RUBY_MIGRATION_DECIMALS: process.env.RUBY_HIGH_RUBY_MIGRATION_DECIMALS,
 };
 
 let restoreCorePackMinter: (() => void) | null = null;
@@ -188,6 +196,14 @@ beforeEach(async () => {
   delete process.env.RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS;
   delete process.env.RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS;
   delete process.env.RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS;
+  delete process.env.RUBY_HIGH_RUBY_MIGRATION_ENABLED;
+  delete process.env.RUBY_HIGH_RUBY_MIGRATION_RPC_URL;
+  delete process.env.RUBY_HIGH_RUBY_MIGRATION_PROGRAM_ID;
+  delete process.env.RUBY_HIGH_RUBY_MIGRATION_SOURCE_MINT;
+  delete process.env.RUBY_HIGH_RUBY_MIGRATION_DESTINATION_MINT;
+  delete process.env.RUBY_HIGH_RUBY_MIGRATION_SOURCE_SYMBOL;
+  delete process.env.RUBY_HIGH_RUBY_MIGRATION_DESTINATION_SYMBOL;
+  delete process.env.RUBY_HIGH_RUBY_MIGRATION_DECIMALS;
   process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(new Array(64).fill(1));
   process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS = "B6r1xnyXsH5b2BTpQEYNtXuQQTdPbJAkFiv9Krh9eCKP";
   process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
@@ -263,6 +279,17 @@ describe("billing products", () => {
     expect(lastResponse?.body.questionGenerationCost).toBe(1);
     expect(lastResponse?.body.moreQuestionsCount).toBe(6);
     expect(lastResponse?.body.cardBurn).toEqual({ hallPassesPerCard: 5 });
+    expect(lastResponse?.body.rubyMigration).toMatchObject({
+      configured: false,
+      enabled: false,
+      sourceMint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
+      destinationMint: "2hJY16WZgTQXXo6qBoWoBtZM7fz556cw3qdLgtntRuby",
+      programId: "2q5xELTGky988Lz1oLZLpBoQv7DzB7bBxoUdQGRmRATi",
+      sourceSymbol: "RUBY",
+      destinationSymbol: "Ruby",
+      decimals: 6,
+      reason: "Ruby token migration is disabled.",
+    });
     expect(lastResponse?.body.hostedAiAccess).toBeUndefined();
     expect(lastResponse?.body.entitlements).toMatchObject({
       hallPasses: 0,
@@ -373,6 +400,98 @@ describe("billing products", () => {
       body: { error: "Billing requests must be sent as JSON." },
     });
     emptyWelcomeHallPasses(stateKey);
+  });
+});
+
+describe("Ruby token migration", () => {
+  it("keeps migration quote disabled until explicitly enabled", async () => {
+    signInUser("ruby-migration-disabled");
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/ruby-migration/quote",
+      cookie: "rh_session=ruby-migration-disabled",
+      body: { ownerWalletAddress: TEST_SOLANA_OWNER, amountBaseUnits: "1000000" },
+    }), deps());
+
+    expect(lastResponse).toEqual({
+      status: 503,
+      body: { error: "Ruby token migration is disabled." },
+    });
+  });
+
+  it("quotes an enabled burn-to-mint migration transaction", async () => {
+    signInUser("ruby-migration-quote");
+    process.env.RUBY_HIGH_RUBY_MIGRATION_ENABLED = "true";
+    process.env.RUBY_HIGH_RUBY_MIGRATION_RPC_URL = "https://rpc.test";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const payload = JSON.parse(String(init?.body ?? "{}"));
+      expect(payload.method).toBe("getLatestBlockhash");
+      return new Response(JSON.stringify({
+        jsonrpc: "2.0",
+        id: "ruby-high-ruby-migration-blockhash",
+        result: {
+          value: {
+            blockhash: "11111111111111111111111111111111",
+            lastValidBlockHeight: 123,
+          },
+        },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/ruby-migration/quote",
+      cookie: "rh_session=ruby-migration-quote",
+      body: {
+        ownerWalletAddress: TEST_SOLANA_OWNER,
+        sourceTokenAccountAddress: TEST_SOURCE_TOKEN_ACCOUNT,
+        amountBaseUnits: "1000000",
+        userNonce: "7",
+      },
+    }), deps());
+
+    expect(lastResponse?.status).toBe(200);
+    expect(lastResponse?.body).toMatchObject({
+      ok: true,
+      ownerWalletAddress: TEST_SOLANA_OWNER,
+      sourceMint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
+      destinationMint: "2hJY16WZgTQXXo6qBoWoBtZM7fz556cw3qdLgtntRuby",
+      programId: "2q5xELTGky988Lz1oLZLpBoQv7DzB7bBxoUdQGRmRATi",
+      sourceTokenAccountAddress: TEST_SOURCE_TOKEN_ACCOUNT,
+      amountBaseUnits: "1000000",
+      maxSourceAmountBaseUnits: "1000000",
+      userNonce: "7",
+      transactionEncoding: "base64",
+      chain: "solana:mainnet",
+      sourceSymbol: "RUBY",
+      destinationSymbol: "Ruby",
+      decimals: 6,
+      rpcHost: "rpc.test",
+    });
+    expect(lastResponse?.body.rpcUrl).toBeUndefined();
+    const transaction = Transaction.from(Buffer.from(String(lastResponse?.body.transactionBase64), "base64"));
+    const instructions = transaction.instructions.map((ix) => ({
+      program: ix.programId.toBase58(),
+      accounts: ix.keys.map((key) => key.pubkey.toBase58()),
+      dataHex: Buffer.from(ix.data).toString("hex"),
+    }));
+    const migrate = instructions.find((ix) => ix.program === "2q5xELTGky988Lz1oLZLpBoQv7DzB7bBxoUdQGRmRATi");
+
+    expect(migrate).toBeTruthy();
+    expect(migrate?.dataHex).toBe("0440420f000000000040420f0000000000070000000000000000");
+    expect(migrate?.accounts).toEqual(expect.arrayContaining([
+      TEST_SOLANA_OWNER,
+      TEST_SOURCE_TOKEN_ACCOUNT,
+      "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
+      "2hJY16WZgTQXXo6qBoWoBtZM7fz556cw3qdLgtntRuby",
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    ]));
+    expect(instructions.some((ix) => ix.program === "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -674,6 +793,25 @@ describe("Solana Hall Pass billing", () => {
 
     expect(lastResponse?.status).toBe(400);
     expect(lastResponse?.body.error).toContain("buyer wallet");
+  });
+
+  it("returns a wallet-funding error when the pack payment token is missing", async () => {
+    restoreCorePackPurchaseBuilder = setCorePackPurchaseTransactionBuilderForTest(async () => {
+      throw new Error("This Solana wallet does not have enough of the configured pack payment token to mint a pack.");
+    });
+    signInUser("solana-quote-missing-token");
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/solana/quote",
+      cookie: "rh_session=solana-quote-missing-token",
+      body: { productId: "card-pack-1", ownerWalletAddress: TEST_SOLANA_OWNER },
+    }), deps());
+
+    expect(lastResponse).toEqual({
+      status: 402,
+      body: { error: "This Solana wallet does not have enough of the configured pack payment token to mint a pack." },
+    });
   });
 
   it("quotes every pack at 100,000 $RUBY with a session payment reference", async () => {

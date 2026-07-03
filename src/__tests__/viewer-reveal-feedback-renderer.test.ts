@@ -47,14 +47,8 @@ function renderer() {
     scoreAwardLabel(award) {
       return `award:${String(award)}`;
     },
-    mashTickLabel(event) {
-      return `tick:${String(event.studentId)}:${String(event.delta || 0)}`;
-    },
     mashTickStory(event) {
       return `story:${String(event.studentId)}:${String(event.reason || "")}`;
-    },
-    studentNameById(studentId) {
-      return String(studentId || "student").toUpperCase();
     },
     studentColorById(studentId) {
       return studentId === "noor" ? "#0cf" : "#f90";
@@ -63,7 +57,7 @@ function renderer() {
 }
 
 describe("reveal feedback renderer", () => {
-  it("renders social summary rows with story, color, and signed deltas", () => {
+  it("renders one classmate note with story, color, and signed delta", () => {
     const node = renderer().buildSocialSummary([
       { studentId: "noor", delta: 2, reason: "best-responder" },
       { studentId: "ravi", delta: -1, reason: "rub" },
@@ -72,23 +66,20 @@ describe("reveal feedback renderer", () => {
     expect(node.className).toBe("msg social-summary");
     expect(textTree(node)).toEqual([
       "S",
-      "Social Shift",
+      "Classmate Note",
       expect.any(String),
       "story:noor:best-responder",
       "+2",
-      "story:ravi:rub",
-      "-1",
     ]);
     const rows = node.children[2]!.children[0]!.children;
     expect(rows.map((row) => row.className)).toEqual([
-      "social-summary-row is-up",
-      "social-summary-row is-down",
+      "social-summary-row is-up is-primary",
     ]);
     expect(rows[0]!.children[0]!.style.background).toBe("#0cf");
     expect(renderer().buildSocialSummary([])).toBeNull();
   });
 
-  it("renders choice result chips with rolls, awards, and relationship ticks", () => {
+  it("renders choice class notes with rolls and award receipts", () => {
     const node = renderer().buildResult({
       questionId: "q1",
       wasCorrect: false,
@@ -101,26 +92,26 @@ describe("reveal feedback renderer", () => {
       { studentId: "ravi", delta: -1, scratched: true },
     ]) as unknown as FakeElement;
 
-    expect(node.className).toBe("msg result");
+    expect(node.className).toBe("msg result class-note-result");
     expect(textTree(node)).toEqual([
       "✗ A · C",
-      "Q4 — missed",
-      "🎲 2+3+2 head = 7",
+      "Class note Q4 · missed",
+      "roll 2+3+2 head = 7",
       "award:daily",
-      "tick:noor:1",
-      "tick:ravi:-1",
     ]);
     const body = node.children[0]!;
     expect(body.children.map((child) => child.className)).toEqual([
+      "class-note-main",
+      "class-note-receipts",
+    ]);
+    expect(body.children[0]!.children.map((child) => child.className)).toEqual([
       "badge-mini bad",
-      "",
+      "class-note-title",
+    ]);
+    expect(body.children[1]!.children.map((child) => child.className)).toEqual([
       "roll-chip miss",
       "score-multiplier-chip",
-      "mash-tick-chip up",
-      "mash-tick-chip down",
     ]);
-    expect(body.children[4]!.title).toBe("NOOR is circled on your Social card.");
-    expect(body.children[5]!.title).toBe("RAVI is scratched on your Social card.");
   });
 
   it("renders typed and timeout result labels defensively", () => {
@@ -131,7 +122,7 @@ describe("reveal feedback renderer", () => {
     }, 1, []) as unknown as FakeElement;
     expect(textTree(typed)).toEqual([
       "✓ typed",
-      "Q1 — correct",
+      "Class note Q1 · correct",
       "◆ Daily Class ×5",
     ]);
 
@@ -142,7 +133,7 @@ describe("reveal feedback renderer", () => {
     }, 2, []) as unknown as FakeElement;
     expect(textTree(timeout)).toEqual([
       "⏱ timeout",
-      "Q2 — timed out",
+      "Class note Q2 · timed out",
     ]);
   });
 });

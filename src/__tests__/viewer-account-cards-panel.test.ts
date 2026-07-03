@@ -76,15 +76,15 @@ describe("account Hall Pass cards panel view", () => {
       checkout: {
         loaded: true,
         ready: false,
-        reason: "RUBY mint configuration is missing.",
+        reason: "Solana pack checkout is not configured on this server.",
       },
       hasSolanaWallet: true,
     });
 
     expect(view).toMatchObject({
-      summaryText: "No packs or Cards in this wallet yet. · RUBY mint configuration is missing.",
+      summaryText: "No packs or Cards in this wallet yet. · Solana pack checkout is not configured on this server.",
       buyDisabled: true,
-      buyTitle: "RUBY mint configuration is missing.",
+      buyTitle: "Solana pack checkout is not configured on this server.",
     });
   });
 

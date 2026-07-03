@@ -456,6 +456,36 @@ function defaultPlayerPortraitUrl(playbookId: string | undefined): string {
   return studentFullPortraitUrl(studentId);
 }
 
+function defaultPlayerPortraitStudentId(playbookId: string | undefined): string {
+  return PLAYBOOK_DEFAULT_PORTRAIT[playbookId || ""] || "indra";
+}
+
+function customPublicPortraitUrlForCharacter(ch: PlayerCharacter): string | undefined {
+  const raw = String(ch.portraitDataUrl ?? "").trim();
+  if (!raw || raw.length > 2048 || raw.startsWith("//") || /^data:/i.test(raw) || /[\r\n]/.test(raw)) return undefined;
+  let portraitUrl: string | undefined;
+  if (raw.startsWith("/")) {
+    portraitUrl = raw;
+  } else {
+    try {
+      const url = new URL(raw);
+      if (url.protocol === "http:" || url.protocol === "https:") portraitUrl = raw;
+    } catch {
+      portraitUrl = undefined;
+    }
+  }
+  if (!portraitUrl) return undefined;
+  const defaultStudentId = defaultPlayerPortraitStudentId(ch.playbookId);
+  if (portraitUrl === defaultPlayerPortraitUrl(ch.playbookId)) return undefined;
+  try {
+    const path = new URL(portraitUrl, "https://ruby-high.local").pathname;
+    if (path.endsWith(`/assets/students/${defaultStudentId}-full.png`)) return undefined;
+  } catch {
+    if (portraitUrl.endsWith(`/assets/students/${defaultStudentId}-full.png`)) return undefined;
+  }
+  return portraitUrl;
+}
+
 export interface CourseProgress {
   mode: "bank" | "srs";
   facultyId: string;
@@ -909,6 +939,8 @@ export interface RubyHighMetricEventsSnapshot {
     sharesInitiated: number;
     linkVisits: number;
     uniqueReferredVisitors: number;
+    shareClickThroughRate: number | null;
+    uniqueShareClickThroughRate: number | null;
   };
   guestSpotlight: {
     seen: number;
@@ -1245,6 +1277,19 @@ export interface RecentlyActiveStudent {
   portraitUrl?: string;
 }
 
+export interface PublicRoomHumanStudent {
+  id: string;
+  name: string;
+  playbookId: string;
+  grade: Grade;
+  facultyId: string;
+  portraitUrl: string;
+  stats: CharacterStats;
+  classGrades: Record<string, string>;
+  yearbookCount: number;
+  lastActive: number;
+}
+
 export interface ClassPhotoCandidate {
   sessionId: string;
   name: string;
@@ -1286,6 +1331,24 @@ export interface YearbookShareCard {
   superlatives: string[];
   yearbookImageUrl?: string;
   source: "current-character" | "student-pool";
+}
+
+export interface FirstBellShareCard {
+  shareId: string;
+  awardedAt: number;
+  characterName: string;
+  playbookId: string | null;
+  grade: Grade | null;
+  facultyId: string;
+  facultyName: string;
+  prompt: string;
+  answerText: string;
+  correctAnswerText?: string;
+  wasCorrect: boolean;
+  encouragement?: string;
+  score?: number;
+  stats?: CharacterStats;
+  portraitDataUrl?: string;
 }
 
 export interface CharacterSlotUnlockInput {
@@ -3202,6 +3265,11 @@ export class RubyHighService extends Service {
     return yearbookShareCardsForState(state);
   }
 
+  firstBellShareForSession(sessionId: string): FirstBellShareCard | null {
+    const state = this.getOrCreate(sessionId);
+    return firstBellShareCardForState(state);
+  }
+
   findYearbookShare(shareId: string, grade: Grade): YearbookShareCard | null {
     const clean = shareId.trim();
     if (!clean) return null;
@@ -3210,6 +3278,16 @@ export class RubyHighService extends Service {
         card.shareId === clean && card.grade === grade
       );
       if (hit) return hit;
+    }
+    return null;
+  }
+
+  findFirstBellShare(shareId: string): FirstBellShareCard | null {
+    const clean = shareId.trim();
+    if (!clean) return null;
+    for (const state of this.sessions.values()) {
+      const card = firstBellShareCardForState(state);
+      if (card?.shareId === clean) return card;
     }
     return null;
   }
@@ -6100,6 +6178,16 @@ export class RubyHighService extends Service {
       ...(reveal.scoreAward ? { score: reveal.scoreAward.points } : {}),
     };
     ch.firstBellReport = report;
+    this.recordShareArtifactCreated(state.sessionId, {
+      shareId: firstBellShareId({
+        sessionId: state.sessionId,
+        name: ch.name,
+        createdAt: ch.createdAt,
+        reportId: report.reportId,
+      }),
+      ...(state.currentGrade ? { grade: state.currentGrade } : {}),
+      kind: "first_bell_report",
+    });
     this.recordFunnelStep(state, "first_bell_report_awarded", {
       faculty: facultyId,
       grade: state.currentGrade ?? null,
@@ -9094,6 +9182,53 @@ export class RubyHighService extends Service {
       }));
   }
 
+  getPublicRoomHumanStudentsForSession(sessionId: string, now = Date.now(), limit = 16): PublicRoomHumanStudent[] {
+    const viewer = this.getOrCreate(sessionId);
+    const viewerPublicId = publicWorldSessionId(viewer.sessionId);
+    if (!viewer.currentGrade) return [];
+
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+    const cappedLimit = Math.max(0, Math.min(24, Math.floor(Number(limit) || 0)));
+    const entries: PublicRoomHumanStudent[] = [];
+    for (const [, state] of this.sessions) {
+      const ch = state.character;
+      if (!ch) continue;
+      const publicId = publicWorldSessionId(state.sessionId);
+      if (!publicId || publicId === viewerPublicId) continue;
+      if (!state.currentGrade || !state.faculty) continue;
+      if (!characterAllowsPublicSharing(ch)) continue;
+      const lastActive = this.lastActivityFor(ch, state);
+      if (now - lastActive > weekMs) continue;
+      const portraitUrl = customPublicPortraitUrlForCharacter(ch);
+      if (!portraitUrl) continue;
+      const classGrades: Record<string, string> = {};
+      for (const record of characterDailyClassRecords(ch)) {
+        if (record.status === "complete" && record.letterGrade) {
+          classGrades[record.facultyId] = record.letterGrade;
+        }
+      }
+      entries.push({
+        id: publicId,
+        name: publicWorldNameReview(ch.name).displayName,
+        playbookId: ch.playbookId,
+        grade: state.currentGrade,
+        facultyId: state.faculty,
+        portraitUrl,
+        stats: { ...ch.stats },
+        classGrades,
+        yearbookCount: characterArrayField(ch, "yearbook").length,
+        lastActive,
+      });
+    }
+    return entries
+      .sort((a, b) => b.lastActive - a.lastActive || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+      .slice(0, cappedLimit);
+  }
+
+  async refreshPublicWorldSessions(now = Date.now(), opts: { eventLimit?: number } = {}): Promise<void> {
+    await this.refreshWorldSessionsFromStore(now, opts);
+  }
+
   async getFreshRecentlyActiveStudents(now = Date.now()): Promise<RecentlyActiveStudent[]> {
     await this.refreshWorldSessionsFromStore(now);
     return this.getRecentlyActiveStudents(now);
@@ -9884,6 +10019,47 @@ function yearbookShareId(parts: {
     .update(`${parts.sessionId}:${parts.source}:${parts.name}:${parts.createdAt}`)
     .digest("hex")
     .slice(0, 20);
+}
+
+function firstBellShareId(parts: {
+  sessionId: string;
+  name: string;
+  createdAt: number;
+  reportId: string;
+}): string {
+  return createHash("sha256")
+    .update(`${parts.sessionId}:first-bell:${parts.name}:${parts.createdAt}:${parts.reportId}`)
+    .digest("hex")
+    .slice(0, 20);
+}
+
+function firstBellShareCardForState(state: QuizState): FirstBellShareCard | null {
+  const ch = state.character;
+  const report = ch?.firstBellReport;
+  if (!ch || !report) return null;
+  const shareId = firstBellShareId({
+    sessionId: state.sessionId,
+    name: ch.name,
+    createdAt: ch.createdAt,
+    reportId: report.reportId,
+  });
+  return {
+    shareId,
+    awardedAt: report.awardedAt,
+    characterName: ch.name,
+    playbookId: ch.playbookId ?? null,
+    grade: report.grade ?? null,
+    facultyId: report.facultyId,
+    facultyName: report.facultyName,
+    prompt: report.prompt,
+    answerText: report.answerText,
+    ...(report.correctAnswerText ? { correctAnswerText: report.correctAnswerText } : {}),
+    wasCorrect: report.wasCorrect,
+    ...(report.encouragement ? { encouragement: report.encouragement } : {}),
+    ...(report.score != null ? { score: report.score } : {}),
+    stats: { ...ch.stats },
+    ...(ch.portraitDataUrl ? { portraitDataUrl: ch.portraitDataUrl } : {}),
+  };
 }
 
 function yearbookShareCardsForState(state: QuizState): YearbookShareCard[] {
@@ -11929,6 +12105,8 @@ function buildMetricEventsSnapshot(
     sharesInitiated: 0,
     linkVisits: 0,
     uniqueReferredVisitors: 0,
+    shareClickThroughRate: null as number | null,
+    uniqueShareClickThroughRate: null as number | null,
   };
   const guestSpotlight = {
     seen: 0,
@@ -12057,6 +12235,12 @@ function buildMetricEventsSnapshot(
   first10m.appOpenSessions = firstAppOpenBySession.size;
   yearbook.uniqueVisitors = yearbookVisitors.size;
   referral.uniqueReferredVisitors = referredVisitors.size;
+  referral.shareClickThroughRate = referral.sharesInitiated > 0
+    ? referral.linkVisits / referral.sharesInitiated
+    : null;
+  referral.uniqueShareClickThroughRate = referral.sharesInitiated > 0
+    ? referral.uniqueReferredVisitors / referral.sharesInitiated
+    : null;
   const conversionFunnel = {
     totalVisitors: visitorHashes.size,
     charactersCreated: funnel.firstCharacterCreated,

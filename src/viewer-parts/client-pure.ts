@@ -260,6 +260,14 @@ export type BillingCardBurnChoiceView = {
   buttonDisabled: boolean;
   buttonTitle: string;
 };
+export type BillingRubyMigrationChoiceView = {
+  titleText: string;
+  metaText: string;
+  buttonText: string;
+  buttonDisabled: boolean;
+  buttonTitle: string;
+  noteText: string;
+};
 export type BillingCardPackPaymentChoiceView = {
   titleText: string;
   metaText: string;
@@ -316,7 +324,19 @@ export type WelcomeHallPassPopupView = {
 };
 export type ClassmateArcProgress = { value: number; total: number };
 type RoomCompletionProgress = { value: number; total: number };
-export type RoomChannelStudentView = { id: string; name: string };
+export type RoomChannelStudentView = {
+  id: string;
+  name: string;
+  portraitUrl?: string;
+  kind?: "npc" | "human";
+  facultyId?: string;
+  grade?: string;
+  playbookId?: string;
+  stats?: unknown;
+  classGrades?: unknown;
+  yearbookCount?: unknown;
+  lastActive?: unknown;
+};
 export type RoomChannelRowView = {
   roomId: string;
   facultyId: string;
@@ -794,7 +814,7 @@ export function walletTransactionPackDeltaText(tx: NullableRecord): string {
   const metadata = tx && tx.metadata && typeof tx.metadata === "object" ? tx.metadata : {};
   const packCount = Math.max(1, Math.floor(Number(metadata.packCount || 1)));
   const tokenAmount = metadata.solanaTokenAmount || "";
-  const tokenSymbol = metadata.solanaTokenSymbol || "RUBY";
+  const tokenSymbol = metadata.solanaTokenSymbol || "Ruby";
   return "-" + formatTokenDisplayAmount(tokenAmount) + " " + tokenSymbol + " · +" + packCountLabel(packCount);
 }
 
@@ -1519,6 +1539,42 @@ export function billingCardBurnChoiceView(opts?: NullableRecord): BillingCardBur
   };
 }
 
+export function billingRubyMigrationChoiceView(statusInput?: NullableRecord, opts?: NullableRecord): BillingRubyMigrationChoiceView {
+  const status = statusInput && typeof statusInput === "object" ? statusInput : {};
+  const sourceSymbol = String(status.sourceSymbol || "RUBY").trim() || "RUBY";
+  const destinationSymbol = String(status.destinationSymbol || "Ruby").trim() || "Ruby";
+  const configured = !!(status.configured && status.enabled);
+  const reason = String(status.reason || "").trim();
+  const hasWallet = !!(opts && opts.hasWallet);
+  const authed = !!(opts && opts.authed);
+  const billingBusy = !!(opts && opts.billingBusy);
+  const cryptoUnavailable = !!(opts && opts.cryptoUnavailable);
+  return {
+    titleText: "Migrate " + sourceSymbol + " to " + destinationSymbol,
+    metaText: configured
+      ? hasWallet
+        ? "Burn old " + sourceSymbol + " · mint " + destinationSymbol
+        : "Connect your Solana wallet to migrate old " + sourceSymbol + "."
+      : (reason || "Ruby token migration is not live yet."),
+    buttonText: billingBusy
+      ? "Migrating..."
+      : cryptoUnavailable
+        ? "Crypto unavailable"
+        : configured
+          ? hasWallet ? "Migrate" : "Connect Wallet"
+          : "Not Live",
+    buttonDisabled: !authed || billingBusy || cryptoUnavailable || !configured,
+    buttonTitle: cryptoUnavailable
+      ? "Ruby migration needs Privy wallet configuration."
+      : !configured
+        ? (reason || "Ruby token migration is not enabled.")
+        : hasWallet
+          ? "Burn old " + sourceSymbol + " for " + destinationSymbol + "."
+          : "Connect a Solana wallet before migrating " + sourceSymbol + ".",
+    noteText: configured ? "" : (reason || "Ruby token migration is not enabled on this server."),
+  };
+}
+
 export function comicPageTitle(pageNumber: unknown): string {
   const n = Math.max(1, Math.floor(Number(pageNumber || 1)));
   return (VIEWER_CONSTANTS.FIRST_BELL_PAGE_TITLES as Record<number, string>)[n] || "First Bell";
@@ -2145,11 +2201,13 @@ export function roomChannelRowViews(
   activeFacultyId: unknown,
   students: unknown,
   visibleStudentIds: unknown,
+  publicRoomStudents?: unknown,
 ): RoomChannelRowView[] {
   const roomList = Array.isArray(rooms) ? rooms : [];
   const facultyList = Array.isArray(roster) ? roster : [];
   const cohortRecord = cohort && typeof cohort === "object" ? cohort as LooseRecord : {};
   const studentList = Array.isArray(students) ? students : [];
+  const humanList = Array.isArray(publicRoomStudents) ? publicRoomStudents : [];
   const visibleIds = new Set(Array.isArray(visibleStudentIds)
     ? visibleStudentIds.map((id) => String(id || "")).filter(Boolean)
     : studentList.map((student) => String((student && typeof student === "object" ? (student as LooseRecord).id : "") || "")).filter(Boolean));
@@ -2161,6 +2219,18 @@ export function roomChannelRowViews(
     if (!id) return;
     studentNames.set(id, String(record.name || id));
   });
+  const humansByFaculty = new Map<string, RoomChannelStudentView[]>();
+  humanList.forEach((student) => {
+    const record = student && typeof student === "object" ? student as LooseRecord : null;
+    if (!record) return;
+    const id = String(record.id || "");
+    const name = String(record.name || "Student").trim() || "Student";
+    const facultyId = String(record.facultyId || "");
+    const portraitUrl = String(record.portraitUrl || "").trim();
+    if (!id || !facultyId || !portraitUrl) return;
+    if (!humansByFaculty.has(facultyId)) humansByFaculty.set(facultyId, []);
+    humansByFaculty.get(facultyId)!.push({ ...record, id, name, facultyId, portraitUrl, kind: "human" });
+  });
 
   return roomList
     .filter((room) => !!(room && typeof room === "object" && (room as LooseRecord).teaches))
@@ -2171,6 +2241,17 @@ export function roomChannelRowViews(
       const faculty = facultyList.find((entry) => !!(entry && typeof entry === "object" && String((entry as LooseRecord).id || "") === facultyId)) || null;
       const completionProgress = faculty ? roomCompletionProgressView(faculty) : null;
       const cohortIds = Array.isArray(cohortRecord[roomId]) ? cohortRecord[roomId] : [];
+      const npcStudents = cohortIds
+        .map((id) => String(id || ""))
+        .filter((id) => id && visibleIds.has(id))
+        .map((id) => ({ id, name: studentNames.get(id) || id }));
+      const seen = new Set(npcStudents.map((student) => student.id));
+      const humanStudents = (humansByFaculty.get(facultyId) || [])
+        .filter((student) => {
+          if (seen.has(student.id)) return false;
+          seen.add(student.id);
+          return true;
+        });
       return {
         roomId,
         facultyId,
@@ -2178,10 +2259,7 @@ export function roomChannelRowViews(
         isActive: !!(faculty && String(activeFacultyId || "") === facultyId),
         completionProgress,
         completionLabel: completionProgress ? roomCompletionProgressLabel(faculty, completionProgress) : "",
-        students: cohortIds
-          .map((id) => String(id || ""))
-          .filter((id) => id && visibleIds.has(id))
-          .map((id) => ({ id, name: studentNames.get(id) || id })),
+        students: [...npcStudents, ...humanStudents],
       };
     });
 }
@@ -2192,7 +2270,7 @@ export function packCountLabel(count: unknown): string {
   return formatWholeNumber(n) + " Pack" + (n === 1 ? "" : "s");
 }
 export function cardPackTokenSymbol(product: NullableRecord, solana: NullableRecord): string {
-  return String((product && product.tokenSymbol) || (solana && solana.symbol) || "RUBY").trim() || "RUBY";
+  return String((product && product.tokenSymbol) || (solana && solana.symbol) || "Ruby").trim() || "Ruby";
 }
 export function cardPackDebitLabel(product: NullableRecord, solana: NullableRecord): string {
   const amount = product && product.tokenAmount != null ? product.tokenAmount : solana && solana.tokenAmount;
@@ -2272,7 +2350,6 @@ export function billingProductsPanelView(
   const payload = payloadInput && typeof payloadInput === "object" ? payloadInput : {};
   const solana = solanaInput && typeof solanaInput === "object" ? solanaInput : null;
   const hallPassesPerBurnedCard = Math.max(1, Math.floor(Number(opts && opts.hallPassesPerBurnedCard || 5)));
-  const hasRubyToken = !!(opts && opts.hasRubyToken);
   const isCardPacks = mode === "card-packs";
   return {
     titleText: isCardPacks ? "Buy Card Packs" : "Buy Hall Passes",
@@ -2288,12 +2365,10 @@ export function billingProductsPanelView(
     showGetRubyCostLink: false,
     emptyStatusText: isCardPacks ? "No card packs are available." : "No Hall Passes are available.",
     checkoutStatusText: isCardPacks
-      ? (solana && !solana.configured
-        ? "Card pack checkout is not configured on this server."
-        : hasRubyToken ? "" : "Solana pack checkout is missing token configuration.")
+      ? (solana && solana.configured ? "" : "Card pack checkout is not configured on this server.")
       : (payload.configured ? "" : "Stripe checkout is not configured on this server."),
     checkoutStatusError: isCardPacks
-      ? !(solana && solana.configured && hasRubyToken)
+      ? !(solana && solana.configured)
       : !payload.configured,
   };
 }

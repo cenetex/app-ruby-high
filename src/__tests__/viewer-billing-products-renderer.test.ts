@@ -5,6 +5,7 @@ import type {
   BillingCardPackPaymentChoiceView,
   BillingHallPassPaymentChoiceView,
   BillingProductRowView,
+  BillingRubyMigrationChoiceView,
 } from "../viewer-parts/client-pure.js";
 
 class FakeClassList {
@@ -99,6 +100,18 @@ function burnView(overrides?: Partial<BillingCardBurnChoiceView>): BillingCardBu
   };
 }
 
+function rubyMigrationView(overrides?: Partial<BillingRubyMigrationChoiceView>): BillingRubyMigrationChoiceView {
+  return {
+    titleText: "Migrate RUBY to Ruby",
+    metaText: "Burn old RUBY · mint Ruby",
+    buttonText: "Migrate",
+    buttonDisabled: false,
+    buttonTitle: "Burn old RUBY for Ruby.",
+    noteText: "",
+    ...overrides,
+  };
+}
+
 function textTree(node: FakeElement): string[] {
   return [
     node.textContent,
@@ -122,6 +135,7 @@ describe("billing products renderer", () => {
       hallPassPaymentChoiceView: () => hallPassPaymentView(),
       cardPackPaymentChoiceView: () => cardPackPaymentView(),
       cardBurnChoiceView: () => burnView(),
+      rubyMigrationChoiceView: () => rubyMigrationView(),
       isPrivyConfigured: () => true,
       canPackCheckout: () => true,
       onSelectProduct(id) {
@@ -130,6 +144,7 @@ describe("billing products renderer", () => {
       onStartCheckout: vi.fn(),
       onStartSolanaPayment: vi.fn(),
       onBurnCard: vi.fn(),
+      onMigrateRuby: vi.fn(),
     });
 
     const row = renderer.buildProductRow("hall-passes", product, { configured: true }, {
@@ -168,6 +183,7 @@ describe("billing products renderer", () => {
         });
       },
       cardBurnChoiceView: () => burnView(),
+      rubyMigrationChoiceView: () => rubyMigrationView(),
       isPrivyConfigured: () => true,
       canPackCheckout: () => false,
       onSelectProduct: vi.fn(),
@@ -178,6 +194,7 @@ describe("billing products renderer", () => {
         calls.push("solana:" + String(id));
       },
       onBurnCard: vi.fn(),
+      onMigrateRuby: vi.fn(),
     });
 
     const stripe = renderer.buildHallPassPaymentChoice({ configured: true }, { id: "pass-5" }, {
@@ -219,12 +236,14 @@ describe("billing products renderer", () => {
         });
         return burnView();
       },
+      rubyMigrationChoiceView: () => rubyMigrationView(),
       isPrivyConfigured: () => true,
       canPackCheckout: () => true,
       onSelectProduct: vi.fn(),
       onStartCheckout: vi.fn(),
       onStartSolanaPayment: vi.fn(),
       onBurnCard: burn,
+      onMigrateRuby: vi.fn(),
     });
 
     const row = renderer.buildCardBurnChoice({
@@ -240,5 +259,46 @@ describe("billing products renderer", () => {
     expect(row.children[1]!.title).toBe("Burn one Card for 5 Hall Passes.");
     row.children[1]!.click();
     expect(burn).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders Ruby migration rows with injected wallet state and action", () => {
+    const migrate = vi.fn();
+    const status = { configured: true, enabled: true, sourceSymbol: "RUBY", destinationSymbol: "Ruby" };
+    const renderer = createBillingProductsRenderer({
+      document: createDocument(),
+      productRowView: () => rowView(),
+      hallPassPaymentChoiceView: () => hallPassPaymentView(),
+      cardPackPaymentChoiceView: () => cardPackPaymentView(),
+      cardBurnChoiceView: () => burnView(),
+      rubyMigrationChoiceView(statusArg, opts) {
+        expect(statusArg).toBe(status);
+        expect(opts).toEqual({
+          hasWallet: true,
+          authed: true,
+          billingBusy: false,
+          cryptoUnavailable: false,
+        });
+        return rubyMigrationView();
+      },
+      isPrivyConfigured: () => true,
+      canPackCheckout: () => true,
+      onSelectProduct: vi.fn(),
+      onStartCheckout: vi.fn(),
+      onStartSolanaPayment: vi.fn(),
+      onBurnCard: vi.fn(),
+      onMigrateRuby: migrate,
+    });
+
+    const row = renderer.buildRubyMigrationChoice(status, {
+      hasWallet: true,
+      authed: true,
+      billingBusy: false,
+    }) as unknown as FakeElement;
+
+    expect(row.className).toBe("billing-product billing-ruby-migration");
+    expect(textTree(row)).toEqual(["Migrate RUBY to Ruby", "Burn old RUBY · mint Ruby", "Migrate"]);
+    expect(row.children[1]!.className).toBe("billing-buy is-secondary");
+    row.children[1]!.click();
+    expect(migrate).toHaveBeenCalledTimes(1);
   });
 });

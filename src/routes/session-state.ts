@@ -10,6 +10,7 @@ import {
   advantageRollsForState,
   dailyStatusForState,
   type CourseProgress,
+  type PublicRoomHumanStudent,
 } from "../services/ruby-high-service.js";
 import { FacultyService, toFacultyMember } from "../services/faculty-service.js";
 import { AuthService } from "../services/auth-service.js";
@@ -139,11 +140,13 @@ interface SessionTelemetry extends Record<string, unknown> {
   }>;
   rooms: PackRoom[];
   room_cohort: Record<string, string[]>;
+  public_room_students: PublicRoomHumanStudent[];
   npc_roster: NpcStudentState[];
   active_round: ReturnType<typeof deriveActiveRound>;
   is_opinion: boolean;
   character: PlayerCharacter | null;
   first_bell_report: FirstBellReport | null;
+  first_bell_share: { shareId: string; url: string; grade: Grade | null } | null;
   student_pool: StudentPoolEntry[];
   character_slots: CharacterSlotEntitlements & {
     costHallPasses: number;
@@ -340,6 +343,7 @@ export function buildSessionState(args: {
   const wallet = normalizeWalletForTelemetry(state);
   const characterSlots = normalizeCharacterSlotsForTelemetry(state);
   const entitlements = hostedEntitlementStatus({ ruby, sessionId, state });
+  const firstBellShare = ruby?.firstBellShareForSession(sessionId) ?? null;
 
   const telemetry: SessionTelemetry = {
     faculty: state.faculty,
@@ -435,6 +439,7 @@ export function buildSessionState(args: {
         s + (f.sourceCards?.length ?? 0) + f.questions.filter((q) => !q.sourceCardId).length, 0),
     })),
     rooms: roomsWithLoungeForSession(state),
+    public_room_students: ruby?.getPublicRoomHumanStudentsForSession(sessionId) ?? [],
     npc_roster: state.currentGrade ? (state.npcRosters[state.currentGrade] ?? []) : [],
     room_cohort: state.currentGrade
       ? deriveRoomCohort(state.npcRosters[state.currentGrade] ?? [], state)
@@ -443,6 +448,13 @@ export function buildSessionState(args: {
     is_opinion: state.current?.type === "opinion",
     character: state.character,
     first_bell_report: state.character?.firstBellReport ?? null,
+    first_bell_share: firstBellShare
+      ? {
+          shareId: firstBellShare.shareId,
+          grade: firstBellShare.grade,
+          url: `${APP_ROUTE_PREFIX}/first-bell/${firstBellShare.shareId}`,
+        }
+      : null,
     pending_photo_count: Array.isArray(state.character?.pendingPhotos) ? state.character.pendingPhotos.length : 0,
     pending_photo_pool_size: ruby?.pendingPhotoPoolSize() ?? 0,
     student_pool: state.studentPool ?? [],

@@ -1665,6 +1665,14 @@ function buildAdminMetricsSchema(): {
         caveat: "Requires app_open to fire before the funnel step.",
       },
       {
+        path: "ruby.events.referral",
+        label: "Share loop",
+        source: "StoredMetricEventRecord share_artifact_created, share_initiated, and share_link_visited",
+        semantics: "Shareable artifact creation, outbound share starts, inbound link visits, unique referred visitors, and click-through rates.",
+        reliability: "authoritative",
+        caveat: "Link visits are recorded when a referred visitor reaches the viewer with a ref parameter; visits to static share pages alone are not counted.",
+      },
+      {
         path: "ruby.guestSpotlight",
         label: "Guest spotlight",
         source: "StoredMetricEventRecord guest_spotlight_seen, guest_spotlight_started, guest_pack_override_set",
@@ -2812,6 +2820,7 @@ async function postTelegramSnapshot() {
       const auth = data.auth || {};
       const ruby = data.ruby || {};
       const events = ruby.events || {};
+      const referral = events.referral || {};
       const ops = data.ops || {};
       const logs = data.logs || {};
       status("Updated " + time(data.generatedAt) + " - build " + (logs.build || "unknown") + " - " + (data.schemaVersion || "legacy schema"), "");
@@ -2832,6 +2841,7 @@ async function postTelegramSnapshot() {
         metric("Questions", n(ruby.questions && ruby.questions.total), n(ruby.questions && ruby.questions.correct) + " correct - " + pct(ruby.questions && ruby.questions.accuracy) + " accuracy"),
         metric("Curriculum", n(ruby.curriculum && ruby.curriculum.lowPools && ruby.curriculum.lowPools.length), n(ruby.curriculum && ruby.curriculum.rows && ruby.curriculum.rows.length) + " grade/teacher pools"),
         metric("Active rounds", n(ruby.activeRounds), n(ruby.essayReports) + " essay reports"),
+        metric("Share CTR", pct(referral.uniqueShareClickThroughRate), n(referral.uniqueReferredVisitors) + " unique - " + n(referral.linkVisits) + " visits / " + n(referral.sharesInitiated) + " shares"),
         metric("Photo posts", photoPostMetricValue(ruby.photoPosts), photoPostMetricSub(ruby.photoPosts)),
       ].join("");
       const commerce = events.commerce || {};
