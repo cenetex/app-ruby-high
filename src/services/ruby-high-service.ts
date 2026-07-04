@@ -25,6 +25,11 @@ import {
   type RubyHighPhotoPostSchedulerSnapshot,
 } from "./ruby-high/photo-post-scheduler.js";
 import {
+  PostRotationScheduler,
+  GENERAL_POST_SCHEDULER_INTERVAL_MS,
+  type GeneralSchedulerState,
+} from "./ruby-high/post-scheduler.js";
+import {
   buildCurriculumCoverageSnapshot,
   generationDifficultyForCurriculumGrade,
   type MutableCurriculumCoverageRow,
@@ -33,7 +38,7 @@ import {
   type RubyHighCurriculumReplenishmentPlan,
 } from "./ruby-high/curriculum-coverage.js";
 import { builtInTeacherResearchCorpusForFaculty } from "./ruby-high/teacher-research-corpus.js";
-import { teacherById } from "../characters/teachers.js";
+import { teacherById, type TeacherCharacter } from "../characters/teachers.js";
 import { Service, type IAgentRuntime } from "../runtime.js";
 import {
   ADVANTAGE_ROLLS_PER_GRADE,
@@ -1599,6 +1604,8 @@ export class RubyHighService extends Service {
   private photoPostSchedulerTimer: ReturnType<typeof setInterval> | null = null;
   private photoPostSchedulerIntervalMs: number | null = null;
   private photoPostSchedulerRunning = false;
+  private rotationScheduler: PostRotationScheduler;
+  private rotationSchedulerTimer: ReturnType<typeof setInterval> | null = null;
   private lastPhotoPostAttemptAt: number | null = null;
   private lastPhotoPostResult: DailyPhotoPostResult | null = null;
   private readonly disposeLogSink: () => void;
@@ -1614,6 +1621,7 @@ export class RubyHighService extends Service {
   constructor(runtime?: IAgentRuntime, store?: StateStoreLike) {
     super(runtime);
     this.store = store ?? getDefaultStateStore();
+    this.rotationScheduler = new PostRotationScheduler();
     this.disposeLogSink = setLogSink((record) => this.recordLogSinkMetricEvent(record));
   }
 
@@ -1621,11 +1629,13 @@ export class RubyHighService extends Service {
     const svc = new RubyHighService(runtime);
     await svc.hydrate();
     svc.startPhotoPostScheduler();
+    svc.startRotationScheduler();
     return svc;
   }
 
   async stop(): Promise<void> {
     this.stopPhotoPostScheduler();
+    this.stopRotationScheduler();
     await this.flush();
     this.disposeLogSink();
     this.sessions.clear();
@@ -2417,6 +2427,59 @@ export class RubyHighService extends Service {
     if (this.photoPostSchedulerTimer) clearInterval(this.photoPostSchedulerTimer);
     this.photoPostSchedulerTimer = null;
     this.photoPostSchedulerIntervalMs = null;
+  }
+
+  startRotationScheduler(): void {
+    if (this.rotationSchedulerTimer) return;
+    this.rotationSchedulerTimer = setInterval(() => {
+      void this.runRotationSchedulerTick();
+    }, GENERAL_POST_SCHEDULER_INTERVAL_MS);
+    this.rotationSchedulerTimer.unref?.();
+  }
+
+  stopRotationScheduler(): void {
+    if (this.rotationSchedulerTimer) clearInterval(this.rotationSchedulerTimer);
+    this.rotationSchedulerTimer = null;
+  }
+
+  async runRotationSchedulerTick(): Promise<void> {
+    const xSocial = this.getXSocialService();
+    if (!xSocial) return;
+
+    const teacher = this.getFirstConnectedTeacher();
+    if (!teacher) return;
+
+    const recentNames = this.getRecentActiveStudentNames();
+    try {
+      await this.rotationScheduler.tick(xSocial, () => this.getFirstConnectedTeacher(), () => recentNames);
+    } catch (err) {
+      log.error("rotation-scheduler.tick-failed", err);
+    }
+  }
+
+  private getXSocialService(): XSocialService | null {
+    if (!this.runtime || typeof (this.runtime as any).getService !== "function") return null;
+    return (this.runtime as any).getService(XSocialService.serviceType) as XSocialService | null;
+  }
+
+  private getFirstConnectedTeacher(): TeacherCharacter | null {
+    const xSocial = this.getXSocialService();
+    if (!xSocial) return null;
+    const connected = xSocial.listConnected().filter((s) => s.connected && s.hasTweetWrite);
+    if (connected.length === 0) return null;
+    // Prefer Ruby, then first connected.
+    const rubyStatus = connected.find((s) => s.teacherId === "ruby");
+    const targetId = rubyStatus ? "ruby" : connected[0]!.teacherId;
+    return teacherById(targetId) ?? null;
+  }
+
+  private getRecentActiveStudentNames(): string[] {
+    const students = this.getRecentlyActiveStudents(Date.now());
+    return students.map((s) => s.name).slice(0, 10);
+  }
+
+  rotationSchedulerSnapshot(): GeneralSchedulerState {
+    return this.rotationScheduler.getSnapshot();
   }
 
   async runPhotoPostSchedulerTick(): Promise<DailyPhotoPostResult | null> {
@@ -8837,6 +8900,55 @@ export class RubyHighService extends Service {
     return candidates.some((candidate) => this.isClassPhotoRevealTarget(candidate.sessionId));
   }
 
+  /** Background pre-generation: when 4+ portraits are pending, generate a
+   *  class photo composite and enqueue it as a pending class-photo reveal.
+   *  This way the next daily photo post can use it immediately instead of
+   *  generating on cold start. */
+  private async maybePreGenerateClassPhoto(
+    portraits: { sessionId: string; photo: PendingPhotoReveal }[],
+  ): Promise<void> {
+    const xSocial = this.getXSocialService();
+    if (!xSocial) return;
+
+    // Use Ruby as the teacher for class photo generation.
+    const teacher = teacherById("ruby");
+    if (!teacher) return;
+
+    // Already generated a class photo for this set? Simple dedup by portrait count.
+    const existingClassPhotos = new Set<string>();
+    for (const [, state] of this.sessions) {
+      const ch = state.character;
+      if (!ch) continue;
+      for (const p of characterArrayField(ch, "pendingPhotos")) {
+        if (p.kind === "class-photo") existingClassPhotos.add(p.imageUrl);
+      }
+    }
+    if (existingClassPhotos.size > 0 && existingClassPhotos.size >= Math.floor(portraits.length / 4)) {
+      return; // Already have enough class photos queued.
+    }
+
+    const studentImages = portraits.slice(0, 8).map(({ photo }) => ({
+      name: "", // names come from session context
+      imageUrl: photo.imageUrl,
+    }));
+
+    try {
+      const imageUrl = await xSocial.generateClassPhoto(teacher, studentImages);
+      if (imageUrl) {
+        // Enqueue the generated class photo for Ruby to post.
+        // Use the first portrait's session as the reveal target.
+        const targetSessionId = portraits[0]!.sessionId;
+        this.enqueuePhotoReveal(targetSessionId, "class-photo", imageUrl, "ruby");
+        log.event("class-photo.pre-generated", {
+          portraitCount: portraits.length,
+          imageUrl: imageUrl.slice(0, 80),
+        });
+      }
+    } catch (err) {
+      log.error("class-photo.pre-generation-failed", err);
+    }
+  }
+
   private isClassPhotoRevealTarget(sessionId: string): boolean {
     const state = this.sessions.get(sessionId);
     const ch = state?.character;
@@ -8925,6 +9037,15 @@ export class RubyHighService extends Service {
       }
     }
     if (allPhotos.length === 0) return null;
+
+    // Pre-generation: if we have 4+ pending portraits, generate a class photo
+    // in the background for a future daily post. This avoids the cold-start
+    // delay when an admin clicks "Post Class Photo".
+    const pendingPortraits = allPhotos.filter(({ photo }) => photo.kind === "portrait");
+    if (pendingPortraits.length >= 4) {
+      void this.maybePreGenerateClassPhoto(pendingPortraits);
+    }
+
     const targetPhotoId = typeof opts.photoId === "string" && opts.photoId ? opts.photoId : null;
 
     // Fallback: if this photo's teacher is not connected to X, auto-reveal it
