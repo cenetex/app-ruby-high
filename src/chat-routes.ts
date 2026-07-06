@@ -82,6 +82,7 @@ import {
   resolveOpenRouterImageCredential,
   resolveTextLlmCredential,
 } from "./openrouter-generation-access.js";
+import { RUBY_HIGH_PHOTO_PROMPT_VERSION } from "./services/school-photo-scenes.js";
 
 function readNonNegativeMs(value: string | undefined, fallback: number): number {
   if (value == null || value.trim() === "") return fallback;
@@ -3841,6 +3842,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           teacherImageUrl: scene.teacher.imageUrl,
           studentId: scene.student.id,
           studentImageUrl: scene.student.imageUrl,
+          promptVersion: RUBY_HIGH_PHOTO_PROMPT_VERSION,
         },
       });
     } catch (err) {
@@ -3870,7 +3872,14 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const dataUrl = await renderGraduationPhoto({
         apiKey,
         gradeLabel: GRADE_LABELS[scene.grade] ?? `Grade ${scene.grade}`,
-        player: { name: scene.characterName, imageUrl: scene.characterImageUrl },
+        player: {
+          name: scene.characterName,
+          imageUrl: scene.characterImageUrl,
+          personality: state.character?.personality,
+          playbookName: state.character?.playbookId,
+          flavorQuote: state.character?.flavorQuote,
+          arcAnswer: state.character?.arcAnswer,
+        },
         teacher: scene.teacher,
         classmate: scene.student,
       });
@@ -4089,6 +4098,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           name: yearbookEntry.name || ch.name,
           grade,
           playbookId: yearbookEntry.playbookId || ch.playbookId,
+          promptVersion: RUBY_HIGH_PHOTO_PROMPT_VERSION,
         },
       });
     } catch (err) {
@@ -4134,7 +4144,6 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const classmateImageUrl = classmateName
       ? assetBase + "students/" + classmateName.toLowerCase() + "-full.png"
       : null;
-    const locationImageUrl = assetBase + "assets/ruby-classroom.png";
     let url: string;
     try {
       url = await renderYearbookCard({

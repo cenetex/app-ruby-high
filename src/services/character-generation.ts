@@ -1,4 +1,7 @@
 import { PLAYBOOKS } from "../characters/playbooks.js";
+import { studentById } from "../characters/students.js";
+import { teacherById } from "../characters/teachers.js";
+import { DEFAULT_STUDENT_MODEL } from "../model-defaults.js";
 import type { CharacterStats } from "../types.js";
 import { publicBaseUrl } from "./generated-portrait-assets.js";
 export { maybeUploadPortrait } from "./generated-portrait-assets.js";
@@ -6,6 +9,10 @@ import { log } from "./logger.js";
 import {
   openRouterJson,
 } from "./openrouter-client.js";
+import {
+  rubyHighPhotoSceneForGrade,
+  type RubyHighPhotoScene,
+} from "./school-photo-scenes.js";
 import {
   fetchLlmChatCompletions,
   resolveStudentModel,
@@ -15,6 +22,9 @@ import {
 const PORTRAIT_MODEL = process.env.RUBY_HIGH_PORTRAIT_MODEL ?? "google/gemini-3.1-flash-image-preview";
 const PORTRAIT_MAX_TOKENS = Number(process.env.RUBY_HIGH_PORTRAIT_MAX_TOKENS ?? 4000);
 const PORTRAIT_TIMEOUT_MS = 60_000;
+const PHOTO_DIRECTION_MODEL = process.env.RUBY_HIGH_PHOTO_DIRECTION_MODEL?.trim() || DEFAULT_STUDENT_MODEL;
+const PHOTO_DIRECTION_MAX_TOKENS = Math.max(80, Number(process.env.RUBY_HIGH_PHOTO_DIRECTION_MAX_TOKENS ?? 180) || 180);
+const PHOTO_DIRECTION_TIMEOUT_MS = Math.max(5_000, Number(process.env.RUBY_HIGH_PHOTO_DIRECTION_TIMEOUT_MS ?? 20_000) || 20_000);
 
 interface PortraitResponse {
   choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>;
@@ -167,17 +177,22 @@ export async function renderClassPhoto(args: {
   if (studentImages.length === 0) throw new Error("No student images provided.");
   // Build a content array with all student images + prompt.
   const contentParts: Array<Record<string, unknown>> = [];
-  for (const s of studentImages) {
+  studentImages.forEach((s, index) => {
+    contentParts.push({
+      type: "text",
+      text: `REFERENCE IMAGE ${index + 1}: ${s.name}. Use this exact student identity in the group photo.`,
+    });
     contentParts.push({
       type: "image_url",
       image_url: { url: imageReferenceUrl(s.imageUrl) },
     });
-  }
+  });
   const nameList = studentImages.map((s) => s.name).join(", ");
   contentParts.push({
     type: "text",
     text: [
       `Arrange these ${studentImages.length} students (${nameList}) into a CLASS PHOTO.`,
+      "IDENTITY LOCK: Each reference image is a canonical character sheet. Preserve each student's hair shape and color, outfit, silhouette, face, skin tone, proportions, and art style. Adapt pose only. Do not substitute generic students.",
       "STYLE: JRPG-style group photo — a single wide horizontal image. Students stand together in 1-2 rows against a SOLID FLAT pale lavender background (#ece6f5). Each student keeps their original appearance, outfit, and art style. 5px bold black outlines. Vibrant flat colors. Everyone visible, no one cut off. Natural group arrangement — some in front, some behind, like a real class photo.",
       "OUTPUT: a single wide image containing all students together. Solid pale lavender background. No text, no names, no labels.",
     ].join("\n"),
@@ -202,26 +217,70 @@ export async function renderClassPhoto(args: {
 export async function renderGraduationPhoto(args: {
   apiKey: string;
   gradeLabel: string;
-  player: { name: string; imageUrl: string };
-  teacher: { name: string; imageUrl: string };
-  classmate: { name: string; imageUrl: string };
+  player: {
+    name: string;
+    imageUrl: string;
+    personality?: string;
+    playbookName?: string;
+    flavorQuote?: string;
+    arcAnswer?: string;
+  };
+  teacher: { id?: string; name: string; imageUrl: string };
+  classmate: { id?: string; name: string; imageUrl: string };
 }): Promise<string> {
-  const contentParts: Array<Record<string, unknown>> = [
-    { type: "image_url", image_url: { url: imageReferenceUrl(args.player.imageUrl) } },
-    { type: "image_url", image_url: { url: imageReferenceUrl(args.teacher.imageUrl) } },
-    { type: "image_url", image_url: { url: imageReferenceUrl(args.classmate.imageUrl) } },
-    {
-      type: "text",
-      text: [
-        `Create a Ruby High ${args.gradeLabel} graduation photo with exactly these three people: ${args.player.name} (student), ${args.teacher.name} (teacher), and ${args.classmate.name} (classmate).`,
-        "Use the three reference images in that order. Preserve each person's recognizable outfit, hair, silhouette, and art style.",
-        "",
-        "COMPOSITION: wide horizontal yearbook photo, 16:9. The teacher stands centered slightly behind; the two students stand left and right in front. Everyone is visible from head to at least knees, facing camera, friendly but in-character.",
-        "SETTING: Ruby High classroom photo-day backdrop, warm school lighting, subtle chalkboard or hallway details. No text, no logos, no captions, no watermarks.",
-        "STYLE: JRPG/anime-influenced school portrait, bold black 5px outlines, vibrant flat colors, subtle cel shading, polished yearbook keepsake.",
-      ].join("\n"),
-    },
+  const scene = rubyHighPhotoSceneForGrade(args.gradeLabel, [
+    args.gradeLabel,
+    args.player.name,
+    args.teacher.name,
+    args.classmate.name,
+  ].join(":"));
+  const participants: PhotoParticipant[] = [
+    { role: "student", ...args.player },
+    { role: "teacher", ...args.teacher },
+    { role: "classmate", ...args.classmate },
   ];
+  const direction = await graduationPhotoDirectionPlan({
+    apiKey: args.apiKey,
+    gradeLabel: args.gradeLabel,
+    scene,
+    participants,
+  });
+  const referenceLabels = [
+    `${args.player.name} - graduating student`,
+    `${args.teacher.name} - teacher`,
+    `${args.classmate.name} - classmate`,
+  ];
+  const contentParts: Array<Record<string, unknown>> = [];
+  [
+    { label: referenceLabels[0]!, url: args.player.imageUrl },
+    { label: referenceLabels[1]!, url: args.teacher.imageUrl },
+    { label: referenceLabels[2]!, url: args.classmate.imageUrl },
+  ].forEach((ref, index) => {
+    contentParts.push({
+      type: "text",
+      text: `REFERENCE IMAGE ${index + 1}: ${ref.label}. Use this exact character identity for that person.`,
+    });
+    contentParts.push({ type: "image_url", image_url: { url: imageReferenceUrl(ref.url) } });
+  });
+  contentParts.push({
+    type: "text",
+    text: [
+      `Create a dynamic Ruby High ${args.gradeLabel} graduation photo with exactly these three people: ${referenceLabels.join(", ")}.`,
+      "IDENTITY LOCK: Each reference image is a canonical character sheet. Preserve each person's hair shape and color, outfit, silhouette, face, skin tone, proportions, role, and art style. Adapt pose and expression only. Do not substitute generic anime students or redesign the cast.",
+      "",
+      `LOCATION: ${scene.roomName}. ${scene.setting}.`,
+      `PHOTO DIRECTION: ${direction?.plan ?? scene.action}`,
+      direction
+        ? `INDIVIDUAL INTENTIONS: ${direction.proposals.map((proposal) => `${proposal.name}: ${proposal.action}`).join(" ")}`
+        : `POSE DIRECTION: ${scene.action}`,
+      `CAMERA: ${scene.camera}.`,
+      `ROOM DETAILS: ${scene.props}.`,
+      "COMPOSITION: wide horizontal yearbook photo, 16:9. Stage the trio at different depths and angles, interacting with the room and each other. Use diagonal movement and distinct silhouettes. Everyone is visible from head to at least knees, faces clear, no one cut off.",
+      "AVOID: formal photo-day backdrop, centered lineup, stiff front-facing pose, plain homeroom, chalkboard-centered classroom setup, everyone standing still with arms at their sides, character redesigns, outfit swaps, age changes, extra people, missing cast members.",
+      "No text, no logos, no captions, no watermarks.",
+      "STYLE: JRPG/anime-influenced school portrait, bold black outlines, vibrant flat colors, subtle cel shading, polished yearbook keepsake.",
+    ].join("\n"),
+  });
 
   const body = await openRouterJson<PortraitResponse>({
     apiKey: args.apiKey,
@@ -237,6 +296,181 @@ export async function renderGraduationPhoto(args: {
   const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
   if (!url) throw new Error("Graduation photo generation returned no image.");
   return url;
+}
+
+type PhotoParticipantRole = "student" | "teacher" | "classmate";
+
+interface PhotoParticipant {
+  role: PhotoParticipantRole;
+  id?: string;
+  name: string;
+  imageUrl: string;
+  personality?: string;
+  playbookName?: string;
+  flavorQuote?: string;
+  arcAnswer?: string;
+}
+
+interface PhotoActionProposal {
+  role: PhotoParticipantRole;
+  name: string;
+  action: string;
+}
+
+interface GraduationPhotoDirectionPlan {
+  plan: string;
+  proposals: PhotoActionProposal[];
+}
+
+function compactText(value: string | undefined, max = 360): string {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (text.length <= max) return text;
+  return text.slice(0, max).replace(/\s+\S*$/, "").trim();
+}
+
+function cleanPhotoDirection(value: string | undefined, max = 260): string {
+  const text = compactText(value, max)
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/^(action|pose|plan|direction):\s*/i, "")
+    .trim();
+  return text;
+}
+
+function participantPersona(participant: PhotoParticipant): string {
+  if (participant.role === "student") {
+    return [
+      `You are ${participant.name}, the graduating student in this photo.`,
+      participant.playbookName ? `Playbook: ${participant.playbookName}.` : "",
+      participant.personality ? `Personality: ${participant.personality}` : "",
+      participant.flavorQuote ? `Flavor line: ${participant.flavorQuote}` : "",
+      participant.arcAnswer ? `Arc answer: ${participant.arcAnswer}` : "",
+    ].filter(Boolean).join("\n");
+  }
+  if (participant.role === "teacher") {
+    const teacher = participant.id ? teacherById(participant.id) : null;
+    return teacher
+      ? compactText(teacher.systemPrompt, 520)
+      : `You are ${participant.name}, a Ruby High teacher with a specific classroom presence.`;
+  }
+  const student = participant.id ? studentById(participant.id) : null;
+  return student
+    ? compactText(student.systemPrompt, 520)
+    : `You are ${participant.name}, a Ruby High classmate with your own social rhythm.`;
+}
+
+async function askGraduationPhotoAction(args: {
+  apiKey: string;
+  gradeLabel: string;
+  scene: RubyHighPhotoScene;
+  participant: PhotoParticipant;
+  cast: PhotoParticipant[];
+}): Promise<PhotoActionProposal> {
+  const roleLabel = args.participant.role === "student"
+    ? "graduating student"
+    : args.participant.role;
+  const prompt = [
+    `Ruby High is taking a ${args.gradeLabel} graduation photo in ${args.scene.roomName}.`,
+    `Location details: ${args.scene.setting}.`,
+    `Cast: ${args.cast.map((member) => `${member.name} (${member.role})`).join(", ")}.`,
+    `Character: ${args.participant.name} (${roleLabel}).`,
+    "",
+    "Choose what this character physically does in the still photo.",
+    "Return one concise visual action only, 8-22 words. No dialogue. No camera directions. No text to appear in the image.",
+  ].join("\n");
+  const body = await openRouterJson<CharacterResponse>({
+    apiKey: args.apiKey,
+    label: `graduation-photo-${args.participant.role}-action`,
+    timeoutMs: PHOTO_DIRECTION_TIMEOUT_MS,
+    body: {
+      model: PHOTO_DIRECTION_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: [
+            participantPersona(args.participant),
+            "You are deciding only this character's pose/action for one graduation photo.",
+          ].join("\n\n"),
+        },
+        { role: "user", content: prompt },
+      ],
+      max_tokens: PHOTO_DIRECTION_MAX_TOKENS,
+      temperature: 0.85,
+    },
+  });
+  const action = cleanPhotoDirection(body.choices?.[0]?.message?.content, 220);
+  if (!action) throw new Error(`No photo action returned for ${args.participant.name}.`);
+  return {
+    role: args.participant.role,
+    name: args.participant.name,
+    action,
+  };
+}
+
+async function consolidateGraduationPhotoDirection(args: {
+  apiKey: string;
+  gradeLabel: string;
+  scene: RubyHighPhotoScene;
+  proposals: PhotoActionProposal[];
+}): Promise<string> {
+  const prompt = [
+    "Consolidate these in-character action proposals into one coherent image-generation direction.",
+    `Photo: Ruby High ${args.gradeLabel} graduation photo.`,
+    `Location: ${args.scene.roomName}. ${args.scene.setting}.`,
+    "Keep the final shot physically possible, dynamic, readable, and candid. Preserve the spirit of all three actions, but resolve collisions.",
+    "Return 1-2 concise sentences. No dialogue. No text in the image. No camera metadata.",
+    "",
+    ...args.proposals.map((proposal) => `${proposal.name} (${proposal.role}): ${proposal.action}`),
+  ].join("\n");
+  const body = await openRouterJson<CharacterResponse>({
+    apiKey: args.apiKey,
+    label: "graduation-photo-direction",
+    timeoutMs: PHOTO_DIRECTION_TIMEOUT_MS,
+    body: {
+      model: PHOTO_DIRECTION_MODEL,
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: Math.max(PHOTO_DIRECTION_MAX_TOKENS, 240),
+      temperature: 0.35,
+    },
+  });
+  const plan = cleanPhotoDirection(body.choices?.[0]?.message?.content, 420);
+  if (!plan) throw new Error("No consolidated graduation photo direction returned.");
+  return plan;
+}
+
+async function graduationPhotoDirectionPlan(args: {
+  apiKey: string;
+  gradeLabel: string;
+  scene: RubyHighPhotoScene;
+  participants: PhotoParticipant[];
+}): Promise<GraduationPhotoDirectionPlan | null> {
+  if (process.env.RUBY_HIGH_PHOTO_DIRECTION_ENABLED === "0") return null;
+  try {
+    const settled = await Promise.allSettled(args.participants.map((participant) =>
+      askGraduationPhotoAction({
+        apiKey: args.apiKey,
+        gradeLabel: args.gradeLabel,
+        scene: args.scene,
+        participant,
+        cast: args.participants,
+      })
+    ));
+    const proposals = settled.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+    if (proposals.length !== args.participants.length) {
+      throw new Error(`Expected ${args.participants.length} photo actions, received ${proposals.length}.`);
+    }
+    const plan = await consolidateGraduationPhotoDirection({
+      apiKey: args.apiKey,
+      gradeLabel: args.gradeLabel,
+      scene: args.scene,
+      proposals,
+    });
+    return { plan, proposals };
+  } catch (err) {
+    log.event("graduation-photo.direction-failed", {
+      reason: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
 }
 
 export function highestScoringFaculty(scores: Record<string, { correct: number; total: number }> | undefined): string {
