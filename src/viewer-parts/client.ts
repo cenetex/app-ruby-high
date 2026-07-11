@@ -294,6 +294,8 @@ export function runViewerClient(bootstrap) {
   const ANNOUNCEMENTS_LAST_KEY = "ruby-high:announcements-last-date";
   const ANNOUNCEMENTS_LOGO_URL = apiBase + "/assets/logo.png?v=baby-blue-20260504";
   let announcementsOverlay = null;
+  let announcementsPreviousFocus = null;
+  let announcementsBackgroundLocked = false;
   let morningAnnouncementsShown = false;
 
   const WELCOME_HALL_PASS_ART_URL = apiBase + "/assets/welcome-hall-passes.png";
@@ -565,6 +567,69 @@ export function runViewerClient(bootstrap) {
     leaderboardBody: $("leaderboard-body"),
     appConfirmOk: $("app-confirm-ok"),
   };
+
+  let viewerModalBackgroundDepth = 0;
+  function focusWithoutScroll(target) {
+    if (!target || typeof target.focus !== "function") return;
+    try { target.focus({ preventScroll: true }); } catch (_err) { try { target.focus(); } catch (_focusErr) {} }
+  }
+
+  function modalFocusableElements(overlay) {
+    if (!overlay) return [];
+    return Array.from(overlay.querySelectorAll(
+      "button:not(:disabled), [href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex='-1'])",
+    )).filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
+  }
+
+  function trapModalFocus(event, overlay) {
+    if (!event || event.key !== "Tab") return;
+    const focusable = modalFocusableElements(overlay);
+    if (focusable.length === 0) {
+      event.preventDefault();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      focusWithoutScroll(last);
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      focusWithoutScroll(first);
+    } else if (!overlay.contains(document.activeElement)) {
+      event.preventDefault();
+      focusWithoutScroll(event.shiftKey ? last : first);
+    }
+  }
+
+  function lockViewerModalBackground() {
+    viewerModalBackgroundDepth += 1;
+    if (viewerModalBackgroundDepth !== 1 || !els.shell) return;
+    els.shell.setAttribute("inert", "");
+    els.shell.setAttribute("aria-hidden", "true");
+  }
+
+  function unlockViewerModalBackground() {
+    viewerModalBackgroundDepth = Math.max(0, viewerModalBackgroundDepth - 1);
+    if (viewerModalBackgroundDepth !== 0 || !els.shell) return;
+    els.shell.removeAttribute("inert");
+    els.shell.removeAttribute("aria-hidden");
+  }
+
+  function restoreModalFocus(previousFocus, fallbackFocus) {
+    const focusableSelector = "button:not(:disabled), [href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex='-1'])";
+    const previousUsable = previousFocus
+      && previousFocus.isConnected
+      && typeof previousFocus.matches === "function"
+      && previousFocus.matches(focusableSelector)
+      && !previousFocus.hidden;
+    const fallbackUsable = fallbackFocus
+      && fallbackFocus.isConnected
+      && typeof fallbackFocus.matches === "function"
+      && fallbackFocus.matches(focusableSelector)
+      && !fallbackFocus.hidden;
+    focusWithoutScroll(previousUsable ? previousFocus : fallbackUsable ? fallbackFocus : null);
+  }
 
   let activeConfirmDialog = null;
   function confirmInApp(options) {
@@ -4951,7 +5016,13 @@ export function runViewerClient(bootstrap) {
       }).join("");
     }
 
+    announcementsPreviousFocus = document.activeElement && typeof document.activeElement.focus === "function"
+      ? document.activeElement
+      : null;
     overlay.hidden = false;
+    focusWithoutScroll(document.getElementById("announcements-dismiss"));
+    lockViewerModalBackground();
+    announcementsBackgroundLocked = true;
   }
 
   function dismissAnnouncements() {
@@ -4959,6 +5030,14 @@ export function runViewerClient(bootstrap) {
     if (announcementsOverlay) {
       announcementsOverlay.hidden = true;
     }
+    if (announcementsBackgroundLocked) {
+      unlockViewerModalBackground();
+      announcementsBackgroundLocked = false;
+    }
+    const fallback = document.getElementById("onboarding-create-btn") || els.nextBtn;
+    restoreModalFocus(announcementsPreviousFocus, fallback);
+    announcementsPreviousFocus = null;
+    if (lastTelemetry) syncFirstBellReportModal(lastTelemetry);
   }
 
 
@@ -6168,15 +6247,21 @@ export function runViewerClient(bootstrap) {
     list.appendChild(row);
   }
 
-  function closeFirstBellReportModal(overlay, onKeyDown) {
-    if (onKeyDown) document.removeEventListener("keydown", onKeyDown);
-    if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  function closeFirstBellReportModal(overlay, onKeyDown, previousFocus) {
+    if (!overlay || !overlay.parentNode) return;
+    if (onKeyDown) overlay.removeEventListener("keydown", onKeyDown);
+    overlay.parentNode.removeChild(overlay);
+    unlockViewerModalBackground();
+    restoreModalFocus(previousFocus, els.nextBtn);
     firstBellReportModalOpen = false;
   }
 
   function showFirstBellReport(report, character, share) {
     if (!report || firstBellReportModalOpen) return;
     firstBellReportModalOpen = true;
+    const previousFocus = document.activeElement && typeof document.activeElement.focus === "function"
+      ? document.activeElement
+      : null;
 
     const overlay = document.createElement("div");
     overlay.className = "first-bell-overlay";
@@ -6264,11 +6349,16 @@ export function runViewerClient(bootstrap) {
     actions.appendChild(primary);
 
     let onKeyDown = null;
-    const close = () => closeFirstBellReportModal(overlay, onKeyDown);
+    const close = () => closeFirstBellReportModal(overlay, onKeyDown, previousFocus);
     onKeyDown = (event) => {
-      if (event.key === "Escape") close();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+        return;
+      }
+      trapModalFocus(event, overlay);
     };
-    document.addEventListener("keydown", onKeyDown);
+    overlay.addEventListener("keydown", onKeyDown);
     overlay.addEventListener("click", (event) => {
       if (event.target === overlay) close();
     });
@@ -6299,12 +6389,18 @@ export function runViewerClient(bootstrap) {
     card.append(hero, body, actions);
     overlay.appendChild(card);
     document.body.appendChild(overlay);
-    card.focus({ preventScroll: true });
+    focusWithoutScroll(primary);
+    lockViewerModalBackground();
   }
 
   function syncFirstBellReportModal(t) {
     const report = t && t.first_bell_report;
-    if (!report || firstBellReportModalOpen || hasSeenFirstBellReport(report)) return;
+    if (
+      !report
+      || firstBellReportModalOpen
+      || (announcementsOverlay && !announcementsOverlay.hidden)
+      || hasSeenFirstBellReport(report)
+    ) return;
     markFirstBellReportSeen(report);
     showFirstBellReport(report, t.character, t.first_bell_share);
   }
@@ -10324,9 +10420,13 @@ export function runViewerClient(bootstrap) {
   if (announcementsDismiss) announcementsDismiss.addEventListener("click", dismissAnnouncements);
   // Allow Escape key to dismiss
   document.addEventListener("keydown", function(ev) {
-    if (ev.key === "Escape" && announcementsOverlay && !announcementsOverlay.hidden) {
+    if (!announcementsOverlay || announcementsOverlay.hidden) return;
+    if (ev.key === "Escape") {
+      ev.preventDefault();
       dismissAnnouncements();
+      return;
     }
+    trapModalFocus(ev, announcementsOverlay);
   });
   // Click outside panel to dismiss
   var announcementsOverlayEl = document.getElementById("announcements-overlay");

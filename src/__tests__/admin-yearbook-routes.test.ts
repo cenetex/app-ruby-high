@@ -69,7 +69,11 @@ function route(opts: {
     flushHeaders() {
       // no-op for route tests
     },
-    end(body?: string) {
+    end(body?: string | Buffer) {
+      if (Buffer.isBuffer(body)) {
+        response = { status: (res as { statusCode?: number }).statusCode ?? 200, body, headers };
+        return;
+      }
       const current = response?.body ?? "";
       response = { status: (res as { statusCode?: number }).statusCode ?? 200, body: `${current}${body ?? ""}`, headers };
     },
@@ -3326,7 +3330,7 @@ describe("yearbook share route", () => {
     });
   });
 
-  it("renders SVG cards and keeps PNG explicitly unsupported until configured", async () => {
+  it("renders SVG cards and falls back to SVG when no raster is configured", async () => {
     const sessionId = await createSession();
     attachYearbookEntry(sessionId);
     const share = ruby.yearbookSharesForSession(sessionId)[0]!;
@@ -3343,6 +3347,44 @@ describe("yearbook share route", () => {
       path: `/api/apps/ruby-high/yearbook/${share.shareId}/9?format=png`,
     });
     expect(response.status).toBe(200);
+  });
+
+  it("serves inline yearbook image bytes without redirecting through a data URL", async () => {
+    const sessionId = await createSession();
+    attachYearbookEntry(sessionId);
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    ruby.setYearbookImage(sessionId, "9", `data:image/png;base64,${png.toString("base64")}`);
+    const share = ruby.yearbookSharesForSession(sessionId)[0]!;
+
+    const response = await appRoute({
+      path: `/api/apps/ruby-high/yearbook/${share.shareId}/9?format=png`,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toBe("image/png");
+    expect(response.headers["content-length"]).toBe(String(png.length));
+    expect(response.headers.location).toBeUndefined();
+    expect(Buffer.isBuffer(response.body)).toBe(true);
+    expect((response.body as Buffer).equals(png)).toBe(true);
+  });
+
+  it("redirects public yearbook images only to bounded asset URLs", async () => {
+    const sessionId = await createSession();
+    attachYearbookEntry(sessionId);
+    ruby.setYearbookImage(sessionId, "9", "https://cdn.example/ruby-high/yearbook-card.png");
+    const share = ruby.yearbookSharesForSession(sessionId)[0]!;
+
+    const response = await appRoute({
+      path: `/api/apps/ruby-high/yearbook/${share.shareId}/9?format=png`,
+    });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.location).toBe("https://cdn.example/ruby-high/yearbook-card.png");
+    expect(() => ruby.setYearbookImage(
+      sessionId,
+      "9",
+      `data:image/png;base64,${"A".repeat(280_001)}`,
+    )).toThrow(/yearbookImageUrl too large/);
   });
 
   it("rejects malformed share ids without throwing", async () => {

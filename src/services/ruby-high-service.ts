@@ -8655,7 +8655,9 @@ export class RubyHighService extends Service {
     state.character.yearbook = characterYearbookEntries(state.character);
     const entry = state.character.yearbook.find((y) => y.grade === grade);
     if (!entry) throw new Error("No yearbook entry for grade " + grade + ".");
-    entry.yearbookImageUrl = imageUrl;
+    const stored = normalizeStoredImageRef(imageUrl, "yearbookImageUrl");
+    if (!stored) throw new Error("yearbookImageUrl is required.");
+    entry.yearbookImageUrl = stored;
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;

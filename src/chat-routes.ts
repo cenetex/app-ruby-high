@@ -4146,7 +4146,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       : null;
     let url: string;
     try {
-      url = await renderYearbookCard({
+      const dataUrl = await renderYearbookCard({
         apiKey,
         card: {
           characterName: yearbookEntry.name || ch.name,
@@ -4158,6 +4158,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           ...(classmateImageUrl ? { classmateImageUrl, classmateName: classmateName! } : {}),
         },
       });
+      url = await maybeUploadPortrait(dataUrl, "yearbook-card");
       ruby.setYearbookImage(sessionId, grade, url);
     } catch (err) {
       await refundHostedImageCharge({

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { closeBlockingSheetIfVisible, closeFirstBellReportIfVisible, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
+import { closeBlockingSheetIfVisible, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
 
 test("rolls a first student without showing the old Lock it in action", async ({ page }) => {
   const { errors } = await openViewer(page);
@@ -42,7 +42,18 @@ test("boots as a guest, creates a character, answers a card, and opens account t
   await expect(firstAnswer).toBeVisible();
   await firstAnswer.click();
   await expect(page.locator("#board-reveal")).toBeVisible();
-  await closeFirstBellReportIfVisible(page);
+  const reportModal = page.locator(".first-bell-overlay");
+  await expect(reportModal).toBeVisible();
+  await expect(page.locator("#shell")).toHaveAttribute("inert", "");
+  await expect(page.locator("#shell")).toHaveAttribute("aria-hidden", "true");
+  await expect(reportModal.getByRole("button", { name: "Continue" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(reportModal.getByRole("button", { name: "Open student card" })).toBeFocused();
+  await reportModal.getByRole("button", { name: "Continue" }).click();
+  await expect(reportModal).not.toBeVisible();
+  await expect(page.locator("#shell")).not.toHaveAttribute("inert", "");
+  await expect(page.locator("#shell")).not.toHaveAttribute("aria-hidden", "true");
+  await expect(page.locator("#next-btn")).toBeFocused();
 
   await expect(page.locator("#privy-action")).toBeVisible();
   await page.locator("#privy-action").click();
@@ -54,6 +65,24 @@ test("boots as a guest, creates a character, answers a card, and opens account t
   await page.locator("#privy-close").click();
   await expect(page.locator("#privy-overlay")).not.toHaveClass(/is-open/);
 
+  expect(errors).toEqual([]);
+});
+
+test("keeps morning announcements keyboard-modal", async ({ page }) => {
+  const { errors } = await openViewer(page);
+  const announcements = page.locator("#announcements-overlay");
+  await expect(announcements).toBeVisible();
+  await expect(page.locator("#shell")).toHaveAttribute("inert", "");
+  await expect(page.locator("#announcements-dismiss")).toBeFocused();
+
+  await page.keyboard.press("Tab");
+  await expect(announcements.getByRole("link", { name: "About" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.locator("#announcements-dismiss")).toBeFocused();
+
+  await page.locator("#announcements-dismiss").click();
+  await expect(announcements).not.toBeVisible();
+  await expect(page.locator("#shell")).not.toHaveAttribute("inert", "");
   expect(errors).toEqual([]);
 });
 

@@ -999,6 +999,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function syncFirstBellReportModal(t)");
     expectScriptToContain(script, "First Bell Report");
     expectScriptToContain(script, "Copy link");
+    expectScriptToContain(script, "function trapModalFocus(event, overlay)");
+    expectScriptToContain(script, 'els.shell.setAttribute("inert", "")');
+    expectScriptToContain(script, 'els.shell.setAttribute("aria-hidden", "true")');
+    expectScriptToContain(script, "restoreModalFocus(previousFocus, els.nextBtn)");
     expectScriptToContain(script, 'kind: "first_bell_report"');
     expectScriptToContain(script, "Comic Page Unlocked");
     expectScriptToContain(script, 'title.appendChild(deps.document.createTextNode(" "));');

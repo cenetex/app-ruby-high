@@ -26,6 +26,9 @@ describe("generated portrait asset URLs", () => {
     expect(generatedPortraitAssetUrl("graduation-photo", GENERATED_PHOTO_HASH, "png")).toBe(
       `https://ruby-high.ai/api/apps/ruby-high/assets/generated/graduation-photo/${GENERATED_PHOTO_HASH}.png`,
     );
+    expect(generatedPortraitAssetPath("yearbook-card", GENERATED_PHOTO_HASH, "webp")).toBe(
+      `/api/apps/ruby-high/assets/generated/yearbook-card/${GENERATED_PHOTO_HASH}.webp`,
+    );
   });
 
   it("rewrites private S3 generated portrait URLs to the app asset route", async () => {
@@ -40,6 +43,11 @@ describe("generated portrait asset URLs", () => {
       `/api/apps/ruby-high/assets/generated/graduation-photo/${GENERATED_PHOTO_HASH}.png`,
     );
     expect(rewriteGeneratedPortraitS3Url("https://cdn.example.test/graduation-photo/elsewhere.png")).toBeNull();
+    expect(rewriteGeneratedPortraitS3Url(
+      `https://ruby-high-portraits.s3.us-east-1.amazonaws.com/yearbook-card/${GENERATED_PHOTO_HASH}.webp`,
+    )).toBe(
+      `/api/apps/ruby-high/assets/generated/yearbook-card/${GENERATED_PHOTO_HASH}.webp`,
+    );
   });
 
   it("normalizes stored private S3 generated portrait URLs", async () => {
@@ -51,6 +59,10 @@ describe("generated portrait asset URLs", () => {
     )).toBe(
       `/api/apps/ruby-high/assets/generated/graduation-photo/${GENERATED_PHOTO_HASH}.png`,
     );
+    expect(() => normalizeStoredImageRef(
+      `data:image/png;base64,${"A".repeat(280_001)}`,
+      "yearbookImageUrl",
+    )).toThrow(/yearbookImageUrl too large/);
   });
 });
 

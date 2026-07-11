@@ -6,7 +6,7 @@ const DEFAULT_PUBLIC_BASE = "http://localhost:3000";
 const GENERATED_PORTRAIT_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const GENERATED_PORTRAIT_BUCKET_FALLBACK = "ruby-high-portraits";
 
-export type GeneratedPortraitKind = "portrait" | "diploma" | "graduation-photo";
+export type GeneratedPortraitKind = "portrait" | "diploma" | "graduation-photo" | "yearbook-card";
 
 export interface GeneratedPortraitAsset {
   body: Buffer;
@@ -21,8 +21,9 @@ const GENERATED_PORTRAIT_KINDS = new Set<GeneratedPortraitKind>([
   "portrait",
   "diploma",
   "graduation-photo",
+  "yearbook-card",
 ]);
-const GENERATED_PORTRAIT_KEY_RE = /^(portrait|diploma|graduation-photo)\/([a-f0-9]{32})\.(png|jpg|webp)$/;
+const GENERATED_PORTRAIT_KEY_RE = /^(portrait|diploma|graduation-photo|yearbook-card)\/([a-f0-9]{32})\.(png|jpg|webp)$/;
 
 let portraitS3Client: S3Client | null = null;
 let generatedPortraitAssetLoaderOverride: GeneratedPortraitAssetLoader | null = null;
