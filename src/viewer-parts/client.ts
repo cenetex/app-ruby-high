@@ -1984,11 +1984,8 @@ export function runViewerClient(bootstrap) {
       return "This wallet has no old RUBY ready to migrate.";
     }
     if (/Ruby token migration|migrat/i.test(message)) return message;
-    if (/Need\s+[\d,.]+\s+[A-Z0-9_$-]+|needs?\s+[\d,.]+\s+[A-Z0-9_$-]+|not enough\s+[A-Z0-9_$-]+|payment token/i.test(message)) {
-      return "This Solana wallet needs the configured pack payment token before minting a pack. Add funds in the connected wallet, then try again.";
-    }
     if (/needs more SOL|insufficient funds|insufficient lamports|Attempt to debit|0x1\b|needs at least|balance is .*needs/i.test(message)) {
-      return "This mint needs more SOL for Solana rent and fees. Your card was not changed.";
+      return "This checkout needs more SOL for the pack payment, rent, and network fees. Nothing was charged.";
     }
     if (/403|forbidden|Helius|RPC rejected/i.test(message)) {
       return "Ruby High's Solana RPC rejected the request. We need to refresh the RPC key; your NFT was not changed.";
@@ -3143,7 +3140,6 @@ export function runViewerClient(bootstrap) {
         credit: cardPackCreditLabel(product),
         pack: cardPackProductLabel(product) + " · " + formatWholeNumber(product.cardCount || HALL_PASS_CARDS_PER_PACK) + " cards",
         recipient: data.recipient,
-        mint: data.mint,
         reference: data.reference,
         prompt: "Your wallet should show a Solana pack payment and Ruby High pack creation. The network fee is paid by this wallet.",
         copy: "Ruby High will ask your wallet to confirm one Solana pack purchase and create one authorized pack. This should not ask for broad approvals.",
@@ -3232,8 +3228,8 @@ export function runViewerClient(bootstrap) {
         ...((quote && quote.product) || {}),
         packCount: data.packCount || (quote && quote.product && quote.product.packCount),
         cardCount: data.cardCount || (quote && quote.product && quote.product.cardCount),
-        tokenAmount: data.tokenAmount || (quote && quote.product && quote.product.tokenAmount),
-        tokenSymbol: data.tokenSymbol || (quote && quote.product && quote.product.tokenSymbol) || (quote && quote.symbol),
+        solAmount: data.solAmount || (quote && quote.product && quote.product.solAmount),
+        symbol: data.symbol || (quote && quote.product && quote.product.symbol) || (quote && quote.symbol) || "SOL",
       };
       setBillingStatus(
         (data.applied ? packText + " minted · " : packText + " already minted · ") + cardPackPaymentDeltaLabel(paidProduct, quote),

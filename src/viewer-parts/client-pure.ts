@@ -813,9 +813,9 @@ export function walletTransactionDescription(tx: NullableRecord): string {
 export function walletTransactionPackDeltaText(tx: NullableRecord): string {
   const metadata = tx && tx.metadata && typeof tx.metadata === "object" ? tx.metadata : {};
   const packCount = Math.max(1, Math.floor(Number(metadata.packCount || 1)));
-  const tokenAmount = metadata.solanaTokenAmount || "";
-  const tokenSymbol = metadata.solanaTokenSymbol || "Ruby";
-  return "-" + formatTokenDisplayAmount(tokenAmount) + " " + tokenSymbol + " · +" + packCountLabel(packCount);
+  const amount = metadata.solanaAmountSol || metadata.solanaTokenAmount || "";
+  const symbol = metadata.solanaSymbol || metadata.solanaTokenSymbol || "SOL";
+  return "-" + formatTokenDisplayAmount(amount) + " " + symbol + " · +" + packCountLabel(packCount);
 }
 
 export function walletTransactionSource(tx: NullableRecord): string {
@@ -1037,7 +1037,6 @@ export function accountTrustPanelView(payloadInput: NullableRecord, connectedWal
   const connectedWallet = String(connectedWalletInput || "").trim();
   const buildId = String(buildIdInput || "dev");
   const treasury = solana && solana.recipient;
-  const tokenMint = solana && solana.mint;
   const packCollection = corePacks && corePacks.collectionAddress;
   const cardCollection = nfts && nfts.collectionAddress;
   return {
@@ -1055,9 +1054,9 @@ export function accountTrustPanelView(payloadInput: NullableRecord, connectedWal
         href: solanaAccountLink(treasury),
       },
       {
-        label: "Pack payment token",
-        value: tokenMint ? shortWallet(tokenMint) : "Shown before wallet payment",
-        href: solanaAccountLink(tokenMint),
+        label: "Pack payment",
+        value: "Native SOL",
+        href: "",
       },
       {
         label: "Pack collection",
@@ -2270,10 +2269,14 @@ export function packCountLabel(count: unknown): string {
   return formatWholeNumber(n) + " Pack" + (n === 1 ? "" : "s");
 }
 export function cardPackTokenSymbol(product: NullableRecord, solana: NullableRecord): string {
-  return String((product && product.tokenSymbol) || (solana && solana.symbol) || "Ruby").trim() || "Ruby";
+  return String((product && (product.symbol || product.tokenSymbol)) || (solana && solana.symbol) || "SOL").trim() || "SOL";
 }
 export function cardPackDebitLabel(product: NullableRecord, solana: NullableRecord): string {
-  const amount = product && product.tokenAmount != null ? product.tokenAmount : solana && solana.tokenAmount;
+  const amount = product && product.solAmount != null
+    ? product.solAmount
+    : product && product.tokenAmount != null
+      ? product.tokenAmount
+      : solana && (solana.solAmount ?? solana.tokenAmount);
   return "Solana payment: " + formatTokenDisplayAmount(amount) + " " + cardPackTokenSymbol(product, solana);
 }
 export function cardPackCreditLabel(product: NullableRecord): string {

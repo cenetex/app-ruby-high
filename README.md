@@ -138,7 +138,7 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_HALL_PASS_20_CENTS` | `699` | Price for 20 Hall Passes. |
 | `RUBY_HIGH_HALL_PASS_50_CENTS` | `1499` | Price for 50 Hall Passes. |
 | `RUBY_HIGH_HALL_PASS_100_CENTS` | `2499` | Price for 100 Hall Passes. |
-| `RUBY_HIGH_SOLANA_RPC_URL` | `https://api.mainnet-beta.solana.com` | Solana JSON-RPC endpoint used to verify token-transfer signatures for crypto pack purchases. |
+| `RUBY_HIGH_SOLANA_RPC_URL` | `https://api.mainnet-beta.solana.com` | Solana JSON-RPC endpoint used to prepare and verify native-SOL pack purchases. |
 | `RUBY_HIGH_SOLANA_NFT_RPC_URL` | `RUBY_HIGH_SOLANA_RPC_URL` | Optional separate RPC endpoint for NFT minting. |
 | `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | — | Server mint authority secret key for Metaplex Core pack and card NFTs. Also drives creator attribution in served JSON metadata. Set via secrets only. |
 | `RUBY_HIGH_NFT_METADATA_STORAGE` | — | Optional durable metadata JSON upload mode. Set to `arweave` for direct AR uploads; unset keeps app-hosted metadata JSON. |
@@ -147,14 +147,11 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_PACK_REVEAL_SECRET` | `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | Server-only HMAC secret for deterministic pack-to-card mapping. Set a stable production secret so the mapping remains fair and non-public. |
 | `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` | — | Metaplex Core collection address for Ruby High pack NFTs. Create once with `npm run nft:create-core-collection`, then set this value. |
 | `RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS` | — | Metaplex Core collection address for Ruby High: First Bell card NFTs. Create once with `npm run nft:create-card-collection`, then set this value. |
-| `RUBY_HIGH_SOLANA_MEMECOIN_MINT` | `ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump` | SPL-token mint accepted for crypto pack purchases. |
-| `RUBY_HIGH_SOLANA_TREASURY_OWNER` | `AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j` | Treasury wallet owner that must receive the SPL-token transfer. |
-| `RUBY_HIGH_SOLANA_MEMECOIN_SYMBOL` | `RUBY` | Display symbol for the Solana token. |
-| `RUBY_HIGH_SOLANA_MEMECOIN_DECIMALS` | `6` | SPL-token decimal places used when converting quoted token amounts to base units. |
-| `RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS` | `1000000` | `$RUBY` price for the 1-pack / 5 Hall Pass tier. |
-| `RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS` | `2800000` | `$RUBY` price for the 3-pack / 20 Hall Pass tier (~7% volume discount vs 1-pack). |
-| `RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS` | `4500000` | `$RUBY` price for the 5-pack / 50 Hall Pass tier (~10% volume discount vs 1-pack). |
-| `RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS` | `8500000` | `$RUBY` price for the 10-pack / 100 Hall Pass tier (~15% volume discount vs 1-pack). |
+| `RUBY_HIGH_SOLANA_TREASURY_OWNER` | `AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j` | Treasury wallet that receives native SOL for pack purchases. |
+| `RUBY_HIGH_SOLANA_PACK_1_SOL` | `0.01` | Native SOL price for one five-card pack. |
+| `RUBY_HIGH_SOLANA_PACK_3_SOL` | `0.028` | Native SOL price for three packs. |
+| `RUBY_HIGH_SOLANA_PACK_5_SOL` | `0.045` | Native SOL price for five packs. |
+| `RUBY_HIGH_SOLANA_PACK_10_SOL` | `0.085` | Native SOL price for ten packs. |
 | `RUBY_HIGH_HOSTED_AI_HALL_PASS_COST` | `1` | Legacy only. Server-hosted text AI no longer sells timed activation windows. |
 | `RUBY_HIGH_HOSTED_AI_DURATION_HOURS` | `168` | Legacy only. Server-hosted text AI is sponsored when `RUBY_HIGH_OPENROUTER_API_KEY` is configured. |
 | `RUBY_HIGH_HOSTED_AI_DURATION_MS` | — | Legacy only. Server-hosted text AI is sponsored when `RUBY_HIGH_OPENROUTER_API_KEY` is configured. |
@@ -183,7 +180,7 @@ No OpenRouter key is required on the server for normal play: each user can authe
 Ruby High now has two currencies:
 
 - **Merit Stars** are earned by play and mirror the visible session-score payout.
-- **Hall Passes** are paid/entitlement currency for hosted image generation, creator course slots, extra student slots, and card features. Stripe Checkout, Solana pack purchase + card burn, and RevenueCat in-app purchases all credit Hall Passes.
+- **Hall Passes** are paid/entitlement currency for hosted image generation, creator course slots, extra student slots, and card features. Stripe Checkout, card burns, and RevenueCat in-app purchases credit Hall Passes; Solana pack purchases create collectible packs and cards instead.
 
 Web purchases use Stripe Checkout for Hall Passes only:
 
@@ -198,11 +195,10 @@ Web purchases use Stripe Checkout for Hall Passes only:
 
 Stripe webhook events to send: `checkout.session.completed` and, if using asynchronous payment methods, `checkout.session.async_payment_succeeded`.
 
-Solana purchases are separate from Stripe and use the configured SPL token to mint a Metaplex Core pack NFT:
+Solana purchases are separate from Stripe and use native SOL to mint a Metaplex Core pack NFT:
 
-- The default token is `$RUBY` mint `ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump`.
 - The default treasury wallet is `AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j`.
-- Every built-in pack defaults to `100000` `$RUBY`.
+- Default prices are `0.01`, `0.028`, `0.045`, and `0.085` SOL for 1, 3, 5, and 10 packs.
 - Create the Core collection once with `npm run nft:create-core-collection`, then set `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` to the printed address.
 - Create the Core card collection once with `npm run nft:create-card-collection`, then set `RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS` to the printed address.
 - The current First Bell runtime manifest has 24 mintable profiles and a 12-profile alternate-art expansion, for 36 draft profiles total in `src/services/hall-pass-card-catalog.ts`. Revealed metadata includes `Set`, `Set Code`, `Set Number`, `Card Profile ID`, `Card Name`, `Subject`, media traits, and creator attribution. Reveal proof data stays under `properties.provenance` instead of visible marketplace traits.
@@ -210,12 +206,12 @@ Solana purchases are separate from Stripe and use the configured SPL token to mi
 - Opening a pack marks the Core pack as opened, switches its metadata to opened artwork, and creates deterministic face-down card slots. Pack/card records and receipts carry `packRevealVersion`, `catalogHash`, `commitment`, `entropySource`, and reveal-time `revealSeed` provenance; see [`docs/nft/NFT_PROVABLY_FAIR_V1_1.md`](./docs/nft/NFT_PROVABLY_FAIR_V1_1.md) for the published algorithm.
 - The current v1.1 entropy source is an auditable server-commit bridge, not decentralized randomness. The next hardening step is a Solana pack-opening program that commits the open request and payment/authority lock first, then settles from Switchboard randomness.
 - Marketplace submission copy, collection addresses, and Magic Eden verification steps are tracked in [`docs/nft/NFT_MARKETPLACE_VERIFICATION.md`](./docs/nft/NFT_MARKETPLACE_VERIFICATION.md).
-- To mint with durable JSON directly on Arweave, fund the Arweave wallet, set `RUBY_HIGH_NFT_METADATA_STORAGE=arweave`, add the JWK secret, and verify a fresh pack/card mint returns an `https://arweave.net/...` metadata URI. Leave the flag unset if durable storage funding is not ready.
-- Wallet-signed pack checkout is atomic: the prepared transaction creates the treasury ATA if needed, transfers the configured SPL token with the Ruby High payment reference, and creates the Metaplex Core pack NFT. The connected wallet is the fee payer, and Ruby High co-signs only the pack authority/asset parts.
-- Each face-down card is minted and revealed one at a time by the Ruby High mint authority to the connected wallet. The connected wallet is the fee payer and recipient; Ruby High co-signs only the mint authority and deterministic card mint.
+- To mint pack and collection JSON directly on Arweave, fund the Arweave wallet, set `RUBY_HIGH_NFT_METADATA_STORAGE=arweave`, add the JWK secret, and verify the resulting metadata URI. Face-down cards intentionally use the app's identity-neutral metadata route until their mint is confirmed.
+- Wallet-signed pack checkout is atomic: the prepared transaction transfers native SOL to the treasury with the Ruby High payment reference and creates the Metaplex Core pack NFT. The connected wallet is the fee payer, and Ruby High co-signs only the pack authority/asset parts.
+- Each face-down card is minted and revealed one at a time by the Ruby High mint authority to the connected wallet. Mint preparation returns only mystery-card data; the connected wallet is the fee payer and recipient, and the real card metadata appears only after on-chain confirmation.
 - Owner-signed card burns are prepared one card per wallet prompt and preflighted before signing; `POST /api/apps/ruby-high/billing/card-burn` verifies the burn signature and credits 5 Hall Passes per burned card.
-- `POST /api/apps/ruby-high/billing/solana/quote` accepts the connected owner wallet and returns the treasury wallet, mint, per-session payment reference, token amount, payment-only transaction, and Solana Pay URL for a selected pack.
-- `POST /api/apps/ruby-high/billing/solana/confirm` accepts the signed payment transaction signature and owner wallet, then verifies the payment reference/token receipt before minting and recording the pack idempotently.
+- `POST /api/apps/ruby-high/billing/solana/quote` accepts the connected owner wallet and returns the treasury wallet, per-session payment reference, SOL amount, atomic purchase transaction, and Solana Pay URL for a selected pack.
+- `POST /api/apps/ruby-high/billing/solana/confirm` accepts the signed purchase signature and owner wallet, then verifies the payment reference, buyer, pack asset, and treasury lamport receipt before recording the pack idempotently.
 
 Native billing is not wired in the current public-web build. If iOS or Android comes back, do not use Stripe for digital in-app currency; create matching consumable in-app purchase products in App Store Connect and Google Play Console, validate receipts/purchase tokens server-side, then call the same Hall Pass grant path. RevenueCat can replace most receipt-validation boilerplate; the Ruby High server remains the authority that credits the wallet after validation.
 

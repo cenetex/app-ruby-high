@@ -317,6 +317,37 @@ describe("Hall Pass wallet", () => {
     })).toThrow(/already burned/);
   });
 
+  it("rejects replaying one on-chain card NFT as a different in-app card", async () => {
+    const { ruby } = await makeServices();
+    const ownerWalletAddress = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
+    const mintAddress = "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump";
+    const first = ruby.grantHallPassCards("rh:user:first-card-owner", {
+      cardCount: 1,
+      idempotencyKey: "grant:first-card-owner",
+      source: "solana",
+    }).cards![0]!;
+    const second = ruby.grantHallPassCards("rh:user:second-card-owner", {
+      cardCount: 1,
+      idempotencyKey: "grant:second-card-owner",
+      source: "solana",
+    }).cards![0]!;
+    ruby.recordHallPassCardMint("rh:user:first-card-owner", {
+      cardId: first.id,
+      ownerWalletAddress,
+      mintAddress,
+      mintSignature: "5mSharedMintSignature11111111111111111111111111111111111111",
+      metadataUri: "https://ruby-high.ai/card.json",
+    });
+
+    expect(() => ruby.recordHallPassCardMint("rh:user:second-card-owner", {
+      cardId: second.id,
+      ownerWalletAddress,
+      mintAddress,
+      mintSignature: "5mSharedMintSignature11111111111111111111111111111111111111",
+      metadataUri: "https://ruby-high.ai/card.json",
+    })).toThrow(/already been recorded/);
+  });
+
   it("records multiple NFT card burns from one owner-signed transaction", async () => {
     const { ruby } = await makeServices();
     const sid = "rh:user:nft-burn-batch";

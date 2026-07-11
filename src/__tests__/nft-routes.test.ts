@@ -248,6 +248,11 @@ beforeEach(async () => {
       ? { mintAddress, ownerWalletAddress, collectionAddress: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q" }
       : null;
   });
+  restorePackCurrentOwnershipFetcher = setCorePackCurrentOwnershipFetcherForTest(async (assetAddress) => ({
+    assetAddress,
+    ownerWalletAddress: OWNER,
+    metadataUri: "https://ruby-high.ai/pack.json",
+  }));
   tmpDir = await mkdtemp(join(tmpdir(), "ruby-high-nft-routes-"));
   const store = new StateStore(join(tmpDir, "state.json"), { debounceMs: 0 });
   auth = await AuthService.start({} as never, store);
@@ -559,6 +564,7 @@ describe("Hall Pass NFT routes", () => {
       metadataUri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/570329.json?packs=1&cards=5",
     });
     const pack = mint.pack!;
+    restorePackCurrentOwnershipFetcher?.();
     restorePackCurrentOwnershipFetcher = setCorePackCurrentOwnershipFetcherForTest(async (assetAddress) => (
       assetAddress === pack.assetAddress
         ? { assetAddress, ownerWalletAddress: OWNER, metadataUri: pack.metadataUri }
@@ -1195,6 +1201,42 @@ describe("Hall Pass NFT routes", () => {
     expect(lastHeaders["cache-control"]).toBe("no-cache");
   });
 
+  it("refuses to open a pack after it has moved to another on-chain wallet", async () => {
+    const stateKey = signInUser("open-pack-transferred");
+    process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
+    const pack = ruby.recordHallPassPackMint(stateKey, {
+      productId: "card-pack-1",
+      packCount: 1,
+      cardCount: 5,
+      ownerWalletAddress: OWNER,
+      assetAddress: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
+      mintSignature: "5mPackMintSignature111111111111111111111111111111111111111",
+      metadataUri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json?packs=1&cards=5",
+      idempotencyKey: "solana:sol-transfer:open-pack-transferred",
+      source: "solana",
+    }).pack!;
+    restorePackCurrentOwnershipFetcher?.();
+    restorePackCurrentOwnershipFetcher = setCorePackCurrentOwnershipFetcherForTest(async (assetAddress) => ({
+      assetAddress,
+      ownerWalletAddress: "B6r1xnyXsH5b2BTpQEYNtXuQQTdPbJAkFiv9Krh9eCKP",
+      metadataUri: pack.metadataUri,
+    }));
+
+    await handleNftRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/nft/open-pack",
+      cookie: "rh_session=open-pack-transferred",
+      body: { packId: pack.id, ownerWalletAddress: OWNER },
+    }), deps());
+
+    expect(lastResponse).toEqual({
+      status: 409,
+      body: { error: "Pack is no longer owned by this wallet. Sync your wallet packs before opening." },
+    });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassPacks?.[0]?.status).toBe("active");
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassCards ?? []).toHaveLength(0);
+  });
+
   it("does not reveal a Pack NFT when the opened Core metadata update fails", async () => {
     const stateKey = signInUser("open-pack-update-fails");
     const sealedMetadataUri = "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json?packs=1&cards=5";
@@ -1451,8 +1493,8 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body.card).toMatchObject({
       id: grant.cards![0]!.id,
-      characterId: grant.cards![0]!.characterId,
-      characterName: grant.cards![0]!.characterName,
+      characterId: "card-back",
+      characterName: "Mystery Card",
       mintAddress: null,
       mintSignature: null,
     });

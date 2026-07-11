@@ -21,6 +21,7 @@ import {
   hallPassNftStatus,
   fetchHallPassCardCurrentOwnershipOrNull,
   publicHallPassNftStatus,
+  revealHallPassCardNft,
   submitSignedHallPassCardMintTransaction,
   verifyHallPassCardMint,
   verifyHallPassCardBurn,
@@ -542,6 +543,21 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     }
     const stateKey = deps.auth.stateKeyForRecord(record);
     const state = deps.ruby.getOrCreate(stateKey);
+    const recordedPack = deps.ruby.hallPassPacks(stateKey)
+      .find((candidate) => candidate.id === packId || candidate.assetAddress === packId);
+    if (!recordedPack) {
+      ctx.error(ctx.res, "Pack not found.", 404);
+      return true;
+    }
+    const currentOwnership = await fetchCorePackCurrentOwnershipOrNull(recordedPack.assetAddress);
+    if (!currentOwnership) {
+      ctx.error(ctx.res, "Could not verify current on-chain pack ownership. Try syncing your wallet, then try again.", 409);
+      return true;
+    }
+    if (currentOwnership.ownerWalletAddress !== ownerWalletAddress) {
+      ctx.error(ctx.res, "Pack is no longer owned by this wallet. Sync your wallet packs before opening.", 409);
+      return true;
+    }
     const walletSnapshot = structuredClone(state.wallet);
     const updatedAtSnapshot = state.updatedAt;
     let packOpenMutated = false;
@@ -659,7 +675,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       });
       ctx.json(ctx.res, {
         ok: true,
-        card: revealedCardPayload(preparedCard),
+        card: hiddenCardPayload(preparedCard),
         minted: [],
         mint: {
           cardId: card.id,
@@ -769,6 +785,13 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         mintSignature: verified.signature,
         metadataUri: verified.metadataUri,
       });
+      await revealHallPassCardNft(recorded.card).catch((revealErr) => {
+        log.error("nft.card-on-chain-reveal-update-failed", revealErr, {
+          sessionId: stateKey,
+          cardId,
+          mintAddress: recorded.card.mintAddress,
+        });
+      });
       await deps.ruby.flushSession(stateKey);
       log.event("nft.card-mint-submit-recorded", {
         requestId,
@@ -858,6 +881,13 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         mintSignature: verified.signature,
         metadataUri: verified.metadataUri,
       });
+      await revealHallPassCardNft(recorded.card).catch((revealErr) => {
+        log.error("nft.card-on-chain-reveal-update-failed", revealErr, {
+          sessionId: stateKey,
+          cardId,
+          mintAddress: recorded.card.mintAddress,
+        });
+      });
       await deps.ruby.flushSession(stateKey);
       ctx.json(ctx.res, {
         ok: true,
@@ -939,7 +969,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         ok: true,
         ownerWalletAddress,
         minted: [],
-        card: revealedCardPayload(preparedCard),
+        card: hiddenCardPayload(preparedCard),
         mint: {
           cardId: card.id,
           ownerWalletAddress: mint.ownerWalletAddress,

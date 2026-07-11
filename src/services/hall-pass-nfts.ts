@@ -15,6 +15,8 @@ import {
   fetchAssetV1,
   fetchCollectionV1,
   mplCore,
+  update as coreUpdate,
+  updatePlugin as coreUpdatePlugin,
 } from "@metaplex-foundation/mpl-core";
 import {
   createNoopSigner as createUmiNoopSigner,
@@ -438,28 +440,10 @@ function hallPassRevealedNftMetadataUri(card: RubyHighHallPassCard, env: NodeJS.
 }
 
 async function hallPassNftMetadataUriForMint(card: RubyHighHallPassCard): Promise<string> {
-  const fallbackUri = hallPassNftMetadataUri(card);
-  const generatedMetadata = generatedHallPassCardMetadataForRoute({
-    card,
-  });
-  if (generatedMetadata) {
-    return durableNftMetadataUri({
-      fallbackUri,
-      metadata: generatedMetadata,
-      assetKey: `api/apps/ruby-high/nft/metadata/hall-pass/card/${encodeURIComponent(card.id)}.json`,
-    });
-  }
-  const metadata = hallPassNftMetadataForRoute({
-    characterId: card.characterId,
-    serial: String(card.serial),
-    ...revealProvenanceFromCard(card),
-  });
-  if (!metadata) return fallbackUri;
-  return durableNftMetadataUri({
-    fallbackUri,
-    metadata,
-    assetKey: `api/apps/ruby-high/nft/metadata/hall-pass/${encodeURIComponent(card.characterId)}/${encodeURIComponent(String(card.serial))}.json`,
-  });
+  // Keep the on-chain URI identity-neutral until the mint is confirmed and
+  // recorded. This route serves card-back metadata before confirmation and
+  // switches to the revealed card only after the verified mint succeeds.
+  return legacyHallPassNftMetadataUri(card);
 }
 
 export function hallPassCollectionMetadataForRoute(args: {
@@ -551,6 +535,31 @@ export function coreCardAssetPluginsForMint(args: {
     {
       type: "Attributes" as const,
       attributeList,
+    },
+  ];
+}
+
+function sealedCoreCardAssetPluginsForMint(args: {
+  authorityAddress: string;
+  card: Pick<RubyHighHallPassCard, "serial"> & Partial<RubyHighHallPassCard>;
+}) {
+  const generatedKind = normalizedGeneratedNftKind(args.card.nftProfileKind);
+  return [
+    {
+      type: "VerifiedCreators" as const,
+      signatures: [{ address: publicKey(args.authorityAddress), verified: true }],
+    },
+    {
+      type: "Attributes" as const,
+      attributeList: [
+        { key: "School", value: "Ruby High" },
+        { key: "Collection", value: generatedKind ? GENERATED_COLLECTION_NAME : CARD_COLLECTION_NAME },
+        { key: "Set", value: generatedKind ? GENERATED_COLLECTION_SERIES : CARD_COLLECTION_SERIES },
+        { key: "Set Code", value: args.card.setCode || (generatedKind ? "GEN2" : FIRST_BELL_SET_CODE) },
+        { key: "NFT Type", value: generatedKind ? "Generated Profile Card" : "Card" },
+        { key: "State", value: "Face Down" },
+        { key: "Serial", value: normalizeSerial(String(args.card.serial || "1")) },
+      ],
     },
   ];
 }
@@ -825,9 +834,9 @@ async function compileHallPassCardMintTransaction(
     authority: umi.identity,
     payer: ownerSigner,
     owner,
-    name: hallPassCardOnChainNameForMint(card),
+    name: hallPassCardSealedOnChainName(card),
     uri: metadataUri,
-    plugins: coreCardAssetPluginsForMint({
+    plugins: sealedCoreCardAssetPluginsForMint({
       authorityAddress: String(umi.identity.publicKey),
       card,
     }),
@@ -893,6 +902,44 @@ export async function verifyHallPassCardMint(input: {
     ...(typeof transaction.slot === "number" ? { slot: transaction.slot } : {}),
     ...(typeof transaction.blockTime === "number" ? { blockTime: transaction.blockTime } : {}),
   };
+}
+
+export async function revealHallPassCardNft(card: RubyHighHallPassCard): Promise<void> {
+  if (mintVerifierOverride) return;
+  const config = readMintConfig();
+  const mintAddress = cleanSolanaAddress(card.mintAddress || "", "Card asset");
+  const metadataUri = card.metadataUri?.trim();
+  if (!metadataUri) throw new Error("Card metadata URI is required.");
+  const umi = createUmi(config.rpcUrl).use(mplCore());
+  const authorityKeypair = umi.eddsa.createKeypairFromSecretKey(config.authoritySecret);
+  umi.use(keypairIdentity(authorityKeypair, true));
+  const [asset, collection] = await Promise.all([
+    fetchAssetV1(umi, publicKey(mintAddress), { commitment: "confirmed" }),
+    fetchCollectionV1(umi, publicKey(config.collectionAddress)),
+  ]);
+  const plugins = coreCardAssetPluginsForMint({
+    authorityAddress: String(umi.identity.publicKey),
+    card,
+  });
+  const attributes = plugins.find((plugin) => plugin.type === "Attributes");
+  let builder = coreUpdate(umi, {
+    asset,
+    collection,
+    authority: umi.identity,
+    payer: umi.payer,
+    name: hallPassCardOnChainNameForMint(card),
+    uri: metadataUri,
+  });
+  if (attributes) {
+    builder = builder.add(coreUpdatePlugin(umi, {
+      asset: asset.publicKey,
+      collection: collection.publicKey,
+      authority: umi.identity,
+      payer: umi.payer,
+      plugin: attributes,
+    }));
+  }
+  await sendAndConfirmCoreTransaction(umi, builder);
 }
 
 export async function submitSignedHallPassCardMintTransaction(
@@ -1650,6 +1697,10 @@ function generatedNftImageMimeType(imageUrl: string): string {
   if (lower.endsWith(".webp")) return "image/webp";
   if (lower.endsWith(".gif")) return "image/gif";
   return "image/png";
+}
+
+function hallPassCardSealedOnChainName(card: Pick<RubyHighHallPassCard, "serial">): string {
+  return `Ruby High Mystery Card #${normalizeSerial(String(card.serial || "1"))}`.slice(0, 32);
 }
 
 export function hallPassCardOnChainNameForMint(card: Pick<RubyHighHallPassCard, "characterName" | "serial">): string {

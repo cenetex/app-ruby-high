@@ -451,7 +451,7 @@ describe("verifyHallPassCardBurn", () => {
     )).rejects.toThrow(/does not match this Ruby High card/);
   });
 
-  it("reuses the prepared card metadata URI when matching refreshed wallet transactions", async () => {
+  it("reuses the sealed card metadata URI without uploading revealed metadata before confirmation", async () => {
     process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(Array.from(Keypair.generate().secretKey));
     process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://rpc.example";
     process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
@@ -493,12 +493,17 @@ describe("verifyHallPassCardBurn", () => {
       const ownerAddress = owner.publicKey.toBase58();
       const card = {
         id: "unit-card-prepared-metadata-uri",
-        characterId: "ruby",
-        characterName: "Ruby",
+        characterId: "professor-edward",
+        characterName: "Professor Edward",
         serial: 21,
       } as any;
       const prepared = await buildHallPassCardMintTransaction(card, ownerAddress);
-      expect(uploadCount).toBe(1);
+      expect(uploadCount).toBe(0);
+      expect(prepared.metadataUri).toContain("/metadata/hall-pass/card/unit-card-prepared-metadata-uri.json");
+      const preparedBytes = Buffer.from(prepared.transactionBase64, "base64").toString("utf8");
+      expect(preparedBytes).not.toContain("Professor Edward");
+      expect(preparedBytes).not.toContain("Revealed");
+      expect(preparedBytes).toContain("Face Down");
 
       restoreUploader();
       restoreUploader = setNftMetadataUploaderForTest(async () => {
@@ -525,7 +530,7 @@ describe("verifyHallPassCardBurn", () => {
 
       expect(signature).toBe(SUBMITTED_SIGNATURE);
       expect(sentTransactions).toHaveLength(1);
-      expect(uploadCount).toBe(1);
+      expect(uploadCount).toBe(0);
     } finally {
       restoreUploader();
     }

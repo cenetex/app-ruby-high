@@ -4573,11 +4573,25 @@ export class RubyHighService extends Service {
     }
     if (card.status !== "active") throw new Error("Only active cards can be minted.");
     if (card.mintAddress || card.mintSignature) throw new Error("Card is already minted.");
+    const ownerWalletAddress = input.ownerWalletAddress.trim();
+    const mintAddress = input.mintAddress.trim();
+    const mintSignature = input.mintSignature.trim();
+    const metadataUri = input.metadataUri.trim();
+    if (!ownerWalletAddress || !mintAddress || !mintSignature || !metadataUri) {
+      throw new Error("Card mint record is incomplete.");
+    }
+    for (const [otherSessionId, otherState] of this.sessions) {
+      const duplicate = normalizeHallPassCards(otherState.wallet.hallPassCards)
+        .find((candidate) => candidate.mintAddress === mintAddress && (
+          otherSessionId !== sessionId || candidate.id !== card.id
+        ));
+      if (duplicate) throw new Error("Card NFT has already been recorded for another card.");
+    }
     const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
-    card.ownerWalletAddress = input.ownerWalletAddress.trim();
-    card.mintAddress = input.mintAddress.trim();
-    card.mintSignature = input.mintSignature.trim();
-    card.metadataUri = input.metadataUri.trim();
+    card.ownerWalletAddress = ownerWalletAddress;
+    card.mintAddress = mintAddress;
+    card.mintSignature = mintSignature;
+    card.metadataUri = metadataUri;
     delete card.pendingMintOwnerWalletAddress;
     delete card.pendingMintAddress;
     delete card.pendingMintMetadataUri;
