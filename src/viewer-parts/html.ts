@@ -29,8 +29,13 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   </aside>
 
   <!-- channels rail -->
-  <aside class="channels-rail" id="channels-rail">
+  <aside class="channels-rail" id="channels-rail" aria-label="School navigation">
     <div class="channels-header">
+      <button class="channels-close" id="channels-close" type="button" aria-label="Close navigation">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <path d="M6 6l12 12"/><path d="M18 6L6 18"/>
+        </svg>
+      </button>
       <img class="school-logo" src="${logoSrc}" alt="Ruby High" />
       <div class="school-context">
         <div class="grade-name" id="grade-title">Ruby High</div>
@@ -57,7 +62,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   <!-- workspace -->
   <main class="workspace" id="workspace">
     <header class="top-bar">
-      <button class="hamburger" id="hamburger" type="button" aria-label="Toggle channels">
+      <button class="hamburger" id="hamburger" type="button" aria-label="Open navigation" aria-controls="channels-rail" aria-expanded="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
           <path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>
         </svg>

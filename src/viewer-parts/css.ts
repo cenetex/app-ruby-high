@@ -236,14 +236,40 @@ export const VIEWER_CSS = `
 
   /* ── channels rail ─────────────────────────────────────────────────────── */
   .channels-header {
-    padding: calc(var(--safe-top) + 16px) 18px 14px;
+    position: relative;
+    padding: calc(var(--safe-top) + 12px) 18px 12px;
     border-bottom: 1px solid var(--line);
+  }
+  .channels-close {
+    appearance: none;
+    position: absolute;
+    top: calc(var(--safe-top) + 8px);
+    right: 8px;
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-soft);
+    z-index: 1;
+  }
+  .channels-close:hover,
+  .channels-close:focus-visible {
+    background: var(--bg-elev);
+    color: var(--text);
+    outline: none;
+  }
+  .channels-close svg {
+    width: 20px;
+    height: 20px;
   }
   .channels-header .school-logo {
     display: block;
-    width: min(174px, 82%);
+    width: min(144px, 72%);
     height: auto;
-    margin: 0 auto 12px;
+    margin: 0 auto 10px;
     object-fit: contain;
     filter: drop-shadow(0 10px 18px rgba(0,0,0,0.24));
   }
@@ -1918,13 +1944,20 @@ export const VIEWER_CSS = `
     min-width: 200px;
   }
   .onboarding-alt {
-    background: var(--bg-elev-2) !important;
+    min-width: auto !important;
+    min-height: 36px;
+    padding: 0 8px;
+    background: transparent !important;
     color: var(--text-soft) !important;
-    border-color: rgba(255,255,255,0.14) !important;
+    border-color: transparent !important;
+    box-shadow: none;
+    font-size: 13px;
+    font-weight: 700;
   }
   .onboarding-alt:hover {
     color: var(--text) !important;
-    border-color: rgba(255,255,255,0.28) !important;
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
   /* Keep footer links compact so they do not compete with the account row. */
   .channels-links {
@@ -7474,6 +7507,7 @@ export const VIEWER_CSS = `
     main.workspace { grid-column: 2; }
     .scrim { display: none !important; }
     .hamburger { display: none; }
+    .channels-close { display: none; }
     .stream { padding: 18px 24px; }
   }
 

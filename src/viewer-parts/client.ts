@@ -455,6 +455,7 @@ export function runViewerClient(bootstrap) {
   const $ = (id) => document.getElementById(id);
   const els = {
     shell: $("shell"),
+    workspace: $("workspace"),
     serversRail: $("servers-rail"),
     channelsRail: $("channels-rail"),
     homeBtn: $("home-btn"),
@@ -466,6 +467,7 @@ export function runViewerClient(bootstrap) {
     footerAction: $("footer-action"),
     privyAction: $("privy-action"),
     hamburger: $("hamburger"),
+    channelsClose: $("channels-close"),
     channelTitle: $("channel-title"),
     channelSub: $("channel-sub"),
     arcIndicator: $("arc-indicator"),
@@ -10142,9 +10144,31 @@ export function runViewerClient(bootstrap) {
   }
 
   // ── rails toggling ────────────────────────────────────────────────────────
-  function openRails() { els.shell.classList.add("is-rails-open"); }
-  function closeRails() { els.shell.classList.remove("is-rails-open"); }
-  function toggleRails() { els.shell.classList.toggle("is-rails-open"); }
+  const desktopRailsQuery = window.matchMedia("(min-width: 1100px)");
+  function syncRailsAccessibility(open) {
+    const overlaysWorkspace = open && !desktopRailsQuery.matches;
+    els.workspace.toggleAttribute("inert", overlaysWorkspace);
+    if (overlaysWorkspace) els.workspace.setAttribute("aria-hidden", "true");
+    else els.workspace.removeAttribute("aria-hidden");
+  }
+  function setRailsOpen(open) {
+    els.shell.classList.toggle("is-rails-open", open);
+    els.hamburger.setAttribute("aria-expanded", String(open));
+    els.hamburger.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
+    syncRailsAccessibility(open);
+  }
+  function openRails() {
+    setRailsOpen(true);
+    if (window.matchMedia("(max-width: 1099px)").matches) focusWithoutScroll(els.channelsClose);
+  }
+  function closeRails(restoreFocus) {
+    setRailsOpen(false);
+    if (restoreFocus) focusWithoutScroll(els.hamburger);
+  }
+  function toggleRails() {
+    if (els.shell.classList.contains("is-rails-open")) closeRails(true);
+    else openRails();
+  }
 
   // ── opinion-mode helpers ────────────────────────────────────────────────
   // The player's opinion submission is just a regular chat message routed to
@@ -10236,7 +10260,8 @@ export function runViewerClient(bootstrap) {
   els.generateMcBtn.addEventListener("click", generateMultipleChoice);
   els.nextBtn.addEventListener("click", pickNext);
   els.hamburger.addEventListener("click", toggleRails);
-  els.scrim.addEventListener("click", closeRails);
+  els.scrim.addEventListener("click", () => closeRails(true));
+  if (els.channelsClose) els.channelsClose.addEventListener("click", () => closeRails(true));
   els.homeBtn.addEventListener("click", openRails);
   els.footerAction.addEventListener("click", () => {
     if (!authed) return;
@@ -10416,13 +10441,19 @@ export function runViewerClient(bootstrap) {
   if (announcementsDismiss) announcementsDismiss.addEventListener("click", dismissAnnouncements);
   // Allow Escape key to dismiss
   document.addEventListener("keydown", function(ev) {
-    if (!announcementsOverlay || announcementsOverlay.hidden) return;
-    if (ev.key === "Escape") {
-      ev.preventDefault();
-      dismissAnnouncements();
+    if (announcementsOverlay && !announcementsOverlay.hidden) {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        dismissAnnouncements();
+        return;
+      }
+      trapModalFocus(ev, announcementsOverlay);
       return;
     }
-    trapModalFocus(ev, announcementsOverlay);
+    if (ev.key === "Escape" && window.matchMedia("(max-width: 1099px)").matches && els.shell.classList.contains("is-rails-open")) {
+      ev.preventDefault();
+      closeRails(true);
+    }
   });
   // Click outside panel to dismiss
   var announcementsOverlayEl = document.getElementById("announcements-overlay");
@@ -10453,11 +10484,12 @@ export function runViewerClient(bootstrap) {
   });
 
   // First boot: open rails on desktop only.
-  if (window.matchMedia("(min-width: 1100px)").matches) {
-    els.shell.classList.add("is-rails-open");
+  if (desktopRailsQuery.matches) {
+    setRailsOpen(true);
   } else if (window.matchMedia("(min-width: 720px)").matches) {
     // Tablet: servers rail visible, channels closed.
   }
+  desktopRailsQuery.addEventListener("change", (event) => setRailsOpen(event.matches));
 
   applyAuthUI();
   consumeBillingReturnFlag();

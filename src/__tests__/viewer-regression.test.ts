@@ -112,6 +112,24 @@ describe("viewer regression guardrails", () => {
     expect(VIEWER_CSS).not.toContain('.shell[data-mode="round-live"] .world-panel');
   });
 
+  it("keeps mobile navigation explicit and keyboard-dismissible", () => {
+    const html = renderedViewer();
+    const script = inlineScript(html);
+
+    expect(html).toContain('id="channels-close"');
+    expect(html).toContain('aria-label="Close navigation"');
+    expect(html).toContain('aria-controls="channels-rail"');
+    expect(html).toContain('aria-expanded="false"');
+    expectScriptToContain(script, "function setRailsOpen(open)");
+    expectScriptToContain(script, "function syncRailsAccessibility(open)");
+    expectScriptToContain(script, 'els.hamburger.setAttribute("aria-expanded", String(open))');
+    expectScriptToContain(script, 'els.workspace.toggleAttribute("inert", overlaysWorkspace)');
+    expectScriptToContain(script, 'desktopRailsQuery.addEventListener("change", (event) => setRailsOpen(event.matches))');
+    expectScriptToContain(script, 'ev.key === "Escape" && window.matchMedia("(max-width: 1099px)").matches');
+    expect(cssRule(".channels-close")).toContain("position: absolute");
+    expect(cssRule(".onboarding-alt")).toContain("box-shadow: none");
+  });
+
   it("builds the race strip from typed view models", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
