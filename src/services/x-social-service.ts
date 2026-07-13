@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { assertSafeImageUrl } from "./safe-url.js";
-import { readFile, writeFile, mkdir, unlink, rename } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve, dirname } from "node:path";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
@@ -391,7 +391,6 @@ export class XSocialService extends Service {
   private tokens = new Map<string, XTokenRecord>();
   private postCounts = new Map<string, { count: number; resetAt: number }>();
   private pendingVerifiers = new Map<string, { verifier: string; teacherId: string; createdAt: number }>();
-  private stateCounter = 0;
   private analytics: PostAnalytics;
   /** Per-teacher last photo tweet date (UTC YYYY-MM-DD). Mirrored onto the
    *  token record so deploys cannot reopen the same day's photo slot. */
@@ -1233,11 +1232,6 @@ export class XSocialService extends Service {
       }
     }
     return null;
-  }
-
-  /** Schedule a metrics fetch for a posted tweet. Called after successful post. */
-  recordPostMetrics(tweetId: string, kind: string, postedAt: number): void {
-    this.analytics.enqueueFetch(tweetId, postedAt);
   }
 
   /** Fetch pending metrics for all teachers. Called periodically by the scheduler. */

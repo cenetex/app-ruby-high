@@ -6,7 +6,12 @@ import { spawnSync } from "node:child_process";
 const app = process.env.FLY_APP || "ruby-high";
 
 function git(args, opts = {}) {
-  const result = spawnSync("git", args, { encoding: "utf8", ...opts });
+  const result = spawnSync("git", args, {
+    encoding: "utf8",
+    maxBuffer: 128 * 1024 * 1024,
+    ...opts,
+  });
+  if (result.error) throw result.error;
   if (result.status !== 0) {
     throw new Error((result.stderr || result.stdout || `git ${args.join(" ")} failed`).trim());
   }

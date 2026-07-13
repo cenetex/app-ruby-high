@@ -1,6 +1,5 @@
 import type { TeacherCharacter } from "../../characters/teachers.js";
 import type { XSocialService } from "../x-social-service.js";
-import { log } from "../logger.js";
 import {
   weightedPickPostKind,
   generateQuestionPostText,

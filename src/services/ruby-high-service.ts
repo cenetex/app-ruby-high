@@ -9289,7 +9289,7 @@ export class RubyHighService extends Service {
 
     // Take top 3 per year, sorted: portraits first, then grade score.
     const results: RecentlyActiveStudent[] = [];
-    for (const [grade, students] of byGrade) {
+    for (const students of byGrade.values()) {
       students.sort((a, b) => {
         const aPortrait = a.portraitUrl ? 1 : 0;
         const bPortrait = b.portraitUrl ? 1 : 0;

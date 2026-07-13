@@ -1,13 +1,35 @@
-node_modules
-dist
-.git
-.gitignore
-.DS_Store
-*.log
-coverage
-.turbo
-.vscode
-.idea
-test-outputs
-tmp
-.ruby-high
+# Keep the remote build context limited to paths copied by Dockerfile.
+# Adding a new COPY source requires explicitly allowing it here, which makes
+# accidental uploads of local builds, models, test output, and archives fail
+# closed.
+*
+
+!.dockerignore
+!Dockerfile
+!package.json
+!package-lock.json
+!.npmrc
+!tsconfig.json
+!tsup.config.ts
+
+!src/
+!src/**
+
+!assets/
+!assets/**
+# Source-generation history is not served or used by the application build.
+assets/nft/grok-sources/
+
+!landing/
+!landing/**
+
+!scripts/
+!scripts/check-privy-client-bundle.mjs
+!scripts/check-viewer-bundle.mjs
+!scripts/fix-node-sqlite-import.mjs
+!scripts/server.mjs
+!scripts/http-limits.mjs
+!scripts/http-server.mjs
+!scripts/landing.mjs
+!scripts/public-base.mjs
+!scripts/migrate-dynamo-to-sqlite.mjs

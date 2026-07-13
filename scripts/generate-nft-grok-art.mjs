@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const model = process.env.RUBY_HIGH_NFT_IMAGE_MODEL || "x-ai/grok-imagine-image-quality";
 const outputDir = join(root, "assets", "nft", "grok-sources");
+const manifestPath = join(outputDir, "manifest.json");
 const openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
 const timeoutMs = Number(process.env.RUBY_HIGH_NFT_IMAGE_TIMEOUT_MS || 180_000);
 
@@ -308,11 +309,9 @@ async function generateOne(apiKey, id) {
   const image = imageBytesFromUrl(imageUrl) || await fetchImageUrl(imageUrl);
   await mkdir(outputDir, { recursive: true });
   const hash = createHash("sha256").update(image.bytes).digest("hex").slice(0, 12);
-  const output = join(outputDir, `${id}.${image.ext}`);
   const hashOutput = join(outputDir, `${id}.${hash}.${image.ext}`);
-  await writeFile(output, image.bytes);
   await writeFile(hashOutput, image.bytes);
-  return { id, output, hashOutput, bytes: image.bytes.length };
+  return { id, output: hashOutput, sourceFile: `${id}.${hash}.${image.ext}`, bytes: image.bytes.length };
 }
 
 async function mapLimit(ids, limit, fn) {
@@ -336,6 +335,14 @@ if (!apiKey) {
 
 const { ids, parallel } = parseArgs();
 const results = await mapLimit(ids, parallel, (id) => generateOne(apiKey, id));
+let manifest = {};
+try {
+  manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+} catch (err) {
+  if (!err || typeof err !== "object" || err.code !== "ENOENT") throw err;
+}
 for (const result of results) {
+  manifest[result.id] = result.sourceFile;
   console.log(`${result.id} ${result.bytes} ${result.output}`);
 }
+await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
