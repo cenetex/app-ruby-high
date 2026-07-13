@@ -258,7 +258,7 @@ verified oracle bytes.
 | `assets/nft/ruby-high-pack-opened.png` | `1122 x 1402` | Opened Core pack |
 | `assets/nft/ruby-high-pack-promo.png` | `1448 x 1086` | Core pack collection |
 | `assets/nft/market-cards/*.png` | Mixed | Wallet-facing revealed card crops |
-| `assets/nft/grok-sources/*.jpg` | Mixed | Grok-generated source art for items, locations, and rare-teacher avatars; hash-stamped copies retain generation history |
+| `assets/nft/grok-sources/*.<hash>.jpg` | Mixed | Grok-generated source art for items, locations, and rare-teacher avatars; `manifest.json` selects the current hash-stamped source while older hashes retain generation history |
 | `assets/nft/cards/*.png` | Mixed | Source card art for plain crop generation |
 | `assets/nft/ruby-high-student-cards.png` | `1448 x 1086` | Promo/sheet art, not directly used by metadata |
 | `assets/nft/ruby-high-teacher-cards.png` | `1536 x 1024` | Promo/sheet art, not directly used by metadata |
@@ -271,7 +271,7 @@ verified oracle bytes.
 - Card collection creation uses `npm run nft:create-card-collection`.
 - Core pack collection creation uses `npm run nft:create-core-collection`.
 - Plain market-card crops are regenerated with `npm run nft:crop-cards`.
-- Grok source art can be regenerated with `node scripts/generate-nft-grok-art.mjs --parallel 3 --ids <comma-separated-card-ids>`. The script reads `OPENROUTER_KEY` from `.env`, writes current `<id>.jpg` files plus hash-stamped history, and preserves the aspect policy: items square, locations wide, rare-teacher avatars tall.
+- Grok source art can be regenerated with `node scripts/generate-nft-grok-art.mjs --parallel 3 --ids <comma-separated-card-ids>`. The script reads `OPENROUTER_KEY` from `.env`, writes hash-stamped history, updates `manifest.json` to select the current source, and preserves the aspect policy: items square, locations wide, rare-teacher avatars tall.
 - Card NFTs use Metaplex Core assets, require
   `RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS`, store durable revealed
   metadata URIs on chain, and include verified creator and attribute plugins.

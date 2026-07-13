@@ -99,7 +99,6 @@ const DEFAULT_ASSET_CACHE_CONTROL = "public, max-age=86400, stale-while-revalida
 const VERSIONED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
 const ASSET_FILES: Record<string, { file: string; mime: string; source?: "assets" | "dist"; cacheControl?: string; versionedCacheControl?: string }> = {
-  "privy-client.js": { file: "viewer-privy-client.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-cache", versionedCacheControl: VERSIONED_ASSET_CACHE_CONTROL },
   "privy-client.global.js": { file: "viewer-privy-client.global.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-cache", versionedCacheControl: VERSIONED_ASSET_CACHE_CONTROL },
   "logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
   "ruby-high-logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
@@ -446,7 +445,6 @@ function isNetworkOnly(url) {
     || url.pathname.startsWith(APP_BASE + "chat/")
     || url.pathname.startsWith(APP_BASE + "packs/")
     || url.pathname.startsWith(APP_BASE + "session/")
-    || url.pathname === ASSET_PREFIX + "privy-client.js"
     || url.pathname === ASSET_PREFIX + "privy-client.global.js";
 }
 

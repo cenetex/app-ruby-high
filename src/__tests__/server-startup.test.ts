@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 
 const serverEntry = readFileSync(new URL("../../scripts/server.mjs", import.meta.url), "utf8");
 const devServerEntry = readFileSync(new URL("../../scripts/dev-server.mjs", import.meta.url), "utf8");
+const httpServer = readFileSync(new URL("../../scripts/http-server.mjs", import.meta.url), "utf8");
 const httpLimits = readFileSync(new URL("../../scripts/http-limits.mjs", import.meta.url), "utf8");
 const publicBase = readFileSync(new URL("../../scripts/public-base.mjs", import.meta.url), "utf8");
 const deployFly = readFileSync(new URL("../../scripts/deploy-fly.mjs", import.meta.url), "utf8");
 const dockerfile = readFileSync(new URL("../../Dockerfile", import.meta.url), "utf8");
 const flyConfig = readFileSync(new URL("../../fly.toml", import.meta.url), "utf8");
 const packageJson = readFileSync(new URL("../../package.json", import.meta.url), "utf8");
+const dockerignore = readFileSync(new URL("../../.dockerignore", import.meta.url), "utf8");
 
 describe("production startup guardrails", () => {
   it("keeps readiness unhealthy until services finish booting", () => {
@@ -20,12 +22,11 @@ describe("production startup guardrails", () => {
 
   it("exposes loaded curriculum counts in host health payloads", () => {
     for (const entry of [serverEntry, devServerEntry]) {
-      expect(entry).toContain("curriculum: curriculumHealthPayload()");
-      expect(entry).toContain("function curriculumHealthPayload()");
-      expect(entry).toContain('pack: "ruby-high-original"');
-      expect(entry).toContain("totalQuestions");
-      expect(entry).toContain("byFaculty");
+      expect(entry).toContain("buildHealthPayload({ stateStore, facultyService: facultySvc");
     }
+    expect(httpServer).toContain('pack: "ruby-high-original"');
+    expect(httpServer).toContain("totalQuestions");
+    expect(httpServer).toContain("byFaculty");
   });
 
   it("serves a retrying HTML shell for early viewer loads", () => {
@@ -56,13 +57,32 @@ describe("production startup guardrails", () => {
     expect(dockerfile).toContain("COPY package.json package-lock.json* .npmrc ./");
   });
 
+  it("keeps the remote Docker context allowlisted and excludes source-only art", () => {
+    expect(dockerignore).toMatch(/^\*$/m);
+    for (const path of [
+      "Dockerfile",
+      "package.json",
+      "package-lock.json",
+      ".npmrc",
+      "tsconfig.json",
+      "tsup.config.ts",
+      "src/**",
+      "assets/**",
+      "landing/**",
+    ]) {
+      expect(dockerignore).toContain(`!${path}`);
+    }
+    expect(dockerignore).toContain("assets/nft/grok-sources/");
+  });
+
   it("packages every runtime script imported by the production server", () => {
     expect(dockerfile).toContain("COPY scripts/server.mjs ./scripts/server.mjs");
     const relativeScriptImports = [...serverEntry.matchAll(/from "\.\/([^"]+\.mjs)"/g)]
       .map((match) => match[1]);
-    expect(relativeScriptImports).toContain("http-limits.mjs");
+    expect(relativeScriptImports).toContain("http-server.mjs");
     for (const file of relativeScriptImports) {
       expect(dockerfile).toContain(`COPY scripts/${file} ./scripts/${file}`);
+      expect(dockerignore).toContain(`!scripts/${file}`);
     }
   });
 
@@ -89,10 +109,10 @@ describe("production startup guardrails", () => {
   });
 
   it("uses the shared host JSON body cap helper", () => {
-    for (const entry of [serverEntry, devServerEntry]) {
-      expect(entry).toContain('import { bodyLimitForPath } from "./http-limits.mjs";');
-      expect(entry).toContain("readJsonBody(req, bodyLimitForPath(url.pathname))");
-    }
+    expect(serverEntry).toContain('from "./http-server.mjs"');
+    expect(devServerEntry).toContain('from "./http-server.mjs"');
+    expect(httpServer).toContain('import { bodyLimitForPath } from "./http-limits.mjs";');
+    expect(httpServer).toContain("readJsonBody(req, bodyLimitForPath(pathname))");
     expect(httpLimits).not.toContain("/packs/import-");
   });
 

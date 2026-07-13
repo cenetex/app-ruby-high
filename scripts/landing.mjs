@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 const LANDING_ROOT = new URL("../landing/", import.meta.url);
+const SHARED_ASSET_ROOT = new URL("../assets/", import.meta.url);
 
 const CONTENT_TYPES = new Map([
   [".css", "text/css; charset=utf-8"],
@@ -23,6 +24,12 @@ function fileUrlForPath(pathname) {
     return null;
   }
   if (decoded.includes("\0")) return null;
+  if (decoded.startsWith("/assets/")) {
+    const assetPath = decoded.slice("/assets/".length);
+    if (!assetPath || assetPath.startsWith("..") || assetPath.includes("/../")) return null;
+    const assetUrl = new URL(assetPath, SHARED_ASSET_ROOT);
+    return assetUrl.href.startsWith(SHARED_ASSET_ROOT.href) ? assetUrl : null;
+  }
   const relativePath = decoded === "/" || decoded === "/index.html"
     ? "index.html"
     : decoded.replace(/^\/+/, "");

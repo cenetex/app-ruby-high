@@ -7,7 +7,7 @@
 
 import { createServer } from "node:http";
 import { URL } from "node:url";
-import { bodyLimitForPath } from "./http-limits.mjs";
+import { buildHealthPayload, createRouteContext, sendJson } from "./http-server.mjs";
 import { serveLandingRequest } from "./landing.mjs";
 import { normalizePublicOrigin } from "./public-base.mjs";
 
@@ -86,36 +86,8 @@ async function bootServices() {
   bootReady = true;
 }
 
-function readRawBody(req, maxBytes) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let bytes = 0;
-    let rejected = false;
-    req.on("data", (c) => {
-      if (rejected) return;
-      bytes += c.length;
-      if (bytes > maxBytes) {
-        rejected = true;
-        const err = new Error("Request body too large");
-        err.statusCode = 413;
-        req.destroy();
-        reject(err);
-        return;
-      }
-      chunks.push(c);
-    });
-    req.on("end", () => {
-      if (rejected) return;
-      resolve(Buffer.concat(chunks).toString("utf8"));
-    });
-    req.on("error", (err) => { if (!rejected) reject(err); });
-  });
-}
 
-async function readJsonBody(req, maxBytes) {
-  const buf = await readRawBody(req, maxBytes);
-  return buf ? JSON.parse(buf) : {};
-}
+
 
 function deriveBaseFromReq(req) {
   if (PUBLIC_BASE) return PUBLIC_BASE;
@@ -132,99 +104,22 @@ function isSecureReq(req) {
   return proto === "https";
 }
 
-function deriveClientIp(req) {
-  // The edge proxy (Fly / LB / reverse proxy) puts the original client IP
-  // first in x-forwarded-for. Fall back to the socket address when the header
-  // is missing (direct connection on a private network).
-  const xff = req.headers["x-forwarded-for"];
-  if (typeof xff === "string" && xff.length > 0) {
-    return xff.split(",")[0].trim();
-  }
-  return req.socket?.remoteAddress ?? null;
-}
-
 function makeRouteContext(req, res, url) {
-  const base = deriveBaseFromReq(req);
-  // Pull the OpenRouter API key out of the X-Openrouter-Key header. Clients
-  // store the key in localStorage (since v0.6 / PR #30) and attach it on
-  // every authed request; the server reads it here without persisting.
-  // Missing this on the production entry was a silent regression — local
-  // dev worked because dev-server.mjs already had the equivalent line, but
-  // the production server returned 401 on every signed-in request because
-  // ctx.apiKeyHeader was always undefined.
-  const apiKeyRaw = req.headers["x-openrouter-key"];
-  const apiKeyHeader = Array.isArray(apiKeyRaw) ? (apiKeyRaw[0] ?? null) : (apiKeyRaw ?? null);
-  return {
-    method: req.method ?? "GET",
-    pathname: url.pathname,
+  return createRouteContext({
+    req,
+    res,
     url,
     runtime: fakeRuntime,
-    res,
-    cookieHeader: req.headers.cookie ?? null,
-    userAgentHeader: req.headers["user-agent"] ?? null,
-    visitorHeader: req.headers["x-ruby-high-visitor"] ?? null,
-    apiKeyHeader,
     isSecure: isSecureReq(req),
-    clientIp: deriveClientIp(req),
-    contentTypeHeader: req.headers["content-type"] ?? null,
-    originHeader: req.headers.origin ?? null,
-    authorizationHeader: req.headers.authorization ?? null,
-    stripeSignatureHeader: req.headers["stripe-signature"] ?? null,
-    ifNoneMatch: req.headers["if-none-match"] ?? null,
-    lastEventIdHeader: req.headers["last-event-id"] ?? null,
-    acceptEncoding: req.headers["accept-encoding"] ?? null,
-    callbackUrlBuilder: (path) => new URL(base).origin + path,
-    error(_r, message, status = 500) {
-      if (res.headersSent) return;
-      res.statusCode = status;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ error: message }));
-    },
-    json(_r, data, status = 200) {
-      if (res.headersSent) return;
-      res.statusCode = status;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify(data));
-    },
-    readRawBody: () => readRawBody(req, bodyLimitForPath(url.pathname)),
-    readJsonBody: () => readJsonBody(req, bodyLimitForPath(url.pathname)),
-  };
+    callbackBase: deriveBaseFromReq(req),
+  });
 }
 
-// /health diagnostic payload. `build` is the short commit SHA the workflow
-// injects (RUBY_HIGH_BUILD); when running locally it falls back to "dev".
-// `state` is the StateStore backend's own description once boot has loaded it.
+
 function healthPayload() {
-  return {
-    ok: true,
-    app: "ruby-high",
-    build: process.env.RUBY_HIGH_BUILD ?? "dev",
-    state: stateStore?.describe?.() ?? "starting",
-    curriculum: curriculumHealthPayload(),
-  };
+  return buildHealthPayload({ stateStore, facultyService: facultySvc });
 }
 
-function curriculumHealthPayload() {
-  if (!facultySvc?.faculty || !facultySvc?.bank) return null;
-  const byFaculty = {};
-  for (const faculty of facultySvc.faculty()) {
-    byFaculty[faculty.id] = facultySvc.bank(faculty.id)?.questions.length ?? 0;
-  }
-  const totalQuestions = Object.values(byFaculty).reduce((sum, count) => sum + count, 0);
-  return {
-    pack: "ruby-high-original",
-    totalQuestions,
-    byFaculty,
-  };
-}
-
-function sendJson(res, data, status = 200) {
-  if (res.headersSent) return;
-  res.statusCode = status;
-  res.setHeader("Content-Type", "application/json");
-  res.setHeader("Cache-Control", "no-store");
-  res.end(JSON.stringify(data));
-}
 
 function sendStartupHtml(res) {
   if (res.headersSent) return;

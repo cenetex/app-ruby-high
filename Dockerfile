@@ -30,6 +30,7 @@ COPY --from=build /app/assets ./assets
 COPY landing ./landing
 COPY scripts/server.mjs ./scripts/server.mjs
 COPY scripts/http-limits.mjs ./scripts/http-limits.mjs
+COPY scripts/http-server.mjs ./scripts/http-server.mjs
 COPY scripts/landing.mjs ./scripts/landing.mjs
 COPY scripts/public-base.mjs ./scripts/public-base.mjs
 COPY scripts/migrate-dynamo-to-sqlite.mjs ./scripts/migrate-dynamo-to-sqlite.mjs

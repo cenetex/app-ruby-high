@@ -3,7 +3,7 @@
 
 import { createServer } from "node:http";
 import { URL } from "node:url";
-import { bodyLimitForPath } from "./http-limits.mjs";
+import { buildHealthPayload, createRouteContext, readJsonBodyForPath, sendJson } from "./http-server.mjs";
 import { serveLandingRequest } from "./landing.mjs";
 import { normalizePublicOrigin } from "./public-base.mjs";
 import {
@@ -72,114 +72,21 @@ const rubySvc = await (async () => {
 })();
 chatSvc.setRubyHighService(rubySvc);
 
-function readRawBody(req, maxBytes) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let bytes = 0;
-    let rejected = false;
-    req.on("data", (c) => {
-      if (rejected) return;
-      bytes += c.length;
-      if (bytes > maxBytes) {
-        rejected = true;
-        const err = new Error("Request body too large");
-        err.statusCode = 413;
-        req.destroy();
-        reject(err);
-        return;
-      }
-      chunks.push(c);
-    });
-    req.on("end", () => {
-      if (rejected) return;
-      resolve(Buffer.concat(chunks).toString("utf8"));
-    });
-    req.on("error", (err) => { if (!rejected) reject(err); });
+function makeRouteContext(req, res, url) {
+  return createRouteContext({
+    req,
+    res,
+    url,
+    runtime: fakeRuntime,
+    isSecure: false,
+    callbackBase: PUBLIC_BASE,
   });
 }
 
-async function readJsonBody(req, maxBytes) {
-  const buf = await readRawBody(req, maxBytes);
-  return buf ? JSON.parse(buf) : {};
-}
-
-function deriveClientIp(req) {
-  // Local dev usually surfaces socket.remoteAddress; if you're behind a proxy
-  // for testing, x-forwarded-for wins.
-  const xff = req.headers["x-forwarded-for"];
-  if (typeof xff === "string" && xff.length > 0) {
-    return xff.split(",")[0].trim();
-  }
-  return req.socket?.remoteAddress ?? null;
-}
-
-function makeRouteContext(req, res, url) {
-  const cookieHeader = req.headers.cookie ?? null;
-  const apiKeyRaw = req.headers["x-openrouter-key"];
-  const apiKeyHeader = Array.isArray(apiKeyRaw) ? (apiKeyRaw[0] ?? null) : (apiKeyRaw ?? null);
-  return {
-    method: req.method ?? "GET",
-    pathname: url.pathname,
-    url,
-    runtime: fakeRuntime,
-    res,
-    cookieHeader,
-    userAgentHeader: req.headers["user-agent"] ?? null,
-    visitorHeader: req.headers["x-ruby-high-visitor"] ?? null,
-    apiKeyHeader,
-    isSecure: false,
-    clientIp: deriveClientIp(req),
-    contentTypeHeader: req.headers["content-type"] ?? null,
-    originHeader: req.headers.origin ?? null,
-    authorizationHeader: req.headers.authorization ?? null,
-    stripeSignatureHeader: req.headers["stripe-signature"] ?? null,
-    ifNoneMatch: req.headers["if-none-match"] ?? null,
-    acceptEncoding: req.headers["accept-encoding"] ?? null,
-    callbackUrlBuilder: (path) => {
-      const base = new URL(PUBLIC_BASE);
-      return base.origin + path;
-    },
-    error(_r, message, status = 500) {
-      if (res.headersSent) return;
-      res.statusCode = status;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ error: message }));
-    },
-    json(_r, data, status = 200) {
-      if (res.headersSent) return;
-      res.statusCode = status;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify(data));
-    },
-    readRawBody: () => readRawBody(req, bodyLimitForPath(url.pathname)),
-    readJsonBody: () => readJsonBody(req, bodyLimitForPath(url.pathname)),
-  };
-}
-
 function healthPayload() {
-  return {
-    ok: true,
-    app: "ruby-high",
-    build: process.env.RUBY_HIGH_BUILD ?? "dev",
-    state: stateStore?.describe?.() ?? "starting",
-    curriculum: curriculumHealthPayload(),
-    t: Date.now(),
-  };
+  return buildHealthPayload({ stateStore, facultyService: facultySvc, timestamp: true });
 }
 
-function curriculumHealthPayload() {
-  if (!facultySvc?.faculty || !facultySvc?.bank) return null;
-  const byFaculty = {};
-  for (const faculty of facultySvc.faculty()) {
-    byFaculty[faculty.id] = facultySvc.bank(faculty.id)?.questions.length ?? 0;
-  }
-  const totalQuestions = Object.values(byFaculty).reduce((sum, count) => sum + count, 0);
-  return {
-    pack: "ruby-high-original",
-    totalQuestions,
-    byFaculty,
-  };
-}
 
 function nextGradeAfter(grade) {
   const index = GRADES.indexOf(grade);
@@ -258,9 +165,7 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? HOST}`);
 
   if (req.method === "GET" && (url.pathname === "/health" || url.pathname === "/healthz")) {
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify(healthPayload()));
+    sendJson(res, healthPayload());
     return;
   }
 
@@ -276,37 +181,29 @@ const server = createServer(async (req, res) => {
         subject: url.searchParams.get("subject") ?? undefined,
         difficulty: url.searchParams.get("difficulty") ?? undefined,
       });
-      res.statusCode = 200;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({
+      sendJson(res, {
         ok: true,
         question: state.current?.prompt,
         faculty: state.faculty,
         subject: state.current?.subject,
         difficulty: state.current?.difficulty,
         asked: state.askedQuestionIds.length,
-      }));
+      });
     } catch (err) {
-      res.statusCode = 400;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+      sendJson(res, { ok: false, error: err instanceof Error ? err.message : String(err) }, 400);
     }
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/dev/clear") {
     rubySvc.clearBoard("ruby-high:local-ruby");
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ ok: true }));
+    sendJson(res, { ok: true });
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/dev/reset") {
     rubySvc.resetSession("ruby-high:local-ruby");
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ ok: true }));
+    sendJson(res, { ok: true });
     return;
   }
 
@@ -316,9 +213,7 @@ const server = createServer(async (req, res) => {
       subjects: facultySvc.subjects(f.id),
       questionCount: facultySvc.bank(f.id)?.questions.length ?? 0,
     }));
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ ok: true, roster }));
+    sendJson(res, { ok: true, roster });
     return;
   }
 
@@ -326,13 +221,9 @@ const server = createServer(async (req, res) => {
     try {
       const sessionId = authSvc.stateKeyForCookie(req.headers.cookie ?? null);
       const payload = await completeCurrentGradeForDev(sessionId);
-      res.statusCode = 200;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify(payload));
+      sendJson(res, payload);
     } catch (err) {
-      res.statusCode = err.statusCode ?? 500;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+      sendJson(res, { ok: false, error: err instanceof Error ? err.message : String(err) }, err.statusCode ?? 500);
     }
     return;
   }
@@ -340,7 +231,7 @@ const server = createServer(async (req, res) => {
   if (req.method === "POST" && url.pathname === "/dev/contribute-live-room-goal") {
     try {
       const sessionId = authSvc.stateKeyForCookie(req.headers.cookie ?? null);
-      const body = await readJsonBody(req, bodyLimitForPath(url.pathname)).catch(() => ({}));
+      const body = await readJsonBodyForPath(req, url.pathname).catch(() => ({}));
       const requestedFaculty = typeof body?.faculty === "string" ? body.faculty.trim() : "";
       if (requestedFaculty) {
         const state = rubySvc.getOrCreate(sessionId);
@@ -348,19 +239,13 @@ const server = createServer(async (req, res) => {
       }
       const result = rubySvc.contributeLiveRoomGoal(sessionId);
       if (!result) {
-        res.statusCode = 400;
-        res.setHeader("Content-Type", "application/json");
-        res.end(JSON.stringify({ ok: false, error: "No public live-room contribution available for this session." }));
+        sendJson(res, { ok: false, error: "No public live-room contribution available for this session." }, 400);
         return;
       }
       await rubySvc.flush();
-      res.statusCode = 200;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ ok: true, result }));
+      sendJson(res, { ok: true, result });
     } catch (err) {
-      res.statusCode = err.statusCode ?? 500;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+      sendJson(res, { ok: false, error: err instanceof Error ? err.message : String(err) }, err.statusCode ?? 500);
     }
     return;
   }
@@ -372,18 +257,14 @@ const server = createServer(async (req, res) => {
       if (handled) return;
     } catch (err) {
       if (!res.headersSent) {
-        res.statusCode = 500;
-        res.setHeader("Content-Type", "application/json");
-        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+        sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 500);
       }
       return;
     }
   }
 
   if (!res.headersSent) {
-    res.statusCode = 404;
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ error: "Not found", path: url.pathname }));
+    sendJson(res, { error: "Not found", path: url.pathname }, 404);
   }
 });
 

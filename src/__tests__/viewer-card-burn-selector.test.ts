@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createCardBurnSelector } from "../viewer-parts/card-burn-selector.js";
 
 class FakeClassList {

@@ -243,7 +243,6 @@ describe("PWA surface", () => {
     expect(response.text).toContain('"/api/apps/ruby-high/assets/logo.png"');
     expect(response.text).toContain("url.pathname === VIEWER_PATH");
     expect(response.text).toContain('url.pathname.startsWith(APP_BASE + "session/")');
-    expect(response.text).toContain('url.pathname === ASSET_PREFIX + "privy-client.js"');
     expect(response.text).toContain('url.pathname === ASSET_PREFIX + "privy-client.global.js"');
     expect(response.text).toContain('response.headers.get("cache-control")');
     expect(response.text).toContain("staleWhileRevalidate(request)");
@@ -252,7 +251,6 @@ describe("PWA surface", () => {
   it("serves versioned Privy bundles with immutable browser caching", async () => {
     expect(assetCacheControlFor("privy-client.global.js")).toBe("no-cache");
     expect(assetCacheControlFor("privy-client.global.js", true)).toBe("public, max-age=31536000, immutable");
-    expect(assetCacheControlFor("privy-client.js", true)).toBe("public, max-age=31536000, immutable");
 
     await withPrivyBundleFixture(async () => {
       const unversioned = makeResponse();

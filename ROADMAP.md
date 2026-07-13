@@ -23,7 +23,7 @@ the implementation contract.
 | [#143 MMO: durable room and world state model](https://github.com/cenetex/app-ruby-high/issues/143) | Open, first durable slices in #138 | **P0 MMO data model.** Live-room goals, sanitized room/term snapshots, completed room outcomes, teacher agenda records, public event replay, summary counters, moderation suppression state, and rollback docs are durable; next is richer outcome summaries, agenda execution rules, and restart/replay acceptance tests that prove the durable model is not just an admin counter. |
 | [#142 MMO: public presence and moderation controls](https://github.com/cenetex/app-ruby-high/issues/142) | Open, operator workflow in #138 | **P0 safety.** Public presence toggle, public-name review policy, per-player hide/report, admin moderation snapshot, repeated-report counts, moderator notes, report dismissal, global suppression, action throttles, and account copy that names public/private profile fields exist; next is tying moderation surfaces into richer live-room rewards and term progression. |
 | [#141 MMO: teacher curriculum research loop](https://github.com/cenetex/app-ruby-high/issues/141) | Open, deeper loop in #138 | **P1 content engine.** Teacher corpora metadata, reading lists, primary-source packets, misconception checks, grade briefs, replenishment proposals, coverage-exhaustion auto-enqueue, validation, review readiness, explicit approval gates, runtime promotion, weak-subject and repetition signals exist; next is broader per-teacher corpus depth. |
-| [#140 MMO: typed public-world viewer module](https://github.com/cenetex/app-ruby-high/issues/140) | Open, several seams in #138 | **P1 maintainability.** World feed, world panel, lifecycle wiring, public-world action handling, composed world-controller wiring, race/question/leaderboard/progress models, race-strip/Honor Roll/arc-indicator/guest-spotlight/classmate-row/class-report/yearbook-archive/yearbook-share/shared CCG card/career-card/career-token DOM rendering, account pane/AI/wallet/trust/cards/card-tile/card-reader/comics/public-world visibility view models, account trust/history/character/comic/Hall Pass card-panel/card-reader/pack-mint progress/welcome popup/card-burn selector/billing product/comic-reader modal DOM rendering, account-history row models, and account character-slot panel/card models are typed; next is extracting the next public-world/account surface still owned by `viewer-parts/client.ts`. |
+| [#140 MMO: typed public-world viewer module](https://github.com/cenetex/app-ruby-high/issues/140) | Open, active surfaces in #138 | **P1 maintainability.** Race/question/leaderboard/progress models, race-strip/Honor Roll/arc-indicator/guest-spotlight/classmate-row/class-report/yearbook/archive/shared CCG card/career-card/career-token rendering, and account pane/AI/wallet/trust/cards/comics/public-world visibility models are typed. The unused legacy School World panel and its staged controller modules were removed; future extraction should start from an active product surface rather than restoring that retired UI. |
 | [#139 MMO: live class rooms MVP](https://github.com/cenetex/app-ruby-high/issues/139) | Open, answer-flow goal path in #138 | **P1 gameplay.** Two guest sessions can contribute to a room goal through normal answer commands and observe sanitized public progress; quick completions now earn a public Class Chain bonus label on durable room outcomes, replayed world-feed events, and active room chips. Next is richer room rules and player-facing cooperative reward UI. |
 | [#122 Return 400 for unknown viewer command types](https://github.com/cenetex/app-ruby-high/issues/122) | Fixed in #138; close after merge | **P0 pre-MMO hardening.** Unknown mutation commands fail closed with a 400 before mutating state. |
 | [#121 Harden creator materials URL ingestion](https://github.com/cenetex/app-ruby-high/issues/121) | Fixed in #138; close after merge | **P1 security.** Creator/import URL ingestion is constrained by host allowlisting, raw GitHub normalization, private-network rejection, redirect checks, final normalized source tracking, and size limits. |
@@ -94,12 +94,11 @@ Goal: make the current app safe to extend into shared-world play.
 
 - Keep #119 and #121 fixes under regression coverage as public surfaces grow:
   viewer token storage/CSP and creator URL imports are now guarded in #138.
-- Continue #117 by extracting the public world/feed client behind typed
-  interfaces. Cursor math, event pruning, event labels, room titles, summary
-  formatting, SSE sequencing/backoff/replay, snapshots, event merging,
-  world-panel render models, race-strip models/rendering, question prompts,
-  Honor Roll rows, arc indicators/rendering, progress labels, public-world lifecycle wiring,
-  account public-world visibility models, account
+- Continue #117 by extracting active viewer surfaces behind typed interfaces.
+  The retired School World panel and its unused feed/controller modules have
+  been removed; durable world streaming remains server-side and browser-tested.
+  Race-strip models/rendering, question prompts, Honor Roll rows, arc
+  indicators/rendering, progress labels, account public-world visibility models, account
   trust/history/character/comic/Hall Pass card-panel DOM rendering, Honor Roll
   DOM rendering, and
   public-world hide/report actions now live in typed
@@ -313,10 +312,9 @@ outcomes without requiring crypto participation.
    include explicit grade-scoped cohort-term entities with their own sparks,
    active room rule, curriculum-loop counts, and recent loop history; admin
    world health now exposes derived durable/recent cohort-term counts from
-   those embedded entities. The typed world-panel view now also renders
-   grade-scoped curriculum-loop pressure on matching room chips, so rooms show
-   both term-rule and teacher-research pressure without adding unchecked client
-   branching. Next, decide whether cohort-term entities need their own
+   those embedded entities. The durable summaries include grade-scoped
+   curriculum-loop pressure for future active room surfaces without coupling
+   that data to the retired School World panel. Next, decide whether cohort-term entities need their own
    persistence namespace or can remain embedded in the term record until the
    next MMO loop proves it. Quick live-room completions now also record a
    durable Class Chain bonus label on the room outcome, replay it through the
