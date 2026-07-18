@@ -14,6 +14,7 @@ class FakeElement {
   className = "";
   textContent = "";
   title = "";
+  type = "";
   alt = "";
   src = "";
   dataset: Record<string, string> = {};
@@ -109,18 +110,28 @@ describe("room channel rows controller", () => {
     harness.controller.appendRows(harness.parent as unknown as HTMLElement, rows, [{ id: "ruby", displayName: "Ruby", accent: "#c00" }]);
 
     expect(harness.parent.children).toHaveLength(1);
-    const row = harness.parent.children[0]!;
-    expect(row.className).toBe("channel-row room-row is-active");
-    expect(row.dataset.faculty).toBe("ruby");
-    expect(textTree(row)).toEqual(["#", "homeroom", "N", "L"]);
+    const group = harness.parent.children[0]!;
+    expect(group.className).toBe("channel-row room-row-group is-active");
+    expect(group.dataset.faculty).toBe("ruby");
+    expect(textTree(group)).toEqual(["#", "homeroom", "N", "L"]);
 
-    const thumb = row.children[0]!;
+    const profileButton = group.children[0]!;
+    expect(profileButton.tagName).toBe("button");
+    expect(profileButton.type).toBe("button");
+    expect(profileButton.className).toBe("teacher-profile-button");
+    expect(profileButton.attributes["aria-label"]).toBe("Open Ruby's card");
+    const thumb = profileButton.children[0]!;
     expect(thumb.className).toBe("teacher-thumb");
-    expect(thumb.title).toBe("Open Ruby's card");
+    expect(thumb.attributes["aria-hidden"]).toBe("true");
     expect(thumb.children[0]?.tagName).toBe("img");
     expect(thumb.children[0]?.src).toBe("/ruby.png");
 
-    const meter = row.children[2]?.children[1];
+    const roomButton = group.children[1]!;
+    expect(roomButton.tagName).toBe("button");
+    expect(roomButton.type).toBe("button");
+    expect(roomButton.className).toBe("room-row-button");
+    expect(roomButton.attributes["aria-label"]).toBe("Open homeroom classroom");
+    const meter = roomButton.children[1]?.children[1];
     expect(meter?.className).toBe("student-year-meter room-completion-meter");
     expect(meter?.attributes["aria-label"]).toBe("Ruby daily classes 2 of 3");
     expect(meter?.children.map((child) => child.className)).toEqual([
@@ -129,7 +140,7 @@ describe("room channel rows controller", () => {
       "student-year-segment",
     ]);
 
-    const stack = row.children[3]!;
+    const stack = group.children[2]!;
     expect(stack.className).toBe("room-student-stack");
     expect(stack.attributes["aria-label"]).toBe("Students here: Noor, Lyra");
     expect(stack.children.map((child) => child.dataset.studentId)).toEqual(["noor", "lyra"]);
@@ -147,15 +158,14 @@ describe("room channel rows controller", () => {
       students: [],
     }], [{ id: "sally-science", displayName: "Sally Science", accent: "#0af" }]);
 
-    const row = harness.parent.children[0]!;
-    const thumb = row.children[0]!;
+    const group = harness.parent.children[0]!;
+    const profileButton = group.children[0]!;
+    const roomButton = group.children[1]!;
 
-    row.click();
+    roomButton.click();
     expect(harness.setFaculty).toHaveBeenCalledWith("sally-science");
 
-    const stopPropagation = vi.fn();
-    (thumb.listeners.click || [])[0]?.({ stopPropagation } as unknown as Event);
-    expect(stopPropagation).toHaveBeenCalled();
+    profileButton.click();
     expect(harness.openTeacherProfile).toHaveBeenCalledWith("sally-science");
   });
 
@@ -179,7 +189,7 @@ describe("room channel rows controller", () => {
       ],
     }], [{ id: "ruby", displayName: "Ruby", accent: "#c00" }]);
 
-    const stack = harness.parent.children[0]!.children[3]!;
+    const stack = harness.parent.children[0]!.children[2]!;
     expect(stack.attributes["aria-label"]).toBe("Students here: Lyra, Sloan");
     expect(stack.children.map((child) => child.dataset.studentId)).toEqual(["lyra", "world:session:abc123abc123abcd"]);
     expect(stack.children[1]!.dataset.portraitUrl).toBe("/api/apps/ruby-high/assets/portrait/sloan.png");

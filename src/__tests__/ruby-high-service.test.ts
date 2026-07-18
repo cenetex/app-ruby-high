@@ -5028,7 +5028,7 @@ describe("RubyHighService Phase 1", () => {
     expect(facultyB.bank("ruby")!.questions.some((q) => q.id === state.current?.id)).toBe(true);
   });
 
-  it("starts Ruby homeroom with direct class cards", async () => {
+  it("closes a core daily class with a graded take after two evidence cards", async () => {
     const { ruby } = await makeServices();
     const sid = "test:ruby-social-deck";
     ruby.selectGrade(sid, "10");
@@ -5044,10 +5044,13 @@ describe("RubyHighService Phase 1", () => {
     };
 
     const roles: string[] = [];
+    let takeSession: QuizState["activeRound"] = null;
     for (let i = 0; i < 10; i++) {
       const posed = ruby.pickAndPose(sid, { faculty: "ruby" });
       roles.push(posed.activeRound?.cardRole ?? "missing");
       if (posed.activeRound?.type === "opinion") {
+        takeSession = structuredClone(posed.activeRound);
+        expect(posed.current?.opinionPurpose).toBe("daily-take");
         ruby.recordOpinion(sid, "player", "I trust specific evidence and check claims that skip the source.");
         ruby.recordGrades(sid, [{ responder: "player", score: 8, comment: "Specific and grounded." }], "player");
       } else {
@@ -5056,14 +5059,65 @@ describe("RubyHighService Phase 1", () => {
       if (i < 9) ruby.clearBoard(sid);
     }
 
-    expect(roles).toEqual(["class", "class", "class", "practice", "practice", "practice", "practice", "practice", "practice", "practice"]);
+    expect(roles).toEqual(["class", "class", "social", "practice", "practice", "practice", "practice", "practice", "practice", "practice"]);
+    expect(takeSession).toMatchObject({
+      type: "opinion",
+      cardRole: "social",
+      classSession: { mode: "class", index: 3, total: 3 },
+    });
     const record = ruby.getOrCreate(sid).character!.dailyClasses![`10:ruby:${dailyKey()}`]!;
     expect(record).toMatchObject({
       status: "complete",
       questionCount: 3,
     });
     expect(record.practiceCount ?? 0).toBe(0);
-    expect(record.socialCount ?? 0).toBe(0);
+    expect(record.socialCount ?? 0).toBe(1);
+    expect(ruby.getOrCreate(sid).character!.essayCompleted).not.toBe(true);
+    expect(ruby.analyticsSnapshot().events.classRitual).toMatchObject({
+      dailyClassStarted: 1,
+      evidenceCardCompleted: 2,
+      takeCardSubmitted: 1,
+      classResultCompleted: 1,
+    });
+  });
+
+  it.each([
+    ["sally-science", /evidence|prediction|variable/i],
+    ["professor-edward", /interpretation|perspective|tension/i],
+  ])("uses a subject-specific daily take for %s", async (facultyId, promptPattern) => {
+    const { ruby } = await makeServices();
+    const sid = `test:core-take:${facultyId}`;
+    ruby.selectGrade(sid, "11");
+    const state = ruby.getOrCreate(sid);
+    state.character = {
+      name: "Test",
+      playbookId: "heart",
+      stats: { head: 99, heart: 99, hustle: 99, honor: 99 },
+      arcAnswer: "—",
+      personality: "—",
+      yearbook: [],
+      createdAt: Date.now(),
+    };
+
+    for (let i = 0; i < 2; i++) {
+      const posed = ruby.pickAndPose(sid, { faculty: facultyId });
+      expect(posed.activeRound?.cardRole).toBe("class");
+      ruby.submitAnswer(sid, posed.current!.correct!);
+      ruby.clearBoard(sid);
+    }
+
+    const take = ruby.pickAndPose(sid, { faculty: facultyId });
+    expect(take.current).toMatchObject({
+      type: "opinion",
+      opinionPurpose: "daily-take",
+      faculty: facultyId,
+    });
+    expect(take.current?.subject).toBeTruthy();
+    expect(take.current?.prompt).toMatch(promptPattern);
+    expect(take.activeRound).toMatchObject({
+      cardRole: "social",
+      classSession: { mode: "class", index: 3, total: 3 },
+    });
   });
 
   it("persists an essay report when an opinion round is graded", async () => {
@@ -5107,6 +5161,29 @@ describe("RubyHighService Phase 1", () => {
         grade: "9",
       },
     });
+    expect(after.character?.essayCompleted).not.toBe(true);
+  });
+
+  it("only a character's assigned grade essay satisfies the essay gate", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:grade-essay-gate";
+    const state = attachTestCharacter(ruby, sid);
+    state.character!.essayPrompt = "What did you learn from a mistake?";
+    state.character!.essayCompleted = false;
+
+    ruby.poseOpinion(sid, {
+      faculty: "ruby",
+      questionId: "grade-essay-q1",
+      prompt: state.character!.essayPrompt,
+      rubric: "Names a concrete mistake and a specific lesson.",
+    });
+    expect(ruby.getOrCreate(sid).current?.opinionPurpose).toBe("grade-essay");
+    ruby.recordOpinion(sid, "player", "I trusted an unsupported claim, then learned to check the source first.");
+    const after = ruby.recordGrades(sid, [
+      { responder: "player", score: 8, comment: "Concrete and specific." },
+    ], "player");
+
+    expect(after.character?.essayCompleted).toBe(true);
   });
 
   it("forceAdvanceRound resolves an idle-triggered open round as a forfeit", async () => {

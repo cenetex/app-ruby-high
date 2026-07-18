@@ -519,13 +519,13 @@ already flags the in-process counters as non-durable.
 - A shareable yearbook page is Ruby High's viral loop — "here's what
   Professor Edward said about my essay."
 
-### 4.2 Playbook moves wired in
-- Overachiever's "retake one missed question per year" — makes the
-  playbook feel real instead of just flavor text. Deepens investment
-  and retention.
+### 4.2 Mechanical mentor inheritance
+- All six base playbook moves are wired. The remaining character-mechanics gap
+  is making a graduated mentor's inherited move active without colliding with
+  the new character's own per-round or per-year limits.
 
 ### 4.3 First-party content packs
-- The built-in pack ships with 15 questions per teacher.
+- The built-in pack ships with 200 questions per teacher (600 total).
 - Ingest 1-2 more packs (SAT-level science, literature, philosophy)
   to deepen the content moat.
 

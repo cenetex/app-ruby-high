@@ -50,7 +50,7 @@ Tomorrow is Wednesday. Wednesday's class belongs to Ruby. The bell rings at the 
 
 ### The Daily Class — cadence
 
-Every day at 17:00 UTC the school refreshes a once-per-day graded class for the scheduled faculty. A daily class is three questions. Passing the class at C or better can tick the school-day streak; clearing enough streak days and enough class credits advances the year. Graduate after Senior.
+Every day at 17:00 UTC the school refreshes a once-per-day graded class for the scheduled faculty. A core-faculty daily class is two evidence questions followed by one short teacher-graded take. Passing the three-card class at C or better can tick the school-day streak; clearing enough streak days and enough room credits advances the year. Graduate after Senior.
 
 The daily cadence is not a side mode. It is the arc's clock. Scarcity lives in the once-per-day graded class, while practice questions stay playable whenever the student shows up.
 
@@ -144,7 +144,7 @@ Each playbook is a starting template — stat array, hook question, starting mov
 | **Class Clown** | HEART +2, HUSTLE +1, HONOR 0, HEAD −1 | *What can't you say without a joke?* | Crack the room — roll HEART instead of HEAD on a miss |
 | **Lifer** | HEAD +1, HEART +1, HUSTLE +1, HONOR −1 | *What's the best gossip you've picked up about this place?* | Old gossip — start ahead with each faculty member |
 
-Stats, hook, and accent color are wired and active. The playbook moves render on the character card and pass into the teacher's context as flavor; **mechanical wiring of the moves is in Part 3 (Gaps)**.
+Stats, hook, accent color, and all six starting moves are wired into round resolution. Mentor inheritance is still lore-only: the inherited move is displayed but is not mechanically replayed on the next character.
 
 <!-- promo-asset: playbook-cards — six trading-card-style sticker portraits, one per playbook, with stat array + hook + move on each -->
 
@@ -185,18 +185,18 @@ Daily class grades are tracked separately from card memory: each completed class
 
 To advance out of a year, two gates must both hold:
 
-| Year | Streak in a row | Daily classes per room |
-|---|:---:|:---:|
-| Freshman | 1 | 3 C-or-better classes in a row |
-| Sophomore | 2 | 3 C-or-better classes in a row |
-| Junior | 3 | 3 C-or-better classes in a row |
-| Senior | 4 → graduate | 3 C-or-better classes in a row |
+| Year | Required rooms | Consecutive C-or-better classes per room | School-day streak |
+|---|:---:|:---:|:---:|
+| Freshman | 1 | 1 | 1 |
+| Sophomore | 2 | 1 | 1 |
+| Junior | 3 | 2 | 2 |
+| Senior | 3 in the base school; up to 4 with an eligible elective | 3 | 3 → graduate |
 
-Per-room letter grade is only awarded after the room has a three-class C-or-better streak. Before that point, the UI shows course progress such as 0/3 or 2/3 instead of a provisional F. All three teaching rooms — Homeroom (Ruby), Science (Sally), Library (Edward) — must be cleared for the current year. A streak alone is not enough; ducking a room means you do not advance, no matter how many Mondays you've strung together.
+Per-room letter grade is awarded after that year's required consecutive-class run. Before that point, the UI shows course progress instead of a provisional F. The required-room count expands by year: Ruby first, then Sally, then Edward, with an eligible elective able to create a fourth Senior room. A school-day streak alone is not enough; required rooms must also clear.
 
 ### 1.6.7 The Daily Class
 
-Every day at 17:00 UTC the daily-class window opens for the day's faculty. The graded class is three questions. Once that class is complete, regular practice remains open for the rest of the day.
+Every day at 17:00 UTC the daily-class window opens for the day's faculty. For Ruby, Sally, and Edward, the graded class is two evidence cards and a third-card take graded in the teacher's voice. The take updates the class result and relationships but does not complete the separate grade essay. Once class is complete, regular practice remains open for the rest of the day.
 
 **Faculty rotation.** Mon → Sally Science · Tue → Professor Edward · Wed → Ruby · Thu → Sally Science · Fri → Professor Edward · Sat → Ruby · Sun → Sally Science. The class rotation runs every day; the rotation continues across the weekend.
 
@@ -241,7 +241,7 @@ Main story pages unlock from class performance: Ruby, Sally Science, and Profess
 
 ## 1.7 Architecture
 
-> *One container, one DynamoDB table, four services + a content-pack registry, no queue.*
+> *One Fly container, one SQLite database on a volume, four services + a content-pack registry, no queue.*
 
 ### Services and supporting modules
 
@@ -252,8 +252,8 @@ Main story pages unlock from class performance: Ruby, Sally Science, and Profess
 | `ChatService` | `src/services/chat-service.ts` | SSE per-teacher on OpenRouter or the configured local OpenAI-compatible text endpoint. Owns chat history and dispatches supported tools into the game state. |
 | `AuthService` | `src/services/auth-service.ts` | OpenRouter PKCE OAuth. Issues opaque cookie sessions; the API key never lives on the server — it's stored in the player's browser localStorage and sent on each request as a header. Maintains a per-user record so a player's character persists across sessions. |
 | Content registry | `src/content/registry.ts` (+ `src/content/packs/`) | Active content pack resolver, global and per-session. Serves the built-in `ruby-high-original` plus session-scoped runtime packs. |
-| `StateStore` | `src/services/state-store.ts` + `dynamo-state-store.ts` | Two backends: atomic JSON-file for local dev, DynamoDB on-demand for production. Stores both per-session quiz state and per-user identity. |
-| Event log | `src/services/logger.ts` | Structured JSON events emitted to stdout. Today's emissions: `bonus.posed`, `character.created`, `player.grade-advanced`, `player.graduation-ready`, `player.graduated`, `pack.activated`, `pack.session-switched`, `question.promoted-to-bank`, `chat.bank-exhausted`, `diploma.first-attempt-failed`, `portrait.first-attempt-failed`. |
+| `StateStore` | `src/services/state-store.ts` + `sqlite-state-store.ts` | Atomic JSON-file storage for local development and SQLite-on-Fly-Volume for production. The legacy DynamoDB backend is archived. Stores sessions, identity, packs, school events, and durable metric events. |
+| Event and metric logs | `src/services/logger.ts` + state store | Structured operational events go to stdout. Product metrics, including the seven-step class ritual, persist durably and roll up in the token-gated admin snapshot. |
 | Rate limiter | `src/services/rate-limit.ts` | Token-bucket utility. Wired but optional per route — endpoint coverage is in Gaps (3.2). |
 
 ### Key design choices
@@ -262,7 +262,7 @@ Main story pages unlock from class performance: Ruby, Sally Science, and Profess
 
 **The state machine is the spine.** Five phases (`intro`, `in-room`, `asking`, `revealed`, `lounge`) and seven transition actions (`select-grade`, `enter-room`, `enter-lounge`, `pose-question`, `resolve-round`, `clear-board`, `reset`). Every mutator routes through one transition function. A `phaseToken` bumps on every transition so the viewer can dedupe one-shot effects without races.
 
-**Persistence is per-session, with a per-user index.** One row per session — keyed by either `rh:user:<openrouter-token>` for signed-in users or `rh:anonymous` for the preview bucket. A separate `AuthUserRecord` keys sessions to userId so a returning player rejoins their own character. DynamoDB TTL auto-expires idle sessions. The JSON-file backend is a single atomic-write file at `~/.ruby-high/state.json`.
+**Persistence is per-session, with a per-user index.** Opaque cookie sessions map returning identities back to their character. Production persists game, auth, pack, school-event, and metric records in SQLite on the Fly volume; local development defaults to a single atomic-write JSON file at `~/.ruby-high/state.json`.
 
 **Cheat-proofing is structural.** The student-side LLM never sees the answer key. The server rolls the dice, picks the question, and stores the correct answer. NPC accuracy comes from `2d6 + their HEAD stat` rolled before the question is revealed to them. Prompt-injection cannot win because the prompt does not have the information.
 
@@ -272,9 +272,9 @@ Main story pages unlock from class performance: Ruby, Sally Science, and Profess
 
 > *The product is structurally $0 / user / month to operate. This is rare and deliberate.*
 
-LLM costs are paid by the user via their own OpenRouter API key. Per-user, the inference is free to us. The PKCE flow is the entire payment mechanism — no key ever touches our servers.
+Text play can use local inference, a browser-owned OpenRouter key, or sponsored server-hosted inference when configured. Browser keys never persist on the server. Paid Hall Passes fund hosted images, creator slots, extra student slots, and selected card features rather than ordinary classroom answers.
 
-State persistence runs on DynamoDB on-demand. ~5–20 KB per session. Portraits and diplomas live in S3. A single Fly machine handles hundreds of concurrent users before any rearchitecture.
+State persistence runs in SQLite on a Fly volume. Portraits and diplomas live in S3-compatible object storage. The current single-machine topology is intentionally simple; public-world durability and live-stream limits are observable through admin metrics and deploy smoke tests.
 
 This unlocks two product moves:
 
@@ -287,11 +287,11 @@ Anything that breaks the user-paid-inference model needs an extremely good reaso
 
 # Part 2 — Future State
 
-> *Where Ruby High goes if every aspirational item lands. Nothing in Part 2 is built.*
+> *Where Ruby High goes next. Some earlier aspirations have shipped; the remaining sections name the extension, not the old baseline.*
 
-## 2.1 Playbook moves wired into round resolution
+## 2.1 Mentor inheritance becomes mechanical
 
-All six playbook moves render on the character card today as flavor passed to the teacher's context. The future product wires them into round resolution: Overachiever's "retake one missed question per year," Slacker's "swap HEAD → HUSTLE on a fail," Heart's "give a classmate advantage," and so on. This is what turns the four stats into six distinct characters to play.
+All six base playbook moves now affect round or progression behavior. The next extension is inherited mentor moves: a new character should be able to use the graduated mentor's stamped move without colliding with their own once-per-round or once-per-year limits.
 
 ## 2.2 Faculty expansion — a five-day week
 
@@ -349,18 +349,18 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 
 | Gap | What it is | Size |
 |---|---|---|
-| **Curated content beyond ruby-high-original** | The built-in pack ships with 15 questions per teacher. No curated first-party SAT/MCAT/AP/community packs have been ingested and reviewed yet. | Medium (per pack: 1 day to ingest + curate). |
+| **Curated content beyond ruby-high-original** | The built-in pack ships with 200 questions per teacher (600 total). No curated first-party SAT/MCAT/AP/community packs have been ingested and reviewed yet. | Medium (per pack: 1 day to ingest + curate). |
 | **Legacy rarity/XP compatibility removal** | `Rarity`, `XP_FOR_RARITY`, `xpForRarity`, `rollRarity`, and legacy round fields can be deleted once older persisted states no longer need to hydrate through them. | Trivial once state compatibility is no longer required. |
 
 ### Partial — shipped but incomplete
 
 | Gap | What's there | What's missing |
 |---|---|---|
-| **Retention dashboard** | `/api/apps/ruby-high/admin/metrics` is token-gated and returns auth, Ruby High, and log-counter snapshots. `logMetricsSnapshot()` gives an in-process event/error counter. | A durable queryable sink, saved queries, and trend storage. The JSON route is enough for tuning today but not enough for historical analysis. |
+| **Retention dashboard** | `/api/apps/ruby-high/admin/metrics` is token-gated and returns durable SQLite-backed auth, retention, commerce, balance, and class-ritual snapshots. | Saved trend views and cohort comparisons. The durable event rows are enough to query now; the operator UI still needs historical visualization. |
 | **Yearbook share cards** | Public static HTML, JSON, SVG, OG tags, session telemetry share URLs, and viewer Open/Copy controls are wired. | Privacy policy/default and a real PNG renderer for platforms that do not honor SVG OG images. |
 | **Faculty-voice evaluation harness** | `npm run eval:voice` runs a lightweight reference-set smoke harness and optionally calls an OpenRouter judge when a key is present. | A larger hand-curated held-out set, thresholds that fail CI, and generated sample capture from real teacher/course flows. |
 | **Mentor mode mechanical effect** | `inheritedFrom` field captured on the new character; rendered on card. | No code reads `inheritedFrom` during round resolution. The inherited move is lore, not mechanics. |
-| **Playbook moves** | All six moves named, described, rendered on character card, and passed to teacher context as flavor. | None of the six change round resolution. |
+| **Playbook moves** | All six starting moves are named, rendered, tested, and change round or progression behavior. | Inherited mentor moves remain cosmetic; only the new character's own starting move is mechanically active. |
 | **Rate-limiter endpoint coverage** | Buckets cover LLM-backed chat, portrait/diploma generation, `/command` mutations, viewer metric events, and remote course-material URL imports. The full per-endpoint policy lives in the JSDoc at the top of `src/services/rate-limit.ts`. | Read-only GETs and a few cheap POSTs (`/control`, `/auth/logout`, `/packs/active`) are intentionally ungated. `GET /auth/callback` triggers an outbound OpenRouter token-exchange and is the next candidate to gate if we ever see hostile callback floods. |
 
 ## 3.3 Open questions
@@ -378,18 +378,18 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 
 **Stabilization rule.** No new teachers, tournaments, multiplayer, public pack marketplace, permanent top-level buttons, or additional playbook-move surface until the daily-class loop, first-session path, yearbook artifact, and basic metrics feel seamless.
 
-### P0 — unblocks tuning (**event names done; dashboard layer next**)
+### P0 — tune the shipped class ritual
 
-1. **Persist the retention dashboard.** All eight canonical events emit and the token-gated `/admin/metrics` JSON route exists. Next: ship logs/metrics to a queryable sink (Fly log drain to ClickHouse, Postgres, or SQLite-on-Litestream is enough), add saved queries for D1 retention, questions/session, and grade-completion rate, then snapshot trends over time.
+1. **Read the class-ritual funnel.** The seven class events now persist and roll up under `events.classRitual`. Next: compare starts → evidence → take → teacher response → room reaction → saved record by new/returning player, then tune the largest observed drop rather than adding another system.
 
 ### P1 — closes the two real shipped-but-unfinished social gaps
 
 2. **Finish yearbook sharing policy.** Decide the privacy default and configure a PNG renderer for platforms that need raster OG images. The backend route, SVG card, and viewer Open/Copy controls already exist.
 3. **Tighten the Report Card.** The card exists; next refinement is per-teacher filtering and deeper comparison copy once enough essay history exists.
 
-### P2 — small mechanical wins
+### P2 — balance and clarity
 
-4. **Wire one mentor move mechanically.** Pick the cheapest end-to-end move — likely Overachiever's "retake one missed question per year" or Slacker's "swap HEAD → HUSTLE on a fail." Concrete, testable, finishes the §1.6.10 partial.
+4. **Tune upper-year pacing.** The deterministic v2 balance model now uses the live room and consecutive-pass gates. Compare its Junior/Senior completion distribution with durable class metrics before changing thresholds or take grading.
 
 ### P3 — content & evaluation (the moat)
 
@@ -397,7 +397,7 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 
 ### Defer
 
-- Remaining playbook moves wired in — handle one (P2 step 4) before the rest.
+- Mechanical mentor inheritance — defer until the base six moves and upper-year pacing have enough observed data.
 - Faculty expansion, multiplayer co-op, Faculty Cup tournament, and public community packs — premature until the stabilization rule above is satisfied.
 - Public yearbook default policy — answer falls out of P1 step 2 now that share-cards exist; design decision then, not now.
 

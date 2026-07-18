@@ -159,6 +159,13 @@ export type StoredMetricEventName =
   | "guest_spotlight_seen"
   | "guest_spotlight_started"
   | "guest_pack_override_set"
+  | "daily_class_started"
+  | "evidence_card_completed"
+  | "take_card_submitted"
+  | "teacher_response_viewed"
+  | "room_reaction_viewed"
+  | "class_result_completed"
+  | "class_record_saved"
   | "commerce"
   | "llm_usage"
   | "error"
@@ -863,6 +870,13 @@ export function isStoredMetricEventName(value: unknown): value is StoredMetricEv
     value === "guest_spotlight_seen" ||
     value === "guest_spotlight_started" ||
     value === "guest_pack_override_set" ||
+    value === "daily_class_started" ||
+    value === "evidence_card_completed" ||
+    value === "take_card_submitted" ||
+    value === "teacher_response_viewed" ||
+    value === "room_reaction_viewed" ||
+    value === "class_result_completed" ||
+    value === "class_record_saved" ||
     value === "commerce" ||
     value === "llm_usage" ||
     value === "error" ||

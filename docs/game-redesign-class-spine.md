@@ -1,7 +1,7 @@
 # Ruby High Redesign: Class Spine
 
-Date: 2026-06-21
-Status: working product redesign brief
+Date: 2026-07-14
+Status: Phase 2 class ritual shipped; archive/public-world phases remain
 
 ## Summary
 
@@ -209,7 +209,7 @@ beside the class-progress chip.
 
 ## Redesigned Core Loop
 
-### Current Feel
+### Previous Feel
 
 The player mostly experiences:
 
@@ -221,17 +221,17 @@ The player mostly experiences:
 
 This is legible, but it is close to commodity quiz play.
 
-### Target Feel
+### Shipped Class Feel
 
 The player should experience:
 
 1. **Bell**: today has a teacher and a room.
-2. **Warm-up**: one short board card establishes the topic.
+2. **Evidence**: two short board cards establish the topic and performance.
 3. **Take**: the teacher asks for a concise answer or opinion.
-4. **Peers**: two classmates answer too.
+4. **Peers**: classmates answer too.
 5. **Teacher Response**: the teacher compares, critiques, and nudges.
 6. **Room Reaction**: grade, relationship, mastery, and room state update.
-7. **School Record**: the class note is saved into report card/yearbook
+7. **School Record**: the class result is saved into report-card/yearbook
    trajectory.
 
 Multiple choice remains useful, but it becomes preparation and evidence. The
@@ -239,9 +239,9 @@ teacher response becomes the payoff.
 
 ## Daily Class V2
 
-Each daily class should become a three-beat session:
+Each core-faculty daily class is a three-card session followed by its result:
 
-1. **Evidence Card**
+1. **Two Evidence Cards**
    - A fast multiple-choice or typed-answer card.
    - Purpose: establish topic, earn evidence, trigger playbook moves.
    - Result should feed the class result context.
@@ -257,8 +257,8 @@ Each daily class should become a three-beat session:
    - Saves as the durable class moment.
 
 This preserves the three-question class footprint while changing the emotional
-center. Instead of three similar quiz cards, the class has a beginning, a
-challenge, and a response.
+center. Instead of three similar quiz cards, the class has evidence, a written
+take, and a teacher response.
 
 Important: this is one class ritual, not three reward moments. Evidence and
 Take are setup. Class Result is the payoff.
@@ -653,13 +653,13 @@ Acceptance:
 - class notes can render as share images
 - no new headline mechanic is introduced
 
-### Phase 2: Daily Class V2
+### Phase 2: Daily Class V2 — shipped 2026-07-14
 
 Change daily class to a three-beat session:
 
-1. evidence
-2. take
-3. class result
+1. two evidence cards
+2. one take card
+3. class result after grading
 
 Acceptance:
 
@@ -667,6 +667,8 @@ Acceptance:
 - classmates answer in character
 - teacher response references the prompt and answer
 - room reaction updates one visible social consequence
+- the take does not satisfy the separate grade-essay graduation gate
+- all seven class-ritual events above persist into the admin metric snapshot
 
 ### Phase 3: Social Consequence Layer
 

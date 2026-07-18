@@ -2102,8 +2102,13 @@ describe("chat event context", () => {
     ruby.selectGrade(sessionId, "10");
     for (let i = 0; i < 3; i += 1) {
       const posed = ruby.pickAndPose(sessionId, { faculty: "sally-science" });
-      const wrong = posed.current!.correct === "A" ? "B" : "A";
-      ruby.submitAnswer(sessionId, wrong as "A" | "B" | "C" | "D");
+      if (posed.current?.type === "opinion") {
+        ruby.recordOpinion(sessionId, "player", "I need stronger evidence before I can defend the claim.");
+        ruby.recordGrades(sessionId, [{ responder: "player", score: 3, comment: "Too general." }], "player");
+      } else {
+        const wrong = posed.current!.correct === "A" ? "B" : "A";
+        ruby.submitAnswer(sessionId, wrong as "A" | "B" | "C" | "D");
+      }
       ruby.clearBoard(sessionId);
     }
 
@@ -2602,8 +2607,13 @@ describe("chat event context", () => {
 
     for (let i = 0; i < 3; i += 1) {
       const posed = ruby.pickAndPose(sessionId, { faculty: "sally-science" });
-      const wrong = posed.current!.correct === "A" ? "B" : "A";
-      ruby.submitAnswer(sessionId, wrong as "A" | "B" | "C" | "D");
+      if (posed.current?.type === "opinion") {
+        ruby.recordOpinion(sessionId, "player", "I need stronger evidence before I can defend the claim.");
+        ruby.recordGrades(sessionId, [{ responder: "player", score: 3, comment: "Too general." }], "player");
+      } else {
+        const wrong = posed.current!.correct === "A" ? "B" : "A";
+        ruby.submitAnswer(sessionId, wrong as "A" | "B" | "C" | "D");
+      }
       ruby.clearBoard(sessionId);
     }
     expect(ruby.courseProgress(sessionId, "sally-science").today.status).toBe("complete");

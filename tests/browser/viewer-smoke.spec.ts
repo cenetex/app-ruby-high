@@ -13,6 +13,7 @@ test("rolls a first student without showing the old Lock it in action", async ({
     await rollAStudent.click();
     await expect(page.locator("#sheet-card").getByText("Character Roll", { exact: true })).toBeVisible({ timeout: 45_000 });
     await expect(page.locator("#sheet-card .creation-reroll").first()).toBeVisible();
+    await expect(page.locator("#sheet-card").getByRole("button", { name: "Reroll name" })).toBeVisible();
     const saveCharacter = page.locator("#sheet-card").getByRole("button", { name: "Save Character" });
     const startFreshmanYear = page.locator("#sheet-card").getByRole("button", { name: "Start Freshman Year" });
     await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
@@ -55,15 +56,39 @@ test("boots as a guest, creates a character, answers a card, and opens account t
   await expect(page.locator("#shell")).not.toHaveAttribute("aria-hidden", "true");
   await expect(page.locator("#next-btn")).toBeFocused();
 
+  await expect(page.locator("#you-profile")).toHaveAttribute("aria-label", /Open .+'s student card/);
+  await expect(page.locator(".teacher-profile-button").first()).toBeVisible();
+  await expect(page.locator(".room-row-button").first()).toBeVisible();
+  await expect(page.locator(".room-row-group button button")).toHaveCount(0);
+
   await expect(page.locator("#privy-action")).toBeVisible();
   await page.locator("#privy-action").click();
-  await expect(page.locator("#privy-overlay")).toHaveClass(/is-open/);
+  const accountOverlay = page.locator("#privy-overlay");
+  const accountDialog = page.getByRole("dialog", { name: "Account" });
+  await expect(accountDialog).toHaveClass(/is-open/);
+  await expect(accountDialog).toHaveAttribute("aria-modal", "true");
+  await expect(accountDialog).toHaveAttribute("aria-hidden", "false");
+  await expect(page.locator("#shell")).toHaveAttribute("inert", "");
+  await expect(page.locator("#shell")).toHaveAttribute("aria-hidden", "true");
+  await expect(page.locator("#account-tab-account")).toBeFocused();
+
+  await page.locator("#privy-close").focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect.poll(() => page.evaluate(() => document.activeElement?.closest("#privy-overlay")?.id || "")).toBe("privy-overlay");
+  await page.keyboard.press("Escape");
+  await expect(accountOverlay).not.toHaveClass(/is-open/);
+  await expect(page.locator("#shell")).not.toHaveAttribute("inert", "");
+  await expect(page.locator("#shell")).not.toHaveAttribute("aria-hidden", "true");
+  await expect(page.locator("#privy-action")).toBeFocused();
+
+  await page.locator("#privy-action").click();
+  await expect(accountOverlay).toHaveClass(/is-open/);
   await page.locator("#account-tab-wallet").click();
   await expect(page.locator("#account-panel-wallet")).toBeVisible();
   await page.locator("#account-tab-library").click();
   await expect(page.locator("#account-panel-library")).toBeVisible();
   await page.locator("#privy-close").click();
-  await expect(page.locator("#privy-overlay")).not.toHaveClass(/is-open/);
+  await expect(accountOverlay).not.toHaveClass(/is-open/);
 
   expect(errors).toEqual([]);
 });

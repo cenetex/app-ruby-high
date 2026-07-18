@@ -3534,7 +3534,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         send("delta", { text: chunk });
         await new Promise((r) => setTimeout(r, 80));
       }
-      // Finalize.
+      // Finalize. A daily take closes the three-card class; the separate
+      // grade essay remains an independent graduation gate.
+      const completedDailyTake = state.current.opinionPurpose === "daily-take"
+        && state.activeRound?.classSession?.mode === "class";
+      const completedQuestionId = state.current.id;
       ruby.recordGrades(sessionId, grades, bestResponder);
       if (offlinePlayerRoll) {
         // recordGrades doesn't know about the offline dice; attach the
@@ -3546,10 +3550,23 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         }
       }
       await ruby.flushSession(sessionId);
+      if (completedDailyTake) {
+        ruby.recordMetricEvent("class_record_saved", {
+          sessionId,
+          source: "gameplay",
+          feature: "daily_class_ritual",
+          step: "class_record",
+          status: "success",
+          metadata: { questionId: completedQuestionId, faculty: facultyId },
+        });
+      }
       send("opinion-graded", {
         grades,
         bestResponder,
         responses,
+        questionId: completedQuestionId,
+        opinionPurpose: state.current.opinionPurpose,
+        faculty: facultyId,
       });
       send("done", { finishReason: "stop" });
       // Log the grading event for the next teacher turn's synopsis. The

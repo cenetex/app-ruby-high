@@ -24,22 +24,6 @@ export function runViewerClient(bootstrap) {
         .catch(() => {});
     });
   }
-  // iOS Safari ignores user-scalable=no in the viewport meta (Apple removed
-  // it for accessibility, and maximum-scale=1 also gets ignored on some
-  // versions). Cancel the gesture* events explicitly to keep pinch-zoom
-  // from happening on the app surface — when the viewport is wider than
-  // the layout expects, zoom-in makes the overflow worse, not better.
-  // Pan and tap still work; only the pinch-zoom gesture is suppressed.
-  document.addEventListener("gesturestart", (e) => { e.preventDefault(); }, { passive: false });
-  document.addEventListener("gesturechange", (e) => { e.preventDefault(); }, { passive: false });
-  document.addEventListener("gestureend", (e) => { e.preventDefault(); }, { passive: false });
-  // Block double-tap zoom on iOS without disabling double-click in JS.
-  document.addEventListener("dblclick", (e) => {
-    const el = e.target;
-    if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT")) return;
-    e.preventDefault();
-  }, { passive: false });
-
   const sessionUrl = apiBase + "/session/" + encodeURIComponent(sessionId);
   const commandUrl = sessionUrl + "/command";
   const metricsEventUrl = apiBase + "/metrics/event";
@@ -461,6 +445,7 @@ export function runViewerClient(bootstrap) {
     homeBtn: $("home-btn"),
     gradeTitle: $("grade-title"),
     channelsList: $("channels-list"),
+    youProfile: $("you-profile"),
     youAvatar: $("you-avatar"),
     youName: $("you-name"),
     youState: $("you-state"),
@@ -580,7 +565,11 @@ export function runViewerClient(bootstrap) {
     if (!overlay) return [];
     return Array.from(overlay.querySelectorAll(
       "button:not(:disabled), [href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex='-1'])",
-    )).filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
+    )).filter((element) => {
+      if (element.hidden || element.getAttribute("aria-hidden") === "true") return false;
+      if (element.closest("[hidden], [aria-hidden='true']")) return false;
+      return element.getClientRects().length > 0;
+    });
   }
 
   function trapModalFocus(event, overlay) {
@@ -620,17 +609,93 @@ export function runViewerClient(bootstrap) {
 
   function restoreModalFocus(previousFocus, fallbackFocus) {
     const focusableSelector = "button:not(:disabled), [href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex='-1'])";
-    const previousUsable = previousFocus
-      && previousFocus.isConnected
-      && typeof previousFocus.matches === "function"
-      && previousFocus.matches(focusableSelector)
-      && !previousFocus.hidden;
-    const fallbackUsable = fallbackFocus
-      && fallbackFocus.isConnected
-      && typeof fallbackFocus.matches === "function"
-      && fallbackFocus.matches(focusableSelector)
-      && !fallbackFocus.hidden;
+    const isUsable = (target) => !!(
+      target
+      && target.isConnected
+      && typeof target.matches === "function"
+      && target.matches(focusableSelector)
+      && !target.hidden
+      && !target.closest("[hidden], [inert], [aria-hidden='true']")
+      && target.getClientRects().length > 0
+    );
+    const previousUsable = isUsable(previousFocus);
+    const fallbackUsable = isUsable(fallbackFocus);
     focusWithoutScroll(previousUsable ? previousFocus : fallbackUsable ? fallbackFocus : null);
+  }
+
+  const viewerModalStates = new WeakMap();
+  const viewerModalStack = [];
+  function openViewerModal(overlay, options) {
+    if (!overlay) return;
+    const opts = options || {};
+    let state = viewerModalStates.get(overlay);
+    if (!state) {
+      state = { open: false, previousFocus: null, fallbackFocus: null, onRequestClose: null, dismissible: true, onKeyDown: null };
+      viewerModalStates.set(overlay, state);
+    }
+    state.fallbackFocus = opts.fallbackFocus || state.fallbackFocus;
+    state.onRequestClose = typeof opts.onRequestClose === "function" ? opts.onRequestClose : state.onRequestClose;
+    state.dismissible = opts.dismissible !== false;
+    if (!state.open) {
+      const previousModal = viewerModalStack[viewerModalStack.length - 1];
+      if (previousModal && previousModal !== overlay) {
+        previousModal.setAttribute("inert", "");
+        previousModal.setAttribute("aria-hidden", "true");
+      }
+      state.previousFocus = document.activeElement && typeof document.activeElement.focus === "function"
+        ? document.activeElement
+        : null;
+      state.open = true;
+      viewerModalStack.push(overlay);
+      lockViewerModalBackground();
+      state.onKeyDown = (event) => {
+        if (event.key === "Escape" && state.dismissible) {
+          event.preventDefault();
+          if (state.onRequestClose) state.onRequestClose();
+          return;
+        }
+        trapModalFocus(event, overlay);
+      };
+      overlay.addEventListener("keydown", state.onKeyDown);
+    }
+    overlay.hidden = false;
+    overlay.classList.add("is-open");
+    if (viewerModalStack[viewerModalStack.length - 1] === overlay) {
+      overlay.removeAttribute("inert");
+      overlay.setAttribute("aria-hidden", "false");
+    }
+    const requestedFocus = typeof opts.initialFocus === "function" ? opts.initialFocus() : opts.initialFocus;
+    setTimeout(() => {
+      if (!state.open || viewerModalStack[viewerModalStack.length - 1] !== overlay) return;
+      const focusTarget = requestedFocus || modalFocusableElements(overlay)[0];
+      focusWithoutScroll(focusTarget);
+    }, 0);
+  }
+
+  function closeViewerModal(overlay, fallbackFocus) {
+    if (!overlay) return;
+    const state = viewerModalStates.get(overlay);
+    const stackIndex = viewerModalStack.indexOf(overlay);
+    const wasTopModal = stackIndex === viewerModalStack.length - 1;
+    if (stackIndex >= 0) viewerModalStack.splice(stackIndex, 1);
+    overlay.classList.remove("is-open");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.removeAttribute("inert");
+    overlay.hidden = true;
+    if (!state || !state.open) return;
+    state.open = false;
+    if (state.onKeyDown) overlay.removeEventListener("keydown", state.onKeyDown);
+    state.onKeyDown = null;
+    unlockViewerModalBackground();
+    if (wasTopModal) {
+      const nextModal = viewerModalStack[viewerModalStack.length - 1];
+      if (nextModal) {
+        nextModal.removeAttribute("inert");
+        nextModal.setAttribute("aria-hidden", "false");
+      }
+      restoreModalFocus(state.previousFocus, fallbackFocus || state.fallbackFocus);
+    }
+    state.previousFocus = null;
   }
 
   let activeConfirmDialog = null;
@@ -648,10 +713,6 @@ export function runViewerClient(bootstrap) {
     const confirmText = options && options.confirmText ? options.confirmText : "Continue";
     const cancelText = options && options.cancelText ? options.cancelText : "Cancel";
     const tone = options && options.tone ? options.tone : "";
-    const previousFocus = document.activeElement && typeof document.activeElement.focus === "function"
-      ? document.activeElement
-      : null;
-
     if (els.appConfirmKicker) els.appConfirmKicker.textContent = kicker;
     if (els.appConfirmTitle) els.appConfirmTitle.textContent = title;
     if (els.appConfirmCopy) els.appConfirmCopy.textContent = copy;
@@ -662,23 +723,15 @@ export function runViewerClient(bootstrap) {
     okBtn.textContent = confirmText;
     cancelBtn.textContent = cancelText;
     overlay.classList.toggle("is-danger", tone === "danger");
-    overlay.hidden = false;
-    overlay.setAttribute("aria-hidden", "false");
-    overlay.classList.add("is-open");
 
     return new Promise((resolve) => {
       function cleanup(result) {
-        overlay.classList.remove("is-open", "is-danger");
-        overlay.setAttribute("aria-hidden", "true");
-        overlay.hidden = true;
+        closeViewerModal(overlay);
+        overlay.classList.remove("is-danger");
         overlay.removeEventListener("click", onOverlayClick);
-        overlay.removeEventListener("keydown", onKeyDown);
         okBtn.removeEventListener("click", onConfirm);
         cancelBtn.removeEventListener("click", onCancel);
         activeConfirmDialog = null;
-        if (previousFocus && previousFocus.isConnected) {
-          try { previousFocus.focus({ preventScroll: true }); } catch (_err) { try { previousFocus.focus(); } catch (_focusErr) {} }
-        }
         resolve(result);
       }
       function onConfirm() { cleanup(true); }
@@ -686,32 +739,15 @@ export function runViewerClient(bootstrap) {
       function onOverlayClick(event) {
         if (event.target === overlay) cleanup(false);
       }
-      function onKeyDown(event) {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          cleanup(false);
-          return;
-        }
-        if (event.key !== "Tab") return;
-        const focusable = Array.from(overlay.querySelectorAll("button:not(:disabled), [href], input, textarea, select, [tabindex]:not([tabindex='-1'])"));
-        if (focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      }
       activeConfirmDialog = { resolve: cleanup };
       overlay.addEventListener("click", onOverlayClick);
-      overlay.addEventListener("keydown", onKeyDown);
       okBtn.addEventListener("click", onConfirm);
       cancelBtn.addEventListener("click", onCancel);
       const focusTarget = options && options.focus === "confirm" ? okBtn : cancelBtn;
-      setTimeout(() => { try { focusTarget.focus({ preventScroll: true }); } catch (_err) { focusTarget.focus(); } }, 0);
+      openViewerModal(overlay, {
+        onRequestClose: onCancel,
+        initialFocus: focusTarget,
+      });
     });
   }
 
@@ -3065,8 +3101,10 @@ export function runViewerClient(bootstrap) {
     billingMode = opts && opts.mode === "card-packs" ? "card-packs" : "hall-passes";
     selectedBillingProductId = null;
     syncBillingWallet(lastTelemetry);
-    els.billingOverlay.classList.add("is-open");
-    els.billingOverlay.setAttribute("aria-hidden", "false");
+    openViewerModal(els.billingOverlay, {
+      onRequestClose: closeBilling,
+      initialFocus: els.billingClose,
+    });
     if (billingProductsCache) renderBillingProducts(billingProductsCache);
     if (billingMode === "hall-passes") void claimWelcomeHallPassesFromBilling();
     void loadBillingProducts();
@@ -3074,8 +3112,7 @@ export function runViewerClient(bootstrap) {
 
   function closeBilling() {
     if (!els.billingOverlay || billingBusy) return;
-    els.billingOverlay.classList.remove("is-open");
-    els.billingOverlay.setAttribute("aria-hidden", "true");
+    closeViewerModal(els.billingOverlay);
   }
 
   async function startCheckout(productId) {
@@ -3722,7 +3759,9 @@ export function runViewerClient(bootstrap) {
       const cls = document.createElement("span");
       cls.className = "pill class-mode";
       cls.textContent = cardRole === "social"
-        ? "REFLECTION"
+        ? ar.classSession.mode === "class"
+          ? "GRADED TAKE " + (ar.classSession.index || "?") + "/" + (ar.classSession.total || 3)
+          : "REFLECTION"
         : ar.classSession.mode === "class"
         ? "GRADED " + (ar.classSession.index || "?") + "/" + (ar.classSession.total || 3)
         : "PRACTICE";
@@ -4026,6 +4065,10 @@ export function runViewerClient(bootstrap) {
     const wrap = revealFeedbackRenderer.buildSocialSummary(events);
     if (!wrap) return;
     els.stream.appendChild(wrap);
+    postViewerMetricEvent("room_reaction_viewed", {
+      questionId: reveal.questionId,
+      faculty: t && t.faculty,
+    });
     scrollIfPinned();
   }
 
@@ -5226,12 +5269,14 @@ export function runViewerClient(bootstrap) {
 
     if (!t.character) {
       if (els.youName) els.youName.textContent = "Create character";
+      if (els.youProfile) els.youProfile.setAttribute("aria-label", "Create student");
       if (els.youAvatar) {
         els.youAvatar.innerHTML = "";
         els.youAvatar.textContent = "+";
       }
     }
     if (t.character) {
+      if (els.youProfile) els.youProfile.setAttribute("aria-label", "Open " + t.character.name + "'s student card");
       const youName = els.youName;
       if (youName && youName.textContent !== t.character.name) youName.textContent = t.character.name;
       const youAvatar = els.youAvatar;
@@ -5527,7 +5572,10 @@ export function runViewerClient(bootstrap) {
     const fac = (t && t.faculty_roster || []).find((f) => f.id === facultyId);
     if (!fac) return;
     sheetOverlayOpen = true;
-    sheetEl.classList.add("is-open");
+    openViewerModal(sheetEl, {
+      onRequestClose: closeSheet,
+      initialFocus: () => sheetCloseBtn,
+    });
     renderCardDeck([
       buildTeacherProfileCard(fac),
       buildTeacherCareerCard(fac),
@@ -5538,7 +5586,10 @@ export function runViewerClient(bootstrap) {
   function openHumanStudentProfile(human) {
     if (!human || typeof human !== "object") return;
     sheetOverlayOpen = true;
-    sheetEl.classList.add("is-open");
+    openViewerModal(sheetEl, {
+      onRequestClose: closeSheet,
+      initialFocus: () => sheetCloseBtn,
+    });
     const name = String(human.name || "Student").trim() || "Student";
     const gradeKey = String(human.grade || "");
     const gradeTitle = GRADE_LABELS[gradeKey] || (gradeKey ? "Grade " + gradeKey : "Student");
@@ -5585,7 +5636,10 @@ export function runViewerClient(bootstrap) {
       return;
     }
     sheetOverlayOpen = true;
-    sheetEl.classList.add("is-open");
+    openViewerModal(sheetEl, {
+      onRequestClose: closeSheet,
+      initialFocus: () => sheetCloseBtn,
+    });
     // Pull this NPC's parallel-arc state from the cohort. That's the
     // rivalry surface — what year they're on, what their daily-class count looks
     // like, whether they've already graduated past you.
@@ -5644,14 +5698,17 @@ export function runViewerClient(bootstrap) {
   function openSheet(options) {
     if (options && options.returnToAccount) returnToAccountAfterSheet = true;
     sheetOverlayOpen = true;
-    sheetEl.classList.add("is-open");
+    openViewerModal(sheetEl, {
+      onRequestClose: closeSheet,
+      initialFocus: () => sheetCloseBtn,
+    });
     renderSheet();
   }
   function closeSheet() {
     const shouldReturnToAccount = returnToAccountAfterSheet;
     returnToAccountAfterSheet = false;
     sheetOverlayOpen = false;
-    sheetEl.classList.remove("is-open");
+    closeViewerModal(sheetEl, els.nextBtn || els.youProfile);
     if (shouldReturnToAccount && authed) {
       setTimeout(() => { void openPrivyAccount(); }, 0);
     }
@@ -7340,7 +7397,7 @@ export function runViewerClient(bootstrap) {
       packStatusEl.classList.remove("is-invalid");
       return;
     }
-    packEl.classList.remove("is-open");
+    closeViewerModal(packEl);
     packStatusEl.textContent = "";
     packStatusEl.classList.remove("is-invalid");
     resetPackImportProgress();
@@ -7364,7 +7421,10 @@ export function runViewerClient(bootstrap) {
       courseGenerationStatusEl.classList.remove("is-invalid");
     }
     resetCourseGenerationProgress();
-    packEditEl.classList.add("is-open");
+    openViewerModal(packEditEl, {
+      onRequestClose: closePackEditor,
+      initialFocus: packEditCloseBtn,
+    });
     renderPackEditor();
   }
   function closePackEditor() {
@@ -7375,7 +7435,7 @@ export function runViewerClient(bootstrap) {
     const shouldRefreshLibrary = currentDraft && !isLocalDraftPack(currentDraft);
     clearTimeout(packAutosaveTimer);
     clearTimeout(teacherAutosaveTimer);
-    packEditEl.classList.remove("is-open");
+    closeViewerModal(packEditEl);
     currentDraft = null;
     selectedPackTeacherId = null;
     packTeacherCreateMode = false;
@@ -9483,7 +9543,7 @@ export function runViewerClient(bootstrap) {
       if (fromBilling) reportStatus("Account connected. Continue with card pack checkout.", false);
       return snapshot;
     } catch (err) {
-      if (!fromBilling && els.privyOverlay) els.privyOverlay.classList.add("is-open");
+      if (!fromBilling) showPrivyAccountModal();
       reportStatus(friendlyPrivyAccountError(err, "Privy sign-in failed"), true);
       return null;
     } finally {
@@ -9516,12 +9576,18 @@ export function runViewerClient(bootstrap) {
       setPrivyBusy(false);
     }
   }
+  function showPrivyAccountModal() {
+    openViewerModal(els.privyOverlay, {
+      onRequestClose: closePrivyAccount,
+      initialFocus: () => els.accountTabs.find((tab) => tab.classList.contains("is-active")) || els.privyClose,
+      fallbackFocus: els.privyAction,
+    });
+  }
   async function openPrivyAccount() {
     setPrivyStatus("Checking account...", false);
     try {
       await initializePrivyFromStoredSession();
-      if (els.privyOverlay) els.privyOverlay.classList.add("is-open");
-      els.privyOverlay?.setAttribute("aria-hidden", "false");
+      showPrivyAccountModal();
       setPrivyStatus(privyState.authenticated
         ? knownSolanaOwnerWalletAddress()
           ? "Account connected."
@@ -9531,15 +9597,13 @@ export function runViewerClient(bootstrap) {
       if (els.accountWorkspace) els.accountWorkspace.scrollTop = 0;
       void syncWalletPackNftsFromAccount({ force: true });
     } catch (err) {
-      if (els.privyOverlay) els.privyOverlay.classList.add("is-open");
-      els.privyOverlay?.setAttribute("aria-hidden", "false");
+      showPrivyAccountModal();
       setPrivyStatus(friendlyPrivyAccountError(err, "Privy error"), true);
     }
   }
   function closePrivyAccount() {
     if (!els.privyOverlay) return;
-    els.privyOverlay.classList.remove("is-open");
-    els.privyOverlay.setAttribute("aria-hidden", "true");
+    closeViewerModal(els.privyOverlay, els.privyAction);
     setPrivyStatus("", false);
   }
   function setPrivyBusy(busy) {
@@ -9642,13 +9706,14 @@ export function runViewerClient(bootstrap) {
     // Browser-owned AI is optional. The overlay is now only a fallback if the app
     // cannot establish even a guest Ruby High session.
     if (authed === false) {
-      signinEl.classList.add("is-open");
-      signinEl.setAttribute("aria-hidden", "false");
+      openViewerModal(signinEl, {
+        dismissible: false,
+        initialFocus: els.signinGuest,
+      });
       setSigninStatus("Local session unavailable. Retry, or use an AI key.", true);
       if (sheetOverlayOpen) closeSheet();
     } else {
-      signinEl.classList.remove("is-open");
-      signinEl.setAttribute("aria-hidden", "true");
+      closeViewerModal(signinEl);
       setSigninStatus("", false);
     }
     if (teacherChatEnabled() && lastTelemetry) loadHistory(lastTelemetry.faculty);
@@ -9999,6 +10064,12 @@ export function runViewerClient(bootstrap) {
           studentStreamMsgEl = null;
           streamMsgEl = null;
         } else if (event === "waiting" || event === "opinion-graded") {
+          if (event === "opinion-graded" && parsed && parsed.opinionPurpose === "daily-take") {
+            postViewerMetricEvent("teacher_response_viewed", {
+              questionId: parsed.questionId,
+              faculty: parsed.faculty,
+            });
+          }
           refreshSessionAfterStreamEvent();
           streamMsgEl = null;
         } else if (event === "done" || event === "end") {
@@ -10335,13 +10406,15 @@ export function runViewerClient(bootstrap) {
   function openBugReport() {
     if (!els.bugReportOverlay) return;
     setBugReportStatus("", false);
-    els.bugReportOverlay.classList.add("is-open");
-    setTimeout(() => { if (els.bugReportText) els.bugReportText.focus(); }, 0);
+    openViewerModal(els.bugReportOverlay, {
+      onRequestClose: closeBugReport,
+      initialFocus: els.bugReportText,
+    });
   }
   function closeBugReport() {
     if (!els.bugReportOverlay) return;
     if (els.bugReportOverlay.classList.contains("is-busy")) return;
-    els.bugReportOverlay.classList.remove("is-open");
+    closeViewerModal(els.bugReportOverlay, els.reportBugLink);
     setBugReportBusy(false);
     setBugReportStatus("", false);
   }
@@ -10433,8 +10506,6 @@ export function runViewerClient(bootstrap) {
   });
   if (els.privySignout) els.privySignout.addEventListener("click", signOutPrivy);
 
-  // Click your name/avatar to open the character sheet.
-  const youCardBlock = document.querySelector(".channels-footer .you-meta");
   // ── onboarding button handlers ──────────────────────────────────────────
   // ── morning announcements dismiss ───────────────────────────────────────
   const announcementsDismiss = document.getElementById("announcements-dismiss");
@@ -10471,9 +10542,7 @@ export function runViewerClient(bootstrap) {
     window.open("https://ratimics.gumroad.com", "_blank", "noopener,noreferrer");
   });
 
-  if (youCardBlock) youCardBlock.addEventListener("click", () => { if (authed) openSheet(); });
-  const youAvatarEl = document.querySelector(".channels-footer .you-avatar");
-  if (youAvatarEl) youAvatarEl.addEventListener("click", () => { if (authed) openSheet(); });
+  if (els.youProfile) els.youProfile.addEventListener("click", () => { if (authed) openSheet(); });
   els.chatForm.addEventListener("submit", (e) => { e.preventDefault(); sendChatMessage(els.chatInput.value); });
   els.chatInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChatMessage(els.chatInput.value); }
