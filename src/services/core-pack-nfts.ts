@@ -37,6 +37,7 @@ import {
 } from "./hall-pass-card-catalog.js";
 import { nftImageUri } from "./nft-arweave-assets.js";
 import { durableNftMetadataUri, publicNftMetadataStorageStatus } from "./nft-metadata-storage.js";
+import { fetchCurrentCoreAssets } from "./solana-core-ownership.js";
 
 export const CORE_PACK_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
@@ -800,6 +801,39 @@ export async function fetchCorePackCurrentOwnershipOrNull(assetAddress: string):
   } catch {
     return null;
   }
+}
+
+export async function fetchCorePacksCurrentOwnershipOrNull(
+  assetAddresses: readonly string[],
+): Promise<Map<string, CorePackNftOwnership>> {
+  const addresses = assetAddresses
+    .map((address) => address.trim())
+    .filter((address, index, values) => !!address && values.indexOf(address) === index);
+  if (addresses.length === 0) return new Map();
+  if (packCurrentOwnershipFetcherOverride) {
+    const byAddress = new Map<string, CorePackNftOwnership>();
+    for (const address of addresses) {
+      const ownership = await fetchCorePackCurrentOwnershipOrNull(address);
+      if (ownership) byAddress.set(address, ownership);
+    }
+    return byAddress;
+  }
+
+  const config = readCoreSyncConfig();
+  const assets = await fetchCurrentCoreAssets(addresses, config.rpcUrl, "core_pack");
+  const byAddress = new Map<string, CorePackNftOwnership>();
+  for (const address of addresses) {
+    const asset = assets.get(address);
+    if (!asset || coreAssetCollectionAddress(asset) !== config.collectionAddress) continue;
+    const ownerWalletAddress = String(asset.owner ?? "").trim();
+    if (!ownerWalletAddress) continue;
+    byAddress.set(address, {
+      assetAddress: address,
+      ownerWalletAddress,
+      metadataUri: typeof asset.uri === "string" ? asset.uri.trim() : "",
+    });
+  }
+  return byAddress;
 }
 
 async function fetchOwnedCorePackNftsViaGpa(

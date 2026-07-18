@@ -140,7 +140,9 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_HALL_PASS_100_CENTS` | `2499` | Price for 100 Hall Passes. |
 | `RUBY_HIGH_SOLANA_RPC_URL` | `https://api.mainnet-beta.solana.com` | Solana JSON-RPC endpoint used to prepare and verify native-SOL pack purchases. |
 | `RUBY_HIGH_SOLANA_NFT_RPC_URL` | `RUBY_HIGH_SOLANA_RPC_URL` | Optional separate RPC endpoint for NFT minting. |
+| `RUBY_HIGH_SOLANA_OWNERSHIP_RPC_URL` | `RUBY_HIGH_SOLANA_NFT_RPC_URL` | Optional dedicated read endpoint for batched current-owner verification. The authenticated CosyWorld export falls through to the NFT endpoint and public mainnet RPC when a candidate is unavailable or quota-limited. |
 | `RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY` | — | Server mint authority secret key for Metaplex Core pack and card NFTs. Also drives creator attribution in served JSON metadata. Set via secrets only. |
+| `RUBY_HIGH_COSYWORLD_EXPORT_TOKEN` | — | Bearer token required by the internal CosyWorld wallet-card ownership export. Set via secrets only. |
 | `RUBY_HIGH_NFT_METADATA_STORAGE` | — | Optional durable metadata JSON upload mode. Set to `arweave` for direct AR uploads; unset keeps app-hosted metadata JSON. |
 | `RUBY_HIGH_NFT_METADATA_ARWEAVE_JWK` | — | Arweave RSA JWK JSON used when `RUBY_HIGH_NFT_METADATA_STORAGE=arweave`. `RUBY_HIGH_ARWEAVE_JWK`, `RUBY_HIGH_ARWEAVE_WALLET_JWK`, and `ARWEAVE_JWK` are also accepted. |
 | `RUBY_HIGH_NFT_METADATA_GATEWAY` | `https://arweave.net` | Gateway prefix returned for uploaded metadata JSON. |
