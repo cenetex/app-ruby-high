@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Connection as Web3Connection, PublicKey as Web3PublicKey } from "@solana/web3.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleBillingRoutes } from "../routes/billing.js";
 import { handleNftRoutes } from "../routes/nft.js";
@@ -68,6 +69,9 @@ const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
   RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS,
   RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS,
+  RUBY_HIGH_SOLANA_NFT_RPC_URL: process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL,
+  RUBY_HIGH_SOLANA_RPC_URL: process.env.RUBY_HIGH_SOLANA_RPC_URL,
+  RUBY_HIGH_SOLANA_OWNERSHIP_RPC_URL: process.env.RUBY_HIGH_SOLANA_OWNERSHIP_RPC_URL,
   RUBY_HIGH_PACK_REVEAL_SECRET: process.env.RUBY_HIGH_PACK_REVEAL_SECRET,
   RUBY_HIGH_PUBLIC_BASE_URL: process.env.RUBY_HIGH_PUBLIC_BASE_URL,
   RUBY_HIGH_COSYWORLD_EXPORT_TOKEN: process.env.RUBY_HIGH_COSYWORLD_EXPORT_TOKEN,
@@ -630,6 +634,48 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.body.wallets[0].hallPassCards).toHaveLength(18);
     expect(maxInFlight).toBeGreaterThan(1);
     expect(maxInFlight).toBeLessThanOrEqual(8);
+  });
+
+  it("batches CosyWorld ownership reads and fails over immediately when the configured RPC is exhausted", async () => {
+    process.env.RUBY_HIGH_COSYWORLD_EXPORT_TOKEN = "cosy-test-token";
+    process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL = "https://quota-rpc.example";
+    delete process.env.RUBY_HIGH_SOLANA_OWNERSHIP_RPC_URL;
+    restoreCardOwnershipFetcher?.();
+    restoreCardOwnershipFetcher = null;
+    const state = ruby.getOrCreate(signInUser("cosy-rpc-fallback"));
+    state.wallet.hallPassCards = Array.from({ length: 18 }, (_, index) => makeOwnedHallPassCard({
+      id: `cosy-rpc-fallback-${index}`,
+      serial: 1400 + index,
+      characterId: `cosy-rpc-fallback-${index}`,
+      characterName: `Fallback ${index}`,
+      role: "student",
+      mintAddress: new Web3PublicKey(Uint8Array.from({ length: 32 }, (_, byteIndex) => (
+        byteIndex === 31 ? index + 1 : byteIndex + 1
+      ))).toBase58(),
+    }));
+    const rpcCalls: Array<{ endpoint: string; addressCount: number }> = [];
+    vi.spyOn(Web3Connection.prototype, "getMultipleAccountsInfo").mockImplementation(async function (
+      this: Web3Connection,
+      publicKeys,
+    ) {
+      rpcCalls.push({ endpoint: this.rpcEndpoint, addressCount: publicKeys.length });
+      if (this.rpcEndpoint === "https://quota-rpc.example") {
+        throw new Error("429 Too Many Requests: max usage reached");
+      }
+      return publicKeys.map(() => null);
+    });
+
+    await handleNftRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/nft/internal/cosyworld/wallet-cards",
+      authorizationHeader: "Bearer cosy-test-token",
+    }), deps());
+
+    expect(lastResponse).toMatchObject({ status: 200, body: { wallets: [] } });
+    expect(rpcCalls).toEqual([
+      { endpoint: "https://quota-rpc.example", addressCount: 18 },
+      { endpoint: "https://api.mainnet-beta.solana.com", addressCount: 18 },
+    ]);
   });
 
   it("serves public Hall Pass metadata", async () => {

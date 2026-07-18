@@ -59,6 +59,7 @@ import {
 } from "./hall-pass-reveal-provenance.js";
 import { nftImageUri } from "./nft-arweave-assets.js";
 import { durableNftMetadataUri, publicNftMetadataStorageStatus } from "./nft-metadata-storage.js";
+import { fetchCurrentCoreAssets } from "./solana-core-ownership.js";
 
 type LatestBlockhash = { blockhash: string; lastValidBlockHeight?: number | bigint };
 
@@ -1465,6 +1466,52 @@ export async function fetchHallPassCardCurrentOwnershipOrNull(mintAddress: strin
     if (isHallPassCardOwnershipLookupMiss(err)) return null;
     throw err;
   }
+}
+
+async function mapOwnershipOverrideWithConcurrency(
+  addresses: readonly string[],
+  concurrency: number,
+): Promise<Map<string, HallPassCardCurrentOwnership>> {
+  const byAddress = new Map<string, HallPassCardCurrentOwnership>();
+  let nextIndex = 0;
+  const workerCount = Math.max(1, Math.min(Math.floor(concurrency), addresses.length));
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < addresses.length) {
+      const address = addresses[nextIndex++]!;
+      const ownership = await fetchHallPassCardCurrentOwnershipOrNull(address);
+      if (ownership) byAddress.set(address, ownership);
+    }
+  }));
+  return byAddress;
+}
+
+export async function fetchHallPassCardsCurrentOwnershipOrNull(
+  mintAddresses: readonly string[],
+): Promise<Map<string, HallPassCardCurrentOwnership>> {
+  const addresses = mintAddresses
+    .map((address) => address.trim())
+    .filter((address, index, values) => !!address && values.indexOf(address) === index);
+  if (addresses.length === 0) return new Map();
+  if (cardOwnershipFetcherOverride) return mapOwnershipOverrideWithConcurrency(addresses, 8);
+
+  const config = readMintConfig();
+  const assets = await fetchCurrentCoreAssets(addresses, config.rpcUrl, "hall_pass_card");
+  const byAddress = new Map<string, HallPassCardCurrentOwnership>();
+  for (const address of addresses) {
+    const asset = assets.get(address);
+    if (!asset) continue;
+    const collectionAddress = String(coreAssetCollectionAddress(asset) ?? "").trim();
+    if (collectionAddress !== config.collectionAddress) continue;
+    const ownerWalletAddress = String(asset.owner ?? "").trim();
+    if (!ownerWalletAddress) continue;
+    byAddress.set(address, {
+      mintAddress: address,
+      ownerWalletAddress: cleanSolanaAddress(ownerWalletAddress, "Card NFT owner"),
+      collectionAddress,
+      ...(typeof asset.uri === "string" && asset.uri.trim() ? { metadataUri: asset.uri.trim() } : {}),
+    });
+  }
+  return byAddress;
 }
 
 export async function assertHallPassMintAuthorityCapacity(cardCount: number): Promise<void> {

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   corePackCollectionMetadataForRoute,
   fetchCorePackCurrentOwnershipOrNull,
+  fetchCorePacksCurrentOwnershipOrNull,
   corePackNftMetadataForRoute,
   type OwnedCorePackNft,
   fetchOwnedCorePackNfts,
@@ -19,7 +20,7 @@ import {
   generatedHallPassCardMetadataForRoute,
   hallPassNftMetadataForRoute,
   hallPassNftStatus,
-  fetchHallPassCardCurrentOwnershipOrNull,
+  fetchHallPassCardsCurrentOwnershipOrNull,
   publicHallPassNftStatus,
   revealHallPassCardNft,
   submitSignedHallPassCardMintTransaction,
@@ -166,10 +167,10 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
   if (ctx.method === "GET" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/internal/cosyworld/wallet-cards`) {
     if (!authorizeCosyWorldExport(ctx)) return true;
     try {
-      const exportPayload = await deps.ruby.cosyWorldWalletCards(async (card) => {
-        if (!card.mintAddress) return null;
-        return fetchHallPassCardCurrentOwnershipOrNull(card.mintAddress);
-      }, async (pack) => fetchCorePackCurrentOwnershipOrNull(pack.assetAddress));
+      const exportPayload = await deps.ruby.cosyWorldWalletCards(
+        fetchHallPassCardsCurrentOwnershipOrNull,
+        fetchCorePacksCurrentOwnershipOrNull,
+      );
       setPrivateNoStoreHeaders(ctx.res);
       ctx.json(ctx.res, exportPayload);
     } catch (err) {

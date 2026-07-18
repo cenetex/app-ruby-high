@@ -1551,8 +1551,6 @@ export interface CosyWorldPackOwnership {
   metadataUri?: string;
 }
 
-const COSYWORLD_OWNERSHIP_LOOKUP_CONCURRENCY = 8;
-
 function cosyWorldCardIdsForCard(card: Pick<RubyHighHallPassCard, "characterId" | "canonicalCharacterId">): string[] {
   return [
     card.characterId,
@@ -1560,24 +1558,6 @@ function cosyWorldCardIdsForCard(card: Pick<RubyHighHallPassCard, "characterId" 
   ]
     .map((value) => typeof value === "string" ? value.trim() : "")
     .filter((value, index, values) => !!value && values.indexOf(value) === index);
-}
-
-async function mapWithConcurrency<T, R>(
-  items: readonly T[],
-  concurrency: number,
-  mapper: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const out = new Array<R>(items.length);
-  let nextIndex = 0;
-  const workerCount = Math.max(1, Math.min(Math.floor(concurrency), items.length));
-  await Promise.all(Array.from({ length: workerCount }, async () => {
-    while (nextIndex < items.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      out[index] = await mapper(items[index]!, index);
-    }
-  }));
-  return out;
 }
 
 export class RubyHighService extends Service {
@@ -4307,8 +4287,12 @@ export class RubyHighService extends Service {
   }
 
   async cosyWorldWalletCards(
-    currentOwnershipForCard: (card: RubyHighHallPassCard) => Promise<CosyWorldCardOwnership | null>,
-    currentOwnershipForPack?: (pack: RubyHighHallPassPack) => Promise<CosyWorldPackOwnership | null>,
+    currentOwnershipForCards: (
+      mintAddresses: readonly string[],
+    ) => Promise<ReadonlyMap<string, CosyWorldCardOwnership>>,
+    currentOwnershipForPacks?: (
+      assetAddresses: readonly string[],
+    ) => Promise<ReadonlyMap<string, CosyWorldPackOwnership>>,
   ): Promise<CosyWorldWalletCardsExport> {
     const byWallet = new Map<string, CosyWorldWalletCardExport>();
     const cards: RubyHighHallPassCard[] = [];
@@ -4340,12 +4324,11 @@ export class RubyHighService extends Service {
         packs.push(pack);
       }
     }
-    const ownerships = await mapWithConcurrency(
-      cards,
-      COSYWORLD_OWNERSHIP_LOOKUP_CONCURRENCY,
-      async (card) => ({ card, ownership: await currentOwnershipForCard(card) }),
-    );
-    for (const { card, ownership } of ownerships) {
+    const ownerships = cards.length > 0
+      ? await currentOwnershipForCards(cards.map((card) => card.mintAddress!))
+      : new Map<string, CosyWorldCardOwnership>();
+    for (const card of cards) {
+      const ownership = ownerships.get(card.mintAddress!);
       if (!ownership?.ownerWalletAddress) continue;
       const walletAddress = ownership.ownerWalletAddress.trim();
       const mintAddress = ownership.mintAddress.trim();
@@ -4391,13 +4374,10 @@ export class RubyHighService extends Service {
         transactionSource: card.source,
       });
     }
-    if (currentOwnershipForPack) {
-      const packOwnerships = await mapWithConcurrency(
-        packs,
-        COSYWORLD_OWNERSHIP_LOOKUP_CONCURRENCY,
-        async (pack) => ({ pack, ownership: await currentOwnershipForPack(pack) }),
-      );
-      for (const { pack, ownership } of packOwnerships) {
+    if (currentOwnershipForPacks && packs.length > 0) {
+      const packOwnerships = await currentOwnershipForPacks(packs.map((pack) => pack.assetAddress));
+      for (const pack of packs) {
+        const ownership = packOwnerships.get(pack.assetAddress);
         if (!ownership?.ownerWalletAddress) continue;
         const walletAddress = ownership.ownerWalletAddress.trim();
         const assetAddress = ownership.assetAddress.trim();
