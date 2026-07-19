@@ -2989,6 +2989,42 @@ describe("admin metrics route", () => {
     expect(persistedEvents[0]?.visitorHash).toBeUndefined();
   });
 
+  it("accepts viewer class-ritual visibility events as durable metrics", async () => {
+    const { token } = await auth.createGuestSession();
+    const cookieHeader = `rh_session=${token}`;
+
+    for (const type of ["teacher_response_viewed", "room_reaction_viewed"] as const) {
+      const response = await appRoute({
+        method: "POST",
+        path: "/api/apps/ruby-high/metrics/event",
+        cookieHeader,
+        visitorHeader: "rhv_class_ritual_visitor",
+        body: { type, questionId: "take-ruby-9", faculty: "ruby" },
+      });
+      expect(response.status).toBe(200);
+    }
+
+    const events = await store.loadMetricEvents();
+    expect(events.filter((event) => event.feature === "daily_class_ritual")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "teacher_response_viewed",
+          source: "viewer",
+          metadata: expect.objectContaining({ questionId: "take-ruby-9", faculty: "ruby" }),
+        }),
+        expect.objectContaining({
+          name: "room_reaction_viewed",
+          source: "viewer",
+          metadata: expect.objectContaining({ questionId: "take-ruby-9", faculty: "ruby" }),
+        }),
+      ]),
+    );
+    expect(ruby.analyticsSnapshot().events.classRitual).toMatchObject({
+      teacherResponseViewed: 1,
+      roomReactionViewed: 1,
+    });
+  });
+
   it("accepts Privy wallet auth diagnostics as durable error metrics", async () => {
     const { token } = await auth.createGuestSession();
     const cookieHeader = `rh_session=${token}`;

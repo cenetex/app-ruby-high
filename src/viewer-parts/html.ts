@@ -43,11 +43,13 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     </div>
     <div class="channels-list" id="channels-list"></div>
     <div class="channels-footer">
-      <div class="you-avatar" id="you-avatar">${escapeHtml((opts.agentName || "U").slice(0, 1).toUpperCase())}</div>
-      <div class="you-meta">
-        <span class="you-name" id="you-name">${safeAgent}</span>
-        <span class="you-state" id="you-state">checking…</span>
-      </div>
+      <button class="you-profile" id="you-profile" type="button" aria-label="Open student card">
+        <span class="you-avatar" id="you-avatar">${escapeHtml((opts.agentName || "U").slice(0, 1).toUpperCase())}</span>
+        <span class="you-meta">
+          <span class="you-name" id="you-name">${safeAgent}</span>
+          <span class="you-state" id="you-state">checking…</span>
+        </span>
+      </button>
       <!-- Legacy footer action placeholder. Account now owns AI controls. -->
       <button class="footer-action" id="footer-action" type="button" hidden></button>
       <button class="footer-action account-action" id="privy-action" type="button" hidden>Account</button>
@@ -207,9 +209,9 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   </div>
 </div>
 
-<div class="sheet-overlay is-mandatory" id="signin-overlay" aria-hidden="true">
+<div class="sheet-overlay is-mandatory" id="signin-overlay" role="dialog" aria-modal="true" aria-labelledby="signin-title" aria-hidden="true">
   <div class="sheet-card signin-card">
-    <h2>Welcome to Ruby High</h2>
+    <h2 id="signin-title">Welcome to Ruby High</h2>
     <p class="sub">Play free, spend Stars on chat, and use Hall Passes for images, slots, and cards.</p>
     <div class="sheet-actions" style="justify-content: center;">
       <button id="signin-guest" class="primary-link" type="button">Continue without AI</button>
@@ -221,11 +223,11 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 </div>
 
   <!-- Account overlay -->
-  <div class="sheet-overlay" id="privy-overlay">
+  <div class="sheet-overlay" id="privy-overlay" role="dialog" aria-modal="true" aria-labelledby="account-title" aria-hidden="true">
     <button class="sheet-close" id="privy-close" type="button" aria-label="Close">×</button>
   <div class="sheet-card privy-card account-card">
     <div class="account-header-row">
-      <h2>Account</h2>
+      <h2 id="account-title">Account</h2>
       <div class="account-identity-inline">
         <div class="wallet-panel" id="privy-wallet">Guest session</div>
         <div class="sheet-actions">
@@ -347,13 +349,13 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <!-- Character sheet overlay (creation + profile view). The X-button in
      the corner is the universal close affordance now — per-card "Close"
      buttons are gone. Click anywhere outside .sheet-card also closes. -->
-<div class="sheet-overlay" id="sheet-overlay">
+<div class="sheet-overlay" id="sheet-overlay" role="dialog" aria-modal="true" aria-label="Student card" aria-hidden="true">
   <button class="sheet-close" id="sheet-close" type="button" aria-label="Close">×</button>
   <div class="sheet-card" id="sheet-card"></div>
 </div>
 
 <!-- Billing overlay -->
-<div class="sheet-overlay" id="billing-overlay">
+<div class="sheet-overlay" id="billing-overlay" role="dialog" aria-modal="true" aria-labelledby="billing-title" aria-hidden="true">
   <button class="sheet-close" id="billing-close" type="button" aria-label="Close">×</button>
   <div class="sheet-card billing-card">
     <h2 id="billing-title">Buy Hall Passes</h2>
@@ -366,10 +368,10 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 </div>
 
 <!-- Bug report overlay -->
-<div class="sheet-overlay" id="bug-report-overlay">
+<div class="sheet-overlay" id="bug-report-overlay" role="dialog" aria-modal="true" aria-labelledby="bug-report-title" aria-hidden="true">
   <button class="sheet-close" id="bug-report-close" type="button" aria-label="Close">×</button>
   <form class="sheet-card is-bug-report-sheet" id="bug-report-form">
-    <h2>Report a bug</h2>
+    <h2 id="bug-report-title">Report a bug</h2>
     <p class="sub">Send the current Ruby High context to the private issue tracker.</p>
     <div class="field">
       <label for="bug-report-text">What broke?</label>
@@ -385,9 +387,9 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 </div>
 
 <!-- Pack editor overlay -->
-<div class="sheet-overlay" id="pack-overlay">
+<div class="sheet-overlay" id="pack-overlay" role="dialog" aria-modal="true" aria-labelledby="pack-title" aria-hidden="true">
   <div class="sheet-card" id="pack-card">
-    <h2>Guest Faculty</h2>
+    <h2 id="pack-title">Guest Faculty</h2>
     <p class="sub">Pick this week's guest teacher automatically, or set your own from creator packs.</p>
     <div class="pack-library-actions">
       <button type="button" class="pack-action" id="pack-auto-btn">Auto Guest</button>
@@ -417,7 +419,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   </div>
 </div>
 
-<div class="sheet-overlay" id="pack-edit-overlay">
+<div class="sheet-overlay" id="pack-edit-overlay" role="dialog" aria-modal="true" aria-labelledby="pack-edit-title" aria-hidden="true">
   <div class="sheet-card pack-edit-card" id="pack-edit-card">
     <h2 id="pack-edit-title">Edit pack</h2>
     <p class="sub" id="pack-edit-subtitle">Draft content pack.</p>

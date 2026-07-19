@@ -6,6 +6,7 @@ class FakeElement {
   textContent = "";
   children: FakeElement[] = [];
   dataset: Record<string, string> = {};
+  attributes: Record<string, string> = {};
   title = "";
   type = "";
 
@@ -14,6 +15,10 @@ class FakeElement {
   appendChild(child: FakeElement): FakeElement {
     this.children.push(child);
     return child;
+  }
+
+  setAttribute(name: string, value: string): void {
+    this.attributes[name] = value;
   }
 }
 
@@ -54,6 +59,7 @@ describe("creation rows renderer", () => {
     expect((refs.reroll as unknown as FakeElement).dataset.key).toBe("playbook");
     expect((refs.reroll as unknown as FakeElement).type).toBe("button");
     expect((refs.reroll as unknown as FakeElement).title).toBe("Reroll playbook");
+    expect((refs.reroll as unknown as FakeElement).attributes["aria-label"]).toBe("Reroll playbook");
   });
 
   it("appends multiple rows without replacing existing controls", () => {

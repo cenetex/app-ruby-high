@@ -88,6 +88,45 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("window.prompt");
   });
 
+  it("keeps browser zoom available and makes every sheet keyboard-modal", () => {
+    const html = renderedViewer();
+    const script = inlineScript(html);
+
+    expect(html).toContain('<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />');
+    expect(html).not.toContain("maximum-scale");
+    expect(html).not.toContain("user-scalable=no");
+    expect(script).not.toContain("gesturestart");
+    expect(script).not.toContain("gesturechange");
+    expect(script).not.toContain('addEventListener("dblclick"');
+
+    for (const overlayId of [
+      "signin-overlay",
+      "privy-overlay",
+      "sheet-overlay",
+      "billing-overlay",
+      "bug-report-overlay",
+      "pack-overlay",
+      "pack-edit-overlay",
+    ]) {
+      expect(html).toMatch(new RegExp(`id="${overlayId}"[^>]*role="dialog"[^>]*aria-modal="true"`));
+    }
+    expectScriptToContain(script, "function openViewerModal(overlay, options)");
+    expectScriptToContain(script, "function closeViewerModal(overlay, fallbackFocus)");
+    expectScriptToContain(script, 'if (!event || event.key !== "Tab") return');
+    expectScriptToContain(script, 'els.shell.setAttribute("inert", "")');
+  });
+
+  it("uses semantic, named buttons for profile and reroll actions", () => {
+    const html = renderedViewer();
+    const script = inlineScript(html);
+
+    expect(html).toContain('<button class="you-profile" id="you-profile" type="button" aria-label="Open student card">');
+    expectScriptToContain(script, 'els.youProfile.setAttribute("aria-label", "Open " + t.character.name + "\'s student card")');
+    expectScriptToContain(script, 'reroll.setAttribute("aria-label", "Reroll " + label.toLowerCase())');
+    expectScriptToContain(script, 'button.className = "teacher-profile-button"');
+    expectScriptToContain(script, 'roomButton.className = "room-row-button"');
+  });
+
   it("omits the legacy School World panel from the main viewer", () => {
     const html = renderedViewer();
     const script = inlineScript(html);
@@ -1220,7 +1259,8 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("subjectMark.textContent = fac.courseGrade");
     expect(script).not.toContain("const grade = spec.grade || \"F\"");
     expect(script).not.toContain("(\" + cg.grade + \")");
-    expect(cssRule(".channel-row.room-row")).toContain("min-height: 52px");
+    expect(cssRule(".channel-row.room-row-group")).toContain("min-height: 52px");
+    expect(cssRule(".room-row-button")).toContain("cursor: pointer");
     expect(cssRule(".room-row-meta")).toContain("flex-direction: column");
   });
 

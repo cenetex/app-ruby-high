@@ -904,7 +904,9 @@ describe("command route persistence and scheduler misses", () => {
   });
 
   it("offline pick reports no scheduled Ruby card when the direct class bank is complete", async () => {
-    setActivePack(rubyHomeroomSocialPack());
+    const pack = rubyHomeroomSocialPack();
+    pack.faculty[0]!.questions = pack.faculty[0]!.questions.slice(0, 2);
+    setActivePack(pack);
     const faculty = await FacultyService.start({} as never);
     const ruby = new RubyHighService({} as never, new MemorySessionStore());
     await ruby["hydrate"]();
@@ -918,16 +920,24 @@ describe("command route persistence and scheduler misses", () => {
       arcAnswer: "I want the transcript to look impossible.",
       personality: "intense but kind",
     });
+    ruby.selectGrade(sid, "9");
 
     const pickedIds = new Set<string>();
     for (let i = 0; i < 3; i += 1) {
       const posed = ruby.pickAndPose(sid, { faculty: "ruby" });
-      expect(posed.current?.id).toMatch(/^route-test-ruby-q[1-3]$/);
-      pickedIds.add(posed.current!.id);
-      ruby.submitAnswer(sid, "A");
+      if (posed.current?.type === "opinion") {
+        expect(posed.current.opinionPurpose).toBe("daily-take");
+        ruby.recordOpinion(sid, "player", "I would verify the claim against concrete evidence.");
+        ruby.recordGrades(sid, [{ responder: "player", score: 3, comment: "Too general." }], "player");
+      } else {
+        expect(posed.current?.id).toMatch(/^route-test-ruby-q[1-2]$/);
+        const pick = pickedIds.size === 0 ? "B" : "A";
+        pickedIds.add(posed.current!.id);
+        ruby.submitAnswer(sid, pick);
+      }
       ruby.clearBoard(sid);
     }
-    expect(pickedIds).toEqual(new Set(["route-test-ruby-q1", "route-test-ruby-q2", "route-test-ruby-q3"]));
+    expect(pickedIds).toEqual(new Set(["route-test-ruby-q1", "route-test-ruby-q2"]));
     const progress = ruby.courseProgress(sid, "ruby");
     expect(progress.ready).toBe(0);
     expect(progress.canPick).toBe(false);

@@ -253,6 +253,9 @@ export interface PoseOpinionInput {
   questionId?: string;
   rarity?: Rarity;
   mode?: "class" | "practice";
+  /** Server-owned purpose. Callers may omit it; grade essays are also
+   *  recognized by matching the character's assigned essay prompt. */
+  purpose?: "daily-take" | "grade-essay";
 }
 
 export interface PickAndPoseInput {
@@ -952,6 +955,15 @@ export interface RubyHighMetricEventsSnapshot {
     started: number;
     overrideSet: number;
   };
+  classRitual: {
+    dailyClassStarted: number;
+    evidenceCardCompleted: number;
+    takeCardSubmitted: number;
+    teacherResponseViewed: number;
+    roomReactionViewed: number;
+    classResultCompleted: number;
+    classRecordSaved: number;
+  };
   balance: {
     samples: number;
     latestRepeatRate: number | null;
@@ -1409,8 +1421,62 @@ const GLOBAL_PACK_OWNER = "__ruby_high_global__";
 const CLASS_QUESTIONS_PER_DAY = 3;
 const GRADUATION_ROOM_TARGETS: Record<Grade, number> = { "9": 1, "10": 2, "11": 3, "12": 4 };
 const CORE_GRADUATION_FACULTY_ORDER = [RUBY_FACULTY.id, "sally-science", "professor-edward"] as const;
-const RUBY_HOMEROOM_PRACTICE_BEFORE_CLASS: readonly number[] = [0, 0, 0] as const;
-const RUBY_HOMEROOM_SOCIAL_CARDS_PER_DAY = 0;
+const CORE_DAILY_CLASS_FACULTY = new Set<string>(CORE_GRADUATION_FACULTY_ORDER);
+const DAILY_CLASS_PRACTICE_BEFORE_CARD: readonly number[] = [0, 0, 0] as const;
+const DAILY_CLASS_TAKES_PER_DAY = 1;
+const DAILY_CLASS_TAKE_CARDS: Record<string, ReadonlyArray<{ prompt: string; rubric: string; subject: string }>> = {
+  ruby: [
+    {
+      subject: "agent-culture",
+      prompt: "A classmate gives an answer confidently. What is one sign you should trust it, and one sign you should check it?",
+      rubric: "Names one concrete trust signal and one concrete reason to verify, then explains the difference in the student's own words.",
+    },
+    {
+      subject: "agent-culture",
+      prompt: "Choose one claim from today's class. What evidence would make it stronger, and what would make you doubt it?",
+      rubric: "Identifies a specific claim, names relevant evidence, and gives a concrete reason the claim could fail.",
+    },
+    {
+      subject: "agent-culture",
+      prompt: "What is the strongest answer you heard today, and what question would you ask before repeating it as fact?",
+      rubric: "Selects a defensible answer and asks a focused verification question instead of offering a generic reaction.",
+    },
+  ],
+  "sally-science": [
+    {
+      subject: "science",
+      prompt: "Turn one idea from today's class into a testable prediction. What result would prove your prediction wrong?",
+      rubric: "States a specific prediction and a falsifying observation that could realistically be measured.",
+    },
+    {
+      subject: "science",
+      prompt: "Which variable would you control first if you tested one claim from today's class, and why?",
+      rubric: "Names a relevant variable and explains how controlling it separates the claim from a competing explanation.",
+    },
+    {
+      subject: "science",
+      prompt: "What evidence from today's topic is strongest, and what important uncertainty still remains?",
+      rubric: "Cites concrete evidence and distinguishes what it supports from what is still unknown.",
+    },
+  ],
+  "professor-edward": [
+    {
+      subject: "literature",
+      prompt: "Make one interpretation of today's material, then name the detail that best supports it.",
+      rubric: "Offers a specific interpretation and ties it to a concrete detail rather than summarizing the material.",
+    },
+    {
+      subject: "literature",
+      prompt: "Whose perspective is easiest to miss in today's material, and how would including it change the meaning?",
+      rubric: "Identifies a plausible missing perspective and explains a meaningful consequence for the interpretation.",
+    },
+    {
+      subject: "literature",
+      prompt: "What is one tension in today's material that has no easy answer? Defend the side you find stronger.",
+      rubric: "Names a genuine tension, takes a clear position, and supports it with a specific reason or detail.",
+    },
+  ],
+};
 const FIRST_BELL_COMIC_ISSUE_ID = "first-bell";
 const FIRST_BELL_COMIC_TITLE = "Ruby High: Book One - First Bell";
 const FIRST_BELL_COMIC_PAGE_COUNT = 12;
@@ -5910,29 +5976,29 @@ export class RubyHighService extends Service {
     return record;
   }
 
-  private rubyHomeroomDeckApplies(
+  private dailyClassTakeDeckApplies(
     state: QuizState,
     facultyId: string,
     requestedMode?: "class" | "practice",
   ): boolean {
-    return facultyId === RUBY_FACULTY.id
+    return CORE_DAILY_CLASS_FACULTY.has(facultyId)
       && !requestedMode
       && !!state.character
       && !!state.currentGrade
       && facultyId !== LOUNGE_FACULTY.id;
   }
 
-  private rubyHomeroomDeckRole(record: DailyClassRecord | null): DeckCardRole {
+  private dailyClassTakeDeckRole(record: DailyClassRecord | null): DeckCardRole {
     if (record?.status === "complete" || (record?.questionCount ?? 0) >= CLASS_QUESTIONS_PER_DAY) {
       return "practice";
     }
     const classCount = record?.questionCount ?? 0;
     const practiceCount = record?.practiceCount ?? 0;
     const socialCount = record?.socialCount ?? 0;
-    if (classCount >= 1 && socialCount < RUBY_HOMEROOM_SOCIAL_CARDS_PER_DAY) {
+    if (classCount >= CLASS_QUESTIONS_PER_DAY - DAILY_CLASS_TAKES_PER_DAY && socialCount < DAILY_CLASS_TAKES_PER_DAY) {
       return "social";
     }
-    const requiredPractice = RUBY_HOMEROOM_PRACTICE_BEFORE_CLASS[classCount] ?? Number.POSITIVE_INFINITY;
+    const requiredPractice = DAILY_CLASS_PRACTICE_BEFORE_CARD[classCount] ?? Number.POSITIVE_INFINITY;
     if (practiceCount < requiredPractice) return "practice";
     return "class";
   }
@@ -5949,8 +6015,8 @@ export class RubyHighService extends Service {
     if (!this.isGraduationFacultyForState(state, facultyId)) return "practice";
     const record = this.dailyClassRecord(state, facultyId);
     if (record?.status === "complete") return "practice";
-    if (this.rubyHomeroomDeckApplies(state, facultyId, requestedMode)) {
-      return this.rubyHomeroomDeckRole(record);
+    if (this.dailyClassTakeDeckApplies(state, facultyId, requestedMode)) {
+      return this.dailyClassTakeDeckRole(record);
     }
     return "class";
   }
@@ -5962,7 +6028,7 @@ export class RubyHighService extends Service {
     questionType: QuestionType = "multiple-choice",
   ): DeckCardRole {
     const cardRole = this.peekCardRoleForPose(state, facultyId, requestedMode, questionType);
-    if (!this.rubyHomeroomDeckApplies(state, facultyId, requestedMode)) return cardRole;
+    if (!this.dailyClassTakeDeckApplies(state, facultyId, requestedMode)) return cardRole;
     if (cardRole !== "practice" && cardRole !== "social") return cardRole;
     const now = Date.now();
     const record = this.ensureDailyClassRecord(state, facultyId, dailyKey(), now);
@@ -6075,11 +6141,12 @@ export class RubyHighService extends Service {
     facultyId: string,
     requestedMode?: "class" | "practice",
     cardRole?: DeckCardRole,
+    dailyTake = false,
   ): NonNullable<ActiveRound["classSession"]> {
     const ch = state.character;
     const grade = state.currentGrade;
     const date = dailyKey();
-    if (cardRole && cardRole !== "class") {
+    if (cardRole && cardRole !== "class" && !(cardRole === "social" && dailyTake)) {
       return { mode: "practice", facultyId, grade: grade ?? undefined, date };
     }
     if (
@@ -6095,6 +6162,9 @@ export class RubyHighService extends Service {
     if (record?.status === "complete") {
       return { mode: "practice", facultyId, grade, date };
     }
+    if (dailyTake && (record?.questionCount ?? 0) !== CLASS_QUESTIONS_PER_DAY - 1) {
+      return { mode: "practice", facultyId, grade, date };
+    }
     return {
       mode: "class",
       facultyId,
@@ -6103,6 +6173,24 @@ export class RubyHighService extends Service {
       index: (record?.questionCount ?? 0) + 1,
       total: CLASS_QUESTIONS_PER_DAY,
     };
+  }
+
+  private recordDailyClassStartedIfNeeded(state: QuizState, questionId: string): void {
+    const session = state.activeRound?.classSession;
+    if (session?.mode !== "class" || session.index !== 1 || !CORE_DAILY_CLASS_FACULTY.has(session.facultyId)) return;
+    this.recordMetricEvent("daily_class_started", {
+      sessionId: state.sessionId,
+      source: "gameplay",
+      feature: "daily_class_ritual",
+      step: "evidence_1",
+      status: "started",
+      metadata: {
+        questionId,
+        faculty: session.facultyId,
+        grade: session.grade,
+        date: session.date,
+      },
+    });
   }
 
   private recordDailyClassQuestion(
@@ -6178,10 +6266,26 @@ export class RubyHighService extends Service {
         });
       }
       this.unlockTeacherStoryPageForAClass(state, record, now);
+      if (CORE_DAILY_CLASS_FACULTY.has(session.facultyId)) {
+        this.recordMetricEvent("class_result_completed", {
+          sessionId: state.sessionId,
+          source: "gameplay",
+          feature: "daily_class_ritual",
+          step: "class_result",
+          status: "success",
+          metadata: {
+            faculty: session.facultyId,
+            grade: session.grade,
+            date: session.date,
+            letterGrade: record.letterGrade,
+            score: avg,
+          },
+        });
+      }
     }
     return {
       mode: "class",
-      cardRole: "class",
+      cardRole: round?.cardRole ?? "class",
       facultyId: session.facultyId,
       grade: session.grade,
       date: session.date,
@@ -6869,6 +6973,25 @@ export class RubyHighService extends Service {
       reviewAt,
       picked == null || forfeit ? null : playerRoll?.outcome ?? null,
     );
+    if (
+      classProgress.mode === "class"
+      && round.cardRole === "class"
+      && CORE_DAILY_CLASS_FACULTY.has(classProgress.facultyId)
+    ) {
+      this.recordMetricEvent("evidence_card_completed", {
+        sessionId: state.sessionId,
+        source: "gameplay",
+        feature: "daily_class_ritual",
+        step: `evidence_${classProgress.questionCount ?? 0}`,
+        status: "success",
+        metadata: {
+          questionId: q.id,
+          faculty: classProgress.facultyId,
+          grade: classProgress.grade,
+          wasCorrect,
+        },
+      });
+    }
 
     // Player progression. Card mastery updates above; class grades are derived
     // from completed daily classes. Practice updates card memory but does not
@@ -7636,6 +7759,7 @@ export class RubyHighService extends Service {
     state.activeRound = this.openRound(state, question);
     state.activeRound.classSession = this.classSessionForPose(state, facultyId, input.mode);
     state.activeRound.cardRole = state.activeRound.classSession.mode === "class" ? "class" : "practice";
+    this.recordDailyClassStartedIfNeeded(state, question.id);
     this.transition(state, { kind: "pose-question" });
     state.updatedAt = Date.now();
     log.event("question.posed", {
@@ -7688,6 +7812,7 @@ export class RubyHighService extends Service {
     state.activeRound = this.openRound(state, question);
     state.activeRound.classSession = this.classSessionForPose(state, question.faculty ?? state.faculty, mode, cardRole);
     state.activeRound.cardRole = state.activeRound.classSession.mode === "class" ? "class" : cardRole;
+    this.recordDailyClassStartedIfNeeded(state, question.id);
     this.transition(state, { kind: "pose-question" });
     state.updatedAt = Date.now();
     log.event("question.posed", {
@@ -7819,11 +7944,15 @@ export class RubyHighService extends Service {
     const id = input.questionId ?? `qo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
     const facultyId = this.resolveQuestionFaculty(state, input.faculty);
     const subject = this.normalizeQuestionSubject(state, facultyId, input.subject);
+    const assignedEssay = state.character?.essayPrompt?.trim();
+    const opinionPurpose = input.purpose
+      ?? (assignedEssay && input.prompt.trim() === assignedEssay ? "grade-essay" : undefined);
     const question: Question = {
       id,
       prompt: input.prompt.trim(),
       type: "opinion",
       rubric: input.rubric?.trim() || undefined,
+      opinionPurpose,
       subject,
       faculty: facultyId,
       rarity: input.rarity,
@@ -7832,10 +7961,13 @@ export class RubyHighService extends Service {
     state.subject = question.subject ?? state.subject;
     state.faculty = question.faculty ?? state.faculty;
     if (!state.askedQuestionIds.includes(id)) state.askedQuestionIds.push(id);
-    const cardRole = this.reserveCardRoleForPose(state, facultyId, input.mode, "opinion");
+    const isDailyTake = opinionPurpose === "daily-take";
+    const cardRole = isDailyTake
+      ? this.reserveCardRoleForPose(state, facultyId, input.mode, "opinion")
+      : "social";
     state.activeRound = this.openRound(state, question);
-    state.activeRound.classSession = this.classSessionForPose(state, facultyId, input.mode, cardRole);
-    state.activeRound.cardRole = state.activeRound.classSession.mode === "class" ? "class" : cardRole;
+    state.activeRound.classSession = this.classSessionForPose(state, facultyId, input.mode, cardRole, isDailyTake);
+    state.activeRound.cardRole = cardRole;
     this.transition(state, { kind: "pose-question" });
     state.updatedAt = Date.now();
     log.event("question.posed", {
@@ -7866,15 +7998,30 @@ export class RubyHighService extends Service {
     round.opinionResponses.push({ responder, text: bounded, submittedAt: now });
     if (responder === "player") {
       round.player.answeredAt = now;
+      if (state.current?.opinionPurpose === "daily-take" && round.classSession?.mode === "class") {
+        this.recordMetricEvent("take_card_submitted", {
+          sessionId: state.sessionId,
+          source: "gameplay",
+          feature: "daily_class_ritual",
+          step: "take",
+          status: "success",
+          metadata: {
+            questionId: round.questionId,
+            faculty: round.classSession.facultyId,
+            grade: round.classSession.grade,
+            responseLength: bounded.length,
+          },
+        });
+      }
     } else {
       const npc = round.npcs.find((n) => n.studentId === responder);
       if (npc) npc.answeredAt = now;
     }
-    log.event("essay.submitted", {
+    log.event(state.current?.opinionPurpose === "daily-take" ? "take.submitted" : "essay.submitted", {
       sessionId, faculty: state.faculty, questionId: round.questionId,
       responder, length: bounded.length,
     });
-    if (responder === "player") {
+    if (responder === "player" && state.current?.opinionPurpose === "grade-essay") {
       this.recordFunnelStep(state, "first_essay_submitted", {
         faculty: state.faculty,
         questionId: round.questionId,
@@ -7951,7 +8098,9 @@ export class RubyHighService extends Service {
             ...(typeof round.classSession.total === "number" ? { totalQuestions: round.classSession.total } : {}),
           }
         : undefined;
-      state.character && (state.character.essayCompleted = true);
+      if (state.character && q.opinionPurpose === "grade-essay") {
+        state.character.essayCompleted = true;
+      }
       this.appendEssayReport(state, {
         id: `essay_${q.id}_${reviewAt.toString(36)}`,
         questionId: q.id,
@@ -7991,7 +8140,11 @@ export class RubyHighService extends Service {
         correct: "A" as Choice,
         wasCorrect: passed,
         explanation: q.rubric ?? null,
-        encouragement: affinitySave ? "Class affinity kicked in — second chance counted." : passed ? "Nice essay." : "Take another swing at it tomorrow.",
+        encouragement: affinitySave
+          ? "Class affinity kicked in — second chance counted."
+          : q.opinionPurpose === "daily-take"
+            ? passed ? "Your take held up." : "Your evidence needs another pass."
+            : passed ? "Nice essay." : "Take another swing at it tomorrow.",
         scoreMultiplier,
         scoreAward,
         classProgress,
@@ -8031,7 +8184,7 @@ export class RubyHighService extends Service {
     round.resolvedAt = Date.now();
     this.transition(state, { kind: "resolve-round" });
     state.updatedAt = round.resolvedAt;
-    log.event("essay.graded", {
+    log.event(state.current?.opinionPurpose === "daily-take" ? "take.graded" : "essay.graded", {
       sessionId, faculty: state.faculty, questionId: round.questionId,
       playerScore: playerGrade?.score ?? null, playerPassed: passed,
       bestResponder, affinitySaved: !!affinitySave, gradeCount: grades.length,
@@ -8041,17 +8194,23 @@ export class RubyHighService extends Service {
     return state;
   }
 
-  private poseRubyHomeroomSocialCard(sessionId: string, state: QuizState, facultyId: string): QuizState {
+  private poseDailyClassTake(sessionId: string, state: QuizState, facultyId: string): QuizState {
     const date = dailyKey();
     const grade = state.currentGrade ?? DEFAULT_GRADE;
     const record = this.dailyClassRecord(state, facultyId, date);
     const socialIndex = (record?.socialCount ?? 0) + 1;
+    const pool = DAILY_CLASS_TAKE_CARDS[facultyId] ?? DAILY_CLASS_TAKE_CARDS.ruby!;
+    let seed = 0;
+    const key = `${facultyId}:${grade}:${date}`;
+    for (let i = 0; i < key.length; i++) seed = ((seed << 5) - seed + key.charCodeAt(i)) | 0;
+    const take = pool[Math.abs(seed) % pool.length]!;
     return this.poseOpinion(sessionId, {
       faculty: facultyId,
-      subject: "social",
-      questionId: `social_${facultyId}_${grade}_${date}_${socialIndex}`,
-      prompt: "When a classmate gives an answer confidently, what is one sign you should trust it, and one sign you should check it?",
-      rubric: "A strong response names one concrete trust signal and one concrete reason to verify, then explains the difference in the player's own words.",
+      subject: take.subject,
+      questionId: `take_${facultyId}_${grade}_${date}_${socialIndex}`,
+      prompt: take.prompt,
+      rubric: take.rubric,
+      purpose: "daily-take",
     });
   }
 
@@ -8089,7 +8248,7 @@ export class RubyHighService extends Service {
     this.assertBoardMutationAllowed(state, "post");
     const plan = this.scheduledPickPlanForState(state, filter);
     if (plan.cardRole === "social") {
-      return this.poseRubyHomeroomSocialCard(sessionId, state, plan.facultyId);
+      return this.poseDailyClassTake(sessionId, state, plan.facultyId);
     }
     if (!plan.question) {
       throw new Error(
@@ -12182,6 +12341,13 @@ function buildMetricEventsSnapshot(
     guest_spotlight_seen: 0,
     guest_spotlight_started: 0,
     guest_pack_override_set: 0,
+    daily_class_started: 0,
+    evidence_card_completed: 0,
+    take_card_submitted: 0,
+    teacher_response_viewed: 0,
+    room_reaction_viewed: 0,
+    class_result_completed: 0,
+    class_record_saved: 0,
     commerce: 0,
     llm_usage: 0,
     error: 0,
@@ -12388,6 +12554,15 @@ function buildMetricEventsSnapshot(
     yearbook,
     referral,
     guestSpotlight,
+    classRitual: {
+      dailyClassStarted: byName.daily_class_started,
+      evidenceCardCompleted: byName.evidence_card_completed,
+      takeCardSubmitted: byName.take_card_submitted,
+      teacherResponseViewed: byName.teacher_response_viewed,
+      roomReactionViewed: byName.room_reaction_viewed,
+      classResultCompleted: byName.class_result_completed,
+      classRecordSaved: byName.class_record_saved,
+    },
     balance,
     commerce: {
       events: commerce.events,

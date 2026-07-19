@@ -235,6 +235,9 @@ export interface Question {
   /** Opinion fields — describes what a strong response looks like, fed to
    *  both the responding LLMs and the grading teacher. */
   rubric?: string;
+  /** Why an opinion card was posed. Daily takes close a class; grade essays
+   *  satisfy the separate graduation essay gate. */
+  opinionPurpose?: "daily-take" | "grade-essay";
   /** Shared. */
   explanation?: string;
   subject?: string;

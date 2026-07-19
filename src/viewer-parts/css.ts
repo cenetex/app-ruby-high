@@ -368,9 +368,44 @@ export const VIEWER_CSS = `
     padding: 2px 7px;
     border-radius: 999px;
   }
-  .channel-row.room-row {
+  .channel-row.room-row-group {
     min-height: 52px;
     align-items: center;
+    gap: 4px;
+    padding: 0 8px;
+  }
+  .teacher-profile-button,
+  .room-row-button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .teacher-profile-button {
+    width: 36px;
+    height: 44px;
+    padding: 4px;
+    border-radius: 999px;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+  }
+  .room-row-button {
+    min-width: 0;
+    min-height: 44px;
+    padding: 6px 4px;
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+  }
+  .teacher-profile-button:focus-visible,
+  .room-row-button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
   }
   .room-row-meta {
     min-width: 0;
@@ -616,6 +651,25 @@ export const VIEWER_CSS = `
     align-items: center;
     gap: 10px;
     flex: 0 0 auto;
+  }
+  .channels-footer .you-profile {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    min-width: 0;
+    padding: 2px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1 1 auto;
+    text-align: left;
+    cursor: pointer;
+  }
+  .channels-footer .you-profile:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
   .channels-footer .you-avatar {
     width: 36px;
@@ -6335,8 +6389,7 @@ export const VIEWER_CSS = `
     border-radius: 0 8px 8px 0;
   }
 
-  /* tiny "open profile" button living in the channels footer */
-  .you-meta { cursor: pointer; }
+  /* compact student-profile button living in the channels footer */
 
   /* ── opinion mode: a small grade-pill that lands on the student's
    *  earlier chat message after the teacher grades. */

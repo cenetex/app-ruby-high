@@ -36,6 +36,8 @@ type MetricsEventBody = {
   connectorType?: unknown;
   provider?: unknown;
   addressPreview?: unknown;
+  questionId?: unknown;
+  faculty?: unknown;
   phantomAvailable?: unknown;
   hasWindowPhantom?: unknown;
   hasWindowSolana?: unknown;
@@ -133,6 +135,22 @@ export async function handleMetricsEventRoute(
         ...(Number.isFinite(Number(body.repeatRate)) ? { repeatRate: Number(body.repeatRate) } : {}),
       },
     }));
+  }
+  if (type === "teacher_response_viewed" || type === "room_reaction_viewed") {
+    return await respondAfterMetricPersist(ctx, async () => {
+      await deps.ruby.recordMetricEventDurably(type, {
+        sessionId: deps.sessionId,
+        ...(visitorHash ? { visitorHash } : {}),
+        source: "viewer",
+        feature: "daily_class_ritual",
+        step: type === "teacher_response_viewed" ? "teacher_response" : "room_reaction",
+        status: "success",
+        metadata: {
+          ...(requestString(body.questionId) ? { questionId: requestString(body.questionId) } : {}),
+          ...(requestString(body.faculty) ? { faculty: requestString(body.faculty) } : {}),
+        },
+      });
+    });
   }
   if (type === "privy_auth_error") {
     return await respondAfterMetricPersist(ctx, async () => {
