@@ -111,6 +111,37 @@ test("keeps morning announcements keyboard-modal", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("keeps Honor Roll open across session polling and returns to class", async ({ page }) => {
+  const { errors } = await openViewer(page);
+  await dismissAnnouncements(page);
+  await createPublicCharacter(page, "Honor Roll Mina");
+  await tickGrade(page);
+  await page.reload();
+  await dismissAnnouncements(page);
+  await closeRewardComicIfVisible(page);
+  await closeBlockingSheetIfVisible(page);
+
+  const honorRoll = page.getByRole("button", { name: "View Honor Roll", exact: true });
+  await expect(honorRoll).toBeVisible();
+  await honorRoll.click();
+
+  const panel = page.locator("#leaderboard-panel");
+  await expect(panel).toBeVisible();
+  await expect(page.locator("#leaderboard-back")).toBeFocused();
+  await expect(page.locator("#leaderboard-body")).not.toContainText("Loading…");
+
+  // The viewer polls session telemetry every four seconds while idle. That
+  // repaint used to call showClassSurface() and immediately hide Honor Roll.
+  await page.waitForTimeout(4_500);
+  await expect(panel).toBeVisible();
+
+  await page.locator("#leaderboard-back").click();
+  await expect(panel).not.toBeVisible();
+  await expect(page.locator("#blackboard-panel")).toBeVisible();
+  await expect(page.locator("#honor-roll-button")).toBeFocused();
+  expect(errors).toEqual([]);
+});
+
 test("keeps the public world projection healthy while the viewer idles", async ({ page }) => {
   test.setTimeout(80_000);
   const { errors } = await openViewer(page);

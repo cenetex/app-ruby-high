@@ -142,15 +142,16 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       </div>
     </section>
 
-    <section class="leaderboard-panel" id="leaderboard-panel" hidden>
+    <section class="leaderboard-panel" id="leaderboard-panel" aria-labelledby="leaderboard-title" hidden>
       <div class="leaderboard-header">
         <div class="leaderboard-header-icon">🏆</div>
         <div class="leaderboard-header-text">
-          <h2 class="leaderboard-title">Honor Roll</h2>
+          <h2 class="leaderboard-title" id="leaderboard-title">Honor Roll</h2>
           <p class="leaderboard-sub">Top students by year — updated live.</p>
         </div>
+        <button class="leaderboard-back" id="leaderboard-back" type="button">Back to class</button>
       </div>
-      <div class="leaderboard-body" id="leaderboard-body">
+      <div class="leaderboard-body" id="leaderboard-body" aria-live="polite">
         <div class="leaderboard-loading">Loading…</div>
       </div>
     </section>

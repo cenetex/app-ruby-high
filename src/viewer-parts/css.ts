@@ -74,13 +74,12 @@ export const VIEWER_CSS = `
     -webkit-font-smoothing: antialiased;
     text-size-adjust: 100%;
   }
-  /* touch-action 'manipulation' allows pinch-zoom on iOS Safari;
-     'pan-x pan-y' keeps scroll/swipe but explicitly blocks pinch-zoom
-     and double-tap zoom on Android Chrome / Samsung Internet.
-     Belt-and-suspenders with the JS gesture preventers in viewer script. */
-  body { touch-action: pan-x pan-y; }
+  /* Keep the browser's native pan and magnification gestures available.
+     Narrow-layout overflow is contained by the shell and shrinkable grid
+     children below, so zoom does not need to be suppressed. */
+  body { touch-action: auto; }
   button, textarea, select, input { font: inherit; color: inherit; }
-  button { cursor: pointer; touch-action: manipulation; }
+  button { cursor: pointer; }
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 999px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -7932,6 +7931,26 @@ export const VIEWER_CSS = `
     display: flex;
     flex-direction: column;
     gap: 2px;
+    min-width: 0;
+  }
+  .leaderboard-back {
+    margin-left: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg-elev);
+    color: var(--text-soft);
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .leaderboard-back:hover,
+  .leaderboard-back:focus-visible {
+    border-color: var(--accent);
+    color: var(--text);
+    outline: none;
   }
   .leaderboard-title {
     margin: 0;
@@ -8075,6 +8094,18 @@ export const VIEWER_CSS = `
     text-align: center;
     color: var(--text-mute);
     font-size: 14px;
+  }
+  @media (max-width: 460px) {
+    .leaderboard-header {
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .leaderboard-header-icon {
+      font-size: 26px;
+    }
+    .leaderboard-back {
+      padding: 7px 8px;
+    }
   }
 
 `;

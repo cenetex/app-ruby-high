@@ -98,6 +98,9 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("gesturestart");
     expect(script).not.toContain("gesturechange");
     expect(script).not.toContain('addEventListener("dblclick"');
+    expect(VIEWER_CSS).toContain("body { touch-action: auto; }");
+    expect(VIEWER_CSS).not.toContain("touch-action: pan-x pan-y");
+    expect(VIEWER_CSS).not.toContain("touch-action: manipulation");
 
     for (const overlayId of [
       "signin-overlay",

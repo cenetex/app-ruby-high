@@ -552,6 +552,7 @@ export function runViewerClient(bootstrap) {
     appConfirmCancel: $("app-confirm-cancel"),
     leaderboardPanel: $("leaderboard-panel"),
     leaderboardBody: $("leaderboard-body"),
+    leaderboardBack: $("leaderboard-back"),
     appConfirmOk: $("app-confirm-ok"),
   };
 
@@ -1232,10 +1233,15 @@ export function runViewerClient(bootstrap) {
     renderedHistorySig = null;
     lastSocialSummaryId = null;
   }
-  function showClassSurface() {
+  function showClassSurface(force) {
+    // Session polling repaints the blackboard every few seconds. Honor Roll
+    // is an explicit view choice, so background paints must not silently
+    // kick the player back to class. Direct navigation actions pass force.
+    if (leaderboardViewOpen && !force) return;
     leaderboardViewOpen = false;
     els.leaderboardPanel.hidden = true;
     els.blackboardPanel.hidden = false;
+    els.loungeStage.hidden = false;
     els.stream.hidden = false;
     els.composerZone.hidden = false;
   }
@@ -4484,20 +4490,21 @@ export function runViewerClient(bootstrap) {
       els.channelsList.appendChild(row);
     }
 
-    // Students — group the cohort by the year they are actually living in,
-    // then use the row body for room/arc/social-card state instead of
-    // repeating the same grade chip six times.
     if (!unlocked) return;
-    classmateChannelRowsRenderer.appendSection(els.channelsList, classmateChannelGroups(t, grade));
 
-    // Honor Roll — school-wide leaderboard.
+    // Honor Roll belongs with the primary destinations, above the longer
+    // student roster. Placing it after every classmate pushed it below the
+    // visible rail at common desktop heights and made the feature look absent.
     const honorTitle = document.createElement("div");
     honorTitle.className = "channel-section-title";
     honorTitle.textContent = "Honor Roll";
     els.channelsList.appendChild(honorTitle);
     const honorRow = document.createElement("button");
+    honorRow.id = "honor-roll-button";
     honorRow.className = "channel-row";
     honorRow.type = "button";
+    honorRow.setAttribute("aria-label", "View Honor Roll");
+    honorRow.setAttribute("aria-controls", "leaderboard-panel");
     const honorThumb = document.createElement("span");
     honorThumb.className = "teacher-thumb";
     honorThumb.style.background = "#222";
@@ -4515,6 +4522,11 @@ export function runViewerClient(bootstrap) {
     honorRow.appendChild(honorMeta);
     honorRow.addEventListener("click", () => showLeaderboard());
     els.channelsList.appendChild(honorRow);
+
+    // Students — group the cohort by the year they are actually living in,
+    // then use the row body for room/arc/social-card state instead of
+    // repeating the same grade chip six times.
+    classmateChannelRowsRenderer.appendSection(els.channelsList, classmateChannelGroups(t, grade));
 
   }
   function channelNameFor(f) {
@@ -4548,6 +4560,7 @@ export function runViewerClient(bootstrap) {
     return "Class is in session. Your teacher is ready when you are.";
   }
   async function setFaculty(facultyId) {
+    showClassSurface(true);
     const prev = lastTelemetry && lastTelemetry.faculty;
     if (facultyId === prev) { closeRails(); return; }
     const data = await command({ type: "set-faculty", faculty: facultyId });
@@ -4568,6 +4581,7 @@ export function runViewerClient(bootstrap) {
     closeRails();
   }
   async function enterLounge() {
+    showClassSurface(true);
     const prev = lastTelemetry && lastTelemetry.faculty;
     if (prev === LOUNGE_ID) { closeRails(); return; }
     const data = await command({ type: "set-faculty", faculty: LOUNGE_ID });
@@ -4593,6 +4607,7 @@ export function runViewerClient(bootstrap) {
     els.stream.hidden = true;
     els.leaderboardPanel.hidden = false;
     els.leaderboardBody.innerHTML = '<div class="leaderboard-loading">Loading…</div>';
+    focusWithoutScroll(els.leaderboardBack);
     try {
       const r = await apiFetch(apiBase + "/cohort");
       if (!r.ok) throw new Error("leaderboard " + r.status);
@@ -10331,6 +10346,11 @@ export function runViewerClient(bootstrap) {
   els.generateMcBtn.addEventListener("click", generateMultipleChoice);
   els.nextBtn.addEventListener("click", pickNext);
   els.hamburger.addEventListener("click", toggleRails);
+  if (els.leaderboardBack) els.leaderboardBack.addEventListener("click", () => {
+    showClassSurface(true);
+    const honorRollButton = document.getElementById("honor-roll-button");
+    focusWithoutScroll(desktopRailsQuery.matches ? honorRollButton : els.hamburger);
+  });
   els.scrim.addEventListener("click", () => closeRails(true));
   if (els.channelsClose) els.channelsClose.addEventListener("click", () => closeRails(true));
   els.homeBtn.addEventListener("click", openRails);
