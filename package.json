@@ -70,17 +70,17 @@
     "arweave": "^1.15.7"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.0",
-    "@privy-io/react-auth": "^3.32.1",
-    "@types/node": "^26.0.0",
+    "@playwright/test": "^1.61.1",
+    "@privy-io/react-auth": "^3.35.1",
+    "@types/node": "^26.1.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "@vitest/coverage-v8": "^4.1.9",
+    "@vitest/coverage-v8": "^4.1.10",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "tsup": "^8.0.0",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   },
   "overrides": {
     "tmp": "^0.2.7",
