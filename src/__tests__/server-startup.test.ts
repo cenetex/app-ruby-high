@@ -120,6 +120,11 @@ describe("production startup guardrails", () => {
   it("keeps the dev grade-completion helper available for browser journeys", () => {
     expect(devServerEntry).toContain('url.pathname === "/dev/tick-grade"');
     expect(devServerEntry).toContain("completeCurrentGradeForDev(sessionId)");
+    expect(devServerEntry).toContain("rubySvc.graduationGate(sessionId)");
+    expect(devServerEntry).toContain("...graduationGate.requiredFacultyIds");
+    expect(devServerEntry).toContain("...graduationGate.eligibleFacultyIds");
+    expect(devServerEntry).toContain("graduationGate.requiredRooms");
     expect(devServerEntry).toContain("rubySvc.completeGraduation");
+    expect(devServerEntry).not.toContain("state.contentPack?.faculty ?? facultySvc.faculty()");
   });
 });
