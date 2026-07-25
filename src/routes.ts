@@ -51,6 +51,8 @@ import { handleYearbookRoutes } from "./routes/yearbook.js";
 import { handleFirstBellRoutes, FIRST_BELL_PREFIX } from "./routes/first-bell.js";
 import { buildSessionState, getCharacterName } from "./routes/session-state.js";
 import { handleMetricsEventRoute, METRICS_EVENT_PATH } from "./routes/metrics-events.js";
+import { AGENT_API_PREFIX, handleAgentRoutes } from "./routes/agent.js";
+import { AgentAccessService } from "./services/agent-access-service.js";
 import { handleNftRoutes } from "./routes/nft.js";
 import { XSocialService } from "./services/x-social-service.js";
 import { handleXSocialRoutes } from "./routes/x-social.js";
@@ -524,6 +526,22 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       return true;
     }
     return handleFirstBellRoutes(ctx, ruby);
+  }
+
+  if (ctx.pathname.startsWith(AGENT_API_PREFIX)) {
+    const access = tryGetService<AgentAccessService>(runtime, AgentAccessService.serviceType);
+    const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
+    const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
+    const faculty = tryGetService<FacultyService>(runtime, FacultyService.serviceType);
+    if (!access || !ruby) {
+      ctx.error(
+        ctx.res,
+        !access ? "AgentAccessService unavailable" : "RubyHighService unavailable",
+        503,
+      );
+      return true;
+    }
+    return handleAgentRoutes(ctx, { access, auth, ruby, faculty });
   }
 
   if (ctx.pathname.startsWith("/api/apps/ruby-high/yearbook")) {

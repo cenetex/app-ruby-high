@@ -8,6 +8,7 @@ import { serveLandingRequest } from "./landing.mjs";
 import { normalizePublicOrigin } from "./public-base.mjs";
 import {
   AuthService,
+  AgentAccessService,
   ChatService,
   FacultyService,
   RubyHighService,
@@ -35,6 +36,7 @@ console.log(`[ruby-high] state store: ${stateStore.describe()}`);
 const facultySvc = await FacultyService.start({});
 const authSvc = await AuthService.start({}, stateStore);
 const chatSvc = await ChatService.start({});
+let agentAccessSvc = null;
 
 const fakeRuntime = {
   agentId: "local-ruby",
@@ -43,6 +45,7 @@ const fakeRuntime = {
     if (type === FacultyService.serviceType) return facultySvc;
     if (type === RubyHighService.serviceType) return rubySvc;
     if (type === AuthService.serviceType) return authSvc;
+    if (type === AgentAccessService.serviceType) return agentAccessSvc;
     if (type === ChatService.serviceType) return chatSvc;
     if (type === XSocialService.serviceType) return xSocialSvc;
     if (type === TelegramService.serviceType) return telegramSvc;
@@ -71,6 +74,8 @@ const rubySvc = await (async () => {
   return svc;
 })();
 chatSvc.setRubyHighService(rubySvc);
+agentAccessSvc = new AgentAccessService(fakeRuntime, stateStore);
+await agentAccessSvc.hydrate();
 
 function makeRouteContext(req, res, url) {
   return createRouteContext({

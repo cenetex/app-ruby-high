@@ -29,7 +29,8 @@ export default defineConfig({
       ]
     },
     exclude: [
-      "node_modules/**",
+      "**/node_modules/**",
+      "packages/**",
       "dist/**",
       "dist-spa/**",
       "tests/browser/**",

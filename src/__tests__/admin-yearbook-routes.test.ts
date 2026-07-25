@@ -2895,6 +2895,10 @@ describe("admin metrics route", () => {
         reliability: "proxy",
       }),
       expect.objectContaining({
+        path: "ruby.scheduledPosts",
+        reliability: "authoritative",
+      }),
+      expect.objectContaining({
         path: "ops.publicReadLimiter",
         reliability: "volatile",
       }),

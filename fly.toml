@@ -42,6 +42,9 @@ primary_region = "iad"
   # and the size cap in createCharacter rejects oversized portraits.
   RUBY_HIGH_PORTRAITS_BUCKET = "ruby-high-portraits"
   RUBY_HIGH_PORTRAITS_REGION = "us-east-1"
+  # Generate at most one aggregate classroom/lounge X update per 24 hours.
+  # Scheduler state is durable, so cold starts and deploys do not double-post.
+  RUBY_HIGH_X_SCHEDULED_POSTS_ENABLED = "1"
   # The Report a bug endpoint creates private repo issues with the secret
   # RUBY_HIGH_GITHUB_ISSUES_TOKEN when that token is configured.
   RUBY_HIGH_GITHUB_ISSUES_REPO = "cenetex/app-ruby-high"

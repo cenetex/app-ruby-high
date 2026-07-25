@@ -2429,7 +2429,8 @@ describe("chat event context", () => {
   });
 
   it("includes the active guest teacher in lounge enter turns", async () => {
-    registerPublicPack(fakePublicGuestPack(), 1_000);
+    const guestPack = fakePublicGuestPack();
+    registerPublicPack(guestPack, 1_000);
     const token = "route-lounge-guest-token";
     auth.injectSessionForTest(token, {
       userId: "route-lounge-guest-user",
@@ -2437,6 +2438,10 @@ describe("chat event context", () => {
       expiresAt: Date.now() + 60_000,
       label: "Route Lounge Guest",
     });
+    ruby.setGuestPackOverrideForSession(
+      "rh:user:route-lounge-guest-user",
+      guestPack.id,
+    );
     const calls: any[] = [];
     (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
       const [input, init] = args;

@@ -88,6 +88,7 @@ describe("production startup guardrails", () => {
 
   it("starts and stops Ruby High background schedulers in production", () => {
     expect(serverEntry).toContain("svc.startPhotoPostScheduler()");
+    expect(serverEntry).toContain("svc.startRotationScheduler()");
     expect(serverEntry).toContain("rubySvc?.stop?.()");
   });
 

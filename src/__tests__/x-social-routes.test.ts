@@ -128,6 +128,51 @@ describe("X social routes", () => {
     expect(harness.body()).toEqual({ status: 200, body: { ok: true, tweetId: "tweet:fresh" } });
   });
 
+  it("forces one scheduled school update through the admin-only route", async () => {
+    process.env.RUBY_HIGH_ADMIN_TOKEN = "admin-route-test";
+    const runScheduledSchoolUpdateNow = vi.fn(async () => ({
+      tweetId: "tweet:scheduled",
+      teacherId: "ruby",
+      contextFingerprint: "context-1",
+    }));
+    const xSocial = {
+      runtime: {
+        getService: (type: string) => type === "ruby-high"
+          ? { runScheduledSchoolUpdateNow }
+          : null,
+      },
+    };
+
+    let harness = makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/x/post-scheduled/ruby",
+    });
+    expect(await handleXSocialRoutes(harness.ctx, xSocial as any)).toBe(true);
+    expect(harness.body()).toEqual({
+      status: 401,
+      body: { error: "Admin authentication required." },
+    });
+    expect(runScheduledSchoolUpdateNow).not.toHaveBeenCalled();
+
+    harness = makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/x/post-scheduled/ruby",
+      authorizationHeader: "Bearer admin-route-test",
+    });
+    expect(await handleXSocialRoutes(harness.ctx, xSocial as any)).toBe(true);
+    expect(runScheduledSchoolUpdateNow).toHaveBeenCalledWith("ruby");
+    expect(harness.body()).toEqual({
+      status: 200,
+      body: {
+        ok: true,
+        forced: true,
+        tweetId: "tweet:scheduled",
+        teacherId: "ruby",
+        contextFingerprint: "context-1",
+      },
+    });
+  });
+
   it("uses fresh students for report-card posts", async () => {
     process.env.RUBY_HIGH_ADMIN_TOKEN = "admin-route-test";
     const fresh = vi.fn(async () => [{

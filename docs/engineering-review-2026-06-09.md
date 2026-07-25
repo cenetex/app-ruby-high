@@ -24,7 +24,7 @@ The engineering culture here is unusually strong for a solo/agent-driven project
 
 ## 2. System overview
 
-**Shape.** The app is packaged as a host-agnostic "app module" (`src/index.ts` exports `rubyHighApp: RubyHighAppModule`) with services, actions, and an `appBridge` of route handlers. `src/runtime.ts` defines a minimal `IAgentRuntime`/`Service` shim (ElizaOS-style) so the same module runs standalone under `scripts/server.mjs` — a raw `node:http` server, no framework anywhere. Four core services (`FacultyService`, `RubyHighService`, `AuthService`, `ChatService`) plus `XSocialService`/`TelegramService`; circular service references are broken with a documented `queueMicrotask` deferral (`src/index.ts:27-47`).
+**Shape.** The app is packaged as a host-agnostic "app module" (`src/index.ts` exports `rubyHighApp: RubyHighAppModule`) with services, actions, and an `appBridge` of route handlers. `src/runtime.ts` defines a minimal `IAgentRuntime`/`Service` shim so the same module runs standalone under `scripts/server.mjs` — a raw `node:http` server, no framework anywhere. Four core services (`FacultyService`, `RubyHighService`, `AuthService`, `ChatService`) plus `XSocialService`/`TelegramService`; circular service references are broken with a documented `queueMicrotask` deferral (`src/index.ts:27-47`).
 
 **Routing.** Hand-rolled prefix dispatch in `src/routes.ts` (410 lines) fanning out to `src/routes/*` (admin, billing, NFT, yearbook, metrics, commands, assets, bug-report) and the larger `chat-routes.ts` / `pack-library-routes.ts`. Handlers receive a `RouteContext` with injected `json`/`error`/`readJsonBody` — consistent and testable, at the cost of every handler re-checking service availability (the 503 boilerplate repeats ~8×).
 

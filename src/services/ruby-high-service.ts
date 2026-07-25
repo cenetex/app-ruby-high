@@ -27,8 +27,13 @@ import {
 import {
   PostRotationScheduler,
   GENERAL_POST_SCHEDULER_INTERVAL_MS,
-  type GeneralSchedulerState,
+  SCHEDULED_POST_SCHEDULER_STATE_ID,
+  hydrateScheduledPostSchedulerState,
+  scheduledPostSchedulerStateRecord,
+  type GeneralSchedulerSnapshot,
+  type ScheduledPostResult,
 } from "./ruby-high/post-scheduler.js";
+import type { ScheduledSchoolUpdateContext } from "./ruby-high/post-types.js";
 import {
   buildCurriculumCoverageSnapshot,
   generationDifficultyForCurriculumGrade,
@@ -186,7 +191,9 @@ import {
   facultyForSession,
   GUEST_COURSE_ID,
   getActivePack,
+  guestFacultyForPack,
   guestPackForSession,
+  guestWeekKey,
   isPackLoaded,
   MAX_PACKS_PER_OWNER,
   ORIGINAL_PACK_ID,
@@ -197,6 +204,7 @@ import {
   roomForFacultyForSession,
   setActivePack,
   unregisterPack,
+  weeklyAutoGuestPack,
 } from "../content/registry.js";
 import type { ContentPack, PackFaculty, PackSourceCard } from "../content/types.js";
 import { cardToMcQuestion, type DistractorOpts, type SourceCardInput } from "../content/source-distractors.js";
@@ -790,6 +798,7 @@ export interface RubyHighAnalyticsSnapshot {
   };
   world: RubyHighWorldHealthSnapshot;
   photoPosts: RubyHighPhotoPostSchedulerSnapshot;
+  scheduledPosts: GeneralSchedulerSnapshot;
   curriculum: RubyHighCurriculumCoverageSnapshot;
   daily: RubyHighAnalyticsDay[];
 }
@@ -1652,6 +1661,7 @@ export class RubyHighService extends Service {
   private photoPostSchedulerRunning = false;
   private rotationScheduler: PostRotationScheduler;
   private rotationSchedulerTimer: ReturnType<typeof setInterval> | null = null;
+  private rotationSchedulerRunning = false;
   private lastPhotoPostAttemptAt: number | null = null;
   private lastPhotoPostResult: DailyPhotoPostResult | null = null;
   private readonly disposeLogSink: () => void;
@@ -2357,6 +2367,7 @@ export class RubyHighService extends Service {
       },
       world: this.worldHealthSnapshot(now),
       photoPosts: this.photoPostSchedulerSnapshot(),
+      scheduledPosts: this.rotationSchedulerSnapshot(),
       curriculum: this.curriculumCoverageSnapshot(),
       daily: days,
     };
@@ -2476,11 +2487,15 @@ export class RubyHighService extends Service {
   }
 
   startRotationScheduler(): void {
-    if (this.rotationSchedulerTimer) return;
+    if (this.rotationSchedulerTimer || !this.rotationScheduler.getSnapshot().enabled) return;
     this.rotationSchedulerTimer = setInterval(() => {
       void this.runRotationSchedulerTick();
     }, GENERAL_POST_SCHEDULER_INTERVAL_MS);
     this.rotationSchedulerTimer.unref?.();
+    // Production scales to zero. An immediate eligibility check lets a cold
+    // start service an overdue daily post instead of requiring 15 minutes of
+    // continuous traffic before the first interval fires.
+    void this.runRotationSchedulerTick();
   }
 
   stopRotationScheduler(): void {
@@ -2488,19 +2503,42 @@ export class RubyHighService extends Service {
     this.rotationSchedulerTimer = null;
   }
 
-  async runRotationSchedulerTick(): Promise<void> {
+  async runRotationSchedulerTick(
+    options: { force?: boolean; teacherId?: string } = {},
+  ): Promise<ScheduledPostResult | null> {
+    if (this.rotationSchedulerRunning) return null;
     const xSocial = this.getXSocialService();
-    if (!xSocial) return;
+    if (!xSocial) return null;
 
-    const teacher = this.getFirstConnectedTeacher();
-    if (!teacher) return;
+    const teacher = options.teacherId
+      ? this.getConnectedTeacher(options.teacherId)
+      : this.getFirstConnectedTeacher();
+    if (!teacher) return null;
 
-    const recentNames = this.getRecentActiveStudentNames();
+    this.rotationSchedulerRunning = true;
+    const before = JSON.stringify(this.rotationScheduler.getState());
     try {
-      await this.rotationScheduler.tick(xSocial, () => this.getFirstConnectedTeacher(), () => recentNames);
+      const now = Date.now();
+      return await this.rotationScheduler.tick(
+        xSocial,
+        teacher,
+        this.getScheduledSchoolUpdateContext(now),
+        now,
+        { force: options.force },
+      );
     } catch (err) {
       log.error("rotation-scheduler.tick-failed", err);
+      return null;
+    } finally {
+      if (JSON.stringify(this.rotationScheduler.getState()) !== before) {
+        await this.persistScheduledPostSchedulerState();
+      }
+      this.rotationSchedulerRunning = false;
     }
+  }
+
+  async runScheduledSchoolUpdateNow(teacherId = "ruby"): Promise<ScheduledPostResult | null> {
+    return this.runRotationSchedulerTick({ force: true, teacherId });
   }
 
   private getXSocialService(): XSocialService | null {
@@ -2519,13 +2557,106 @@ export class RubyHighService extends Service {
     return teacherById(targetId) ?? null;
   }
 
-  private getRecentActiveStudentNames(): string[] {
-    const students = this.getRecentlyActiveStudents(Date.now());
-    return students.map((s) => s.name).slice(0, 10);
+  private getConnectedTeacher(teacherId: string): TeacherCharacter | null {
+    const xSocial = this.getXSocialService();
+    if (!xSocial) return null;
+    const status = xSocial.getStatus(teacherId);
+    if (!status.connected || !status.hasTweetWrite) return null;
+    const teacher = teacherById(teacherId);
+    return teacher.id === teacherId ? teacher : null;
   }
 
-  rotationSchedulerSnapshot(): GeneralSchedulerState {
+  getScheduledSchoolUpdateContext(now = Date.now()): ScheduledSchoolUpdateContext {
+    const memories = this.getDailyMemories();
+    const world = this.getSchoolWorldSnapshot(30, now);
+    const recentCutoff = now - 48 * 60 * 60 * 1000;
+    const recentEvents = world.recentEvents.filter((event) => event.at >= recentCutoff);
+    const eventCounts: ScheduledSchoolUpdateContext["recentEvents"] = {
+      roomGoalProgress: 0,
+      relationshipMoments: 0,
+      futuresResolved: 0,
+      comicPagesUnlocked: 0,
+    };
+    for (const event of recentEvents) {
+      switch (event.kind) {
+        case "room.goal-progress": eventCounts.roomGoalProgress += 1; break;
+        case "relationship.ticked": eventCounts.relationshipMoments += 1; break;
+        case "mash.axis-resolved": eventCounts.futuresResolved += 1; break;
+        case "comic.page-unlocked": eventCounts.comicPagesUnlocked += 1; break;
+      }
+    }
+    let updatedSessionsLast24h = 0;
+    const dayAgo = now - 24 * 60 * 60 * 1000;
+    for (const state of this.sessions.values()) {
+      const updatedAt = Number(state.updatedAt ?? 0);
+      if (Number.isFinite(updatedAt) && updatedAt >= dayAgo && updatedAt <= now) {
+        updatedSessionsLast24h += 1;
+      }
+    }
+    const guestPack = weeklyAutoGuestPack(new Date(now));
+    const guestFaculty = guestPack ? guestFacultyForPack(guestPack) : null;
+    const guestCourse = guestPack && guestFaculty
+      ? coursesForPack(guestPack).find((course) => course.facultyId === guestFaculty.id) ?? null
+      : null;
+    const guestImageUrl = guestFaculty
+      ? teacherFullPortraitUrl(
+          guestFaculty.id,
+          guestFaculty.assetTeacherId,
+          guestFaculty.profileImageUrl,
+        )
+      : undefined;
+    return {
+      date: new Date(now).toISOString().slice(0, 10),
+      updatedSessionsLast24h,
+      activeStudents: world.activeStudents,
+      activeRooms: world.activeRooms.slice(0, 6).map((room) => ({
+        area: room.facultyId === LOUNGE_FACULTY.id ? "teacher-lounge" as const : "classroom" as const,
+        grade: room.grade,
+        activeStudents: room.activeStudents,
+        goalProgress: room.goal.progress,
+        goalTarget: room.goal.target,
+      })),
+      highlights: {
+        newStudents: memories.charactersCreated.length,
+        classesPassed: memories.classesPassed.length,
+        gradesAdvanced: memories.gradesAdvanced.length,
+        graduations: memories.graduations.length,
+      },
+      recentEvents: eventCounts,
+      ...(guestPack && guestFaculty
+        ? {
+            featuredGuest: {
+              weekKey: guestWeekKey(new Date(now)),
+              packId: guestPack.id,
+              facultyId: guestFaculty.id,
+              displayName: guestFaculty.displayName,
+              courseTitle: guestCourse?.title ?? guestPack.name,
+              bio: guestFaculty.bio.slice(0, 500),
+              ...(guestFaculty.xHandle
+                ? { xHandle: guestFaculty.xHandle.replace(/^@/, "").slice(0, 15) }
+                : {}),
+              ...(guestImageUrl && guestImageUrl.length <= 2_048
+                ? { imageUrl: guestImageUrl }
+                : {}),
+            },
+          }
+        : {}),
+    };
+  }
+
+  rotationSchedulerSnapshot(): GeneralSchedulerSnapshot {
     return this.rotationScheduler.getSnapshot();
+  }
+
+  private persistScheduledPostSchedulerState(options: { surfaceErrors?: boolean } = {}): Promise<void> {
+    if (!this.store.saveServiceState) return Promise.resolve();
+    const record = scheduledPostSchedulerStateRecord(this.rotationScheduler.getState());
+    const save = this.store.saveServiceState(record).catch((err) => {
+      log.error("scheduled-post-scheduler.persist-failed", err);
+      if (options.surfaceErrors) throw err;
+    });
+    if (!options.surfaceErrors) this.trackBackgroundWrite(save);
+    return save;
   }
 
   async runPhotoPostSchedulerTick(): Promise<DailyPhotoPostResult | null> {
@@ -5008,6 +5139,7 @@ export class RubyHighService extends Service {
       storedMetricEvents,
       storedSchoolEvents,
       storedPhotoPostSchedulerState,
+      storedScheduledPostSchedulerState,
       storedPublicWorldRoomState,
       storedPublicWorldRoomOutcomeState,
       storedPublicWorldTermState,
@@ -5024,6 +5156,7 @@ export class RubyHighService extends Service {
       this.store.loadMetricEvents?.() ?? Promise.resolve([]),
       this.store.loadSchoolEvents?.({ limit: SCHOOL_WORLD_EVENT_CACHE_LIMIT }) ?? Promise.resolve([]),
       this.store.loadServiceState?.(PHOTO_POST_SCHEDULER_STATE_ID) ?? Promise.resolve(null),
+      this.store.loadServiceState?.(SCHEDULED_POST_SCHEDULER_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_ROOMS_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_ROOM_OUTCOMES_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_TERMS_STATE_ID) ?? Promise.resolve(null),
@@ -5081,6 +5214,9 @@ export class RubyHighService extends Service {
     }
     this.pruneSchoolEventRecords();
     this.hydratePhotoPostSchedulerState(storedPhotoPostSchedulerState);
+    this.rotationScheduler = new PostRotationScheduler({
+      state: hydrateScheduledPostSchedulerState(storedScheduledPostSchedulerState),
+    });
     this.hydratePublicWorldRoomState(storedPublicWorldRoomState);
     this.hydratePublicWorldRoomOutcomeState(storedPublicWorldRoomOutcomeState);
     this.hydratePublicWorldTermState(storedPublicWorldTermState);
@@ -7834,7 +7970,15 @@ export class RubyHighService extends Service {
     // Imported decks are private study material; custom "challenge" boards
     // should not silently rewrite a user's imported source deck. The original
     // Ruby High curriculum is the shared server-side bank we grow over time.
-    if (pack.id !== ORIGINAL_PACK_ID) return;
+    // A rotating Guest Faculty course composes a derived pack id around that
+    // same base school, so core-faculty authored cards still belong in the
+    // original bank while guest cards remain isolated to their source pack.
+    const targetPackId =
+      pack.id === ORIGINAL_PACK_ID ||
+      pack.id.startsWith(`${ORIGINAL_PACK_ID}+guest:`)
+        ? ORIGINAL_PACK_ID
+        : null;
+    if (!targetPackId || question.faculty === GUEST_COURSE_ID) return;
     if (!question.options || !question.correct || !question.subject || !question.difficulty || !question.faculty) return;
     const banked: BankedQuestion = {
       id: question.id,
@@ -7848,12 +7992,12 @@ export class RubyHighService extends Service {
       difficulty: question.difficulty,
       faculty: question.faculty,
     };
-    const updated = appendQuestionToPackBank(pack.id, question.faculty, banked);
+    const updated = appendQuestionToPackBank(targetPackId, question.faculty, banked);
     if (updated) {
       this.persistGlobalPack(updated);
       log.event("question.promoted-to-bank", {
         sessionId: state.sessionId,
-        packId: pack.id,
+        packId: targetPackId,
         faculty: question.faculty,
         questionId: question.id,
       });

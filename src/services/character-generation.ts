@@ -11,8 +11,10 @@ import {
 } from "./openrouter-client.js";
 import {
   rubyHighPhotoSceneForGrade,
+  rubyHighPhotoSceneForSchoolUpdate,
   type RubyHighPhotoScene,
 } from "./school-photo-scenes.js";
+import type { ScheduledSchoolUpdateContext } from "./ruby-high/post-types.js";
 import {
   fetchLlmChatCompletions,
   resolveStudentModel,
@@ -296,6 +298,97 @@ export async function renderGraduationPhoto(args: {
   const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
   if (!url) throw new Error("Graduation photo generation returned no image.");
   return url;
+}
+
+export interface SchoolUpdatePhotoParticipant {
+  role: "teacher" | "student";
+  id: string;
+  name: string;
+  imageUrl: string;
+}
+
+/** Compose a dynamic, identity-locked campus photo for a scheduled school
+ *  update. It mirrors the graduation-photo framing without implying that a
+ *  graduation happened or exposing any player-created identity. */
+export async function renderScheduledSchoolUpdatePhoto(args: {
+  apiKey: string;
+  postText: string;
+  context: ScheduledSchoolUpdateContext;
+  participants: SchoolUpdatePhotoParticipant[];
+}): Promise<string> {
+  if (args.participants.length < 2 || args.participants.length > 4) {
+    throw new Error("Scheduled school update photos require two to four participants.");
+  }
+  const loungeActive = args.context.activeRooms.some((room) => room.area === "teacher-lounge");
+  const area = loungeActive ? "teacher-lounge" : "classroom";
+  const grade = args.context.activeRooms.find((room) => room.area === "classroom")?.grade ?? null;
+  const scene = rubyHighPhotoSceneForSchoolUpdate(
+    area,
+    grade,
+    `${args.context.date}:${args.participants.map((participant) => participant.id).join(":")}`,
+  );
+  const contentParts: Array<Record<string, unknown>> = [];
+  args.participants.forEach((participant, index) => {
+    contentParts.push({
+      type: "text",
+      text: `REFERENCE IMAGE ${index + 1}: ${participant.name} - ${participant.role}. Use this exact character identity for that person.`,
+    });
+    contentParts.push({
+      type: "image_url",
+      image_url: { url: imageReferenceUrl(participant.imageUrl) },
+    });
+  });
+  const activityFacts = scheduledSchoolUpdatePhotoFacts(args.context);
+  const graduationMoment = args.context.highlights.graduations > 0;
+  contentParts.push({
+    type: "text",
+    text: [
+      `Create a dynamic Ruby High school-life photo with exactly these ${args.participants.length} people: ${args.participants.map((participant) => `${participant.name} (${participant.role})`).join(", ")}.`,
+      "IDENTITY LOCK: Each reference image is a canonical character sheet. Preserve each person's hair shape and color, outfit, silhouette, face, skin tone, proportions, role, and art style. Adapt pose and expression only. Do not redesign the cast or add extra people.",
+      "",
+      `LOCATION: ${scene.roomName}. ${scene.setting}.`,
+      `RECENT SCHOOL MOMENT: ${activityFacts.join(" ")}`,
+      `STORY BEAT: ${args.postText}`,
+      `PHOTO DIRECTION: ${scene.action}`,
+      `CAMERA: ${scene.camera}.`,
+      `ROOM DETAILS: ${scene.props}.`,
+      "COMPOSITION: wide horizontal editorial school photo, 16:9. Stage the cast at different depths and angles, interacting with the room and each other. Use diagonal movement, expressive hands, and distinct silhouettes. Everyone is visible from head to at least knees, faces clear, no one cut off.",
+      graduationMoment
+        ? "A recent graduation may be suggested with one subtle keepsake, but keep the scene candid and grounded."
+        : "This is an ordinary school-day moment, not a graduation ceremony: no caps, gowns, diplomas, confetti, or formal lineup.",
+      "AVOID: formal photo-day backdrop, centered lineup, stiff front-facing poses, plain empty room, chalkboard-centered composition, character redesigns, outfit swaps, age changes, extra people, missing cast members, dashboards, charts, or visible statistics.",
+      "No text, no logos, no captions, no speech bubbles, no readable notes, no watermarks.",
+      "STYLE: JRPG/anime-influenced school editorial, bold black outlines, vibrant flat colors, subtle cel shading, polished yearbook-quality finish.",
+    ].join("\n"),
+  });
+
+  const body = await openRouterJson<PortraitResponse>({
+    apiKey: args.apiKey,
+    label: "scheduled-school-update-photo",
+    timeoutMs: PORTRAIT_TIMEOUT_MS * 2,
+    body: {
+      model: PORTRAIT_MODEL,
+      modalities: ["image", "text"],
+      messages: [{ role: "user", content: contentParts }],
+      max_tokens: PORTRAIT_MAX_TOKENS,
+    },
+  });
+  const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+  if (!url) throw new Error("Scheduled school update photo generation returned no image.");
+  return url;
+}
+
+function scheduledSchoolUpdatePhotoFacts(context: ScheduledSchoolUpdateContext): string[] {
+  const facts: string[] = [];
+  if (context.activeStudents > 0) facts.push(`${context.activeStudents} students are active around campus.`);
+  if (context.highlights.newStudents > 0) facts.push(`${context.highlights.newStudents} new students arrived recently.`);
+  if (context.highlights.classesPassed > 0) facts.push(`${context.highlights.classesPassed} classes were passed.`);
+  if (context.highlights.gradesAdvanced > 0) facts.push(`${context.highlights.gradesAdvanced} students advanced a grade.`);
+  if (context.highlights.graduations > 0) facts.push(`${context.highlights.graduations} graduations were recorded.`);
+  if (context.recentEvents.roomGoalProgress > 0) facts.push("Classroom goals are moving forward.");
+  if (context.recentEvents.relationshipMoments > 0) facts.push("The teacher's lounge is carrying lively social energy.");
+  if (context.recentEvents.comicPagesUnlocked > 0) facts.push("A hidden school story was uncovered.");
+  return facts.length > 0 ? facts : ["The school is in the middle of an active day."];
 }
 
 type PhotoParticipantRole = "student" | "teacher" | "classmate";

@@ -7,6 +7,7 @@ import {
   type XMilestoneContext,
 } from "../services/x-social-service.js";
 import type { TeacherCharacter } from "../characters/teachers.js";
+import type { ScheduledSchoolUpdateContext } from "../services/ruby-high/post-types.js";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -46,6 +47,29 @@ const RUBY_TEACHER: TeacherCharacter = {
 };
 
 const PNG_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+
+const SCHOOL_UPDATE_CONTEXT: ScheduledSchoolUpdateContext = {
+  date: "2026-07-22",
+  updatedSessionsLast24h: 12,
+  activeStudents: 3,
+  activeRooms: [{ area: "classroom", grade: "9", activeStudents: 3, goalProgress: 2, goalTarget: 3 }],
+  highlights: { newStudents: 2, classesPassed: 1, gradesAdvanced: 0, graduations: 0 },
+  recentEvents: { roomGoalProgress: 2, relationshipMoments: 3, futuresResolved: 0, comicPagesUnlocked: 0 },
+};
+
+const FEATURED_GUEST_CONTEXT: ScheduledSchoolUpdateContext = {
+  ...SCHOOL_UPDATE_CONTEXT,
+  featuredGuest: {
+    weekKey: "2026-W30",
+    packId: "teacher:eliza-elizaos-systems-lab",
+    facultyId: "eliza",
+    displayName: "Eliza",
+    courseTitle: "elizaOS Systems Lab",
+    bio: "Guest systems teacher.",
+    xHandle: "elizaOS",
+    imageUrl: "/api/apps/ruby-high/assets/teachers/eliza-full.png",
+  },
+};
 
 function withImage(ctx: XMilestoneContext): XMilestoneContext {
   return { imageUrl: PNG_URL, ...ctx };
@@ -881,6 +905,158 @@ describe("XSocialService", () => {
       );
       const body = JSON.parse((tweetCall![1] as RequestInit).body as string);
       expect(body.media.media_ids).toEqual(["media-reflection"]);
+    });
+
+    it("posts the exact LLM-written scheduled school update with media", async () => {
+      await connectRuby(svc);
+      vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "test-key");
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ choices: [{ message: { content: "The classrooms are moving, and the lounge has plenty to talk about. #RubyHigh" } }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ choices: [{ message: { images: [{ image_url: { url: PNG_URL } }] } }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: "media-school-update" } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: "tweet-school-update" } }),
+        });
+
+      const result = await svc.postScheduledSchoolUpdate(
+        RUBY_TEACHER,
+        SCHOOL_UPDATE_CONTEXT,
+        { imageUrl: PNG_URL },
+      );
+      expect(result).toBe("tweet-school-update");
+
+      const tweetCall = mockFetch.mock.calls.find(
+        (call: unknown[]) => String((call as string[])[0]).includes("api.x.com/2/tweets"),
+      );
+      const body = JSON.parse((tweetCall![1] as RequestInit).body as string);
+      expect(body).toEqual({
+        text: "The classrooms are moving, and the lounge has plenty to talk about. #RubyHigh",
+        media: { media_ids: ["media-school-update"] },
+      });
+      const imageCall = mockFetch.mock.calls.find((call: unknown[]) => {
+        const bodyText = String((call[1] as RequestInit | undefined)?.body ?? "");
+        return bodyText.includes('"modalities":["image","text"]');
+      });
+      expect(imageCall).toBeDefined();
+      expect(String((imageCall![1] as RequestInit).body)).toContain("IDENTITY LOCK");
+      expect(String((imageCall![1] as RequestInit).body)).toContain("STORY BEAT");
+    });
+
+    it("grounds featured-guest insight copy in the guest's recent X posts", async () => {
+      await connectRuby(svc);
+      vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "test-key");
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: "guest-user-1" } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: [{
+              id: "guest-post-1",
+              created_at: "2026-07-21T18:00:00.000Z",
+              text: "Agent systems are easier to trust when authority and tool boundaries are explicit.",
+            }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            choices: [{
+              message: {
+                content: "Insights from @elizaOS: explicit authority and tool boundaries make agent systems easier to trust. #RubyHigh",
+              },
+            }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ choices: [{ message: { images: [{ image_url: { url: PNG_URL } }] } }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: "media-guest-insight" } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: "tweet-guest-insight" } }),
+        });
+
+      await expect(svc.postScheduledSchoolUpdate(
+        RUBY_TEACHER,
+        FEATURED_GUEST_CONTEXT,
+        { imageUrl: PNG_URL, editorialMode: "guest-insights" },
+      )).resolves.toBe("tweet-guest-insight");
+
+      const llmCall = mockFetch.mock.calls.find((call: unknown[]) => {
+        const bodyText = String((call[1] as RequestInit | undefined)?.body ?? "");
+        return bodyText.includes("x-social-scheduled-school-update") ||
+          bodyText.includes("Agent systems are easier to trust");
+      });
+      expect(llmCall).toBeDefined();
+      expect(String((llmCall![1] as RequestInit).body)).toContain("recent X posts");
+      expect(String((llmCall![1] as RequestInit).body)).toContain("Agent systems are easier to trust");
+      const imageCall = mockFetch.mock.calls.find((call: unknown[]) => {
+        const bodyText = String((call[1] as RequestInit | undefined)?.body ?? "");
+        return bodyText.includes('"modalities":["image","text"]');
+      });
+      expect(String((imageCall![1] as RequestInit).body)).toContain("Eliza - teacher");
+
+      const tweetCall = mockFetch.mock.calls.find(
+        (call: unknown[]) => String((call as string[])[0]) === "https://api.x.com/2/tweets",
+      );
+      const body = JSON.parse((tweetCall![1] as RequestInit).body as string);
+      expect(body.text).toContain("Insights from @elizaOS");
+      expect(body.media.media_ids).toEqual(["media-guest-insight"]);
+    });
+
+    it("falls back to the configured static image when scheduled composition fails", async () => {
+      await connectRuby(svc);
+      vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "test-key");
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ choices: [{ message: { content: "Class is moving with purpose today. #RubyHigh" } }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ choices: [{ message: {} }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: "media-static-fallback" } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: "tweet-static-fallback" } }),
+        });
+
+      await expect(svc.postScheduledSchoolUpdate(
+        RUBY_TEACHER,
+        SCHOOL_UPDATE_CONTEXT,
+        { imageUrl: PNG_URL },
+      )).resolves.toBe("tweet-static-fallback");
+    });
+
+    it("skips scheduled school updates when no LLM credential is configured", async () => {
+      await connectRuby(svc);
+      await expect(svc.postScheduledSchoolUpdate(
+        RUBY_TEACHER,
+        SCHOOL_UPDATE_CONTEXT,
+        { imageUrl: PNG_URL },
+      )).resolves.toBeNull();
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it("attaches media to report-card posts", async () => {

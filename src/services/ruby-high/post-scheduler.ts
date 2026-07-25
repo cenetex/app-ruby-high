@@ -1,146 +1,223 @@
 import type { TeacherCharacter } from "../../characters/teachers.js";
+import type { StoredServiceStateRecord } from "../state-store.js";
 import type { XSocialService } from "../x-social-service.js";
 import {
-  weightedPickPostKind,
-  generateQuestionPostText,
-  generateEngagementPostText,
-  DEFAULT_POST_TYPE_WEIGHTS,
-  type PostKind,
-  type PostTypeWeight,
+  hasMeaningfulScheduledSchoolActivity,
+  scheduledSchoolUpdateFingerprint,
+  type ScheduledSchoolUpdateContext,
 } from "./post-types.js";
 
-export const GENERAL_POST_SCHEDULER_INTERVAL_MS = 5 * 60 * 1000;
-export const MIN_POST_INTERVAL_MS = 10 * 60 * 1000;
+/** The timer only checks eligibility. The durable cadence below determines
+ *  whether a post is actually attempted. */
+export const GENERAL_POST_SCHEDULER_INTERVAL_MS = 15 * 60 * 1000;
+export const MIN_POST_INTERVAL_MS = 24 * 60 * 60 * 1000;
+export const FAILED_POST_RETRY_INTERVAL_MS = 6 * 60 * 60 * 1000;
+export const SCHEDULED_POST_SCHEDULER_STATE_ID = "ruby-high:scheduled-post-scheduler:v1";
+
+export type ScheduledPostSkipReason =
+  | "disabled"
+  | "no-activity"
+  | "duplicate-context"
+  | "daily-cooldown"
+  | "failure-cooldown"
+  | "post-failed";
 
 export interface GeneralSchedulerState {
-  lastPostKind: PostKind | null;
+  lastAttemptAt: number | null;
   lastPostAt: number | null;
-  lastReflectionAt: number | null;
-  lastQuestionAt: number | null;
-  lastEngagementAt: number | null;
-  cooldowns: Record<PostKind, number>;
+  lastTweetId: string | null;
+  lastTeacherId: string | null;
+  lastContextFingerprint: string | null;
+  lastWelcomedGuestKey: string | null;
+  lastSkipReason: ScheduledPostSkipReason | null;
+}
+
+export interface GeneralSchedulerSnapshot extends GeneralSchedulerState {
+  enabled: boolean;
+  pollIntervalMs: number;
+  postIntervalMs: number;
+  retryIntervalMs: number;
+}
+
+export interface ScheduledPostResult {
+  tweetId: string;
+  teacherId: string;
+  contextFingerprint: string;
+}
+
+export interface ScheduledPostTickOptions {
+  /** Operator-triggered posts bypass cadence and duplicate checks, but still
+   * require meaningful school activity and use the normal generation path. */
+  force?: boolean;
+}
+
+export function scheduledPostsEnabled(): boolean {
+  return process.env.RUBY_HIGH_X_SCHEDULED_POSTS_ENABLED === "1";
 }
 
 export function defaultSchedulerState(): GeneralSchedulerState {
   return {
-    lastPostKind: null,
+    lastAttemptAt: null,
     lastPostAt: null,
-    lastReflectionAt: null,
-    lastQuestionAt: null,
-    lastEngagementAt: null,
-    cooldowns: {} as Record<PostKind, number>,
+    lastTweetId: null,
+    lastTeacherId: null,
+    lastContextFingerprint: null,
+    lastWelcomedGuestKey: null,
+    lastSkipReason: null,
+  };
+}
+
+export function hydrateScheduledPostSchedulerState(
+  record: StoredServiceStateRecord | null,
+): GeneralSchedulerState {
+  const state = defaultSchedulerState();
+  const data = record?.data;
+  if (!data || data.version !== 1) return state;
+  state.lastAttemptAt = finiteTimestamp(data.lastAttemptAt);
+  state.lastPostAt = finiteTimestamp(data.lastPostAt);
+  state.lastTweetId = storedText(data.lastTweetId, 128);
+  state.lastTeacherId = storedText(data.lastTeacherId, 128);
+  state.lastContextFingerprint = storedText(data.lastContextFingerprint, 128);
+  state.lastWelcomedGuestKey = storedText(data.lastWelcomedGuestKey, 256);
+  state.lastSkipReason = isSkipReason(data.lastSkipReason) ? data.lastSkipReason : null;
+  return state;
+}
+
+export function scheduledPostSchedulerStateRecord(
+  state: GeneralSchedulerState,
+  now = Date.now(),
+): StoredServiceStateRecord {
+  return {
+    id: SCHEDULED_POST_SCHEDULER_STATE_ID,
+    updatedAt: now,
+    data: {
+      version: 1,
+      lastAttemptAt: state.lastAttemptAt,
+      lastPostAt: state.lastPostAt,
+      lastTweetId: state.lastTweetId,
+      lastTeacherId: state.lastTeacherId,
+      lastContextFingerprint: state.lastContextFingerprint,
+      lastWelcomedGuestKey: state.lastWelcomedGuestKey,
+      lastSkipReason: state.lastSkipReason,
+    },
   };
 }
 
 export class PostRotationScheduler {
   private state: GeneralSchedulerState;
-  private weights: PostTypeWeight[];
+  private readonly enabled: boolean;
 
-  constructor(weights?: PostTypeWeight[]) {
-    this.state = defaultSchedulerState();
-    this.weights = weights ?? DEFAULT_POST_TYPE_WEIGHTS;
+  constructor(options: { state?: GeneralSchedulerState; enabled?: boolean } = {}) {
+    this.state = options.state ? { ...options.state } : defaultSchedulerState();
+    this.enabled = options.enabled ?? scheduledPostsEnabled();
   }
 
-  canPostNow(kind: PostKind, now = Date.now()): boolean {
+  canPostNow(context: ScheduledSchoolUpdateContext, now = Date.now()): boolean {
+    if (!this.enabled) return this.skip("disabled");
+    if (!this.hasPostOpportunity(context)) return this.skip("no-activity");
+    const fingerprint = scheduledSchoolUpdateFingerprint(context);
+    if (fingerprint === this.state.lastContextFingerprint) return this.skip("duplicate-context");
     if (this.state.lastPostAt && now - this.state.lastPostAt < MIN_POST_INTERVAL_MS) {
-      return false;
+      return this.skip("daily-cooldown");
     }
-    const cooldownMs = this.cooldownMs(kind);
-    const lastAt = this.lastKindAt(kind);
-    if (lastAt && now - lastAt < cooldownMs) {
-      return false;
+    if (this.state.lastAttemptAt && now - this.state.lastAttemptAt < FAILED_POST_RETRY_INTERVAL_MS) {
+      return this.skip("failure-cooldown");
     }
     return true;
   }
 
-  pickNextKind(now = Date.now()): PostKind | null {
-    return weightedPickPostKind(this.weights, (kind) => this.canPostNow(kind, now));
-  }
-
-  recordPost(kind: PostKind, now = Date.now()): void {
-    this.state.lastPostKind = kind;
-    this.state.lastPostAt = now;
-    switch (kind) {
-      case "reflection":
-        this.state.lastReflectionAt = now;
-        break;
-      case "question":
-        this.state.lastQuestionAt = now;
-        break;
-      case "engagement":
-        this.state.lastEngagementAt = now;
-        break;
-    }
-  }
-
   async tick(
     xSocial: XSocialService,
-    getConnectedTeacher: () => TeacherCharacter | null,
-    getRecentNames: () => string[],
-  ): Promise<{ tweetId: string; kind: PostKind } | null> {
-    const now = Date.now();
-    const kind = this.pickNextKind(now);
-    if (!kind) return null;
-
-    const teacher = getConnectedTeacher();
-    if (!teacher) return null;
-
-    let text: string | null = null;
-    switch (kind) {
-      case "reflection":
-      case "engagement":
-        text = await generateEngagementPostText(teacher, getRecentNames());
-        break;
-      case "question":
-        text = await generateQuestionPostText(teacher);
-        break;
-      default:
+    teacher: TeacherCharacter,
+    context: ScheduledSchoolUpdateContext,
+    now = Date.now(),
+    options: ScheduledPostTickOptions = {},
+  ): Promise<ScheduledPostResult | null> {
+    if (options.force) {
+      if (!this.hasPostOpportunity(context)) {
+        this.skip("no-activity");
         return null;
+      }
+    } else if (!this.canPostNow(context, now)) {
+      return null;
+    }
+    const contextFingerprint = scheduledSchoolUpdateFingerprint(context);
+    this.state.lastAttemptAt = now;
+    this.state.lastSkipReason = null;
+
+    const guest = context.featuredGuest;
+    const editorialMode = guest && guest.weekKey !== this.state.lastWelcomedGuestKey
+      ? "guest-welcome" as const
+      : guest?.xHandle
+        ? "guest-insights" as const
+        : "school-update" as const;
+    const result = guest
+      ? await xSocial.postScheduledSchoolUpdateWithFallback(
+          teacher,
+          context,
+          { editorialMode },
+        )
+      : await xSocial.postScheduledSchoolUpdateWithFallback(teacher, context);
+    if (!result) {
+      this.state.lastSkipReason = "post-failed";
+      return null;
     }
 
-    if (!text) return null;
+    this.state.lastPostAt = now;
+    this.state.lastTweetId = result.tweetId;
+    this.state.lastTeacherId = result.teacherId;
+    this.state.lastContextFingerprint = contextFingerprint;
+    if (editorialMode === "guest-welcome" && guest) {
+      this.state.lastWelcomedGuestKey = guest.weekKey;
+    }
+    return { ...result, contextFingerprint };
+  }
 
-    // Use the teacher's default image for rotation posts.
-    const imageUrl = teacherImageUrl(teacher.id) ?? undefined;
-    const ctx = {
-      kind: "portrait-set" as const,
-      characterName: teacher.displayName,
-      imageUrl,
-      reserveDailyPhotoSlot: false,
+  getSnapshot(): GeneralSchedulerSnapshot {
+    return {
+      ...this.state,
+      enabled: this.enabled,
+      pollIntervalMs: GENERAL_POST_SCHEDULER_INTERVAL_MS,
+      postIntervalMs: MIN_POST_INTERVAL_MS,
+      retryIntervalMs: FAILED_POST_RETRY_INTERVAL_MS,
     };
-
-    const result = await xSocial.maybePostMilestoneWithFallback(teacher, ctx);
-    if (result) {
-      this.recordPost(kind, now);
-      return { tweetId: result.tweetId, kind };
-    }
-    return null;
   }
 
-  getSnapshot(): GeneralSchedulerState {
-    return { ...this.state, cooldowns: { ...this.state.cooldowns } };
+  getState(): GeneralSchedulerState {
+    return { ...this.state };
   }
 
-  private cooldownMs(kind: PostKind): number {
-    if (kind === "milestone") return this.state.cooldowns.milestone ?? 600_000;
-    const weight = this.weights.find((w) => w.kind === kind);
-    return weight?.cooldownSec ? weight.cooldownSec * 1000 : 600_000;
+  private skip(reason: ScheduledPostSkipReason): false {
+    this.state.lastSkipReason = reason;
+    return false;
   }
 
-  private lastKindAt(kind: PostKind): number | null {
-    switch (kind) {
-      case "reflection": return this.state.lastReflectionAt;
-      case "question": return this.state.lastQuestionAt;
-      case "engagement": return this.state.lastEngagementAt;
-      case "milestone": return null;
-      default: return null;
-    }
+  private hasPostOpportunity(context: ScheduledSchoolUpdateContext): boolean {
+    if (hasMeaningfulScheduledSchoolActivity(context)) return true;
+    const guest = context.featuredGuest;
+    if (!guest) return false;
+    if (guest.weekKey !== this.state.lastWelcomedGuestKey) return true;
+    return Boolean(guest.xHandle);
   }
 }
 
-function teacherImageUrl(teacherId: string): string | null {
-  if (teacherId === "ruby" || teacherId === "sally-science" || teacherId === "professor-edward") {
-    return `/api/apps/ruby-high/assets/teachers/${teacherId}-full.png`;
-  }
-  return null;
+function finiteTimestamp(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : null;
+}
+
+function storedText(value: unknown, maxLength: number): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  return text ? text.slice(0, maxLength) : null;
+}
+
+function isSkipReason(value: unknown): value is ScheduledPostSkipReason {
+  return value === "disabled" ||
+    value === "no-activity" ||
+    value === "duplicate-context" ||
+    value === "daily-cooldown" ||
+    value === "failure-cooldown" ||
+    value === "post-failed";
 }

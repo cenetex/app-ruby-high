@@ -13,6 +13,7 @@ import {
   resetActivePack,
 } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
+import { ELIZAOS_SYSTEMS_LAB_PACK_ID } from "../content/packs/elizaos-systems-lab.js";
 import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 
 // Pack-routes integration tests. Auth is exercised; file-based pack imports
@@ -128,12 +129,16 @@ describe("/packs visibility", () => {
     const aliceCtx = makeCtx({ method: "GET", path: "/api/apps/ruby-high/packs", cookie: "rh_session=alice" });
     await handlePackRoutes(aliceCtx, makeDeps());
     const aliceIds = (lastResponse?.body.packs as Array<{ id: string }>).map((p) => p.id).sort();
-    expect(aliceIds).toEqual(["agent:alice-1", ORIGINAL_PACK_ID].sort());
+    expect(aliceIds).toEqual(
+      ["agent:alice-1", ORIGINAL_PACK_ID, ELIZAOS_SYSTEMS_LAB_PACK_ID].sort(),
+    );
 
     const bobCtx = makeCtx({ method: "GET", path: "/api/apps/ruby-high/packs", cookie: "rh_session=bob" });
     await handlePackRoutes(bobCtx, makeDeps());
     const bobIds = (lastResponse?.body.packs as Array<{ id: string }>).map((p) => p.id).sort();
-    expect(bobIds).toEqual(["agent:bob-1", ORIGINAL_PACK_ID].sort());
+    expect(bobIds).toEqual(
+      ["agent:bob-1", ORIGINAL_PACK_ID, ELIZAOS_SYSTEMS_LAB_PACK_ID].sort(),
+    );
     // Critically: Bob never sees Alice's pack.
     expect(bobIds).not.toContain("agent:alice-1");
   });
