@@ -43,6 +43,22 @@ describe("ElizaOS Systems Lab", () => {
     expect(questions).toHaveLength(64);
     expect(difficulty).toEqual({ easy: 20, medium: 28, hard: 16 });
     expect([...modules.values()]).toEqual(new Array(8).fill(8));
+
+    const unrelatedProducts =
+      /\b(?:ruby high|rubyhigh|moltbook|project ?89|solana|ethereum|discord|telegram|twitter|openai|anthropic)\b/i;
+    for (const question of questions) {
+      expect(question.prompt, `${question.id} must name ElizaOS or agents`).toMatch(
+        /\b(?:elizaos|agents?)\b/i,
+      );
+      expect(
+        [
+          question.prompt,
+          ...Object.values(question.options ?? {}),
+          question.explanation,
+        ].join(" "),
+        `${question.id} must not drift into another product`,
+      ).not.toMatch(unrelatedProducts);
+    }
   });
 
   it("registers Eliza as a public guest teacher with classroom art", async () => {

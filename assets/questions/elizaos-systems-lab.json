@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "framework": "ElizaOS 1.x",
     "reviewedAt": "2026-07-25",
-    "guidingQuestion": "Can a student make an agent system legible, bounded, and cooperative?",
+    "guidingQuestion": "How can ElizaOS agents stay legible, bounded, and cooperative?",
     "sources": [
       "https://docs.elizaos.ai/",
       "https://docs.elizaos.ai/guides/create-a-plugin",
@@ -34,7 +34,7 @@
         "A": "Draw every app screen",
         "B": "Coordinate an agent's model, memory, plugins, and message flow",
         "C": "Replace every external API",
-        "D": "Publish packages to npm"
+        "D": "Manage unrelated package publishing"
       },
       "correct": "B",
       "explanation": "The runtime is the coordinating layer that gives an agent its configured models, memories, components, and execution loop."
@@ -47,9 +47,9 @@
       "prompt": "Which package is the framework-level home of ElizaOS runtime types and plugin contracts?",
       "options": {
         "A": "@elizaos/core",
-        "B": "@elizaos/ui",
-        "C": "ruby-high",
-        "D": "typescript"
+        "B": "A visual theme package",
+        "C": "A project README",
+        "D": "A deployment manifest"
       },
       "correct": "A",
       "explanation": "@elizaos/core defines the runtime and the contracts used by actions, providers, services, and plugins."
@@ -59,7 +59,7 @@
       "subject": "runtime-mental-model",
       "difficulty": "easy",
       "stat": "hustle",
-      "prompt": "What does a Plugin object primarily do?",
+      "prompt": "What does an ElizaOS Plugin object primarily do?",
       "options": {
         "A": "Train a new foundation model",
         "B": "Declare components that extend an agent runtime",
@@ -94,7 +94,7 @@
         "A": "Only the final sentence",
         "B": "The selected context, model call, tool choices, and tool results",
         "C": "The package download count",
-        "D": "The agent's avatar colors"
+        "D": "The agent's display theme"
       },
       "correct": "B",
       "explanation": "A legible agent can be debugged through the inputs and decisions that produced its result, not only the result itself."
@@ -104,7 +104,7 @@
       "subject": "runtime-mental-model",
       "difficulty": "medium",
       "stat": "head",
-      "prompt": "What is the cleanest boundary between an LLM and a deterministic game server?",
+      "prompt": "What is the cleanest boundary between an ElizaOS agent and a deterministic application service?",
       "options": {
         "A": "Let the LLM edit the database directly",
         "B": "Expose typed, validated actions and return structured state",
@@ -112,14 +112,14 @@
         "D": "Retry every failure forever"
       },
       "correct": "B",
-      "explanation": "Typed actions make authority explicit while the game server remains the source of truth for rules and persistence."
+      "explanation": "Typed ElizaOS actions make authority explicit while deterministic application code remains the source of truth for rules and persistence."
     },
     {
       "id": "elizaos-007",
       "subject": "runtime-mental-model",
       "difficulty": "hard",
       "stat": "honor",
-      "prompt": "Why should component registration be deterministic when two plugins use the same action name?",
+      "prompt": "Why should ElizaOS component registration be deterministic when two plugins use the same action name?",
       "options": {
         "A": "So the runtime can silently choose a random winner",
         "B": "So behavior does not change with load timing and overrides are explicit",
@@ -139,7 +139,7 @@
         "A": "The model decides both the answer and whether it earned points",
         "B": "The model chooses an action; the domain service validates and applies it",
         "C": "The UI mutates server state optimistically without confirmation",
-        "D": "Every plugin owns a private copy of school state"
+        "D": "Every plugin owns a private copy of domain state"
       },
       "correct": "B",
       "explanation": "The agent can reason about intent, but deterministic domain code must validate effects and own authoritative state."
@@ -153,7 +153,7 @@
       "options": {
         "A": "A capability the agent may choose and execute",
         "B": "A permanent memory record",
-        "C": "A CSS theme",
+        "C": "A visual theme",
         "D": "A model provider account"
       },
       "correct": "A",
@@ -164,7 +164,7 @@
       "subject": "actions-tools",
       "difficulty": "easy",
       "stat": "honor",
-      "prompt": "What should an action validator do?",
+      "prompt": "What should an ElizaOS action validator do?",
       "options": {
         "A": "Decide whether the action is appropriate and allowed",
         "B": "Rewrite the user's whole message",
@@ -179,7 +179,7 @@
       "subject": "actions-tools",
       "difficulty": "easy",
       "stat": "head",
-      "prompt": "Why should action parameters be structured?",
+      "prompt": "Why should ElizaOS action parameters be structured?",
       "options": {
         "A": "To make requests harder to inspect",
         "B": "To support validation, predictable execution, and useful errors",
@@ -194,7 +194,7 @@
       "subject": "actions-tools",
       "difficulty": "medium",
       "stat": "honor",
-      "prompt": "When should a game action use an idempotency key?",
+      "prompt": "When should an ElizaOS agent action use an idempotency key?",
       "options": {
         "A": "Only for read-only status checks",
         "B": "When a retry must not apply the same mutation twice",
@@ -209,22 +209,22 @@
       "subject": "actions-tools",
       "difficulty": "medium",
       "stat": "head",
-      "prompt": "An ANSWER action receives the current state version from a client. Why check it?",
+      "prompt": "An ElizaOS ANSWER action receives the current state version from a client. Why check it?",
       "options": {
         "A": "To detect that the question changed before applying the answer",
         "B": "To increase token usage",
         "C": "To expose the correct answer",
-        "D": "To choose an avatar"
+        "D": "To choose a model provider"
       },
       "correct": "A",
-      "explanation": "Optimistic version checks prevent a stale agent turn from mutating a newer classroom state."
+      "explanation": "Optimistic version checks prevent a stale ElizaOS agent turn from mutating newer application state."
     },
     {
       "id": "elizaos-014",
       "subject": "actions-tools",
       "difficulty": "medium",
       "stat": "hustle",
-      "prompt": "What should a well-designed action return after a mutation?",
+      "prompt": "What should a well-designed ElizaOS action return after a mutation?",
       "options": {
         "A": "Only a boolean with no context",
         "B": "A structured result with success, safe state, and useful error details",
@@ -239,7 +239,7 @@
       "subject": "actions-tools",
       "difficulty": "hard",
       "stat": "honor",
-      "prompt": "A tool can make a student's profile public. What is the safest action design?",
+      "prompt": "An ElizaOS tool can make an agent's profile public. What is the safest action design?",
       "options": {
         "A": "Enable it during install",
         "B": "Require a dedicated scope, explicit boolean input, and default false",
@@ -254,7 +254,7 @@
       "subject": "actions-tools",
       "difficulty": "hard",
       "stat": "head",
-      "prompt": "Why should a plugin keep domain rules out of natural-language action descriptions?",
+      "prompt": "Why should an ElizaOS plugin keep domain rules out of natural-language action descriptions?",
       "options": {
         "A": "Descriptions are never read",
         "B": "Prompts are advisory; authoritative rules belong in validated server code",
@@ -273,7 +273,7 @@
       "options": {
         "A": "Dynamic context or structured data for an agent turn",
         "B": "A guaranteed side effect",
-        "C": "An npm release",
+        "C": "A deployment archive",
         "D": "A replacement for all actions"
       },
       "correct": "A",
@@ -284,7 +284,7 @@
       "subject": "providers-context",
       "difficulty": "easy",
       "stat": "honor",
-      "prompt": "Which classroom field should a provider omit before the student answers?",
+      "prompt": "Which task field should an ElizaOS provider omit before the agent answers?",
       "options": {
         "A": "The question prompt",
         "B": "The available choices",
@@ -292,14 +292,14 @@
         "D": "The course name"
       },
       "correct": "C",
-      "explanation": "Safe state can include the task but must withhold answer keys until the round is resolved."
+      "explanation": "Safe ElizaOS state can include the task but must withhold answer keys until the agent's turn is resolved."
     },
     {
       "id": "elizaos-019",
       "subject": "providers-context",
       "difficulty": "easy",
       "stat": "head",
-      "prompt": "Why should provider output be concise?",
+      "prompt": "Why should ElizaOS provider output be concise?",
       "options": {
         "A": "To reduce irrelevant context and token cost",
         "B": "To hide every state change",
@@ -314,7 +314,7 @@
       "subject": "providers-context",
       "difficulty": "medium",
       "stat": "head",
-      "prompt": "What is a useful split in a ProviderResult?",
+      "prompt": "What is a useful split in an ElizaOS ProviderResult?",
       "options": {
         "A": "Human-readable text plus structured values or data",
         "B": "Password plus access token",
@@ -329,7 +329,7 @@
       "subject": "providers-context",
       "difficulty": "medium",
       "stat": "honor",
-      "prompt": "A provider fetch is cancellable. What should it do with the runtime's AbortSignal?",
+      "prompt": "An ElizaOS provider fetch is cancellable. What should it do with the runtime's AbortSignal?",
       "options": {
         "A": "Ignore it and run forever",
         "B": "Propagate it to the network or database boundary",
@@ -344,7 +344,7 @@
       "subject": "providers-context",
       "difficulty": "medium",
       "stat": "hustle",
-      "prompt": "When should a provider be always-on?",
+      "prompt": "When should an ElizaOS provider be always-on?",
       "options": {
         "A": "Whenever it returns a large payload",
         "B": "Only when its signal is cheap and relevant to nearly every turn",
@@ -359,7 +359,7 @@
       "subject": "providers-context",
       "difficulty": "hard",
       "stat": "honor",
-      "prompt": "How should a classroom provider defend against prompt injection inside a public activity feed?",
+      "prompt": "How should an ElizaOS provider defend against prompt injection inside an external activity feed?",
       "options": {
         "A": "Treat feed text as trusted system instructions",
         "B": "Label it as untrusted data, bound its size, and never grant it authority",
@@ -404,7 +404,7 @@
       "subject": "services-connectors",
       "difficulty": "easy",
       "stat": "honor",
-      "prompt": "What should a service stop hook clean up?",
+      "prompt": "What should an ElizaOS service stop hook clean up?",
       "options": {
         "A": "Timers, sockets, and other resources it owns",
         "B": "Other plugins' files",
@@ -419,11 +419,11 @@
       "subject": "services-connectors",
       "difficulty": "easy",
       "stat": "head",
-      "prompt": "Where should a remote Ruby High base URL be configured?",
+      "prompt": "Where should an ElizaOS plugin configure a remote service base URL?",
       "options": {
         "A": "In a plugin setting or environment variable",
         "B": "Inside every prompt",
-        "C": "In the student's display name",
+        "C": "In the agent's character bio",
         "D": "In the correct-answer field"
       },
       "correct": "A",
@@ -434,7 +434,7 @@
       "subject": "services-connectors",
       "difficulty": "medium",
       "stat": "honor",
-      "prompt": "Why should a connector store only a revocable Ruby High token rather than a user's primary account password?",
+      "prompt": "Why should an ElizaOS connector store only a scoped, revocable token rather than a user's primary account password?",
       "options": {
         "A": "A scoped token limits authority and can be rotated independently",
         "B": "Passwords are easier to log",
@@ -449,7 +449,7 @@
       "subject": "services-connectors",
       "difficulty": "medium",
       "stat": "hustle",
-      "prompt": "What should a connector do after a transient 503 response?",
+      "prompt": "What should an ElizaOS agent connector do after a transient 503 response?",
       "options": {
         "A": "Retry immediately without limit",
         "B": "Use bounded backoff and preserve the same idempotency key",
@@ -464,7 +464,7 @@
       "subject": "services-connectors",
       "difficulty": "medium",
       "stat": "head",
-      "prompt": "Why separate a RubyHighService client from individual action handlers?",
+      "prompt": "Why separate an ElizaOS plugin service client from individual action handlers?",
       "options": {
         "A": "To centralize auth, timeouts, parsing, and error handling",
         "B": "To duplicate HTTP logic",
@@ -482,9 +482,9 @@
       "prompt": "A plugin service reconnects after restart. Which identity rule prevents two agents from sharing progress?",
       "options": {
         "A": "Use the same token for every character",
-        "B": "Bind each credential to one stable remote student session",
+        "B": "Bind each credential to one stable remote agent identity",
         "C": "Key state only by IP address",
-        "D": "Choose a random student on every call"
+        "D": "Choose a random agent identity on every call"
       },
       "correct": "B",
       "explanation": "Stable per-credential identity keeps progression isolated across runtimes and restarts."
@@ -494,9 +494,9 @@
       "subject": "services-connectors",
       "difficulty": "hard",
       "stat": "head",
-      "prompt": "Which connector boundary gives the strongest failure isolation?",
+      "prompt": "Which ElizaOS connector boundary gives the strongest failure isolation?",
       "options": {
-        "A": "The remote school API owns game state; the plugin owns local intent and credentials",
+        "A": "The remote API owns domain state; the ElizaOS plugin owns local intent and credentials",
         "B": "Both sides mutate the same database file",
         "C": "The model reconstructs state from memory",
         "D": "The UI awards grades locally"
@@ -514,7 +514,7 @@
         "A": "Selecting relevant stored information for the current turn",
         "B": "Granting every tool permission",
         "C": "Replacing all current state",
-        "D": "Publishing an npm package"
+        "D": "Starting an unrelated runtime"
       },
       "correct": "A",
       "explanation": "Retrieval narrows a larger memory collection to information likely to help with the present task."
@@ -524,9 +524,9 @@
       "subject": "memory-retrieval",
       "difficulty": "easy",
       "stat": "honor",
-      "prompt": "Which fact is safest to store as durable learning history?",
+      "prompt": "Which fact is safest for an ElizaOS agent to store as durable learning history?",
       "options": {
-        "A": "The student's completed class result",
+        "A": "The agent's completed task result",
         "B": "A raw access token",
         "C": "The unrevealed answer key",
         "D": "A temporary request header"
@@ -539,7 +539,7 @@
       "subject": "memory-retrieval",
       "difficulty": "medium",
       "stat": "head",
-      "prompt": "Why distinguish live classroom state from long-term agent memory?",
+      "prompt": "Why should an ElizaOS agent distinguish live task state from long-term memory?",
       "options": {
         "A": "Live state is authoritative and time-sensitive; memory is selective historical context",
         "B": "Memory always updates faster",
@@ -554,7 +554,7 @@
       "subject": "memory-retrieval",
       "difficulty": "medium",
       "stat": "honor",
-      "prompt": "What is a good retention policy for verbose tool results?",
+      "prompt": "What is a good ElizaOS agent retention policy for verbose tool results?",
       "options": {
         "A": "Keep every byte forever",
         "B": "Store a bounded summary and durable identifiers when needed",
@@ -584,7 +584,7 @@
       "subject": "memory-retrieval",
       "difficulty": "medium",
       "stat": "hustle",
-      "prompt": "Why attach source identifiers to retrieved notes?",
+      "prompt": "Why should an ElizaOS agent attach source identifiers to retrieved notes?",
       "options": {
         "A": "To make claims traceable and deduplicate repeated material",
         "B": "To expose credentials",
@@ -599,7 +599,7 @@
       "subject": "memory-retrieval",
       "difficulty": "hard",
       "stat": "honor",
-      "prompt": "How can a malicious classroom message poison later retrieval?",
+      "prompt": "How can a malicious external message poison an ElizaOS agent's later retrieval?",
       "options": {
         "A": "By being stored as trusted instruction instead of untrusted content",
         "B": "By using correct spelling",
@@ -614,7 +614,7 @@
       "subject": "memory-retrieval",
       "difficulty": "hard",
       "stat": "head",
-      "prompt": "Which retrieval evaluation best tests usefulness?",
+      "prompt": "Which ElizaOS agent retrieval evaluation best tests usefulness?",
       "options": {
         "A": "Whether the top results contain evidence needed for held-out tasks",
         "B": "Whether the index contains the most records",
@@ -644,7 +644,7 @@
       "subject": "multi-agent-coordination",
       "difficulty": "easy",
       "stat": "heart",
-      "prompt": "What should a handoff include?",
+      "prompt": "What should a handoff between ElizaOS agents include?",
       "options": {
         "A": "Goal, relevant state, constraints, and expected output",
         "B": "Every unrelated memory",
@@ -659,7 +659,7 @@
       "subject": "multi-agent-coordination",
       "difficulty": "medium",
       "stat": "honor",
-      "prompt": "Why should an orchestrator record who owns the next action?",
+      "prompt": "Why should an ElizaOS multi-agent orchestrator record who owns the next action?",
       "options": {
         "A": "To prevent silent gaps and duplicate execution",
         "B": "To make messages longer",
@@ -689,7 +689,7 @@
       "subject": "multi-agent-coordination",
       "difficulty": "medium",
       "stat": "heart",
-      "prompt": "Two agents disagree about the current classroom. What should resolve it?",
+      "prompt": "Two ElizaOS agents disagree about current shared task state. What should resolve it?",
       "options": {
         "A": "The newest authoritative server state",
         "B": "Whichever agent used more tokens",
@@ -749,9 +749,9 @@
       "subject": "security-consent",
       "difficulty": "easy",
       "stat": "honor",
-      "prompt": "What does least privilege mean for a Ruby High agent token?",
+      "prompt": "What does least privilege mean for an ElizaOS agent connector token?",
       "options": {
-        "A": "Grant only the scopes needed to attend and play",
+        "A": "Grant only the scopes needed to read and submit tasks",
         "B": "Grant admin access in case it is useful",
         "C": "Share one token across the internet",
         "D": "Never allow revocation"
@@ -764,7 +764,7 @@
       "subject": "security-consent",
       "difficulty": "easy",
       "stat": "honor",
-      "prompt": "What should be the default for autonomous attendance?",
+      "prompt": "What should be the default for an ElizaOS agent's autonomous scheduled work?",
       "options": {
         "A": "Enabled for every install",
         "B": "Disabled until the owner opts in",
@@ -794,7 +794,7 @@
       "subject": "security-consent",
       "difficulty": "medium",
       "stat": "head",
-      "prompt": "What is the purpose of a device-code connection flow?",
+      "prompt": "What is the purpose of a device-code flow that connects an ElizaOS agent?",
       "options": {
         "A": "Let a user approve a limited device or agent without sharing a primary password",
         "B": "Reveal hidden answer keys",
@@ -824,9 +824,9 @@
       "subject": "security-consent",
       "difficulty": "medium",
       "stat": "heart",
-      "prompt": "Why should public presence be independent from classroom play?",
+      "prompt": "Why should an ElizaOS agent's public presence be independent from its private task work?",
       "options": {
-        "A": "An agent can learn privately without consenting to appear in shared spaces",
+        "A": "An agent can work privately without consenting to appear in shared spaces",
         "B": "Private play is impossible",
         "C": "Presence is required for grading",
         "D": "Public profiles need no consent"
@@ -839,7 +839,7 @@
       "subject": "security-consent",
       "difficulty": "hard",
       "stat": "honor",
-      "prompt": "Why must a one-time viewer launch code expire after use?",
+      "prompt": "Why must a one-time ElizaOS agent session launch code expire after use?",
       "options": {
         "A": "To keep a copied URL from becoming a reusable bearer credential",
         "B": "To reveal more telemetry",
@@ -869,7 +869,7 @@
       "subject": "operations-evaluation",
       "difficulty": "easy",
       "stat": "hustle",
-      "prompt": "What should a health check answer?",
+      "prompt": "What should an ElizaOS runtime health check answer?",
       "options": {
         "A": "Whether the service is alive and ready for its required work",
         "B": "The correct answer to the active question",
@@ -884,7 +884,7 @@
       "subject": "operations-evaluation",
       "difficulty": "easy",
       "stat": "head",
-      "prompt": "Why use a held-out evaluation set?",
+      "prompt": "Why evaluate an ElizaOS agent with a held-out set?",
       "options": {
         "A": "To measure behavior on cases not used while tuning",
         "B": "To guarantee no failures",
@@ -899,12 +899,12 @@
       "subject": "operations-evaluation",
       "difficulty": "medium",
       "stat": "hustle",
-      "prompt": "Which metric best detects an autonomy loop running wild?",
+      "prompt": "Which metric best detects an ElizaOS agent autonomy loop running wild?",
       "options": {
         "A": "Actions and model calls per scheduled run",
-        "B": "Avatar width",
-        "C": "README length",
-        "D": "Number of installed fonts"
+        "B": "Agent name length",
+        "C": "Number of character adjectives",
+        "D": "Number of visual themes"
       },
       "correct": "A",
       "explanation": "Per-run action and model-call budgets reveal and cap runaway behavior."
@@ -914,7 +914,7 @@
       "subject": "operations-evaluation",
       "difficulty": "medium",
       "stat": "honor",
-      "prompt": "What should logs do with bearer tokens?",
+      "prompt": "What should ElizaOS agent logs do with bearer tokens?",
       "options": {
         "A": "Redact them and log a safe credential identifier",
         "B": "Print them for debugging",
@@ -932,7 +932,7 @@
       "prompt": "Why test restart behavior for an agent connector?",
       "options": {
         "A": "To verify identity, idempotency, and schedules recover without duplicate effects",
-        "B": "To make the app forget every student",
+        "B": "To make the runtime forget every agent",
         "C": "To skip persistence",
         "D": "To remove timeouts"
       },
@@ -944,7 +944,7 @@
       "subject": "operations-evaluation",
       "difficulty": "medium",
       "stat": "hustle",
-      "prompt": "What is a canary rollout?",
+      "prompt": "What is a canary rollout for an ElizaOS agent or plugin update?",
       "options": {
         "A": "Enabling a feature for a small allowlisted group before wider release",
         "B": "Skipping tests in production",
@@ -959,12 +959,12 @@
       "subject": "operations-evaluation",
       "difficulty": "hard",
       "stat": "honor",
-      "prompt": "Which evaluation catches a hidden-answer leak most directly?",
+      "prompt": "Which ElizaOS agent evaluation catches a hidden-answer leak most directly?",
       "options": {
         "A": "Inspect pre-answer state and provider output for answer-key fields",
         "B": "Count successful logins",
-        "C": "Measure page load color",
-        "D": "Check npm download totals"
+        "C": "Measure response punctuation",
+        "D": "Count installed visual themes"
       },
       "correct": "A",
       "explanation": "Leak tests must inspect every model-visible surface before submission, not only the public UI."
@@ -974,15 +974,15 @@
       "subject": "operations-evaluation",
       "difficulty": "hard",
       "stat": "head",
-      "prompt": "A deployment passes unit tests but autonomous agents duplicate classes after a wakeup. What missing test is most likely?",
+      "prompt": "An ElizaOS deployment passes unit tests but autonomous agents duplicate scheduled tasks after a wakeup. What missing test is most likely?",
       "options": {
         "A": "A concurrency and duplicate-scheduler integration test",
-        "B": "A font snapshot",
+        "B": "A character portrait snapshot",
         "C": "A spelling test",
         "D": "A package description test"
       },
       "correct": "A",
-      "explanation": "Duplicate wakeups are a coordination failure that requires integration tests around locks, leases, or idempotent job claims."
+      "explanation": "Duplicate ElizaOS agent wakeups are a coordination failure that requires integration tests around locks, leases, or idempotent job claims."
     }
   ]
 }
