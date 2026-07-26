@@ -23,8 +23,8 @@ export const ADMIN_METRICS_SCHEMA_PATH = `${APP_ROUTE_PREFIX}/admin/metrics/sche
 export const ADMIN_OVERVIEW_PATH = `${APP_ROUTE_PREFIX}/admin/overview`;
 export const ADMIN_CURRICULUM_REPLENISHMENT_PATH = `${APP_ROUTE_PREFIX}/admin/curriculum/replenishment`;
 export const ADMIN_WORLD_MODERATION_PATH = `${APP_ROUTE_PREFIX}/admin/world/moderation`;
-export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v5";
-const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-06-15";
+export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v6";
+const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-07-26";
 const ADMIN_METRICS_DEFAULT_TRUST_START = ADMIN_METRICS_SCHEMA_PUBLISHED_AT;
 const BUILT_IN_GENERATOR_FACULTY_IDS = new Set(["ruby", "sally-science", "professor-edward"]);
 const BUILT_IN_QUESTION_FILES: Record<string, string> = {
@@ -1374,7 +1374,7 @@ function buildAdminMetricsQuality(metrics: {
       recommendedUse: "Use as a last-seen snapshot, not a durable daily sign-in event count.",
     },
     {
-      field: "auth.activeSessions",
+      field: "auth.unexpiredAuthSessions",
       severity: "warning",
       issue: "Counts unexpired cookie sessions, not currently active users.",
       recommendedUse: "Use for cookie/session inventory, not real-time concurrency.",
@@ -1501,7 +1501,7 @@ function buildAdminMetricsSchema(): {
         caveat: "The timestamp is mutable and throttled for returning guest cookies.",
       },
       {
-        path: "auth.activeSessions",
+        path: "auth.unexpiredAuthSessions",
         label: "Unexpired cookie sessions",
         source: "AuthSessionRecord store",
         semantics: "Cookie sessions not expired by the 30-day TTL.",
@@ -1663,6 +1663,21 @@ function buildAdminMetricsSchema(): {
         semantics: "First character created, first question answered, first essay submitted, first daily class passed, and first grade completed.",
         reliability: "authoritative",
         caveat: "Dedupe is per Ruby High session id.",
+      },
+      {
+        path: "ruby.events.activationFunnel",
+        label: "Trustworthy activation funnel",
+        source: "StoredMetricEventRecord app_open, funnel_step, and daily class ritual events",
+        semantics: "Ordered, session-deduped activation steps with explicit open denominators, previous-step rates, window, and sample sizes.",
+        reliability: "authoritative",
+        caveat: "humanViewer includes only visitor-backed viewer app opens after trustStart; raw includes agent, smoke, API, and unknown surfaces.",
+      },
+      {
+        path: "ruby.events.byClientSurface",
+        label: "Metric events by client surface",
+        source: "StoredMetricEventRecord.clientSurface",
+        semantics: "Bounded viewer, agent, smoke, api, and unknown classification applied when each event is recorded.",
+        reliability: "authoritative",
       },
       {
         path: "ruby.funnel.first10m",
@@ -1969,7 +1984,7 @@ function compactMetricsForOverview(metrics: AdminMetricsSnapshot): Record<string
       newVisitorsLast24h: metrics.auth.newVisitors,
       returningVisitorsLast24h: metrics.auth.returningVisitors,
       identityCaveat: "Auth identity records are not deduped people. Use visitor metrics for public-web traffic when localStorage persists.",
-      activeSessions: metrics.auth.activeSessions,
+      unexpiredAuthSessions: metrics.auth.unexpiredAuthSessions,
       pendingAuth: metrics.auth.pendingAuth,
       newIdentityRecordsLast24h: metrics.auth.createdLast24h,
       seenIdentityRecordsLast24h: metrics.auth.signedInLast24h,
@@ -2829,6 +2844,10 @@ async function postTelegramSnapshot() {
       const ruby = data.ruby || {};
       const events = ruby.events || {};
       const referral = events.referral || {};
+      const humanActivation = events.activationFunnel && events.activationFunnel.humanViewer || {};
+      const humanActivationSteps = Array.isArray(humanActivation.steps) ? humanActivation.steps : [];
+      const humanCharacterStep = humanActivationSteps.find(function(step) { return step && step.key === "character_created"; }) || {};
+      const humanResultStep = humanActivationSteps.find(function(step) { return step && step.key === "result_viewed"; }) || {};
       const ops = data.ops || {};
       const logs = data.logs || {};
       status("Updated " + time(data.generatedAt) + " - build " + (logs.build || "unknown") + " - " + (data.schemaVersion || "legacy schema"), "");
@@ -2837,7 +2856,7 @@ async function postTelegramSnapshot() {
       renderOverview(localOverview(data), "local");
       authGrid.innerHTML = [
         metric("Identity records", n(auth.users), n(auth.createdLast24h) + " new records - not unique people"),
-        metric("Sessions", n(auth.activeSessions), n(auth.pendingAuth) + " pending auth"),
+        metric("Unexpired auth sessions", n(auth.unexpiredAuthSessions), n(auth.pendingAuth) + " pending auth"),
         metric("Identity D1", pct(auth.d1Retention && auth.d1Retention.rate), n(auth.d1Retention && auth.d1Retention.returnedUsers) + " / " + n(auth.d1Retention && auth.d1Retention.eligibleUsers) + " cookie-bound"),
         metric("Providers", n(auth.providers && auth.providers.guest) + " / " + n(auth.providers && auth.providers.openrouter) + " / " + n(auth.providers && auth.providers.privy), "guest / BYOK OpenRouter / Privy"),
       ].join("");
@@ -2845,6 +2864,7 @@ async function postTelegramSnapshot() {
         metric("Saved sessions", n(ruby.sessions), n(ruby.updatedLast24h) + " updated in 24h"),
         metric("Character D1 / D7", pct(ruby.characterD1Retention && ruby.characterD1Retention.rate) + " / " + pct(ruby.retention && ruby.retention.characterD7 && ruby.retention.characterD7.rate), n(ruby.characterD1Retention && ruby.characterD1Retention.returnedSessions) + " / " + n(ruby.characterD1Retention && ruby.characterD1Retention.eligibleSessions)),
         metric("App opens", n(events.appOpen && events.appOpen.total), n(events.sessionResume && events.sessionResume.total) + " resumes"),
+        metric("Human activation", n(humanActivation.eligibleSessions) + " opens", pct(humanCharacterStep.rateFromOpen) + " character · " + pct(humanResultStep.rateFromOpen) + " result viewed"),
         metric("Characters", n(ruby.characters), n(ruby.graduatedCharacters) + " graduated - " + n(ruby.completedGrades) + " grades sealed"),
         metric("Questions", n(ruby.questions && ruby.questions.total), n(ruby.questions && ruby.questions.correct) + " correct - " + pct(ruby.questions && ruby.questions.accuracy) + " accuracy"),
         metric("Curriculum", n(ruby.curriculum && ruby.curriculum.lowPools && ruby.curriculum.lowPools.length), n(ruby.curriculum && ruby.curriculum.rows && ruby.curriculum.rows.length) + " grade/teacher pools"),

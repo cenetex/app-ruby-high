@@ -312,8 +312,13 @@ export async function handleCommandRoute(args: {
       const state = ruby.createCharacter(stateKey, {
         ...input,
         mentorAccepted: !!body?.mentorAccepted,
+        creationMethod: "custom",
       });
       return await persist(state, "Character created");
+    },
+    "quick-roll-student": async () => {
+      const state = ruby.quickRollIntoFirstBell(stateKey);
+      return await persist(state, "Student ready. First Bell is on the board.");
     },
     "update-character": async () => {
       const state = ruby.updateCharacter(stateKey, characterInputFromBody());

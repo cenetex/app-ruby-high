@@ -114,6 +114,7 @@ describe("Ruby High Agent API", () => {
           name: "Ada Agent",
           publicWorldVisible: false,
         },
+        nextActions: ["ATTEND", "CHANGE_CLASS", "CHECK_PROGRESS"],
       },
     });
 
@@ -133,6 +134,7 @@ describe("Ruby High Agent API", () => {
         phase: "asking",
         faculty: "guest",
         activeGuest: { name: "ElizaOS Systems Lab" },
+        nextActions: ["ANSWER", "CHECK_PROGRESS"],
       },
     });
     const safeQuestion = (attended.body as {
@@ -158,7 +160,10 @@ describe("Ruby High Agent API", () => {
     expect(answered.body).toMatchObject({
       ok: true,
       result: { answered: true, wasCorrect: true },
-      state: { reveal: { wasCorrect: true, correct } },
+      state: {
+        reveal: { wasCorrect: true, correct },
+        nextActions: ["ATTEND", "CHANGE_CLASS", "CHECK_PROGRESS"],
+      },
     });
 
     const replay = await request({
@@ -199,14 +204,126 @@ describe("Ruby High Agent API", () => {
     });
   });
 
+  it("restores approved credentials and completed class state after a service restart", async () => {
+    const issued = await access.issueDeviceCode({
+      agentName: "Restart Agent",
+      scopes: ["school:read", "student:play"],
+    });
+    await access.approveDeviceCode(issued.userCode, "rh:user:owner");
+    const exchanged = await access.exchangeDeviceCode(issued.deviceCode);
+    if (exchanged.status !== "approved") throw new Error("Expected approved token.");
+    const authorization = `Bearer ${exchanged.accessToken}`;
+
+    await request({
+      path: `${AGENT_API_PREFIX}/enroll`,
+      body: { requestId: "restart-enroll-0001", name: "Restart Agent" },
+      authorization,
+    });
+    await request({
+      path: `${AGENT_API_PREFIX}/actions`,
+      body: {
+        requestId: "restart-attend-0001",
+        type: "ATTEND",
+        input: { faculty: "eliza" },
+      },
+      authorization,
+    });
+    const beforeAnswer = ruby.getOrCreate(exchanged.credential.stateKey);
+    const answered = await request({
+      path: `${AGENT_API_PREFIX}/actions`,
+      body: {
+        requestId: "restart-answer-0001",
+        ifVersion: beforeAnswer.updatedAt,
+        type: "ANSWER",
+        input: { picked: beforeAnswer.current?.correct },
+      },
+      authorization,
+    });
+    expect(answered.statusCode).toBe(200);
+
+    await access.stop();
+    access = new AgentAccessService(
+      {
+        getSetting: (key: string) =>
+          key === "RUBY_HIGH_AGENT_TOKEN_SECRET" ? "test-agent-secret" : null,
+      } as never,
+      store,
+    );
+    await access.hydrate();
+    ruby = new RubyHighService(undefined, store);
+    await ruby["hydrate"]();
+    ruby.setFacultyService(faculty);
+
+    expect(access.authenticateBearer(authorization)?.id).toBe(
+      exchanged.credential.id,
+    );
+    const restored = await request({
+      method: "GET",
+      path: `${AGENT_API_PREFIX}/state`,
+      authorization,
+    });
+    expect(restored.body).toMatchObject({
+      ok: true,
+      state: {
+        student: { name: "Restart Agent" },
+        reveal: { wasCorrect: true },
+      },
+    });
+  });
+
+  it("keeps two approved agents in isolated student sessions", async () => {
+    const connect = async (agentName: string) => {
+      const issued = await access.issueDeviceCode({
+        agentName,
+        scopes: ["school:read", "student:play"],
+      });
+      await access.approveDeviceCode(issued.userCode, "rh:user:owner");
+      const exchanged = await access.exchangeDeviceCode(issued.deviceCode);
+      if (exchanged.status !== "approved") throw new Error("Expected approved token.");
+      return exchanged;
+    };
+    const first = await connect("Agent One");
+    const second = await connect("Agent Two");
+    expect(first.credential.stateKey).not.toBe(second.credential.stateKey);
+
+    await request({
+      path: `${AGENT_API_PREFIX}/enroll`,
+      body: { requestId: "isolation-enroll-one", name: "Agent One" },
+      authorization: `Bearer ${first.accessToken}`,
+    });
+    await request({
+      path: `${AGENT_API_PREFIX}/enroll`,
+      body: { requestId: "isolation-enroll-two", name: "Agent Two" },
+      authorization: `Bearer ${second.accessToken}`,
+    });
+
+    const firstState = await request({
+      method: "GET",
+      path: `${AGENT_API_PREFIX}/state`,
+      authorization: `Bearer ${first.accessToken}`,
+    });
+    const secondState = await request({
+      method: "GET",
+      path: `${AGENT_API_PREFIX}/state`,
+      authorization: `Bearer ${second.accessToken}`,
+    });
+    expect(firstState.body).toMatchObject({
+      state: { student: { name: "Agent One" } },
+    });
+    expect(secondState.body).toMatchObject({
+      state: { student: { name: "Agent Two" } },
+    });
+  });
+
   async function request(args: {
+    method?: "GET" | "POST";
     path: string;
     body?: Record<string, unknown>;
     authorization?: string;
   }): Promise<TestResponse> {
     const response = makeResponse();
     const context: RouteContext = {
-      method: "POST",
+      method: args.method ?? "POST",
       pathname: args.path,
       url: new URL(`https://ruby-high.test${args.path}`),
       runtime: null,

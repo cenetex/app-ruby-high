@@ -161,15 +161,25 @@ export type StoredMetricEventName =
   | "guest_pack_override_set"
   | "daily_class_started"
   | "evidence_card_completed"
+  | "take_card_presented"
+  | "take_card_started"
   | "take_card_submitted"
   | "teacher_response_viewed"
   | "room_reaction_viewed"
   | "class_result_completed"
+  | "class_result_viewed"
   | "class_record_saved"
   | "commerce"
   | "llm_usage"
   | "error"
   | "balance_sample";
+
+export type MetricClientSurface =
+  | "viewer"
+  | "agent"
+  | "smoke"
+  | "api"
+  | "unknown";
 
 export interface StoredMetricEventRecord {
   id: string;
@@ -179,6 +189,7 @@ export interface StoredMetricEventRecord {
   sessionId?: string;
   userId?: string;
   visitorHash?: string;
+  clientSurface?: MetricClientSurface;
   source?: string;
   feature?: string;
   step?: string;
@@ -872,10 +883,13 @@ export function isStoredMetricEventName(value: unknown): value is StoredMetricEv
     value === "guest_pack_override_set" ||
     value === "daily_class_started" ||
     value === "evidence_card_completed" ||
+    value === "take_card_presented" ||
+    value === "take_card_started" ||
     value === "take_card_submitted" ||
     value === "teacher_response_viewed" ||
     value === "room_reaction_viewed" ||
     value === "class_result_completed" ||
+    value === "class_result_viewed" ||
     value === "class_record_saved" ||
     value === "commerce" ||
     value === "llm_usage" ||

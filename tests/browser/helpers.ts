@@ -93,12 +93,12 @@ export async function dismissAnnouncements(page: Page) {
 }
 
 /**
- * Trigger character creation by clicking whichever affordance is visible
- * (Roll a student, or Save Character). Returns after the creation
- * controls have committed and the classroom is visible.
+ * Trigger character creation by clicking whichever affordance is visible.
+ * Quick Roll now creates and persists a complete student and poses First Bell
+ * directly; the legacy/custom flow still commits through the sheet.
  */
 export async function createCharacter(page: Page) {
-  const rollAStudent = page.getByRole("button", { name: /roll a student/i });
+  const rollAStudent = page.getByRole("button", { name: /quick roll student|roll a student/i });
   const saveCharacter = page.locator("#sheet-card").getByRole("button", { name: "Save Character" });
   const startFreshmanYear = page.locator("#sheet-card").getByRole("button", { name: "Start Freshman Year" });
 
@@ -112,6 +112,8 @@ export async function createCharacter(page: Page) {
 
   if (rollVisible) {
     await rollAStudent.click();
+    const firstAnswer = page.locator(".answer:not([disabled])").first();
+    if (await firstAnswer.isVisible({ timeout: 5000 }).catch(() => false)) return;
   }
 
   // Try Save Character if it appears.
