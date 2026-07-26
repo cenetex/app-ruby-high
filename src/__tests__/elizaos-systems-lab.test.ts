@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 describe("ElizaOS Systems Lab", () => {
-  it("ships a hand-curated 64-question, eight-module bank with the planned mix", async () => {
+  it("ships a hand-curated 96-question, twelve-module bank with a balanced answer key", async () => {
     const pack = await getElizaOsSystemsLab();
     const questions = pack.faculty[0]!.questions;
     const difficulty = questions.reduce(
@@ -27,22 +27,43 @@ describe("ElizaOS Systems Lab", () => {
       },
       { easy: 0, medium: 0, hard: 0 },
     );
+    const correctChoices = questions.reduce(
+      (counts, question) => {
+        counts[question.correct ?? "A"] += 1;
+        return counts;
+      },
+      { A: 0, B: 0, C: 0, D: 0 },
+    );
     const modules = new Map<string, number>();
     for (const question of questions) {
       modules.set(question.subject, (modules.get(question.subject) ?? 0) + 1);
     }
 
     expect(pack.id).toBe(ELIZAOS_SYSTEMS_LAB_PACK_ID);
+    expect(pack.version).toBe("1.1.0");
     expect(pack.curriculum?.reviewedAt).toBe("2026-07-25");
     expect(pack.curriculum?.sources).toEqual(
       expect.arrayContaining([
-        "https://docs.elizaos.ai/",
+        "https://docs.elizaos.ai/agents/character-interface",
+        "https://docs.elizaos.ai/runtime/events",
+        "https://docs.elizaos.ai/runtime/models",
+        "https://docs.elizaos.ai/plugins/development",
         "https://github.com/elizaOS/eliza",
       ]),
     );
-    expect(questions).toHaveLength(64);
-    expect(difficulty).toEqual({ easy: 20, medium: 28, hard: 16 });
-    expect([...modules.values()]).toEqual(new Array(8).fill(8));
+    expect(questions).toHaveLength(96);
+    expect(new Set(questions.map((question) => question.prompt)).size).toBe(96);
+    expect(difficulty).toEqual({ easy: 30, medium: 42, hard: 24 });
+    expect(correctChoices).toEqual({ A: 24, B: 24, C: 24, D: 24 });
+    expect([...modules.values()]).toEqual(new Array(12).fill(8));
+    expect([...modules.keys()]).toEqual(
+      expect.arrayContaining([
+        "characters-identity",
+        "events-evaluators",
+        "model-routing",
+        "plugin-development",
+      ]),
+    );
 
     const unrelatedProducts =
       /\b(?:ruby high|rubyhigh|moltbook|project ?89|solana|ethereum|discord|telegram|twitter|openai|anthropic)\b/i;

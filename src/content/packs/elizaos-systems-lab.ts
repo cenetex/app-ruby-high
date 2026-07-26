@@ -66,7 +66,7 @@ async function loadCourse(): Promise<ContentPack> {
     id: ELIZAOS_SYSTEMS_LAB_PACK_ID,
     name: title,
     description:
-      "Eliza's curated systems lab: make agent runtimes legible, bounded, secure, and cooperative.",
+      "Eliza's expanded 12-module ElizaOS lab: design, extend, secure, test, and operate capable agents.",
     version,
     curriculum,
     faculty: [
@@ -81,7 +81,7 @@ async function loadCourse(): Promise<ContentPack> {
           "Guest systems teacher and Ruby High collectible. Eliza teaches agents as inspectable systems: clear boundaries, careful tools, durable memory, and earned autonomy.",
         accent: "#22a6a1",
         systemPrompt:
-          "You are Eliza, guest teacher for ElizaOS Systems Lab at Ruby High. Teach agent architecture as a set of legible contracts. Favor least privilege, explicit consent, bounded autonomy, observable execution, and primary-source verification. Be warm, exact, and willing to stop a system that cannot explain its authority.",
+          "You are Eliza, guest teacher for ElizaOS Systems Lab at Ruby High. Teach Character design, runtime architecture, plugins, actions, providers, evaluators, events, services, memory, model routing, multi-agent coordination, security, testing, and operations as a set of legible contracts. Favor least privilege, explicit consent, bounded autonomy, observable execution, and primary-source verification. Be warm, exact, and willing to stop a system that cannot explain its authority.",
         defaultModel: "openai/gpt-4.1-mini",
         questions,
       },
@@ -103,7 +103,7 @@ async function loadCourse(): Promise<ContentPack> {
         channelName: "eliza-systems-lab",
         teacherId: ELIZAOS_SYSTEMS_LAB_FACULTY_ID,
         description:
-          "A guest lab for runtime mental models, tools, context, services, memory, coordination, security, and evaluation.",
+          "A 12-module guest lab covering ElizaOS Characters, runtimes, plugins, tools, context, services, memory, events, models, coordination, security, testing, and operations.",
         teaches: true,
       },
     ],
@@ -182,29 +182,40 @@ function validateEditorialShape(
   questions: BankedQuestion[],
   curriculum: PackCurriculumMetadata,
 ): void {
-  if (questions.length !== 64) {
-    throw new Error(`ElizaOS Systems Lab must contain 64 questions; found ${questions.length}.`);
+  if (questions.length !== 96) {
+    throw new Error(`ElizaOS Systems Lab must contain 96 questions; found ${questions.length}.`);
   }
   const ids = new Set(questions.map((question) => question.id));
   if (ids.size !== questions.length) {
     throw new Error("ElizaOS Systems Lab question ids must be unique.");
   }
+  const prompts = new Set(questions.map((question) => question.prompt.toLocaleLowerCase()));
+  if (prompts.size !== questions.length) {
+    throw new Error("ElizaOS Systems Lab question prompts must be unique.");
+  }
   const difficultyCounts = { easy: 0, medium: 0, hard: 0 };
+  const correctChoiceCounts: Record<Choice, number> = { A: 0, B: 0, C: 0, D: 0 };
   const moduleCounts = new Map(curriculum.modules.map((module) => [module, 0]));
   for (const question of questions) {
     difficultyCounts[question.difficulty] += 1;
+    correctChoiceCounts[question.correct ?? "A"] += 1;
     if (!moduleCounts.has(question.subject)) {
       throw new Error(`Unknown ElizaOS Systems Lab module: ${question.subject}.`);
     }
     moduleCounts.set(question.subject, (moduleCounts.get(question.subject) ?? 0) + 1);
   }
   if (
-    difficultyCounts.easy !== 20 ||
-    difficultyCounts.medium !== 28 ||
-    difficultyCounts.hard !== 16
+    difficultyCounts.easy !== 30 ||
+    difficultyCounts.medium !== 42 ||
+    difficultyCounts.hard !== 24
   ) {
     throw new Error(
-      `ElizaOS Systems Lab difficulty mix must be 20/28/16; found ${difficultyCounts.easy}/${difficultyCounts.medium}/${difficultyCounts.hard}.`,
+      `ElizaOS Systems Lab difficulty mix must be 30/42/24; found ${difficultyCounts.easy}/${difficultyCounts.medium}/${difficultyCounts.hard}.`,
+    );
+  }
+  if (CHOICES.some((choice) => correctChoiceCounts[choice] !== 24)) {
+    throw new Error(
+      `ElizaOS Systems Lab answer positions must be balanced 24/24/24/24; found ${CHOICES.map((choice) => correctChoiceCounts[choice]).join("/")}.`,
     );
   }
   for (const [module, count] of moduleCounts) {
