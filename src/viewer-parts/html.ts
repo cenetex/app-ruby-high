@@ -32,7 +32,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   <aside class="channels-rail" id="channels-rail" aria-label="School navigation">
     <div class="channels-header">
       <button class="channels-close" id="channels-close" type="button" aria-label="Close navigation">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
           <path d="M6 6l12 12"/><path d="M18 6L6 18"/>
         </svg>
       </button>
@@ -65,7 +65,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   <main class="workspace" id="workspace">
     <header class="top-bar">
       <button class="hamburger" id="hamburger" type="button" aria-label="Open navigation" aria-controls="channels-rail" aria-expanded="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
           <path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>
         </svg>
       </button>
@@ -100,7 +100,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         </div>
         <button class="blackboard-empty-action" id="blackboard-empty-action" type="button" hidden>Create Character</button>
         <div class="onboarding-actions" id="onboarding-actions" hidden>
-          <button class="blackboard-empty-action" id="onboarding-create-btn" type="button">Quick Roll student</button>
+          <button class="blackboard-empty-action" id="onboarding-create-btn" type="button">Quick roll a student</button>
           <button class="blackboard-empty-action onboarding-alt" id="onboarding-customize-btn" type="button">Customize</button>
           <button class="blackboard-empty-action onboarding-alt" id="onboarding-books-btn" type="button">Browse books</button>
         </div>
@@ -170,7 +170,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <form class="composer-form" id="chat-form" hidden aria-hidden="true">
         <textarea id="chat-input" rows="1" placeholder="Message — the teacher and class can hear you" disabled></textarea>
         <button type="submit" class="send-btn" id="chat-send" disabled aria-label="Send">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M5 12l14-7-7 14-2-5-5-2z"/>
           </svg>
         </button>
