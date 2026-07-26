@@ -716,7 +716,6 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
           transactionMessageHash: mint.transactionMessageHash,
           transactionEncoding: mint.transactionEncoding,
           chain: mint.chain,
-          rpcUrl: mint.rpcUrl,
           serverMinted: false,
         },
         remaining: deps.ruby.mintableHallPassCards(stateKey).length,
@@ -1015,7 +1014,6 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
           transactionMessageHash: mint.transactionMessageHash,
           transactionEncoding: mint.transactionEncoding,
           chain: mint.chain,
-          rpcUrl: mint.rpcUrl,
           serverMinted: false,
         },
         remaining: deps.ruby.mintableHallPassCards(stateKey).length,
@@ -1074,6 +1072,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     }
     try {
       const burn = await buildHallPassCardsBurnTransaction(cards, ownerWalletAddress);
+      const { rpcUrl: _rpcUrl, ...publicBurn } = burn;
       const preparedCards = cards.map((card) => ({
         cardId: card.id,
         characterId: card.characterId,
@@ -1089,7 +1088,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         mintAddress: firstCard.mintAddress,
         cards: preparedCards,
         ownerWalletAddress,
-        burn,
+        burn: publicBurn,
       });
     } catch (err) {
       log.error("nft.card-burn-prepare-failed", err, {

@@ -31,7 +31,6 @@ import {
 import { handleCommandRoute } from "./routes/commands.js";
 import { handleBugReportRoute } from "./routes/bug-report.js";
 import { BILLING_PREFIX, handleBillingRoutes } from "./routes/billing.js";
-import { EXCHANGE_PREFIX, handleExchangeRoutes } from "./routes/exchange.js";
 import {
   ADMIN_METRICS_PATH,
   ADMIN_METRICS_SCHEMA_PATH,
@@ -673,10 +672,6 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       ruby,
       sessionId: getSessionId(runtime, ctx.cookieHeader),
     });
-  }
-
-  if (ctx.pathname.startsWith(EXCHANGE_PREFIX)) {
-    return handleExchangeRoutes(ctx);
   }
 
   if (ctx.method === "GET" && ctx.pathname === ADMIN_PATH) {

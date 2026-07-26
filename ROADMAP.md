@@ -389,7 +389,7 @@ should feel the product is *worthy* of the story that brought them there.
 - Ruby High is deployed on Fly.io (`ruby-high.fly.dev`) with scale-to-zero.
 - Users bring their own OpenRouter key — inference costs are theirs, not ours.
 - Marginal cost per active user is functionally zero.
-- Monetization: Stripe Hall Passes, Solana NFT packs ($RUBY token), card-burn
+- Monetization: Stripe Hall Passes, Solana NFT packs (priced in SOL), card-burn
   redemption, and Gumroad books (Qiao, Egregoregramming 101).
 - Two Metaplex Core collections live on mainnet:
   `Ruby High: First Bell` and `Ruby High: First Bell Packs`.

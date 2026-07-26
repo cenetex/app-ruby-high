@@ -1564,11 +1564,6 @@ export const VIEWER_CSS = `
     font-weight: 850;
     white-space: nowrap;
   }
-  .billing-buy.is-secondary {
-    background: rgba(255,255,255,0.09);
-    color: var(--text);
-    border: 1px solid rgba(255,255,255,0.14);
-  }
   .billing-buy:disabled {
     opacity: 0.5;
     cursor: default;

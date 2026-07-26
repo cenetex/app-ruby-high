@@ -1898,6 +1898,7 @@ describe("Hall Pass NFT routes", () => {
       chain: "solana:mainnet",
       serverMinted: false,
     });
+    expect(lastResponse?.body.mint.rpcUrl).toBeUndefined();
     expect(lastResponse?.body.minted).toHaveLength(0);
     expect(lastResponse?.body.remaining).toBe(20);
     const cards = ruby.getOrCreate(stateKey).wallet.hallPassCards ?? [];
@@ -2240,6 +2241,7 @@ describe("Hall Pass NFT routes", () => {
       transactionMessageHash: "prepared-transaction-hash",
       serverMinted: false,
     });
+    expect(lastResponse?.body.mint.rpcUrl).toBeUndefined();
     expect(lastResponse?.body.remaining).toBe(8);
     expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.mintAddress)).toHaveLength(0);
   });
@@ -2354,6 +2356,7 @@ describe("Hall Pass NFT routes", () => {
 
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body.burn.transaction).toBe("AQID");
+    expect(lastResponse?.body.burn.rpcUrl).toBeUndefined();
 
     await handleNftRoutes(makeCtx({
       method: "POST",

@@ -24,7 +24,7 @@ describe("account history row view", () => {
     });
   });
 
-  it("renders pack purchases as swaps with token and pack deltas", () => {
+  it("renders pack purchases as swaps with SOL and pack deltas", () => {
     const view = accountHistoryRowView({
       kind: "hall-pass-pack-mint",
       description: "First Bell pack",
@@ -32,8 +32,8 @@ describe("account history row view", () => {
       at: Date.UTC(2026, 5, 19, 12),
       metadata: {
         packCount: 2,
-        solanaTokenAmount: "123.45",
-        solanaTokenSymbol: "RUBY",
+        solanaAmountSol: "0.05",
+        solanaSymbol: "SOL",
       },
     });
 
@@ -41,7 +41,7 @@ describe("account history row view", () => {
       className: "account-history-row is-swap",
       title: "First Bell pack",
       meta: "Solana checkout · Jun 19, 2026",
-      delta: "-123.45 RUBY · +2 Packs",
+      delta: "-0.05 SOL · +2 Packs",
     });
   });
 
