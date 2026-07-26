@@ -267,6 +267,9 @@ export interface QuestionBank {
 
 export interface AnswerRecord {
   questionId: string;
+  /** Classroom where this answer was submitted. Optional for persisted
+   *  records written before room-aware public presence was introduced. */
+  faculty?: string;
   picked: Choice;
   correct: Choice;
   wasCorrect: boolean;
@@ -567,9 +570,13 @@ export interface RubyHighHallPassCard {
   pendingMintMetadataUri?: string;
   pendingMintTransactionHash?: string;
   pendingMintPreparedAt?: number;
+  pendingMintSignature?: string;
+  pendingMintSubmittedAt?: number;
   mintAddress?: string;
   mintSignature?: string;
   metadataUri?: string;
+  onChainRevealPending?: boolean;
+  onChainRevealAttemptedAt?: number;
   artSheet?: "students" | "teachers" | "specials" | "items" | "locations";
   artPosition?: string;
   burnSignature?: string;
@@ -604,6 +611,8 @@ export interface RubyHighHallPassPack {
   openTransactionId?: string;
   openedAt?: number;
   openSignature?: string;
+  ownershipMissCount?: number;
+  ownershipLastMissAt?: number;
 }
 
 export interface RubyHighWalletTransaction {

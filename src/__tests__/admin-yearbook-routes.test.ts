@@ -594,7 +594,7 @@ describe("school world route", () => {
     expect(response.body.world.activeRooms).toEqual([
       expect.objectContaining({
         grade: "10",
-        facultyId: "sally-science",
+        facultyId: "ruby",
         activeStudents: 1,
         students: [expect.objectContaining({ name: "World Noor" })],
       }),

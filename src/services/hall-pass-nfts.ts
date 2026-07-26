@@ -195,6 +195,7 @@ type HallPassNftMintVerifier = (input: {
   mintSignature: string;
   metadataUri: string;
 }) => Promise<HallPassCardMintVerification>;
+type HallPassNftRevealUpdater = (card: RubyHighHallPassCard) => Promise<void>;
 type HallPassNftBurnTransactionBuilder = (
   card: RubyHighHallPassCard,
   ownerWalletAddress: string,
@@ -210,6 +211,7 @@ let minterOverride: HallPassNftMinter | null = null;
 let mintTransactionBuilderOverride: HallPassNftMintTransactionBuilder | null = null;
 let mintSubmitterOverride: HallPassNftMintSubmitter | null = null;
 let mintVerifierOverride: HallPassNftMintVerifier | null = null;
+let revealUpdaterOverride: HallPassNftRevealUpdater | null = null;
 let burnTransactionBuilderOverride: HallPassNftBurnTransactionBuilder | null = null;
 let burnVerifierOverride: HallPassNftBurnVerifier | null = null;
 let cardOwnershipFetcherOverride: HallPassCardOwnershipFetcher | null = null;
@@ -246,6 +248,14 @@ export function setHallPassNftMintVerifierForTest(verifier: HallPassNftMintVerif
   mintVerifierOverride = verifier;
   return () => {
     mintVerifierOverride = previous;
+  };
+}
+
+export function setHallPassNftRevealUpdaterForTest(updater: HallPassNftRevealUpdater | null): () => void {
+  const previous = revealUpdaterOverride;
+  revealUpdaterOverride = updater;
+  return () => {
+    revealUpdaterOverride = previous;
   };
 }
 
@@ -906,6 +916,7 @@ export async function verifyHallPassCardMint(input: {
 }
 
 export async function revealHallPassCardNft(card: RubyHighHallPassCard): Promise<void> {
+  if (revealUpdaterOverride) return revealUpdaterOverride(card);
   if (mintVerifierOverride) return;
   const config = readMintConfig();
   const mintAddress = cleanSolanaAddress(card.mintAddress || "", "Card asset");
@@ -952,16 +963,21 @@ export async function submitSignedHallPassCardMintTransaction(
     mintAddress: string;
     metadataUri?: string;
     transactionMessageHash?: string;
+    beforeBroadcast?: (mintSignature: string) => Promise<void>;
   },
 ): Promise<string> {
   const clean = signedTransactionBase64.trim();
   if (!clean) throw new Error("Signed card mint transaction is missing.");
-  if (mintSubmitterOverride) return mintSubmitterOverride(clean);
+  if (mintSubmitterOverride) {
+    await prepared?.beforeBroadcast?.(hallPassCardMintSignatureFromSignedTransaction(clean));
+    return mintSubmitterOverride(clean);
+  }
   requireSignedTransactionAccounts(clean, requiredAccounts);
   const config = readMintConfig();
   const transactionBase64 = prepared
     ? await completeHallPassCardMintTransactionWithServerSigners(clean, prepared, config)
     : clean;
+  await prepared?.beforeBroadcast?.(hallPassCardMintSignatureFromSignedTransaction(transactionBase64));
   const signature = await sendBase64TransactionWithPreflightFallback(
     createSolanaRpc(config.rpcUrl),
     transactionBase64,
@@ -1090,6 +1106,20 @@ function hashSignedTransactionMessage(transactionBase64: string, label: string):
   } catch {
     throw new Error(`${label} is invalid.`);
   }
+}
+
+export function hallPassCardMintSignatureFromSignedTransaction(transactionBase64: string): string {
+  const bytes = decodeBase64TransactionBytes(transactionBase64, "Signed card mint transaction");
+  let signature: Uint8Array | null = null;
+  try {
+    signature = VersionedTransaction.deserialize(bytes).signatures[0] ?? null;
+  } catch {
+    signature = Transaction.from(bytes).signatures[0]?.signature ?? null;
+  }
+  if (!signature || signature.length !== 64 || !signature.some((byte) => byte !== 0)) {
+    throw new Error("Signed card mint transaction is missing its transaction signature.");
+  }
+  return base58Encode(signature);
 }
 
 function signedTransactionHasSignatureForAddress(transactionBase64: string, signerAddress: string): boolean {

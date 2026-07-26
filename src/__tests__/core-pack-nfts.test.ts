@@ -179,7 +179,48 @@ describe("Core pack NFT checkout transactions", () => {
       packCount: 1,
       cardCount: 5,
       serial: 570329,
+      opened: false,
       metadataUri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/570329.json?packs=1&cards=5",
+    })]);
+  });
+
+  it("marks already-opened Core packs from their on-chain metadata", async () => {
+    process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
+    process.env.RUBY_HIGH_SOLANA_RPC_URL = "https://beta.helius-rpc.com/?api-key=test";
+    const ownerWalletAddress = "57kZQTKZivCKWThxJkFUBD3y5nx9sFXUo8kR7CRkLkMC";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      jsonrpc: "2.0",
+      id: "ruby-high-pack-sync-opened",
+      result: {
+        items: [
+          {
+            id: "52soGWdda9qFYBawS89Ho23JPCZuKPmb6N1ZP3bsPmd3",
+            burnt: false,
+            content: {
+              json_uri: "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/570329.json?packs=1&cards=5&opened=1",
+              metadata: {
+                name: "Ruby High Pack #570329",
+                attributes: [{ trait_type: "State", value: "Opened" }],
+              },
+            },
+            ownership: { owner: ownerWalletAddress },
+            grouping: [
+              { group_key: "collection", group_value: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q" },
+            ],
+          },
+        ],
+      },
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+
+    const owned = await fetchOwnedCorePackNfts(ownerWalletAddress);
+
+    expect(owned).toEqual([expect.objectContaining({
+      ownerWalletAddress,
+      assetAddress: "52soGWdda9qFYBawS89Ho23JPCZuKPmb6N1ZP3bsPmd3",
+      opened: true,
     })]);
   });
 
@@ -257,6 +298,7 @@ describe("Core pack NFT checkout transactions", () => {
                   { trait_type: "Packs", value: "3" },
                   { trait_type: "Cards Inside", value: "15" },
                   { trait_type: "Serial", value: "456789" },
+                  { trait_type: "State", value: "Sealed" },
                 ],
               },
             },
@@ -282,6 +324,7 @@ describe("Core pack NFT checkout transactions", () => {
       packCount: 3,
       cardCount: 15,
       serial: 456789,
+      opened: false,
       metadataUri: "https://arweave.net/ruby-high-pack-json",
     })]);
   });
