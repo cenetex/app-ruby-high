@@ -312,6 +312,12 @@ export function weeklyAutoGuestPack(date = new Date()): ContentPack | null {
   const candidates = publicCreatorPacks().filter((pack) => guestFacultyForPack(pack) !== null);
   if (candidates.length === 0) return null;
   const key = guestWeekKey(date);
+  const featuredPackId = process.env.RUBY_HIGH_FEATURED_GUEST_PACK_ID?.trim();
+  const featuredWeekKey = process.env.RUBY_HIGH_FEATURED_GUEST_WEEK_KEY?.trim();
+  if (featuredPackId && (!featuredWeekKey || featuredWeekKey === key)) {
+    const featured = candidates.find((pack) => pack.id === featuredPackId);
+    if (featured) return featured;
+  }
   return candidates[hashString(key) % candidates.length] ?? null;
 }
 

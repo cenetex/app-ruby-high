@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ORIGINAL_PACK_ID,
   GUEST_COURSE_ID,
@@ -9,9 +9,12 @@ import {
   getPackByIdForSession,
   MAX_PACKS_PER_OWNER,
   packForSession,
+  publicCreatorPacks,
   registerPublicPack,
   registerPack,
   resetActivePack,
+  guestWeekKey,
+  weeklyAutoGuestPack,
 } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
 import { ELIZAOS_SYSTEMS_LAB_PACK_ID } from "../content/packs/elizaos-systems-lab.js";
@@ -22,6 +25,7 @@ import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 // session. LRU per-owner caps registered packs.
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   resetActivePack();
 });
 
@@ -178,6 +182,23 @@ describe("packForSession — fallback semantics", () => {
 });
 
 describe("packForSession — weekly guest composition", () => {
+  it("honors a configured featured guest only for its scheduled week", async () => {
+    await getActivePack();
+    registerPublicPack(fakePack("pack:featured-alternative"), 1_000);
+    const date = new Date("2026-07-21T12:00:00.000Z");
+    const baseline = weeklyAutoGuestPack(date);
+    const override = publicCreatorPacks().find((pack) => pack.id !== baseline?.id);
+    expect(baseline).not.toBeNull();
+    expect(override).toBeDefined();
+
+    vi.stubEnv("RUBY_HIGH_FEATURED_GUEST_PACK_ID", override!.id);
+    vi.stubEnv("RUBY_HIGH_FEATURED_GUEST_WEEK_KEY", guestWeekKey(date));
+    expect(weeklyAutoGuestPack(date)?.id).toBe(override!.id);
+
+    vi.stubEnv("RUBY_HIGH_FEATURED_GUEST_WEEK_KEY", "2099-W01");
+    expect(weeklyAutoGuestPack(date)?.id).toBe(baseline!.id);
+  });
+
   it("keeps Ruby High as the base school and adds one stable guest course", async () => {
     await getActivePack();
     const guestPack = fakePack("pack:guest-signals");
