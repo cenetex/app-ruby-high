@@ -36,8 +36,11 @@ export const VIEWER_CSS = `
     --text: #ecf0fb;
     --text-soft: #aab1c8;
     --text-mute: #7c8499;
+    --text-dim: #9199b0;
+    --text-fade: #8992a8;
     --accent: #d22a2a;
     --accent-soft: rgba(210, 42, 42, 0.16);
+    --focus-ring: #9dc8ff;
     --green: #4cb555;
     --diff-easy: #4cb555;
     --diff-medium: #f0922a;
@@ -50,6 +53,9 @@ export const VIEWER_CSS = `
     --ink-soft: rgba(244, 244, 240, 0.72);
     --board-font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
     --shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+    --border: rgba(255,255,255,0.12);
+    --muted: var(--text-mute);
+    --bg-card: var(--bg-elev);
     --rail-w: 60px;
     --channels-w: 280px;
     --top-h: 52px;
@@ -728,7 +734,8 @@ export const VIEWER_CSS = `
     text-decoration: underline;
     text-decoration-style: dotted;
     text-underline-offset: 2px;
-    padding: 0;
+    min-height: 30px;
+    padding: 6px 0;
     cursor: pointer;
     text-align: left;
   }
@@ -1818,10 +1825,12 @@ export const VIEWER_CSS = `
   .daily-class-progress {
     list-style: none;
     margin: 0;
-    padding: 9px calc(var(--safe-right) + 12px) 0 calc(var(--safe-left) + 12px);
+    padding: 10px calc(var(--safe-right) + 12px) 8px calc(var(--safe-left) + 12px);
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.035);
+    background: rgba(255,255,255,0.018);
   }
   .daily-class-progress[hidden] {
     display: none;
@@ -1834,7 +1843,18 @@ export const VIEWER_CSS = `
     font-size: 10px;
     font-weight: 800;
     letter-spacing: .02em;
+    line-height: 1.2;
+    display: flex;
+    align-items: center;
+    gap: 3px;
     white-space: nowrap;
+    overflow: hidden;
+  }
+  .daily-class-progress-mark {
+    flex: 0 0 auto;
+  }
+  .daily-class-progress-label {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
   }
@@ -2043,7 +2063,7 @@ export const VIEWER_CSS = `
     display: flex;
     flex-wrap: wrap;
     gap: 6px 12px;
-    padding: 0 14px calc(var(--safe-bot) + 10px);
+    padding: 6px 14px calc(var(--safe-bot) + 8px);
     background: var(--bg-elev);
     border-top: 1px solid rgba(255,255,255,0.04);
     flex: 0 0 auto;
@@ -2238,12 +2258,17 @@ export const VIEWER_CSS = `
     border-radius: 999px;
     background: var(--bg-elev);
     color: var(--text-soft);
-    padding: 6px 9px;
+    min-height: 36px;
+    max-width: 100%;
+    padding: 8px 12px;
     font: 700 11px/1.1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
     cursor: pointer;
+    transition: border-color 0.14s ease, background 0.14s ease, color 0.14s ease;
   }
-  .take-starters button:hover {
+  .take-starters button:hover,
+  .take-starters button:focus-visible {
     border-color: var(--accent);
+    background: var(--bg-elev-2);
     color: var(--text);
   }
   .typed-answer-form {
@@ -2260,7 +2285,7 @@ export const VIEWER_CSS = `
     background: var(--bg-elev);
     color: var(--text);
     padding: 0 12px;
-    font: 600 14px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    font: 600 16px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
     outline: none;
   }
   .typed-answer-input:focus {
@@ -3346,6 +3371,7 @@ export const VIEWER_CSS = `
     justify-content: center;
     padding: 20px;
     overflow-y: auto;
+    overscroll-behavior: contain;
   }
   .sheet-overlay.is-open { display: flex; }
   /* Universal close affordance for the sheet overlay. The X tracks the
@@ -6656,7 +6682,10 @@ export const VIEWER_CSS = `
     max-width: calc(100% - 24px);
     text-align: center;
     border: 1px solid rgba(255,255,255,0.08);
-    white-space: nowrap;
+    width: max-content;
+    white-space: normal;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
   }
   .congrats-toast.is-correct { background: rgba(31, 124, 42, 0.95); }
   .congrats-toast.is-wrong { background: rgba(160, 24, 24, 0.95); }
@@ -6672,9 +6701,14 @@ export const VIEWER_CSS = `
     background: rgba(8, 10, 16, 0.68);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
   .app-confirm-card {
     width: min(420px, 100%);
+    max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - 36px);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
     border: 1px solid color-mix(in srgb, var(--accent) 34%, rgba(255,255,255,0.18));
     border-radius: 8px;
     background:
@@ -7135,13 +7169,18 @@ export const VIEWER_CSS = `
     z-index: 90;
     display: grid;
     place-items: center;
-    padding: 22px;
+    padding: calc(var(--safe-top) + 22px) calc(var(--safe-right) + 22px) calc(var(--safe-bot) + 22px) calc(var(--safe-left) + 22px);
     background: rgba(8, 10, 16, 0.58);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
   .welcome-hall-pass-panel {
     width: min(360px, 100%);
+    max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - 44px);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
     border: 1px solid color-mix(in srgb, var(--accent) 42%, rgba(255,255,255,0.18));
     border-radius: 8px;
     background: rgba(25, 29, 38, 0.98);
@@ -7221,11 +7260,13 @@ export const VIEWER_CSS = `
     z-index: 100;
     display: grid;
     place-items: center;
-    padding: 22px;
+    padding: calc(var(--safe-top) + 22px) calc(var(--safe-right) + 22px) calc(var(--safe-bot) + 22px) calc(var(--safe-left) + 22px);
     background: rgba(8, 10, 16, 0.64);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     animation: announcements-fade-in 0.24s ease;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
   @keyframes announcements-fade-in {
     from { opacity: 0; }
@@ -7233,6 +7274,9 @@ export const VIEWER_CSS = `
   }
   .announcements-panel {
     width: min(440px, 100%);
+    max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - 44px);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
     border: 1px solid rgba(255,255,255,0.14);
     border-radius: 14px;
     background: linear-gradient(180deg, rgba(30,34,44,0.98) 0%, rgba(22,25,34,0.99) 100%);
@@ -7420,6 +7464,13 @@ export const VIEWER_CSS = `
       scrollbar-width: none;
     }
     .blackboard-meta::-webkit-scrollbar { display: none; }
+    .daily-class-progress {
+      gap: 4px;
+      padding-inline: calc(var(--safe-left) + 8px) calc(var(--safe-right) + 8px);
+    }
+    .daily-class-progress li {
+      font-size: 9.5px;
+    }
     .pill {
       flex: 0 0 auto;
       font-size: 9px;
@@ -8155,6 +8206,25 @@ export const VIEWER_CSS = `
     .leaderboard-back {
       padding: 7px 8px;
     }
+  }
+
+  /* Keep keyboard focus visible across the many compact, custom controls.
+     Programmatically focused dialog containers opt out through tabindex=-1. */
+  body :focus-visible:not([disabled]):not([tabindex="-1"]) {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 3px;
+  }
+
+  .visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0 0 0 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
   }
 
 `;

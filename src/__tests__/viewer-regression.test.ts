@@ -154,6 +154,25 @@ describe("viewer regression guardrails", () => {
     expect(VIEWER_CSS).not.toContain('.shell[data-mode="round-live"] .world-panel');
   });
 
+  it("keeps compact class-flow controls readable, focusable, and viewport-safe", () => {
+    const html = renderedViewer();
+    const script = inlineScript(html);
+
+    expect(html).toContain(">Quick roll a student</button>");
+    expect(html).toContain('<svg aria-hidden="true"');
+    expect(VIEWER_CSS).toContain("--text-dim:");
+    expect(VIEWER_CSS).toContain("--border:");
+    expect(VIEWER_CSS).toContain("--bg-card:");
+    expect(VIEWER_CSS).toContain("--focus-ring:");
+    expect(cssRule(".typed-answer-input")).toContain("font: 600 16px/1");
+    expect(cssRule(".take-starters button")).toContain("min-height: 36px");
+    expect(VIEWER_CSS).toContain('body :focus-visible:not([disabled]):not([tabindex="-1"])');
+    expect(cssRule(".congrats-toast")).toContain("white-space: normal");
+    expect(cssRule(".announcements-panel")).toContain("max-height: calc(100dvh");
+    expectScriptToContain(script, 'status.className = "visually-hidden"');
+    expectScriptToContain(script, 'item.setAttribute("aria-current", "step")');
+  });
+
   it("keeps mobile navigation explicit and keyboard-dismissible", () => {
     const html = renderedViewer();
     const script = inlineScript(html);
@@ -1298,7 +1317,8 @@ describe("viewer regression guardrails", () => {
     expect(cssRule(".channels-footer .you-avatar img")).toContain("height: 100% !important");
     expect(cssRule(".channels-footer .you-avatar img")).toContain("object-fit: cover");
     expect(cssRule(".channels-rail .report-bug-link")).toContain("display: inline-flex");
-    expect(cssRule(".channels-rail .report-bug-link")).toContain("padding: 0");
+    expect(cssRule(".channels-rail .report-bug-link")).toContain("min-height: 30px");
+    expect(cssRule(".channels-rail .report-bug-link")).toContain("padding: 6px 0");
     expect(cssRule(".channels-links")).toContain("flex-wrap: wrap");
     expect(cssRule(".channels-links")).toContain("flex: 0 0 auto");
     expect(VIEWER_CSS).not.toContain("Stack links vertically in the channels footer");

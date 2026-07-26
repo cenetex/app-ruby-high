@@ -1769,7 +1769,21 @@ export function runViewerClient(bootstrap) {
     for (const step of view.steps) {
       const item = document.createElement("li");
       item.className = "is-" + step.state;
-      item.textContent = step.state === "complete" ? "✓ " + step.label : step.label;
+      const marker = document.createElement("span");
+      marker.className = "daily-class-progress-mark";
+      marker.setAttribute("aria-hidden", "true");
+      marker.textContent = step.state === "complete" ? "✓" : "";
+      const label = document.createElement("span");
+      label.className = "daily-class-progress-label";
+      label.textContent = step.label;
+      const status = document.createElement("span");
+      status.className = "visually-hidden";
+      status.textContent = step.state === "complete"
+        ? ", complete"
+        : step.state === "current"
+          ? ", current"
+          : ", not started";
+      item.append(marker, label, status);
       if (step.state === "current") item.setAttribute("aria-current", "step");
       els.dailyClassProgress.appendChild(item);
     }

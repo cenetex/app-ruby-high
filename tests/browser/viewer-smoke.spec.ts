@@ -7,7 +7,7 @@ test("quick-rolls a first student directly into First Bell", async ({ page }) =>
 
   await expect(page.getByRole("button", { name: "Lock it in" })).toHaveCount(0);
 
-  const rollAStudent = page.getByRole("button", { name: "Quick Roll student" });
+  const rollAStudent = page.getByRole("button", { name: "Quick roll a student" });
   if (await rollAStudent.isVisible().catch(() => false)) {
     await expect(rollAStudent).toBeEnabled();
     await rollAStudent.click();
