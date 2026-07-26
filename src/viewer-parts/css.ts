@@ -1815,6 +1815,37 @@ export const VIEWER_CSS = `
     padding: 10px calc(var(--safe-right) + 12px) 8px calc(var(--safe-left) + 12px);
     min-width: 0;
   }
+  .daily-class-progress {
+    list-style: none;
+    margin: 0;
+    padding: 9px calc(var(--safe-right) + 12px) 0 calc(var(--safe-left) + 12px);
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .daily-class-progress[hidden] {
+    display: none;
+  }
+  .daily-class-progress li {
+    min-width: 0;
+    border-top: 3px solid var(--line);
+    padding-top: 5px;
+    color: var(--text-dim);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .daily-class-progress li.is-complete {
+    border-color: #48a877;
+    color: var(--text-soft);
+  }
+  .daily-class-progress li.is-current {
+    border-color: var(--accent);
+    color: var(--text);
+  }
   .blackboard-empty {
     padding: 24px 16px;
     text-align: center;
@@ -2191,6 +2222,29 @@ export const VIEWER_CSS = `
     padding: 10px calc(var(--safe-right) + 10px) 10px calc(var(--safe-left) + 10px);
     flex: 0 0 auto;
     min-width: 0;
+  }
+  .take-starters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 8px;
+  }
+  .take-starters[hidden] {
+    display: none;
+  }
+  .take-starters button {
+    appearance: none;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--bg-elev);
+    color: var(--text-soft);
+    padding: 6px 9px;
+    font: 700 11px/1.1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    cursor: pointer;
+  }
+  .take-starters button:hover {
+    border-color: var(--accent);
+    color: var(--text);
   }
   .typed-answer-form {
     display: grid;

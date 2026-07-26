@@ -1,34 +1,23 @@
 import { expect, test } from "@playwright/test";
 import { closeBlockingSheetIfVisible, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
 
-test("rolls a first student without showing the old Lock it in action", async ({ page }) => {
+test("quick-rolls a first student directly into First Bell", async ({ page }) => {
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);
 
   await expect(page.getByRole("button", { name: "Lock it in" })).toHaveCount(0);
 
-  const rollAStudent = page.getByRole("button", { name: /roll a student/i });
+  const rollAStudent = page.getByRole("button", { name: "Quick Roll student" });
   if (await rollAStudent.isVisible().catch(() => false)) {
     await expect(rollAStudent).toBeEnabled();
     await rollAStudent.click();
-    await expect(page.locator("#sheet-card").getByText("Character Roll", { exact: true })).toBeVisible({ timeout: 45_000 });
-    await expect(page.locator("#sheet-card .creation-reroll").first()).toBeVisible();
-    await expect(page.locator("#sheet-card").getByRole("button", { name: "Reroll name" })).toBeVisible();
-    const saveCharacter = page.locator("#sheet-card").getByRole("button", { name: "Save Character" });
-    const startFreshmanYear = page.locator("#sheet-card").getByRole("button", { name: "Start Freshman Year" });
-    await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
-    if (await saveCharacter.isVisible().catch(() => false)) {
-      await expect(saveCharacter).toBeEnabled();
-      await saveCharacter.click();
-    } else {
-      await expect(startFreshmanYear).toBeVisible();
-      await expect(startFreshmanYear).toBeEnabled();
-      await startFreshmanYear.click();
-    }
   }
 
   await expect(page.getByRole("button", { name: "Lock it in" })).toHaveCount(0);
-  await expect(page.locator("#sheet-overlay")).not.toHaveClass(/is-open/, { timeout: 45_000 });
+  await expect(page.locator("#sheet-overlay")).not.toHaveClass(/is-open/);
+  await expect(page.locator("#daily-class-progress")).toContainText("Evidence 1");
+  await expect(page.locator("#daily-class-progress")).toContainText("Your Take");
+  await expect(page.locator("#daily-class-progress")).toContainText("Result");
   await expect(page.locator(".answer:not([disabled])").first()).toBeVisible({ timeout: 15_000 });
 
   expect(errors).toEqual([]);

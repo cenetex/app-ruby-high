@@ -100,7 +100,10 @@ export function runViewerClient(bootstrap) {
     const cur = t && t.current;
     const offlineClassroom = !!(authed && !teacherChatEnabled() && t && t.character && t.faculty !== LOUNGE_ID);
     if (round && !round.resolved && cur) return offlineClassroom ? "Continue" : chatActionLabel(t);
-    if (cur && (currentRevealMatches(t) || t.status === "revealed")) return "Continue";
+    if (cur && (currentRevealMatches(t) || t.status === "revealed")) {
+      const progressView = dailyClassProgressView(t);
+      return progressView.visible ? progressView.continuationLabel : "Continue";
+    }
     const postClass = postClassState(t);
     if (postClass.report && guestSignupRequired(t)) return "Sign up";
     if (postClass.socialReady) return "Reflect";
@@ -479,6 +482,7 @@ export function runViewerClient(bootstrap) {
     bugReportSubmit: $("bug-report-submit"),
     bugReportStatus: $("bug-report-status"),
     blackboardMeta: $("blackboard-meta"),
+    dailyClassProgress: $("daily-class-progress"),
     boardFrameHost: $("board-frame-host"),
     boardPrompt: $("board-prompt"),
     boardReveal: $("board-reveal"),
@@ -489,6 +493,8 @@ export function runViewerClient(bootstrap) {
     typedAnswerInput: $("typed-answer-input"),
     typedSubmitBtn: $("typed-submit-btn"),
     generateMcBtn: $("generate-mc-btn"),
+    takeStarters: $("take-starters"),
+    takeStarterButtons: Array.from(document.querySelectorAll("#take-starters [data-starter]")),
     advantageBar: $("advantage-bar"),
     advantageBtn: $("advantage-btn"),
     advantageResult: $("advantage-result"),
@@ -1001,6 +1007,8 @@ export function runViewerClient(bootstrap) {
   let opinionGradeFired = false; // grading has been triggered for current round
   let typedSubmitting = false;
   let generatingMc = false;
+  let takeStartedQuestionId = null;
+  const viewedClassReportKeys = new Set();
   const renderedOpinionIds = new Set(); // responder ids whose text we've appended to chat
   const gradedResponderIds = new Set(); // responders whose grade-tag we've stamped on
   let sheetOverlayOpen = false;
@@ -1310,7 +1318,13 @@ export function runViewerClient(bootstrap) {
   }
 
   function postViewerMetricEvent(type, payload) {
-    const body = Object.assign({ type: type }, payload || {});
+    const lowerSessionId = String(sessionId || "").toLowerCase();
+    const clientSurface = role === "agent"
+      ? "agent"
+      : lowerSessionId.indexOf("smoke") !== -1 || lowerSessionId.indexOf("synthetic") !== -1
+        ? "smoke"
+        : "viewer";
+    const body = Object.assign({ type: type, clientSurface: clientSurface }, payload || {});
     apiFetch(metricsEventUrl, {
       method: "POST",
       credentials: "same-origin",
@@ -1746,6 +1760,20 @@ export function runViewerClient(bootstrap) {
       els.boardReveal.textContent = "";
     }
   }
+  function renderDailyClassProgress(t) {
+    if (!els.dailyClassProgress) return;
+    const view = dailyClassProgressView(t);
+    els.dailyClassProgress.hidden = !view.visible;
+    els.dailyClassProgress.replaceChildren();
+    if (!view.visible) return;
+    for (const step of view.steps) {
+      const item = document.createElement("li");
+      item.className = "is-" + step.state;
+      item.textContent = step.state === "complete" ? "✓ " + step.label : step.label;
+      if (step.state === "current") item.setAttribute("aria-current", "step");
+      els.dailyClassProgress.appendChild(item);
+    }
+  }
   function ensureBlackboardEmptyExtras() {
     let extras = els.blackboardEmpty.querySelector(".blackboard-empty-extras");
     if (!extras) {
@@ -1832,6 +1860,11 @@ export function runViewerClient(bootstrap) {
     if (!report) {
       showBlackboardEmpty(true);
       return;
+    }
+    const reportKey = classReportKey(lastTelemetry);
+    if (reportKey && !viewedClassReportKeys.has(reportKey)) {
+      viewedClassReportKeys.add(reportKey);
+      postViewerMetricEvent("class_result_viewed", {});
     }
     showClassSurface();
     els.blackboardPanel.classList.remove("is-empty", "is-long-prompt", "is-essay-prompt");
@@ -3707,10 +3740,16 @@ export function runViewerClient(bootstrap) {
       || !isFreeformAnswer
       || !!(round && round.resolved)
       || (isOpinion ? (serverPlayerOpinionRecorded || localOpinionSubmitted) : playerLocked);
-    els.typedAnswerInput.placeholder = isOpinion ? "Type your response" : "Type the answer";
+    const isDailyTake = !!(isOpinion && question.opinionPurpose === "daily-take");
+    els.typedAnswerInput.placeholder = isDailyTake
+      ? "Write one sentence with your take"
+      : isOpinion
+        ? "Type your response"
+        : "Type the answer";
     els.typedSubmitBtn.textContent = isOpinion ? "Send" : "Check";
     els.typedAnswerInput.disabled = typedDisabled;
     els.typedSubmitBtn.disabled = typedDisabled;
+    if (els.takeStarters) els.takeStarters.hidden = !isDailyTake || typedDisabled;
     els.generateMcBtn.hidden = !(isTypedAnswer && question.canGenerateMc);
     els.generateMcBtn.disabled = role === "agent" || playerLocked || !!(round && round.resolved) || generatingMc || !aiEnabled;
     els.generateMcBtn.title = aiEnabled
@@ -4633,7 +4672,15 @@ export function runViewerClient(bootstrap) {
           return;
         }
         if (phase === "revealed") {
+          const continueClass = !!(
+            lastTelemetry
+            && lastTelemetry.lastReveal
+            && lastTelemetry.lastReveal.classProgress
+            && lastTelemetry.lastReveal.classProgress.mode === "class"
+            && !currentRevealCompletedClass(lastTelemetry)
+          );
           await command({ type: "clear" });
+          if (continueClass) await command({ type: "pick" });
           lockedFor = null;
           return;
         }
@@ -4665,13 +4712,15 @@ export function runViewerClient(bootstrap) {
         return;
       }
       if (phase === "revealed") {
-        if (currentRevealCompletedClass(lastTelemetry)) {
-          await command({ type: "clear" });
-          lockedFor = null;
-          await runPlayerChatTurn("report");
-          return;
-        }
+        const continueClass = !!(
+          lastTelemetry
+          && lastTelemetry.lastReveal
+          && lastTelemetry.lastReveal.classProgress
+          && lastTelemetry.lastReveal.classProgress.mode === "class"
+          && !currentRevealCompletedClass(lastTelemetry)
+        );
         await command({ type: "clear" });
+        if (continueClass) await command({ type: "pick" });
         lockedFor = null;
         return;
       }
@@ -5032,7 +5081,7 @@ export function runViewerClient(bootstrap) {
       firstRunCreationOpened = true;
       // If a class is already live, jump straight to character creation
       // so the teacher isn't hidden behind an intro screen.
-      if (t.current || t.active_round || (t.daily && t.daily.available)) {
+      if (t.current || t.active_round) {
         setTimeout(() => openCharacterCreation(), 0);
       } else {
         showOnboarding();
@@ -5118,6 +5167,7 @@ export function runViewerClient(bootstrap) {
     renderArcIndicator(t);
 
     // Render blackboard panel (single, in-place updates).
+    renderDailyClassProgress(t);
     renderBlackboard(t.current || null, fac || null, t.current_grade);
     renderRaceStrip(t);
     renderAdvantageBar(t);
@@ -10243,6 +10293,24 @@ export function runViewerClient(bootstrap) {
     btn.addEventListener("click", () => pickAnswer(btn.dataset.pick, btn));
   });
   els.typedAnswerForm.addEventListener("submit", submitTypedAnswer);
+  function recordTakeStarted() {
+    const question = lastTelemetry && lastTelemetry.current;
+    if (!question || question.opinionPurpose !== "daily-take" || takeStartedQuestionId === question.id) return;
+    takeStartedQuestionId = question.id;
+    postViewerMetricEvent("take_card_started", { questionId: question.id });
+  }
+  els.typedAnswerInput.addEventListener("focus", recordTakeStarted);
+  els.typedAnswerInput.addEventListener("input", recordTakeStarted);
+  els.takeStarterButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      if (els.typedAnswerInput.disabled) return;
+      const starter = button.dataset.starter || "";
+      if (!els.typedAnswerInput.value.trim()) els.typedAnswerInput.value = starter;
+      recordTakeStarted();
+      els.typedAnswerInput.focus();
+      els.typedAnswerInput.setSelectionRange(els.typedAnswerInput.value.length, els.typedAnswerInput.value.length);
+    });
+  });
   els.generateMcBtn.addEventListener("click", generateMultipleChoice);
   els.nextBtn.addEventListener("click", pickNext);
   els.hamburger.addEventListener("click", toggleRails);
@@ -10453,11 +10521,17 @@ export function runViewerClient(bootstrap) {
   });
 
   const onboardingCreateBtn = document.getElementById("onboarding-create-btn");
+  const onboardingCustomizeBtn = document.getElementById("onboarding-customize-btn");
   const onboardingBooksBtn = document.getElementById("onboarding-books-btn");
-  if (onboardingCreateBtn) onboardingCreateBtn.addEventListener("click", () => {
+  if (onboardingCreateBtn) onboardingCreateBtn.addEventListener("click", async () => {
     onboardingCreateBtn.disabled = true;
-    openCharacterCreation();
+    try {
+      await command({ type: "quick-roll-student" });
+    } finally {
+      onboardingCreateBtn.disabled = false;
+    }
   });
+  if (onboardingCustomizeBtn) onboardingCustomizeBtn.addEventListener("click", openCharacterCreation);
   if (onboardingBooksBtn) onboardingBooksBtn.addEventListener("click", () => {
     window.open("https://ratimics.gumroad.com", "_blank", "noopener,noreferrer");
   });

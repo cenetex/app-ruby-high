@@ -43,6 +43,7 @@ import {
   type RubyHighCurriculumReplenishmentPlan,
 } from "./ruby-high/curriculum-coverage.js";
 import { builtInTeacherResearchCorpusForFaculty } from "./ruby-high/teacher-research-corpus.js";
+import { quickRollStudentForSeed } from "./ruby-high/quick-roll.js";
 import { teacherById, type TeacherCharacter } from "../characters/teachers.js";
 import { Service, type IAgentRuntime } from "../runtime.js";
 import {
@@ -140,6 +141,7 @@ import {
   type StoredDraftContentPackRecord,
   type StoredMetricEventName,
   type StoredMetricEventRecord,
+  type MetricClientSurface,
   type StoredPackInstallationRecord,
   type StoredPackReview,
   type StoredSchoolEventRecord,
@@ -974,13 +976,25 @@ export interface RubyHighMetricEventsSnapshot {
     started: number;
     overrideSet: number;
   };
+  byClientSurface: Record<MetricClientSurface, number>;
+  activationFunnel: {
+    trustStart: string;
+    raw: ActivationFunnelCohortSnapshot;
+    humanViewer: ActivationFunnelCohortSnapshot;
+  };
   classRitual: {
     dailyClassStarted: number;
+    /** Legacy aggregate; prefer evidence1Completed and evidence2Completed. */
     evidenceCardCompleted: number;
+    evidence1Completed: number;
+    evidence2Completed: number;
+    takeCardPresented: number;
+    takeCardStarted: number;
     takeCardSubmitted: number;
     teacherResponseViewed: number;
     roomReactionViewed: number;
     classResultCompleted: number;
+    classResultViewed: number;
     classRecordSaved: number;
   };
   balance: {
@@ -1014,6 +1028,25 @@ export interface RubyHighMetricEventsSnapshot {
     total: number;
     byFeature: Record<string, number>;
   };
+}
+
+export interface ActivationFunnelStepSnapshot {
+  key: string;
+  label: string;
+  uniqueSessions: number;
+  denominator: number;
+  rateFromOpen: number | null;
+  previousStepSessions: number;
+  rateFromPrevious: number | null;
+}
+
+export interface ActivationFunnelCohortSnapshot {
+  cohort: "raw" | "human-viewer";
+  windowStart: string;
+  windowEnd: string;
+  sampleSize: number;
+  eligibleSessions: number;
+  steps: ActivationFunnelStepSnapshot[];
 }
 
 export interface DailyMemoryEntry {
@@ -1818,12 +1851,21 @@ export class RubyHighService extends Service {
 
   recordAppOpen(
     sessionId: string,
-    input: { source?: string; userAgent?: string; referrer?: string; path?: string; ref?: string; visitorHash?: string | null } = {},
+    input: {
+      source?: string;
+      clientSurface?: MetricClientSurface;
+      userAgent?: string;
+      referrer?: string;
+      path?: string;
+      ref?: string;
+      visitorHash?: string | null;
+    } = {},
   ): void {
     if (input.visitorHash) {
       this.recordMetricEvent("visitor_seen", {
         sessionId,
         visitorHash: input.visitorHash,
+        ...(input.clientSurface ? { clientSurface: input.clientSurface } : {}),
         source: input.source ?? "viewer",
         feature: "viewer",
       });
@@ -1831,6 +1873,7 @@ export class RubyHighService extends Service {
     this.recordMetricEvent("app_open", {
       sessionId,
       ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      ...(input.clientSurface ? { clientSurface: input.clientSurface } : {}),
       source: input.source ?? "viewer",
       feature: "viewer",
       metadata: {
@@ -1844,12 +1887,21 @@ export class RubyHighService extends Service {
 
   async recordAppOpenDurably(
     sessionId: string,
-    input: { source?: string; userAgent?: string; referrer?: string; path?: string; ref?: string; visitorHash?: string | null } = {},
+    input: {
+      source?: string;
+      clientSurface?: MetricClientSurface;
+      userAgent?: string;
+      referrer?: string;
+      path?: string;
+      ref?: string;
+      visitorHash?: string | null;
+    } = {},
   ): Promise<void> {
     if (input.visitorHash) {
       await this.recordMetricEventDurably("visitor_seen", {
         sessionId,
         visitorHash: input.visitorHash,
+        ...(input.clientSurface ? { clientSurface: input.clientSurface } : {}),
         source: input.source ?? "viewer",
         feature: "viewer",
       });
@@ -1857,6 +1909,7 @@ export class RubyHighService extends Service {
     await this.recordMetricEventDurably("app_open", {
       sessionId,
       ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      ...(input.clientSurface ? { clientSurface: input.clientSurface } : {}),
       source: input.source ?? "viewer",
       feature: "viewer",
       metadata: {
@@ -2182,6 +2235,7 @@ export class RubyHighService extends Service {
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
       ...(input.userId ? { userId: input.userId } : {}),
       ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      clientSurface: inferMetricClientSurface(input, this.metricEvents.values()),
       ...(input.source ? { source: input.source } : {}),
       ...(input.feature ? { feature: input.feature } : {}),
       ...(input.step ? { step: input.step } : {}),
@@ -2264,6 +2318,107 @@ export class RubyHighService extends Service {
     return false;
   }
 
+  private recordClassFlowMetric(
+    name: StoredMetricEventName,
+    state: QuizState,
+    input: {
+      faculty: string;
+      grade?: string | null;
+      date?: string | null;
+      step: string;
+      status?: StoredMetricEventRecord["status"];
+      source?: string;
+      clientSurface?: MetricClientSurface;
+      metadata?: Record<string, unknown>;
+    },
+  ): StoredMetricEventRecord | null {
+    const classKey = classFlowMetricKey(input.faculty, input.grade, input.date);
+    const existing = this.findClassFlowMetric(state.sessionId, name, classKey, input.step);
+    if (existing) return existing;
+    return this.recordMetricEvent(name, {
+      sessionId: state.sessionId,
+      source: input.source ?? "gameplay",
+      ...(input.clientSurface ? { clientSurface: input.clientSurface } : {}),
+      feature: "daily_class_ritual",
+      step: input.step,
+      status: input.status ?? "success",
+      metadata: {
+        classKey,
+        faculty: input.faculty,
+        ...(input.grade ? { grade: input.grade } : {}),
+        ...(input.date ? { date: input.date } : {}),
+        ...(input.metadata ?? {}),
+      },
+    });
+  }
+
+  async recordViewerClassFlowMilestoneDurably(
+    sessionId: string,
+    name: "take_card_started" | "class_result_viewed",
+    input: {
+      visitorHash?: string | null;
+      clientSurface?: MetricClientSurface;
+      questionId?: string;
+    } = {},
+  ): Promise<StoredMetricEventRecord | null> {
+    const state = this.getOrCreate(sessionId);
+    const classSession = state.activeRound?.classSession;
+    const faculty = classSession?.facultyId ?? state.faculty;
+    const grade = classSession?.grade ?? state.currentGrade;
+    const date = classSession?.date ?? dailyKey();
+    if (name === "take_card_started") {
+      if (
+        state.current?.opinionPurpose !== "daily-take"
+        || classSession?.mode !== "class"
+        || state.activeRound?.resolved
+      ) {
+        return null;
+      }
+    } else {
+      const record = this.dailyClassRecord(state, faculty, date);
+      if (record?.status !== "complete") return null;
+    }
+    const step = name === "take_card_started" ? "take" : "class_result";
+    const classKey = classFlowMetricKey(faculty, grade, date);
+    const existing = this.findClassFlowMetric(sessionId, name, classKey, step);
+    if (existing) return existing;
+    return await this.recordMetricEventDurably(name, {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      ...(input.clientSurface ? { clientSurface: input.clientSurface } : {}),
+      source: "viewer",
+      feature: "daily_class_ritual",
+      step,
+      status: "success",
+      metadata: {
+        classKey,
+        faculty,
+        ...(grade ? { grade } : {}),
+        date,
+        ...(input.questionId ? { questionId: clippedMetricValue(input.questionId, 160) } : {}),
+      },
+    });
+  }
+
+  private findClassFlowMetric(
+    sessionId: string,
+    name: StoredMetricEventName,
+    classKey: string,
+    step: string,
+  ): StoredMetricEventRecord | null {
+    for (const event of this.metricEvents.values()) {
+      if (
+        event.sessionId === sessionId
+        && event.name === name
+        && event.step === step
+        && event.metadata?.classKey === classKey
+      ) {
+        return event;
+      }
+    }
+    return null;
+  }
+
   analyticsSnapshot(now: number = Date.now()): RubyHighAnalyticsSnapshot {
     const dayMs = 24 * 60 * 60 * 1000;
     const { days, byDate } = buildRubyHighDailyBuckets(now, 14);
@@ -2324,7 +2479,7 @@ export class RubyHighService extends Service {
       meritStars += wallet.meritStars;
       hallPasses += wallet.hallPasses;
     }
-    const events = buildMetricEventsSnapshot(this.metricEvents.values(), byDate);
+    const events = buildMetricEventsSnapshot(this.metricEvents.values(), byDate, now);
     const eventRetention = buildEventRetentionSnapshot(this.metricEvents.values(), now);
     return {
       store: this.store.describe(),
@@ -6454,17 +6609,14 @@ export class RubyHighService extends Service {
   private recordDailyClassStartedIfNeeded(state: QuizState, questionId: string): void {
     const session = state.activeRound?.classSession;
     if (session?.mode !== "class" || session.index !== 1 || !CORE_DAILY_CLASS_FACULTY.has(session.facultyId)) return;
-    this.recordMetricEvent("daily_class_started", {
-      sessionId: state.sessionId,
-      source: "gameplay",
-      feature: "daily_class_ritual",
+    this.recordClassFlowMetric("daily_class_started", state, {
+      faculty: session.facultyId,
+      grade: session.grade,
+      date: session.date,
       step: "evidence_1",
       status: "started",
       metadata: {
         questionId,
-        faculty: session.facultyId,
-        grade: session.grade,
-        date: session.date,
       },
     });
   }
@@ -6543,16 +6695,13 @@ export class RubyHighService extends Service {
       }
       this.unlockTeacherStoryPageForAClass(state, record, now);
       if (CORE_DAILY_CLASS_FACULTY.has(session.facultyId)) {
-        this.recordMetricEvent("class_result_completed", {
-          sessionId: state.sessionId,
-          source: "gameplay",
-          feature: "daily_class_ritual",
+        this.recordClassFlowMetric("class_result_completed", state, {
+          faculty: session.facultyId,
+          grade: session.grade,
+          date: session.date,
           step: "class_result",
           status: "success",
           metadata: {
-            faculty: session.facultyId,
-            grade: session.grade,
-            date: session.date,
             letterGrade: record.letterGrade,
             score: avg,
           },
@@ -7255,16 +7404,14 @@ export class RubyHighService extends Service {
       && round.cardRole === "class"
       && CORE_DAILY_CLASS_FACULTY.has(classProgress.facultyId)
     ) {
-      this.recordMetricEvent("evidence_card_completed", {
-        sessionId: state.sessionId,
-        source: "gameplay",
-        feature: "daily_class_ritual",
+      this.recordClassFlowMetric("evidence_card_completed", state, {
+        faculty: classProgress.facultyId,
+        grade: classProgress.grade,
+        date: classProgress.date,
         step: `evidence_${classProgress.questionCount ?? 0}`,
         status: "success",
         metadata: {
           questionId: q.id,
-          faculty: classProgress.facultyId,
-          grade: classProgress.grade,
           wasCorrect,
         },
       });
@@ -8284,16 +8431,14 @@ export class RubyHighService extends Service {
     if (responder === "player") {
       round.player.answeredAt = now;
       if (state.current?.opinionPurpose === "daily-take" && round.classSession?.mode === "class") {
-        this.recordMetricEvent("take_card_submitted", {
-          sessionId: state.sessionId,
-          source: "gameplay",
-          feature: "daily_class_ritual",
+        this.recordClassFlowMetric("take_card_submitted", state, {
+          faculty: round.classSession.facultyId,
+          grade: round.classSession.grade,
+          date: round.classSession.date,
           step: "take",
           status: "success",
           metadata: {
             questionId: round.questionId,
-            faculty: round.classSession.facultyId,
-            grade: round.classSession.grade,
             responseLength: bounded.length,
           },
         });
@@ -8490,7 +8635,7 @@ export class RubyHighService extends Service {
     const key = `${facultyId}:${grade}:${date}`;
     for (let i = 0; i < key.length; i++) seed = ((seed << 5) - seed + key.charCodeAt(i)) | 0;
     const take = pool[Math.abs(seed) % pool.length]!;
-    return this.poseOpinion(sessionId, {
+    const next = this.poseOpinion(sessionId, {
       faculty: facultyId,
       subject: take.subject,
       questionId: `take_${facultyId}_${grade}_${date}_${socialIndex}`,
@@ -8498,6 +8643,20 @@ export class RubyHighService extends Service {
       rubric: take.rubric,
       purpose: "daily-take",
     });
+    const classSession = next.activeRound?.classSession;
+    if (classSession?.mode === "class") {
+      this.recordClassFlowMetric("take_card_presented", next, {
+        faculty: classSession.facultyId,
+        grade: classSession.grade,
+        date: classSession.date,
+        step: "take",
+        status: "success",
+        metadata: {
+          questionId: next.current?.id ?? "",
+        },
+      });
+    }
+    return next;
   }
 
   private scheduledPickPlanForState(state: QuizState, filter: PickAndPoseInput = {}): ScheduledPickPlan {
@@ -8934,7 +9093,17 @@ export class RubyHighService extends Service {
   /** Create the player's character sheet. Throws if one already exists. */
   createCharacter(
     sessionId: string,
-    input: { name: string; playbookId: string; stats: CharacterStats; arcAnswer: string; flavorQuote?: string; personality: string; portraitDataUrl?: string; mentorAccepted?: boolean },
+    input: {
+      name: string;
+      playbookId: string;
+      stats: CharacterStats;
+      arcAnswer: string;
+      flavorQuote?: string;
+      personality: string;
+      portraitDataUrl?: string;
+      mentorAccepted?: boolean;
+      creationMethod?: "custom" | "quick-roll" | "agent";
+    },
   ): QuizState {
     const state = this.getOrCreate(sessionId);
     if (state.character) throw new Error("Character already exists for this session.");
@@ -8983,19 +9152,48 @@ export class RubyHighService extends Service {
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     log.event("character.created", {
-      sessionId, characterName: name, playbookId: input.playbookId, mentorAccepted: !!inheritedFrom,
-    });
-    this.maybePostXMilestone({
-      kind: "character-created",
+      sessionId,
       characterName: name,
-      flavorQuote: flavorQuote ?? undefined,
-    }, state);
+      playbookId: input.playbookId,
+      mentorAccepted: !!inheritedFrom,
+      creationMethod: input.creationMethod ?? "custom",
+    });
+    if (input.creationMethod !== "quick-roll") {
+      this.maybePostXMilestone({
+        kind: "character-created",
+        characterName: name,
+        flavorQuote: flavorQuote ?? undefined,
+      }, state);
+    }
     this.recordFunnelStep(state, "first_character_created", {
       characterName: name,
       playbookId: input.playbookId,
       mentorAccepted: !!inheritedFrom,
+      creationMethod: input.creationMethod ?? "custom",
     });
     return state;
+  }
+
+  /**
+   * Create a complete deterministic student and put the first local class
+   * card on the board. Repeated requests never reroll or replace a character,
+   * and never post a second card while one is live.
+   */
+  quickRollIntoFirstBell(sessionId: string): QuizState {
+    let state = this.getOrCreate(sessionId);
+    if (!state.character) {
+      const student = quickRollStudentForSeed(sessionId);
+      state = this.createCharacter(sessionId, {
+        ...student,
+        creationMethod: "quick-roll",
+      });
+    }
+    if (state.current || state.activeRound) return state;
+    if (this.dailyClassRecord(state, state.faculty, dailyKey())?.status === "complete") return state;
+    return this.pickAndPose(sessionId, {
+      faculty: state.faculty,
+      mode: "class",
+    });
   }
 
   /** Update an autosaved character candidate while preserving live career
@@ -12652,6 +12850,7 @@ function buildRubyHighDailyBuckets(now: number, count: number): {
 function buildMetricEventsSnapshot(
   events: Iterable<StoredMetricEventRecord>,
   byDate: Map<string, RubyHighAnalyticsDay>,
+  now: number,
 ): RubyHighMetricEventsSnapshot {
   const orderedEvents = Array.from(events).sort((a, b) => a.occurredAt - b.occurredAt);
   const byName: Record<StoredMetricEventName, number> = {
@@ -12669,16 +12868,28 @@ function buildMetricEventsSnapshot(
     guest_pack_override_set: 0,
     daily_class_started: 0,
     evidence_card_completed: 0,
+    take_card_presented: 0,
+    take_card_started: 0,
     take_card_submitted: 0,
     teacher_response_viewed: 0,
     room_reaction_viewed: 0,
     class_result_completed: 0,
+    class_result_viewed: 0,
     class_record_saved: 0,
     commerce: 0,
     llm_usage: 0,
     error: 0,
     balance_sample: 0,
   };
+  const byClientSurface: Record<MetricClientSurface, number> = {
+    viewer: 0,
+    agent: 0,
+    smoke: 0,
+    api: 0,
+    unknown: 0,
+  };
+  let evidence1Completed = 0;
+  let evidence2Completed = 0;
   const appOpenSessions = new Set<string>();
   const appOpenVisitors = new Set<string>();
   const resumeSessions = new Set<string>();
@@ -12749,6 +12960,9 @@ function buildMetricEventsSnapshot(
   for (const event of orderedEvents) {
     total += 1;
     byName[event.name] += 1;
+    byClientSurface[isMetricClientSurface(event.clientSurface) ? event.clientSurface : "unknown"] += 1;
+    if (event.name === "evidence_card_completed" && event.step === "evidence_1") evidence1Completed += 1;
+    if (event.name === "evidence_card_completed" && event.step === "evidence_2") evidence2Completed += 1;
     const day = byDate.get(event.day);
     if (event.name === "visitor_seen") {
       if (event.visitorHash) visitorHashes.add(event.visitorHash);
@@ -12858,6 +13072,12 @@ function buildMetricEventsSnapshot(
     characterToPayerRate: funnel.firstCharacterCreated > 0 ? payingSessions.size / funnel.firstCharacterCreated : null,
     visitorToPayerRate: visitorHashes.size > 0 ? payingSessions.size / visitorHashes.size : null,
   };
+  const trustStartMs = activationMetricsTrustStart();
+  const activationFunnel = {
+    trustStart: new Date(trustStartMs).toISOString(),
+    raw: buildActivationFunnelCohort(orderedEvents, trustStartMs, now, "raw"),
+    humanViewer: buildActivationFunnelCohort(orderedEvents, trustStartMs, now, "human-viewer"),
+  };
   return {
     total,
     byName,
@@ -12880,13 +13100,20 @@ function buildMetricEventsSnapshot(
     yearbook,
     referral,
     guestSpotlight,
+    byClientSurface,
+    activationFunnel,
     classRitual: {
       dailyClassStarted: byName.daily_class_started,
       evidenceCardCompleted: byName.evidence_card_completed,
+      evidence1Completed,
+      evidence2Completed,
+      takeCardPresented: byName.take_card_presented,
+      takeCardStarted: byName.take_card_started,
       takeCardSubmitted: byName.take_card_submitted,
       teacherResponseViewed: byName.teacher_response_viewed,
       roomReactionViewed: byName.room_reaction_viewed,
       classResultCompleted: byName.class_result_completed,
+      classResultViewed: byName.class_result_viewed,
       classRecordSaved: byName.class_record_saved,
     },
     balance,
@@ -12902,6 +13129,109 @@ function buildMetricEventsSnapshot(
     conversionFunnel,
     llm,
     errors,
+  };
+}
+
+const ACTIVATION_FUNNEL_STEPS: ReadonlyArray<{
+  key: string;
+  label: string;
+  matches: (event: StoredMetricEventRecord) => boolean;
+}> = [
+  { key: "app_open", label: "App open", matches: (event) => event.name === "app_open" },
+  {
+    key: "character_created",
+    label: "Character created",
+    matches: (event) => event.name === "funnel_step" && event.step === "first_character_created",
+  },
+  {
+    key: "daily_class_started",
+    label: "Daily class started",
+    matches: (event) => event.name === "daily_class_started",
+  },
+  {
+    key: "first_answer",
+    label: "First answer",
+    matches: (event) => event.name === "funnel_step" && event.step === "first_question_answered",
+  },
+  {
+    key: "evidence_1_completed",
+    label: "Evidence 1 completed",
+    matches: (event) => event.name === "evidence_card_completed" && event.step === "evidence_1",
+  },
+  {
+    key: "evidence_2_completed",
+    label: "Evidence 2 completed",
+    matches: (event) => event.name === "evidence_card_completed" && event.step === "evidence_2",
+  },
+  { key: "take_presented", label: "Take presented", matches: (event) => event.name === "take_card_presented" },
+  { key: "take_started", label: "Take started", matches: (event) => event.name === "take_card_started" },
+  { key: "take_submitted", label: "Take submitted", matches: (event) => event.name === "take_card_submitted" },
+  { key: "result_completed", label: "Result completed", matches: (event) => event.name === "class_result_completed" },
+  { key: "result_viewed", label: "Result viewed", matches: (event) => event.name === "class_result_viewed" },
+];
+
+function activationMetricsTrustStart(): number {
+  const configured = Date.parse(String(process.env.RUBY_HIGH_METRICS_TRUST_START ?? ""));
+  return Number.isFinite(configured) ? configured : Date.UTC(2026, 6, 26);
+}
+
+function buildActivationFunnelCohort(
+  events: StoredMetricEventRecord[],
+  trustStartMs: number,
+  now: number,
+  cohort: ActivationFunnelCohortSnapshot["cohort"],
+): ActivationFunnelCohortSnapshot {
+  const inWindow = events.filter((event) => event.occurredAt >= trustStartMs && event.occurredAt <= now);
+  const eligibleSessions = new Set<string>();
+  for (const event of inWindow) {
+    if (event.name !== "app_open" || !event.sessionId) continue;
+    if (
+      cohort === "human-viewer"
+      && (event.clientSurface !== "viewer" || !event.visitorHash)
+    ) {
+      continue;
+    }
+    eligibleSessions.add(event.sessionId);
+  }
+  const eventsBySession = new Map<string, StoredMetricEventRecord[]>();
+  for (const event of inWindow) {
+    if (!event.sessionId || !eligibleSessions.has(event.sessionId)) continue;
+    const current = eventsBySession.get(event.sessionId) ?? [];
+    current.push(event);
+    eventsBySession.set(event.sessionId, current);
+  }
+  const counts = ACTIVATION_FUNNEL_STEPS.map(() => 0);
+  for (const sessionEvents of eventsBySession.values()) {
+    let cursor = 0;
+    for (let stepIndex = 0; stepIndex < ACTIVATION_FUNNEL_STEPS.length; stepIndex += 1) {
+      const definition = ACTIVATION_FUNNEL_STEPS[stepIndex]!;
+      const foundAt = sessionEvents.findIndex((event, index) => index >= cursor && definition.matches(event));
+      if (foundAt < 0) break;
+      counts[stepIndex] = (counts[stepIndex] ?? 0) + 1;
+      cursor = foundAt + 1;
+    }
+  }
+  const denominator = eligibleSessions.size;
+  const steps = ACTIVATION_FUNNEL_STEPS.map((definition, index): ActivationFunnelStepSnapshot => {
+    const uniqueSessions = counts[index] ?? 0;
+    const previousStepSessions = index === 0 ? denominator : counts[index - 1] ?? 0;
+    return {
+      key: definition.key,
+      label: definition.label,
+      uniqueSessions,
+      denominator,
+      rateFromOpen: denominator > 0 ? uniqueSessions / denominator : null,
+      previousStepSessions,
+      rateFromPrevious: previousStepSessions > 0 ? uniqueSessions / previousStepSessions : null,
+    };
+  });
+  return {
+    cohort,
+    windowStart: new Date(trustStartMs).toISOString(),
+    windowEnd: new Date(now).toISOString(),
+    sampleSize: denominator,
+    eligibleSessions: denominator,
+    steps,
   };
 }
 
@@ -13055,6 +13385,53 @@ function isoDate(timestamp: number): string {
 function normalizeMetricTimestamp(value: unknown): number {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : Date.now();
+}
+
+function classFlowMetricKey(
+  faculty: unknown,
+  grade: unknown,
+  date: unknown,
+): string {
+  const cleanFaculty = String(faculty ?? "unknown").trim().slice(0, 80) || "unknown";
+  const cleanGrade = String(grade ?? "unknown").trim().slice(0, 12) || "unknown";
+  const cleanDate = /^\d{4}-\d{2}-\d{2}$/.test(String(date ?? ""))
+    ? String(date)
+    : isoDate(Date.now());
+  return `${cleanDate}:${cleanGrade}:${cleanFaculty}`;
+}
+
+function isMetricClientSurface(value: unknown): value is MetricClientSurface {
+  return value === "viewer"
+    || value === "agent"
+    || value === "smoke"
+    || value === "api"
+    || value === "unknown";
+}
+
+function inferMetricClientSurface(
+  input: MetricEventInput,
+  existingEvents: Iterable<StoredMetricEventRecord>,
+): MetricClientSurface {
+  if (isMetricClientSurface(input.clientSurface)) return input.clientSurface;
+  const sessionId = String(input.sessionId ?? "").toLowerCase();
+  const source = String(input.source ?? "").toLowerCase();
+  if (sessionId.startsWith("rh:agent-player:") || sessionId.startsWith("rh:agent:")) return "agent";
+  if (sessionId.includes("smoke") || sessionId.includes("synthetic")) return "smoke";
+  if (source === "agent") return "agent";
+  if (source === "viewer" || source === "browser") return "viewer";
+  if (source === "smoke" || source === "synthetic" || source === "browser-smoke" || source === "script" || source === "test") {
+    return "smoke";
+  }
+  if (source === "api" || source === "plugin" || source === "mcp" || source === "a2a") return "api";
+  if (input.sessionId) {
+    let latest: StoredMetricEventRecord | null = null;
+    for (const event of existingEvents) {
+      if (event.sessionId !== input.sessionId || !isMetricClientSurface(event.clientSurface)) continue;
+      if (!latest || event.occurredAt > latest.occurredAt) latest = event;
+    }
+    if (latest?.clientSurface) return latest.clientSurface;
+  }
+  return "unknown";
 }
 
 function metricEventId(name: StoredMetricEventName, occurredAt: number): string {

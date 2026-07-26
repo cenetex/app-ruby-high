@@ -100,11 +100,13 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         </div>
         <button class="blackboard-empty-action" id="blackboard-empty-action" type="button" hidden>Create Character</button>
         <div class="onboarding-actions" id="onboarding-actions" hidden>
-          <button class="blackboard-empty-action" id="onboarding-create-btn" type="button">Roll a student</button>
+          <button class="blackboard-empty-action" id="onboarding-create-btn" type="button">Quick Roll student</button>
+          <button class="blackboard-empty-action onboarding-alt" id="onboarding-customize-btn" type="button">Customize</button>
           <button class="blackboard-empty-action onboarding-alt" id="onboarding-books-btn" type="button">Browse books</button>
         </div>
       </div>
 
+      <ol class="daily-class-progress" id="daily-class-progress" aria-label="Today's class progress" hidden></ol>
       <div class="blackboard-meta" id="blackboard-meta" hidden></div>
       <div class="board-frame-host" id="board-frame-host" hidden>
         <div class="board-frame">
@@ -128,8 +130,13 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         </div>
       </div>
       <div class="typed-answer-host" id="typed-answer-host" hidden>
+        <div class="take-starters" id="take-starters" hidden>
+          <button type="button" data-starter="I think ">I think…</button>
+          <button type="button" data-starter="The strongest evidence is ">The evidence…</button>
+          <button type="button" data-starter="A different way to see it is ">Another view…</button>
+        </div>
         <form class="typed-answer-form" id="typed-answer-form">
-          <input class="typed-answer-input" id="typed-answer-input" type="text" autocomplete="off" placeholder="Type the answer" />
+          <input class="typed-answer-input" id="typed-answer-input" type="text" autocomplete="off" maxlength="320" placeholder="Type the answer" />
           <button class="typed-submit-btn" id="typed-submit-btn" type="submit">Check</button>
           <button class="typed-mc-btn" id="generate-mc-btn" type="button">MC</button>
         </form>

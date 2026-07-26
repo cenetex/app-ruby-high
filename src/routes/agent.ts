@@ -439,6 +439,7 @@ function enrollAgent(
     flavorQuote:
       cleanOptionalString(input.flavorQuote) ??
       "Show me the trace, then show me the lesson.",
+    creationMethod: "agent",
   });
   if (state.character) {
     state.character.publicWorldVisible = false;
@@ -488,6 +489,7 @@ export function safeAgentState(
     roomId: course.roomId,
     subjects: course.subjects,
   }));
+  const nextActions = safeAgentNextActions(state, credential);
   return {
     version: state.updatedAt,
     phase: state.phase,
@@ -539,7 +541,24 @@ export function safeAgentState(
         }
       : null,
     autonomy: credential.autonomy,
+    nextActions,
   };
+}
+
+function safeAgentNextActions(
+  state: QuizState,
+  credential: AgentCredential,
+): AgentActionType[] {
+  if (!state.character) return ["ENROLL"];
+  if (state.current && state.phase === "asking") return ["ANSWER", "CHECK_PROGRESS"];
+  return [
+    "ATTEND",
+    "CHANGE_CLASS",
+    "CHECK_PROGRESS",
+    ...(credential.scopes.includes("world:participate")
+      ? ["SET_PUBLIC_PRESENCE" as const]
+      : []),
+  ];
 }
 
 function requireCredential(ctx: RouteContext, access: AgentAccessService): AgentCredential {

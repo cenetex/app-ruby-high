@@ -5501,4 +5501,76 @@ describe("RubyHighService Phase 1", () => {
     });
     activeRuby = ruby;
   });
+
+  it("quick-rolls one deterministic student directly into First Bell and is retry-safe", async () => {
+    const { ruby } = await makeServices();
+    const sid = "viewer:quick-roll:one";
+
+    const first = ruby.quickRollIntoFirstBell(sid);
+    expect(first.character).toMatchObject({
+      name: expect.any(String),
+      playbookId: expect.any(String),
+      stats: expect.any(Object),
+      arcAnswer: expect.any(String),
+      personality: expect.any(String),
+    });
+    expect(first.current).toBeTruthy();
+    expect(first.activeRound).toMatchObject({
+      cardRole: "class",
+      classSession: { mode: "class", index: 1, total: 3 },
+    });
+    const firstCharacter = structuredClone(first.character);
+    const firstQuestionId = first.current?.id;
+
+    const retry = ruby.quickRollIntoFirstBell(sid);
+    expect(retry.character).toEqual(firstCharacter);
+    expect(retry.current?.id).toBe(firstQuestionId);
+    expect(ruby.analyticsSnapshot().events.funnel.firstCharacterCreated).toBe(1);
+  });
+
+  it("separates raw and visitor-backed human activation cohorts with ordered deduped steps", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.UTC(2026, 6, 26, 12));
+    const { ruby } = await makeServices();
+    const human = "viewer:activation:human";
+    const smoke = "viewer:activation:smoke";
+
+    ruby.recordAppOpen(human, {
+      clientSurface: "viewer",
+      visitorHash: "visitor-human",
+    });
+    ruby.recordMetricEvent("funnel_step", { sessionId: human, step: "first_character_created", source: "gameplay" });
+    ruby.recordMetricEvent("daily_class_started", { sessionId: human, step: "evidence_1", source: "gameplay" });
+    ruby.recordMetricEvent("funnel_step", { sessionId: human, step: "first_question_answered", source: "gameplay" });
+    ruby.recordMetricEvent("evidence_card_completed", { sessionId: human, step: "evidence_1", source: "gameplay" });
+    ruby.recordMetricEvent("evidence_card_completed", { sessionId: human, step: "evidence_2", source: "gameplay" });
+    ruby.recordMetricEvent("take_card_presented", { sessionId: human, step: "take", source: "gameplay" });
+    ruby.recordMetricEvent("take_card_started", { sessionId: human, step: "take", source: "viewer" });
+    ruby.recordMetricEvent("take_card_submitted", { sessionId: human, step: "take", source: "gameplay" });
+    ruby.recordMetricEvent("class_result_completed", { sessionId: human, step: "class_result", source: "gameplay" });
+    ruby.recordMetricEvent("class_result_viewed", { sessionId: human, step: "class_result", source: "viewer" });
+    ruby.recordMetricEvent("class_result_viewed", { sessionId: human, step: "class_result", source: "viewer" });
+
+    ruby.recordAppOpen(smoke, { clientSurface: "smoke" });
+    ruby.recordMetricEvent("funnel_step", { sessionId: smoke, step: "first_character_created", source: "smoke" });
+
+    const events = ruby.analyticsSnapshot(Date.now()).events;
+    expect(events.activationFunnel.raw).toMatchObject({ sampleSize: 2, eligibleSessions: 2 });
+    expect(events.activationFunnel.humanViewer).toMatchObject({ sampleSize: 1, eligibleSessions: 1 });
+    expect(Object.fromEntries(events.activationFunnel.humanViewer.steps.map((step) => [step.key, step.uniqueSessions]))).toMatchObject({
+      app_open: 1,
+      character_created: 1,
+      daily_class_started: 1,
+      first_answer: 1,
+      evidence_1_completed: 1,
+      evidence_2_completed: 1,
+      take_presented: 1,
+      take_started: 1,
+      take_submitted: 1,
+      result_completed: 1,
+      result_viewed: 1,
+    });
+    expect(events.byClientSurface.viewer).toBeGreaterThan(0);
+    expect(events.byClientSurface.smoke).toBeGreaterThan(0);
+  });
 });

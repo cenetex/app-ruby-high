@@ -68,6 +68,7 @@ const PURE_HELPER_NAMES = [
   "streakScoreMultiplier",
   "formatClassScore",
   "todayCorrectSummary",
+  "dailyClassProgressView",
   "makeVisitorId",
   "getVisitorId",
   "attachVisitorHeader",

@@ -51,6 +51,16 @@ export type GuestSpotlightView = {
   actionText: string;
   actionDisabled: boolean;
 };
+export type DailyClassProgressStepView = {
+  key: "evidence-1" | "evidence-2" | "take" | "result";
+  label: string;
+  state: "complete" | "current" | "upcoming";
+};
+export type DailyClassProgressView = {
+  visible: boolean;
+  steps: DailyClassProgressStepView[];
+  continuationLabel: string;
+};
 export type SubjectGradeChipView = {
   className: string;
   title: string;
@@ -58,6 +68,46 @@ export type SubjectGradeChipView = {
   iconText: string;
   gradeText: string;
 };
+
+export function dailyClassProgressView(telemetry: NullableRecord): DailyClassProgressView {
+  const progress = telemetry && telemetry.active_course_progress;
+  const today = progress && progress.today;
+  const classSession = telemetry && telemetry.active_round && telemetry.active_round.classSession;
+  const hasContext = !!(
+    telemetry
+    && telemetry.character
+    && today
+    && (
+      today.status === "active"
+      || today.status === "complete"
+      || (classSession && classSession.mode === "class")
+    )
+  );
+  const count = Math.max(0, Math.min(3, Math.floor(Number(today && today.questionCount) || 0)));
+  const complete = !!(today && today.status === "complete");
+  const currentIndex = complete ? 3 : Math.min(2, count);
+  const definitions: Array<{ key: DailyClassProgressStepView["key"]; label: string }> = [
+    { key: "evidence-1", label: "Evidence 1" },
+    { key: "evidence-2", label: "Evidence 2" },
+    { key: "take", label: "Your Take" },
+    { key: "result", label: "Result" },
+  ];
+  const steps = definitions.map((definition, index): DailyClassProgressStepView => ({
+    ...definition,
+    state: index < currentIndex ? "complete" : index === currentIndex ? "current" : "upcoming",
+  }));
+  return {
+    visible: hasContext,
+    steps,
+    continuationLabel: currentIndex === 1
+      ? "Next: Evidence 2"
+      : currentIndex === 2
+        ? "Next: Your Take"
+        : currentIndex === 3
+          ? "View Result"
+          : "Start Evidence 1",
+  };
+}
 export type AccountPublicWorldView = {
   hasCharacter: boolean;
   hasPublicName: boolean;
