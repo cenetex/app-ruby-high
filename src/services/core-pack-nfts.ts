@@ -153,12 +153,14 @@ export interface OwnedCorePackNft {
   metadataUri: string;
   serial: number;
   name: string;
+  opened: boolean;
 }
 
 export interface CorePackNftOwnership {
   assetAddress: string;
   ownerWalletAddress: string;
   metadataUri: string;
+  opened: boolean | null;
 }
 
 interface CorePackInfo {
@@ -166,7 +168,10 @@ interface CorePackInfo {
   packCount: number;
   cardCount: number;
   serial: number;
+  opened: boolean | null;
 }
+
+type ResolvedCorePackInfo = CorePackInfo & { opened: boolean };
 
 type CorePackNftMinter = (input: CorePackNftMintInput) => Promise<CorePackNftMintResult>;
 type CorePackNftOpenedUpdater = (input: CorePackNftOpenedUpdateInput) => Promise<CorePackNftOpenedUpdateResult>;
@@ -792,11 +797,16 @@ export async function fetchCorePackCurrentOwnershipOrNull(assetAddress: string):
     const asset = await fetchAssetV1(umi, publicKey(cleanAssetAddress), { commitment: "confirmed" });
     if (coreAssetCollectionAddress(asset.updateAuthority) !== config.collectionAddress) return null;
     const ownerWalletAddress = String(asset.owner ?? "").trim();
-    if (!ownerWalletAddress) return null;
+    const metadataUri = typeof asset.uri === "string" ? asset.uri.trim() : "";
+    const info = metadataUri
+      ? await corePackInfoFromMetadataOrJson(metadataUri, asset.name, (asset as { attributes?: unknown }).attributes)
+      : null;
+    if (!ownerWalletAddress || !metadataUri) return null;
     return {
       assetAddress: cleanAssetAddress,
       ownerWalletAddress,
-      metadataUri: typeof asset.uri === "string" ? asset.uri.trim() : "",
+      metadataUri,
+      opened: info?.opened ?? null,
     };
   } catch {
     return null;
@@ -826,11 +836,20 @@ export async function fetchCorePacksCurrentOwnershipOrNull(
     const asset = assets.get(address);
     if (!asset || coreAssetCollectionAddress(asset) !== config.collectionAddress) continue;
     const ownerWalletAddress = String(asset.owner ?? "").trim();
-    if (!ownerWalletAddress) continue;
+    const metadataUri = typeof asset.uri === "string" ? asset.uri.trim() : "";
+    const info = metadataUri
+      ? await corePackInfoFromMetadataOrJson(
+        metadataUri,
+        typeof asset.name === "string" ? asset.name : undefined,
+        (asset as { attributes?: unknown }).attributes,
+      )
+      : null;
+    if (!ownerWalletAddress || !metadataUri) continue;
     byAddress.set(address, {
       assetAddress: address,
       ownerWalletAddress,
-      metadataUri: typeof asset.uri === "string" ? asset.uri.trim() : "",
+      metadataUri,
+      opened: info?.opened ?? null,
     });
   }
   return byAddress;
@@ -1064,6 +1083,7 @@ function corePackInfoFromMetadataUri(metadataUri: string, name?: string): CorePa
     packCount,
     cardCount,
     serial: Number.isFinite(serial) ? serial : 1,
+    opened: url.searchParams.get("opened") === "1" || url.searchParams.get("state") === "opened",
   };
 }
 
@@ -1080,8 +1100,15 @@ function corePackInfoFromMetadata(
   name?: string,
   attributes?: unknown,
 ): CorePackInfo | null {
+  const stateValue = metadataAttributeValue(attributes, "State");
+  const attributeOpened = corePackOpenedState(stateValue);
   const uriInfo = corePackInfoFromMetadataUri(metadataUri, name);
-  if (uriInfo) return uriInfo;
+  if (uriInfo) {
+    return {
+      ...uriInfo,
+      opened: attributeOpened ?? uriInfo.opened,
+    };
+  }
   const productValue = metadataAttributeValue(attributes, "Product");
   const packsValue = metadataAttributeValue(attributes, "Packs");
   const cardsValue = metadataAttributeValue(attributes, "Cards Inside")
@@ -1107,6 +1134,7 @@ function corePackInfoFromMetadata(
     packCount,
     cardCount: Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK),
     serial,
+    opened: corePackOpenedState(stateValue),
   };
 }
 
@@ -1114,16 +1142,25 @@ async function corePackInfoFromMetadataOrJson(
   metadataUri: string,
   name?: string,
   attributes?: unknown,
-): Promise<CorePackInfo | null> {
+): Promise<ResolvedCorePackInfo | null> {
   const inline = corePackInfoFromMetadata(metadataUri, name, attributes);
-  if (inline) return inline;
+  if (inline?.opened != null) return inline as ResolvedCorePackInfo;
   const json = await fetchMetadataJson(metadataUri);
   if (!json) return null;
-  return corePackInfoFromMetadata(
+  const fromJson = corePackInfoFromMetadata(
     metadataUri,
     typeof json.name === "string" ? json.name : name,
     json.attributes,
   );
+  if (fromJson?.opened == null) return null;
+  return fromJson as ResolvedCorePackInfo;
+}
+
+function corePackOpenedState(value: string | null): boolean | null {
+  const state = (value ?? "").trim().toLowerCase();
+  if (state === "opened" || state === "open" || state === "redeemed") return true;
+  if (state === "sealed" || state === "unopened" || state === "active") return false;
+  return null;
 }
 
 function metadataAttributeValue(attributes: unknown, label: string): string | null {

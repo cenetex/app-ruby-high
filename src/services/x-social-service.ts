@@ -15,11 +15,15 @@ import { Service } from "../runtime.js";
 import { log } from "./logger.js";
 import { fetchLlmChatCompletions, hasConfiguredLlmCredential } from "./llm-provider.js";
 import type { TeacherCharacter } from "../characters/teachers.js";
-import { teacherById } from "../characters/teachers.js";
+import { listTeachers, teacherById } from "../characters/teachers.js";
+import { listStudents } from "../characters/students.js";
 import {
   buildDeterministicPostText,
+  generateScheduledSchoolUpdateText,
   isLowSignalMilestone,
   generateLlmPostText,
+  type ScheduledSchoolUpdateEditorialMode,
+  type ScheduledSchoolUpdateContext,
 } from "./ruby-high/post-types.js";
 import { PostAnalytics } from "./ruby-high/post-analytics.js";
 
@@ -90,6 +94,12 @@ interface XPostFailureClassification {
   retryAt?: number;
 }
 
+interface ScheduledSchoolUpdatePostOptions {
+  dryRun?: boolean;
+  imageUrl?: string;
+  editorialMode?: ScheduledSchoolUpdateEditorialMode;
+}
+
 interface XTokenStore {
   loadAll(): Promise<XTokenRecord[]>;
   save(record: XTokenRecord): Promise<void>;
@@ -141,6 +151,75 @@ function defaultTeacherPostImageUrl(teacherId: string): string | null {
 function defaultStudentPostImageUrl(playbookId: string | undefined): string {
   const studentId = PLAYBOOK_DEFAULT_POST_IMAGE[playbookId || ""] || "indra";
   return `${RUBY_HIGH_ASSET_PREFIX}/students/${studentId}-full.png`;
+}
+
+function studentReferenceImageUrl(studentId: string): string {
+  return `${RUBY_HIGH_ASSET_PREFIX}/students/${studentId}-full.png`;
+}
+
+function normalizeXHandle(value: string | undefined): string {
+  const handle = value?.trim().replace(/^@/, "") ?? "";
+  return /^[A-Za-z0-9_]{1,15}$/.test(handle) ? handle : "";
+}
+
+function compactXSourceText(value: string | undefined): string {
+  return (value ?? "")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+}
+
+function scheduledSchoolUpdatePhotoParticipants(
+  teacher: TeacherCharacter,
+  context: ScheduledSchoolUpdateContext,
+): Array<{ role: "teacher" | "student"; id: string; name: string; imageUrl: string }> {
+  const teacherImageUrl = defaultTeacherPostImageUrl(teacher.id);
+  const featuredGuest = context.featuredGuest?.imageUrl &&
+      context.featuredGuest.facultyId !== teacher.id
+    ? {
+        role: "teacher" as const,
+        id: `guest:${context.featuredGuest.facultyId}`,
+        name: context.featuredGuest.displayName,
+        imageUrl: context.featuredGuest.imageUrl,
+      }
+    : null;
+  const loungeActive = context.activeRooms.some((room) => room.area === "teacher-lounge");
+  if (loungeActive) {
+    const baseTeachers = [teacher, ...listTeachers().filter((candidate) => candidate.id !== teacher.id)]
+      .flatMap((candidate) => {
+        const imageUrl = defaultTeacherPostImageUrl(candidate.id);
+        return imageUrl
+          ? [{ role: "teacher" as const, id: candidate.id, name: candidate.displayName, imageUrl }]
+          : [];
+      });
+    return [
+      ...baseTeachers.slice(0, 1),
+      ...(featuredGuest ? [featuredGuest] : []),
+      ...baseTeachers.slice(1),
+    ].slice(0, 3);
+  }
+
+  const students = listStudents();
+  const seed = createHash("sha256")
+    .update(`${context.date}:${JSON.stringify(context.recentEvents)}`)
+    .digest()
+    .readUInt32BE(0);
+  const selectedStudents = students.length > 0
+    ? [students[seed % students.length], students[(seed + 1) % students.length]].filter(Boolean)
+    : [];
+  return [
+    ...(teacherImageUrl
+      ? [{ role: "teacher" as const, id: teacher.id, name: teacher.displayName, imageUrl: teacherImageUrl }]
+      : []),
+    ...(featuredGuest ? [featuredGuest] : []),
+    ...selectedStudents.map((student) => ({
+      role: "student" as const,
+      id: student.id,
+      name: student.name,
+      imageUrl: studentReferenceImageUrl(student.id),
+    })),
+  ].slice(0, 4);
 }
 
 function milestoneUsesDailyPhotoSlot(kind: XMilestoneKind): boolean {
@@ -395,6 +474,15 @@ export class XSocialService extends Service {
   /** Per-teacher last photo tweet date (UTC YYYY-MM-DD). Mirrored onto the
    *  token record so deploys cannot reopen the same day's photo slot. */
   private lastPhotoDate = new Map<string, string>();
+  private guestXPostsCache = new Map<
+    string,
+    {
+      fetchedAt: number;
+      posts: NonNullable<
+        NonNullable<ScheduledSchoolUpdateContext["featuredGuest"]>["recentXPosts"]
+      >;
+    }
+  >();
 
   constructor(runtime?: IAgentRuntime | null) {
     super(runtime);
@@ -1252,6 +1340,232 @@ export class XSocialService extends Service {
   /** Get analytics for content optimization. */
   getPostAnalytics(): PostAnalytics {
     return this.analytics;
+  }
+
+  /** Publish an LLM-written update from aggregate, privacy-filtered school
+   *  activity. Unlike milestone posting, this accepts the generated copy as
+   *  the source of truth instead of regenerating unrelated milestone text. */
+  async postScheduledSchoolUpdate(
+    teacher: TeacherCharacter,
+    context: ScheduledSchoolUpdateContext,
+    opts?: ScheduledSchoolUpdatePostOptions,
+  ): Promise<string | null> {
+    const token = this.tokens.get(teacher.id);
+    if (!token) return null;
+    const freshToken = await this.ensureFreshToken(token);
+    if (!freshToken) return null;
+    const postToken = await this.ensurePostAllowed(freshToken);
+    if (!postToken) return null;
+    const postKind = opts?.editorialMode ?? "school-update";
+
+    const sourcedContext = opts?.editorialMode === "guest-insights"
+      ? await this.withRecentFeaturedGuestXPosts(postToken, context)
+      : context;
+    const text = await generateScheduledSchoolUpdateText(teacher, sourcedContext, {
+      editorialMode: opts?.editorialMode,
+    });
+    if (!text) {
+      log.event("x-social.scheduled-text-skipped", { teacherId: teacher.id });
+      return null;
+    }
+    if (
+      teacher.systemPrompt &&
+      teacher.systemPrompt.length >= 80 &&
+      text.includes(teacher.systemPrompt.slice(20, 100))
+    ) {
+      log.event("x-social.text-rejected", { reason: "system-prompt-leak", kind: "school-update" });
+      return null;
+    }
+
+    const isDryRun = opts?.dryRun ?? process.env.RUBY_HIGH_X_DRY_RUN === "1";
+    if (isDryRun) {
+      log.event("x-social.dry-run", {
+        teacherId: teacher.id,
+        xScreenName: token.xScreenName,
+        kind: postKind,
+        text: text.slice(0, 200),
+      });
+      return "dry-run:school-update";
+    }
+    if (!this.checkPostRateLimit(teacher.id)) {
+      log.event("x-social.rate-limited", { teacherId: teacher.id, kind: postKind });
+      return null;
+    }
+
+    const generatedImageUrl = await this.generateScheduledSchoolUpdatePhoto(
+      teacher,
+      sourcedContext,
+      text,
+    );
+    const imageCandidates = Array.from(new Set([
+      generatedImageUrl,
+      opts?.imageUrl,
+      defaultTeacherPostImageUrl(teacher.id),
+    ].filter((value): value is string => !!value)));
+    let mediaId: string | null = null;
+    for (const imageUrl of imageCandidates) {
+      mediaId = await this.uploadRequiredMedia(postToken, imageUrl, postKind);
+      if (mediaId) break;
+    }
+    if (!mediaId) return null;
+
+    const tweetId = await this.postTweet(postToken, text, mediaId);
+    if (tweetId) {
+      this.recordPost(teacher.id);
+      log.event("x-social.posted", {
+        teacherId: teacher.id,
+        xScreenName: token.xScreenName,
+        kind: postKind,
+        tweetId,
+        mediaId,
+      });
+      this.analytics.enqueueFetch(tweetId, Date.now());
+    }
+    return tweetId;
+  }
+
+  private async withRecentFeaturedGuestXPosts(
+    token: XTokenRecord,
+    context: ScheduledSchoolUpdateContext,
+  ): Promise<ScheduledSchoolUpdateContext> {
+    const guest = context.featuredGuest;
+    const handle = normalizeXHandle(guest?.xHandle);
+    if (!guest || !handle) return context;
+
+    const cacheKey = handle.toLowerCase();
+    const cached = this.guestXPostsCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && now - cached.fetchedAt < 6 * 60 * 60 * 1000) {
+      return {
+        ...context,
+        featuredGuest: { ...guest, recentXPosts: cached.posts },
+      };
+    }
+
+    try {
+      const userResponse = await fetch(
+        `${X_API_BASE}/users/by/username/${encodeURIComponent(handle)}`,
+        {
+          headers: { Authorization: `Bearer ${token.accessToken}` },
+          signal: AbortSignal.timeout(X_FETCH_TIMEOUT_MS),
+        },
+      );
+      if (!userResponse.ok) {
+        log.event("x-social.featured-guest-read-skipped", {
+          handle,
+          stage: "user",
+          status: userResponse.status,
+        });
+        return context;
+      }
+      const userData = await userResponse.json() as { data?: { id?: string } };
+      const userId = userData.data?.id;
+      if (!userId) return context;
+
+      const postsResponse = await fetch(
+        `${X_API_BASE}/users/${encodeURIComponent(userId)}/tweets?max_results=5&exclude=retweets,replies&tweet.fields=created_at`,
+        {
+          headers: { Authorization: `Bearer ${token.accessToken}` },
+          signal: AbortSignal.timeout(X_FETCH_TIMEOUT_MS),
+        },
+      );
+      if (!postsResponse.ok) {
+        log.event("x-social.featured-guest-read-skipped", {
+          handle,
+          stage: "posts",
+          status: postsResponse.status,
+        });
+        return context;
+      }
+      const postsData = await postsResponse.json() as {
+        data?: Array<{ id?: string; created_at?: string; text?: string }>;
+      };
+      const contextTime = Date.parse(`${context.date}T23:59:59.999Z`);
+      const cutoff = (Number.isFinite(contextTime) ? contextTime : now) - 8 * 24 * 60 * 60 * 1000;
+      const posts = (postsData.data ?? [])
+        .flatMap((post) => {
+          const id = typeof post.id === "string" ? post.id : "";
+          const createdAt = typeof post.created_at === "string" ? post.created_at : "";
+          const createdAtMs = Date.parse(createdAt);
+          const text = compactXSourceText(post.text);
+          return id && text && Number.isFinite(createdAtMs) && createdAtMs >= cutoff
+            ? [{ id, createdAt, text }]
+            : [];
+        })
+        .slice(0, 5);
+      this.guestXPostsCache.set(cacheKey, { fetchedAt: now, posts });
+      log.event("x-social.featured-guest-read", { handle, postCount: posts.length });
+      return {
+        ...context,
+        featuredGuest: { ...guest, xHandle: handle, recentXPosts: posts },
+      };
+    } catch (err) {
+      log.error("x-social.featured-guest-read-failed", err, { handle });
+      return context;
+    }
+  }
+
+  private async generateScheduledSchoolUpdatePhoto(
+    teacher: TeacherCharacter,
+    context: ScheduledSchoolUpdateContext,
+    postText: string,
+  ): Promise<string | null> {
+    const apiKey = process.env.RUBY_HIGH_OPENROUTER_API_KEY ?? process.env.OPENROUTER_KEY ?? "";
+    if (!apiKey) {
+      log.event("x-social.scheduled-photo-skipped", { teacherId: teacher.id, reason: "no-image-credential" });
+      return null;
+    }
+    const participants = scheduledSchoolUpdatePhotoParticipants(teacher, context);
+    if (participants.length < 2) {
+      log.event("x-social.scheduled-photo-skipped", { teacherId: teacher.id, reason: "insufficient-cast" });
+      return null;
+    }
+    try {
+      const { renderScheduledSchoolUpdatePhoto } = await import("./character-generation.js");
+      const imageUrl = await renderScheduledSchoolUpdatePhoto({
+        apiKey,
+        postText,
+        context,
+        participants,
+      });
+      log.event("x-social.scheduled-photo-generated", {
+        teacherId: teacher.id,
+        participantCount: participants.length,
+        area: context.activeRooms.some((room) => room.area === "teacher-lounge")
+          ? "teacher-lounge"
+          : "classroom",
+      });
+      return imageUrl;
+    } catch (err) {
+      log.error("x-social.scheduled-photo-failed", err, { teacherId: teacher.id });
+      return null;
+    }
+  }
+
+  async postScheduledSchoolUpdateWithFallback(
+    teacher: TeacherCharacter,
+    context: ScheduledSchoolUpdateContext,
+    opts?: ScheduledSchoolUpdatePostOptions,
+  ): Promise<{ tweetId: string; teacherId: string } | null> {
+    const result = await this.postScheduledSchoolUpdate(teacher, context, opts);
+    if (result) return { tweetId: result, teacherId: teacher.id };
+
+    const connected = this.listConnected().filter(
+      (status) => status.teacherId !== teacher.id && status.connected && status.hasTweetWrite,
+    );
+    for (const status of connected) {
+      const fallback = teacherById(status.teacherId);
+      if (!fallback) continue;
+      const fallbackResult = await this.postScheduledSchoolUpdate(fallback, context, opts);
+      if (!fallbackResult) continue;
+      log.event("x-social.fallback-posted", {
+        assignedTeacher: teacher.id,
+        fallbackTeacher: fallback.id,
+        kind: "school-update",
+      });
+      return { tweetId: fallbackResult, teacherId: fallback.id };
+    }
+    return null;
   }
 
   /** Post a teacher's reflection on today's school memories. Admin-triggered

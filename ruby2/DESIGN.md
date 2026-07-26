@@ -2028,7 +2028,7 @@ reconcile with it instead of letting ownership accidentally become progression.
 
 Ownership rule:
 
-> Owned cards, NFT cards, and token-linked artifacts are additive: identity,
+> Owned cards and NFT artifacts are additive: identity,
 > collection, cosmetics, premium convenience, community status, and shareable
 > proof. They must not gate or mechanically advantage the core class/social/
 > memory retention loop.
@@ -2045,7 +2045,7 @@ Design implications:
 - The Yearbook is the natural ownership surface: sealed pages, signatures,
   report cards, and identity artifacts can become owned/shareable without
   bribing the lesson loop.
-- Wallet-connected, NFT-holder, and token-community users must be cohort-tagged
+- Wallet-connected, NFT-holder, and collector users must be cohort-tagged
   so monetization behavior does not pollute organic retention reads.
 
 ## 5. Content Schemas
@@ -4546,7 +4546,7 @@ Two distribution goals:
 | Goal | Meaning | Priority |
 |---|---|---|
 | Clean retention cohort | a few hundred organic, non-incentivized users who can validate the loop | first |
-| Raw growth, buzz, liquidity | token-community reach, launch spikes, and social noise | second |
+| Raw growth, buzz, liquidity | collector reach, launch spikes, and social noise | second |
 
 Channel priority:
 
@@ -4563,12 +4563,12 @@ Channel priority:
 Distribution discipline:
 
 - do not buy paid traffic until D1 retention clears a bar
-- tag crypto-community, wallet-connected, NFT-holder, paid, and incentivized
+- tag collector, wallet-connected, NFT-holder, paid, and incentivized
   cohorts separately
-- never let incentivized/token users pollute the organic retention read
+- never let incentivized users pollute the organic retention read
 - use v1's existing `yearbook_copy` path as the first share-loop test bed
 
-## 12. Monetization And Token / CCG Model
+## 12. Monetization And NFT / CCG Model
 
 The monetization model must be explicit because it can damage the retention
 signal if it touches the core loop incorrectly.
@@ -4576,15 +4576,13 @@ signal if it touches the core loop incorrectly.
 Current model:
 
 - NFTs are CCG cards.
-- CCG/NFT cards are sold for memecoins.
+- CCG/NFT packs are purchased with native SOL.
 - NFT cards are burnable for Hall Passes, the existing premium currency.
-- `$RUBY -> RUBY` burn-to-mint migration is a treasury/token redenomination
-  action, separate from gameplay.
 - Ruby High does not pay earn-to-play token rewards.
 
 Hard design line:
 
-> Token, NFT, and CCG systems are additive. They may support ownership,
+> NFT and CCG systems are additive. They may support ownership,
 > collection, identity, cosmetics, premium convenience, community status, and
 > shareability. They must not gate or mechanically advantage the class/social/
 > memory loop that retention depends on.
@@ -4607,8 +4605,8 @@ Forbidden by default:
 
 Cohort requirement:
 
-- every wallet-connected, NFT-holder, card-burn, Hall Pass spender,
-  token-community, and organic non-wallet user must be segmentable in metrics
+- every wallet-connected, NFT-holder, card-burn, Hall Pass spender, collector,
+  and organic non-wallet user must be segmentable in metrics
 - retention decisions should default to organic non-incentivized cohorts unless
   the team is deliberately measuring monetized behavior
 
@@ -4998,8 +4996,8 @@ Migration policy:
 - v1 content packs may coexist as legacy/classic mode if they retain or monetize
   better than the v2 loop
 - default traffic moves behind a feature flag, with cohort rollback available
-- token/CCG migration is handled as wallet/economy infrastructure, not as a
-  gameplay progression reset
+- NFT/CCG ownership migration is handled as wallet/economy infrastructure, not
+  as a gameplay progression reset
 
 ## 15. Risks
 
@@ -5024,11 +5022,11 @@ Mitigation:
 - use cast-forward short-form clips and niche seeding before paid acquisition
 - treat launch spikes as measurement events, not durable strategy
 - do not buy traffic until D1 retention clears a bar
-- separate organic users from wallet/NFT/token-community users in every read
+- separate organic users from wallet/NFT/collector users in every read
 
 ### Monetization Coupling
 
-The token/CCG layer can corrupt the core loop if ownership becomes progression
+The NFT/CCG layer can corrupt the core loop if ownership becomes progression
 or if incentivized users contaminate the retention signal.
 
 Mitigation:
@@ -5037,9 +5035,10 @@ Mitigation:
 - never gate required class, social, memory, or Yearbook callback progress behind
   ownership
 - prohibit earn-to-play rewards
-- cohort-tag wallet-connected, NFT-holder, card-burn, Hall Pass spender, token
-  community, and organic users
-- use Yearbook ownership/share artifacts as the primary on-thesis token surface
+- cohort-tag wallet-connected, NFT-holder, card-burn, Hall Pass spender,
+  collector, and organic users
+- use Yearbook ownership/share artifacts as the primary on-thesis ownership
+  surface
 
 ### Content Treadmill
 

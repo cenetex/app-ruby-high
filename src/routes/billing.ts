@@ -22,10 +22,6 @@ import {
   publicCorePackNftStatus,
   verifyCorePackNftMint,
 } from "../services/core-pack-nfts.js";
-import {
-  buildRubyMigrationTransaction,
-  publicRubyMigrationStatus,
-} from "../services/ruby-token-migration.js";
 import { APP_ROUTE_PREFIX } from "./constants.js";
 import type { RouteContext } from "./context.js";
 
@@ -259,7 +255,7 @@ function isSolanaSignature(value: string): boolean {
   return value.length >= 64 && value.length <= 100 && BASE58ISH.test(value);
 }
 
-function parseTokenAmountToBaseUnits(raw: string, decimals: number): bigint | null {
+function parseDecimalToBaseUnits(raw: string, decimals: number): bigint | null {
   const clean = raw.trim();
   if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(clean)) return null;
   const [whole, fractional = ""] = clean.split(".");
@@ -273,7 +269,7 @@ function parseTokenAmountToBaseUnits(raw: string, decimals: number): bigint | nu
   return units > 0n ? units : null;
 }
 
-function formatTokenAmount(units: bigint, decimals: number): string {
+function formatSolAmount(units: bigint, decimals: number): string {
   if (decimals <= 0) return units.toString();
   const multiplier = 10n ** BigInt(decimals);
   const whole = units / multiplier;
@@ -287,10 +283,10 @@ function solanaAmountForProduct(product: BillingProduct): { display: string; lam
   const envName = SOLANA_PACK_PRICE_ENVS[product.id];
   if (!envName) return null;
   const raw = envTrim(envName) ?? SOLANA_PACK_PRICE_DEFAULTS[product.id] ?? "0.01";
-  const lamports = parseTokenAmountToBaseUnits(raw, 9);
+  const lamports = parseDecimalToBaseUnits(raw, 9);
   if (!lamports) return null;
   return {
-    display: formatTokenAmount(lamports, 9),
+    display: formatSolAmount(lamports, 9),
     lamports: lamports.toString(),
   };
 }
@@ -536,15 +532,6 @@ async function verifySolanaPayment(
 
 function isWalletSolFundingError(message: string): boolean {
   return /needs more SOL|insufficient funds|insufficient lamports|Attempt to debit|0x1\b|needs at least|balance is .*needs/i.test(message);
-}
-
-function isRubyMigrationFundingError(message: string): boolean {
-  return /does not have(?: enough)?\s+RUBY|does not have(?: enough)?\s+Ruby|migrate/i.test(message)
-    && /does not have/i.test(message);
-}
-
-function isRubyMigrationInputError(message: string): boolean {
-  return /invalid|must be an unsigned integer|exceeds u64|max source amount is smaller/i.test(message);
 }
 
 function firstHeader(value: string | string[] | null | undefined): string {
@@ -1138,56 +1125,8 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       cardBurn: {
         hallPassesPerCard: HALL_PASS_CARD_BURN_HALL_PASS_VALUE,
       },
-      rubyMigration: publicRubyMigrationStatus(),
       entitlements,
     });
-    return true;
-  }
-
-  if (ctx.method === "POST" && ctx.pathname === `${BILLING_PREFIX}/ruby-migration/quote`) {
-    const status = publicRubyMigrationStatus();
-    if (!status.configured) {
-      ctx.error(ctx.res, status.reason || "Ruby token migration is not enabled.", 503);
-      return true;
-    }
-    const stateKey = authenticatedStateKey(ctx, deps);
-    if (!stateKey) {
-      ctx.error(ctx.res, "Not authenticated.", 401);
-      return true;
-    }
-    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
-    const ownerWalletAddress = typeof body.ownerWalletAddress === "string" && isBase58Address(body.ownerWalletAddress.trim())
-      ? body.ownerWalletAddress.trim()
-      : "";
-    if (!ownerWalletAddress) {
-      ctx.error(ctx.res, "Connect a Solana wallet before migrating Ruby.", 400);
-      return true;
-    }
-    try {
-      const preparedTransaction = await buildRubyMigrationTransaction({
-        ownerWalletAddress,
-        amountBaseUnits: typeof body.amountBaseUnits === "string" ? body.amountBaseUnits : undefined,
-        maxSourceAmountBaseUnits: typeof body.maxSourceAmountBaseUnits === "string" ? body.maxSourceAmountBaseUnits : undefined,
-        sourceTokenAccountAddress: typeof body.sourceTokenAccountAddress === "string" ? body.sourceTokenAccountAddress : undefined,
-        userNonce: typeof body.userNonce === "string" || typeof body.userNonce === "number" ? body.userNonce : undefined,
-      });
-      const { rpcUrl: _rpcUrl, ...publicPreparedTransaction } = preparedTransaction;
-      ctx.json(ctx.res, {
-        ok: true,
-        ...publicPreparedTransaction,
-        sourceSymbol: status.sourceSymbol,
-        destinationSymbol: status.destinationSymbol,
-        decimals: status.decimals,
-        rpcHost: status.rpcHost,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      log.error("billing.ruby-migration.quote-failed", err, {
-        sessionId: stateKey,
-        ownerWalletAddress,
-      });
-      ctx.error(ctx.res, message, isRubyMigrationFundingError(message) ? 402 : isRubyMigrationInputError(message) ? 400 : 502);
-    }
     return true;
   }
 

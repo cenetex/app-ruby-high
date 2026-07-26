@@ -792,12 +792,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function billingCardPackPaymentChoiceView(");
     expectScriptToContain(script, "buildCardPackPaymentChoice(solana, product, opts)");
     expectScriptToContain(clientSource, "return billingProductsRenderer.buildCardPackPaymentChoice(solana, product, { billingBusy });");
-    expectScriptToContain(script, "function billingRubyMigrationChoiceView(statusInput, opts)");
-    expectScriptToContain(script, "buildRubyMigrationChoice(status, opts)");
-    expectScriptToContain(script, 'row.className = "billing-product billing-ruby-migration"');
-    expectScriptToContain(clientSource, "function buildRubyMigrationChoice(status)");
-    expectScriptToContain(clientSource, "async function migrateRubyFromBilling()");
-    expectScriptToContain(clientSource, 'apiBase + "/billing/ruby-migration/quote"');
+    expect(script).not.toContain("billingRubyMigrationChoiceView");
+    expect(script).not.toContain("billing-ruby-migration");
+    expect(clientSource).not.toContain("migrateRubyFromBilling");
+    expect(clientSource).not.toContain("/billing/ruby-migration/quote");
     expect(clientSource).not.toContain('panel.className = "billing-payment-choice";');
     expect(clientSource).not.toContain('row.className = "billing-product";');
     expect(script).not.toContain("buildGetRubyLink");
@@ -914,9 +912,6 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'typeof client.paySolanaQuote !== "function"');
     expectScriptToContain(script, 'title: "Connect Solana wallet?"');
     expectScriptToContain(script, 'title: "Confirm card pack payment?"');
-    expectScriptToContain(script, 'title: "Migrate Ruby?"');
-    expectScriptToContain(script, "Your wallet should show one Ruby migration transaction.");
-    expectScriptToContain(script, "await client.signAndSendSolanaTransaction(data)");
     expectScriptToContain(script, "Your wallet should show a Solana pack payment and Ruby High pack creation. The network fee is paid by this wallet.");
     expectScriptToContain(script, 'setBillingStatus("Starting card pack checkout...", false)');
     expectScriptToContain(script, "let finalBillingStatus = null");

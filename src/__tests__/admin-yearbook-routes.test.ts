@@ -594,7 +594,7 @@ describe("school world route", () => {
     expect(response.body.world.activeRooms).toEqual([
       expect.objectContaining({
         grade: "10",
-        facultyId: "sally-science",
+        facultyId: "ruby",
         activeStudents: 1,
         students: [expect.objectContaining({ name: "World Noor" })],
       }),
@@ -2893,6 +2893,10 @@ describe("admin metrics route", () => {
       expect.objectContaining({
         path: "ruby.photoPosts",
         reliability: "proxy",
+      }),
+      expect.objectContaining({
+        path: "ruby.scheduledPosts",
+        reliability: "authoritative",
       }),
       expect.objectContaining({
         path: "ops.publicReadLimiter",

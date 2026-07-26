@@ -9,6 +9,15 @@ export interface RubyHighPhotoScene {
 
 export const RUBY_HIGH_PHOTO_PROMPT_VERSION = "ruby-high-dynamic-campus-photo-v2";
 
+const TEACHER_LOUNGE_SCENE: RubyHighPhotoScene = {
+  id: "teacher-lounge",
+  roomName: "Ruby High teacher's lounge",
+  setting: "a lived-in staff room with mismatched armchairs, a low coffee table, faculty cubbies, a humming kettle, classroom notes, and warm window light",
+  action: "The faculty are caught between classes: one teacher sets down a stack of marked papers, another gestures through an animated idea, and the third reacts with dry amusement over a mug.",
+  camera: "wide candid corner angle with foreground furniture, layered depth, clear faces, and natural conversational body language",
+  props: "ceramic mugs, marked papers without readable text, a kettle, satchels, pens, a small plant, and a crowded noticeboard with abstract shapes only",
+};
+
 const SCHOOL_PHOTO_SCENES: RubyHighPhotoScene[] = [
   {
     id: "courtyard",
@@ -102,4 +111,13 @@ export function rubyHighPhotoSceneForGrade(
   const preferred = GRADE_SCENE_IDS[gradeId];
   if (preferred) return SCENE_BY_ID.get(preferred) ?? SCHOOL_PHOTO_SCENES[0]!;
   return SCHOOL_PHOTO_SCENES[stableIndex(seed || "ruby-high", SCHOOL_PHOTO_SCENES.length)]!;
+}
+
+export function rubyHighPhotoSceneForSchoolUpdate(
+  area: "classroom" | "teacher-lounge",
+  grade: string | number | null | undefined,
+  seed = "ruby-high-update",
+): RubyHighPhotoScene {
+  if (area === "teacher-lounge") return TEACHER_LOUNGE_SCENE;
+  return rubyHighPhotoSceneForGrade(grade, seed);
 }

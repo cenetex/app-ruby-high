@@ -1377,7 +1377,6 @@ export function runViewerClient(bootstrap) {
     hallPassPaymentChoiceView: billingHallPassPaymentChoiceView,
     cardPackPaymentChoiceView: billingCardPackPaymentChoiceView,
     cardBurnChoiceView: billingCardBurnChoiceView,
-    rubyMigrationChoiceView: billingRubyMigrationChoiceView,
     isPrivyConfigured() {
       return !!privyState.configured;
     },
@@ -1388,7 +1387,6 @@ export function runViewerClient(bootstrap) {
     onStartCheckout: startCheckout,
     onStartSolanaPayment: startSolanaPayment,
     onBurnCard: burnHallPassCardFromBilling,
-    onMigrateRuby: migrateRubyFromBilling,
   });
   const accountHistoryRenderer = createAccountHistoryPanelRenderer({
     document,
@@ -1985,22 +1983,6 @@ export function runViewerClient(bootstrap) {
     return product.name || packCountLabel(product.packCount);
   }
 
-  function tokenBaseUnitsDisplay(amountBaseUnits, decimals) {
-    const raw = String(amountBaseUnits || "").trim();
-    const places = Math.max(0, Math.min(18, Math.floor(Number(decimals || 0))));
-    if (!/^\d+$/.test(raw)) return formatTokenDisplayAmount(raw);
-    if (places <= 0) return formatTokenDisplayAmount(raw);
-    const padded = raw.padStart(places + 1, "0");
-    const whole = padded.slice(0, -places) || "0";
-    const fractional = padded.slice(-places).replace(/0+$/, "");
-    return formatTokenDisplayAmount(fractional ? whole + "." + fractional : whole);
-  }
-
-  function rubyMigrationAmountLabel(data, symbolKey) {
-    const symbol = String(data && data[symbolKey] || "").trim() || (symbolKey === "sourceSymbol" ? "RUBY" : "Ruby");
-    return tokenBaseUnitsDisplay(data && data.amountBaseUnits, data && data.decimals) + " " + symbol;
-  }
-
   function responseErrorText(data) {
     return data && typeof data === "object" && data.error != null
       ? String(data.error).trim()
@@ -2024,10 +2006,6 @@ export function runViewerClient(bootstrap) {
   function friendlySolanaActionError(err, unchanged) {
     const message = err && err.message ? String(err.message) : String(err || "error");
     if (/user rejected|rejected|canceled|cancelled/i.test(message)) return "Wallet request canceled.";
-    if (/does not have(?: enough)?\s+(?:RUBY|Ruby)\s+to migrate/i.test(message)) {
-      return "This wallet has no old RUBY ready to migrate.";
-    }
-    if (/Ruby token migration|migrat/i.test(message)) return message;
     if (/needs more SOL|insufficient funds|insufficient lamports|Attempt to debit|0x1\b|needs at least|balance is .*needs/i.test(message)) {
       return "This checkout needs more SOL for the pack payment, rent, and network fees. Nothing was charged.";
     }
@@ -2221,9 +2199,9 @@ export function runViewerClient(bootstrap) {
     els.billingStatus.classList.toggle("is-invalid", !!invalid);
   }
 
-  // formatTokenDisplayAmount, cardPackTokenSymbol, cardPackDebitLabel,
+  // formatSolDisplayAmount, cardPackDebitLabel,
   // cardPackCreditLabel, cardPackPaymentDeltaLabel, cardPackProductMeta,
-  // formatMoney, formatTokenAmount are in client-pure.ts.
+  // and formatMoney are in client-pure.ts.
 
   function cardPackCheckoutState() {
     const solana = billingProductsCache && billingProductsCache.solana && typeof billingProductsCache.solana === "object"
@@ -2900,9 +2878,6 @@ export function runViewerClient(bootstrap) {
     if (mode === "hall-passes") {
       els.billingProducts.appendChild(buildHallPassCardBurnChoice(hallPassesPerBurnedCard));
     }
-    if (mode === "card-packs" && payload && payload.rubyMigration) {
-      els.billingProducts.appendChild(buildRubyMigrationChoice(payload.rubyMigration));
-    }
     if (shownProducts.length === 0) {
       setBillingStatus(panelView.emptyStatusText, true);
       return;
@@ -2961,81 +2936,6 @@ export function runViewerClient(bootstrap) {
 
   function buildCardPackPaymentChoice(solana, product) {
     return billingProductsRenderer.buildCardPackPaymentChoice(solana, product, { billingBusy });
-  }
-
-  function buildRubyMigrationChoice(status) {
-    return billingProductsRenderer.buildRubyMigrationChoice(status, {
-      hasWallet: !!connectedSolanaWalletAddress(),
-      authed,
-      billingBusy,
-    });
-  }
-
-  async function migrateRubyFromBilling() {
-    if (billingBusy) return;
-    billingBusy = true;
-    let finalBillingStatus = null;
-    if (billingProductsCache) renderBillingProducts(billingProductsCache);
-    setBillingStatus("Starting Ruby migration...", false);
-    try {
-      if (!connectedSolanaWalletAddress()) {
-        const connected = await ensureSolanaWalletForBilling({ actionLabel: "Ruby migration" });
-        if (!connected) {
-          finalBillingStatus = ["Ruby migration canceled.", false];
-          setBillingStatus(finalBillingStatus[0], finalBillingStatus[1]);
-          return;
-        }
-      }
-      const ownerWalletAddress = connectedSolanaWalletAddress();
-      setBillingStatus("Preparing Ruby migration...", false);
-      const r = await apiFetch(apiBase + "/billing/ruby-migration/quote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        timeoutMs: 15000,
-        body: JSON.stringify({ ownerWalletAddress }),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok || !data || !data.ok) {
-        throw new Error(nftHttpErrorMessage("Ruby migration", r, data, "No Ruby was migrated; try again in a minute."));
-      }
-      const client = await getPrivyClient();
-      if (!client || typeof client.signAndSendSolanaTransaction !== "function") {
-        throw new Error("Ruby migration wallet signing is unavailable.");
-      }
-      const burnLabel = rubyMigrationAmountLabel(data, "sourceSymbol");
-      const mintLabel = rubyMigrationAmountLabel(data, "destinationSymbol");
-      const approved = await confirmWalletTransactionPreview({
-        title: "Migrate Ruby?",
-        action: "Migrate " + (data.sourceSymbol || "RUBY") + " to " + (data.destinationSymbol || "Ruby"),
-        walletAddress: ownerWalletAddress,
-        cost: "Burn " + burnLabel,
-        credit: "Mint " + mintLabel,
-        mint: data.destinationMint,
-        reference: data.sourceTokenAccountAddress,
-        prompt: "Your wallet should show one Ruby migration transaction.",
-        copy: "Ruby High will ask your wallet to burn old RUBY and mint canonical Ruby.",
-        confirmText: "Open wallet",
-      });
-      if (!approved) {
-        finalBillingStatus = ["Ruby migration canceled.", false];
-        setBillingStatus(finalBillingStatus[0], finalBillingStatus[1]);
-        return;
-      }
-      setBillingStatus("Confirm the Ruby migration in your wallet...", false);
-      const payment = await client.signAndSendSolanaTransaction(data);
-      const signature = payment && payment.signature ? payment.signature : "";
-      finalBillingStatus = ["Ruby migration sent" + (signature ? " · " + shortWallet(signature) : "."), false];
-      setBillingStatus(finalBillingStatus[0], finalBillingStatus[1]);
-      setPrivyStatus(finalBillingStatus[0], finalBillingStatus[1]);
-    } catch (err) {
-      finalBillingStatus = ["Ruby migration failed · " + friendlySolanaActionError(err, "No Ruby was migrated; try again in a minute."), true];
-      setBillingStatus(finalBillingStatus[0], finalBillingStatus[1]);
-      setPrivyStatus(finalBillingStatus[0], finalBillingStatus[1]);
-    } finally {
-      billingBusy = false;
-      if (billingProductsCache) renderBillingProducts(billingProductsCache);
-      if (finalBillingStatus) setBillingStatus(finalBillingStatus[0], finalBillingStatus[1]);
-    }
   }
 
   async function burnHallPassCardFromBilling() {

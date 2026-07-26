@@ -257,14 +257,6 @@ export type BillingCardBurnChoiceView = {
   buttonDisabled: boolean;
   buttonTitle: string;
 };
-export type BillingRubyMigrationChoiceView = {
-  titleText: string;
-  metaText: string;
-  buttonText: string;
-  buttonDisabled: boolean;
-  buttonTitle: string;
-  noteText: string;
-};
 export type BillingCardPackPaymentChoiceView = {
   titleText: string;
   metaText: string;
@@ -579,14 +571,7 @@ export function formatMoney(cents: unknown, currency?: unknown): string {
     return code + " " + amount.toFixed(2);
   }
 }
-export function formatTokenAmount(amount: unknown, symbol?: unknown): string {
-  const numeric = Number(amount);
-  const text = Number.isFinite(numeric)
-    ? numeric.toLocaleString(undefined, { maximumFractionDigits: 9 })
-    : String(amount || "0");
-  return text + " $" + String(symbol || "RUBY").toUpperCase();
-}
-export function formatTokenDisplayAmount(value: unknown): string {
+export function formatSolDisplayAmount(value: unknown): string {
   const raw = String(value || "").trim();
   const parsed = Number(raw);
   if (!raw) return "?";
@@ -810,9 +795,8 @@ export function walletTransactionDescription(tx: NullableRecord): string {
 export function walletTransactionPackDeltaText(tx: NullableRecord): string {
   const metadata = tx && tx.metadata && typeof tx.metadata === "object" ? tx.metadata : {};
   const packCount = Math.max(1, Math.floor(Number(metadata.packCount || 1)));
-  const amount = metadata.solanaAmountSol || metadata.solanaTokenAmount || "";
-  const symbol = metadata.solanaSymbol || metadata.solanaTokenSymbol || "SOL";
-  return "-" + formatTokenDisplayAmount(amount) + " " + symbol + " · +" + packCountLabel(packCount);
+  const amount = metadata.solanaAmountSol || "";
+  return "-" + formatSolDisplayAmount(amount) + " SOL · +" + packCountLabel(packCount);
 }
 
 export function walletTransactionSource(tx: NullableRecord): string {
@@ -1533,42 +1517,6 @@ export function billingCardBurnChoiceView(opts?: NullableRecord): BillingCardBur
   };
 }
 
-export function billingRubyMigrationChoiceView(statusInput?: NullableRecord, opts?: NullableRecord): BillingRubyMigrationChoiceView {
-  const status = statusInput && typeof statusInput === "object" ? statusInput : {};
-  const sourceSymbol = String(status.sourceSymbol || "RUBY").trim() || "RUBY";
-  const destinationSymbol = String(status.destinationSymbol || "Ruby").trim() || "Ruby";
-  const configured = !!(status.configured && status.enabled);
-  const reason = String(status.reason || "").trim();
-  const hasWallet = !!(opts && opts.hasWallet);
-  const authed = !!(opts && opts.authed);
-  const billingBusy = !!(opts && opts.billingBusy);
-  const cryptoUnavailable = !!(opts && opts.cryptoUnavailable);
-  return {
-    titleText: "Migrate " + sourceSymbol + " to " + destinationSymbol,
-    metaText: configured
-      ? hasWallet
-        ? "Burn old " + sourceSymbol + " · mint " + destinationSymbol
-        : "Connect your Solana wallet to migrate old " + sourceSymbol + "."
-      : (reason || "Ruby token migration is not live yet."),
-    buttonText: billingBusy
-      ? "Migrating..."
-      : cryptoUnavailable
-        ? "Crypto unavailable"
-        : configured
-          ? hasWallet ? "Migrate" : "Connect Wallet"
-          : "Not Live",
-    buttonDisabled: !authed || billingBusy || cryptoUnavailable || !configured,
-    buttonTitle: cryptoUnavailable
-      ? "Ruby migration needs Privy wallet configuration."
-      : !configured
-        ? (reason || "Ruby token migration is not enabled.")
-        : hasWallet
-          ? "Burn old " + sourceSymbol + " for " + destinationSymbol + "."
-          : "Connect a Solana wallet before migrating " + sourceSymbol + ".",
-    noteText: configured ? "" : (reason || "Ruby token migration is not enabled on this server."),
-  };
-}
-
 export function comicPageTitle(pageNumber: unknown): string {
   const n = Math.max(1, Math.floor(Number(pageNumber || 1)));
   return (VIEWER_CONSTANTS.FIRST_BELL_PAGE_TITLES as Record<number, string>)[n] || "First Bell";
@@ -2025,16 +1973,11 @@ export function packCountLabel(count: unknown): string {
   const n = Number.isFinite(Number(count)) && Number(count) > 0 ? Math.floor(Number(count)) : 1;
   return formatWholeNumber(n) + " Pack" + (n === 1 ? "" : "s");
 }
-export function cardPackTokenSymbol(product: NullableRecord, solana: NullableRecord): string {
-  return String((product && (product.symbol || product.tokenSymbol)) || (solana && solana.symbol) || "SOL").trim() || "SOL";
-}
 export function cardPackDebitLabel(product: NullableRecord, solana: NullableRecord): string {
   const amount = product && product.solAmount != null
     ? product.solAmount
-    : product && product.tokenAmount != null
-      ? product.tokenAmount
-      : solana && (solana.solAmount ?? solana.tokenAmount);
-  return "Solana payment: " + formatTokenDisplayAmount(amount) + " " + cardPackTokenSymbol(product, solana);
+    : solana && solana.solAmount;
+  return "Solana payment: " + formatSolDisplayAmount(amount) + " SOL";
 }
 export function cardPackCreditLabel(product: NullableRecord): string {
   const count = product && Number.isFinite(Number(product.packCount)) ? Number(product.packCount) : 1;

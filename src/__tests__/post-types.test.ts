@@ -5,6 +5,10 @@ import {
   weightedPickPostKind,
   DEFAULT_POST_TYPE_WEIGHTS,
   buildFallbackPostText,
+  buildScheduledGuestWelcomeText,
+  hasMeaningfulScheduledSchoolActivity,
+  normalizeScheduledSchoolUpdateText,
+  scheduledSchoolUpdateFingerprint,
 } from "../services/ruby-high/post-types.js";
 import type { TeacherCharacter } from "../characters/teachers.js";
 
@@ -155,5 +159,61 @@ describe("weightedPickPostKind", () => {
     expect(counts.milestone).toBeGreaterThan(counts.reflection ?? 0);
     expect(counts.milestone).toBeGreaterThan(counts.question ?? 0);
     expect(counts.milestone).toBeGreaterThan(counts.engagement ?? 0);
+  });
+});
+
+describe("scheduled school update safety", () => {
+  const context = {
+    date: "2026-07-22",
+    updatedSessionsLast24h: 8,
+    activeStudents: 3,
+    activeRooms: [{ area: "classroom" as const, grade: "9", activeStudents: 3, goalProgress: 2, goalTarget: 3 }],
+    highlights: { newStudents: 1, classesPassed: 2, gradesAdvanced: 0, graduations: 0 },
+    recentEvents: { roomGoalProgress: 2, relationshipMoments: 1, futuresResolved: 0, comicPagesUnlocked: 0 },
+  };
+
+  it("recognizes aggregate activity and fingerprints context deterministically", () => {
+    expect(hasMeaningfulScheduledSchoolActivity(context)).toBe(true);
+    expect(scheduledSchoolUpdateFingerprint(context)).toBe(scheduledSchoolUpdateFingerprint({ ...context }));
+    expect(scheduledSchoolUpdateFingerprint({ ...context, activeStudents: 4 })).not.toBe(
+      scheduledSchoolUpdateFingerprint(context),
+    );
+  });
+
+  it("normalizes model wrappers and adds the campaign tag", () => {
+    expect(normalizeScheduledSchoolUpdateText('```text\nTweet: "The lounge is buzzing after a strong class day."\n```'))
+      .toBe("The lounge is buzzing after a strong class day. #RubyHigh");
+  });
+
+  it("builds a bounded welcome from verified guest-roster metadata", () => {
+    expect(buildScheduledGuestWelcomeText({
+      ...context,
+      featuredGuest: {
+        weekKey: "2026-W30",
+        packId: "teacher:eliza-elizaos-systems-lab",
+        facultyId: "eliza",
+        displayName: "Eliza",
+        courseTitle: "elizaOS Systems Lab",
+        bio: "Guest systems teacher.",
+        xHandle: "elizaOS",
+      },
+    })).toBe(
+      "Welcome this week's featured guest teacher, Eliza (@elizaOS), to Ruby High! This week's course: elizaOS Systems Lab. #RubyHigh",
+    );
+  });
+
+  it("rejects handles and links, and keeps long copy within X's limit", () => {
+    expect(normalizeScheduledSchoolUpdateText("Thanks @student! #RubyHigh")).toBeNull();
+    expect(normalizeScheduledSchoolUpdateText(
+      "Insights from @elizaOS: boundaries make agents easier to trust. #RubyHigh",
+      { allowedHandle: "elizaOS" },
+    )).toBe("Insights from @elizaOS: boundaries make agents easier to trust. #RubyHigh");
+    expect(normalizeScheduledSchoolUpdateText(
+      "Insights from @someoneElse: hello. #RubyHigh",
+      { allowedHandle: "elizaOS" },
+    )).toBeNull();
+    expect(normalizeScheduledSchoolUpdateText("Read https://example.com #RubyHigh")).toBeNull();
+    expect(normalizeScheduledSchoolUpdateText("A".repeat(400))).toMatch(/^A+\.\.\. #RubyHigh$/);
+    expect(normalizeScheduledSchoolUpdateText("A".repeat(400))!.length).toBeLessThanOrEqual(280);
   });
 });

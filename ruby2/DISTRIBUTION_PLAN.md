@@ -90,12 +90,12 @@ first memory, and return after 24h — read on the *organic* cohort.
 
 ## 5. Monetization Boundary (so distribution stays clean)
 
-The token/NFT layer is **monetization-side and additive**: NFT/CCG sold for
-memecoins, NFTs burnable for Hall Passes, a $RUBY->RUBY burn-to-mint migration —
-and **no earn-to-play rewards.** Paying people to do the thing you're trying to
-measure (log in, complete a class) measures the bribe, not the game. Keep
-incentives off the retention metric, and keep owned/NFT cards from gating or
-advantaging the core loop.
+The NFT layer is **monetization-side and additive**: NFT/CCG packs are purchased
+with native SOL, NFTs are burnable for Hall Passes, and there are **no
+earn-to-play rewards.** Paying people to do the thing you're trying to measure
+(log in, complete a class) measures the bribe, not the game. Keep incentives off
+the retention metric, and keep owned/NFT cards from gating or advantaging the
+core loop.
 
 ## 6. One-Line Frame
 

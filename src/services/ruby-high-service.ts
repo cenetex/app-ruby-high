@@ -27,8 +27,13 @@ import {
 import {
   PostRotationScheduler,
   GENERAL_POST_SCHEDULER_INTERVAL_MS,
-  type GeneralSchedulerState,
+  SCHEDULED_POST_SCHEDULER_STATE_ID,
+  hydrateScheduledPostSchedulerState,
+  scheduledPostSchedulerStateRecord,
+  type GeneralSchedulerSnapshot,
+  type ScheduledPostResult,
 } from "./ruby-high/post-scheduler.js";
+import type { ScheduledSchoolUpdateContext } from "./ruby-high/post-types.js";
 import {
   buildCurriculumCoverageSnapshot,
   generationDifficultyForCurriculumGrade,
@@ -186,7 +191,9 @@ import {
   facultyForSession,
   GUEST_COURSE_ID,
   getActivePack,
+  guestFacultyForPack,
   guestPackForSession,
+  guestWeekKey,
   isPackLoaded,
   MAX_PACKS_PER_OWNER,
   ORIGINAL_PACK_ID,
@@ -197,6 +204,7 @@ import {
   roomForFacultyForSession,
   setActivePack,
   unregisterPack,
+  weeklyAutoGuestPack,
 } from "../content/registry.js";
 import type { ContentPack, PackFaculty, PackSourceCard } from "../content/types.js";
 import { cardToMcQuestion, type DistractorOpts, type SourceCardInput } from "../content/source-distractors.js";
@@ -684,6 +692,15 @@ export interface HallPassCardMintPreparationInput {
   at?: number;
 }
 
+export interface HallPassCardMintSubmissionInput {
+  cardId: string;
+  ownerWalletAddress: string;
+  mintAddress: string;
+  metadataUri: string;
+  mintSignature: string;
+  at?: number;
+}
+
 export interface HallPassPackMintInput {
   productId: string;
   packCount: number;
@@ -693,6 +710,7 @@ export interface HallPassPackMintInput {
   mintSignature: string;
   metadataUri: string;
   idempotencyKey: string;
+  status?: RubyHighHallPassPackStatus;
   serial?: number;
   source?: RubyHighWalletTransaction["source"];
   description?: string;
@@ -790,6 +808,7 @@ export interface RubyHighAnalyticsSnapshot {
   };
   world: RubyHighWorldHealthSnapshot;
   photoPosts: RubyHighPhotoPostSchedulerSnapshot;
+  scheduledPosts: GeneralSchedulerSnapshot;
   curriculum: RubyHighCurriculumCoverageSnapshot;
   daily: RubyHighAnalyticsDay[];
 }
@@ -1307,6 +1326,13 @@ export interface PublicRoomHumanStudent {
   lastActive: number;
 }
 
+interface PublicSchoolWorldEntry {
+  state: QuizState;
+  ch: PlayerCharacter;
+  facultyId: string;
+  lastActive: number;
+}
+
 export interface ClassPhotoCandidate {
   sessionId: string;
   name: string;
@@ -1652,6 +1678,7 @@ export class RubyHighService extends Service {
   private photoPostSchedulerRunning = false;
   private rotationScheduler: PostRotationScheduler;
   private rotationSchedulerTimer: ReturnType<typeof setInterval> | null = null;
+  private rotationSchedulerRunning = false;
   private lastPhotoPostAttemptAt: number | null = null;
   private lastPhotoPostResult: DailyPhotoPostResult | null = null;
   private readonly disposeLogSink: () => void;
@@ -2357,6 +2384,7 @@ export class RubyHighService extends Service {
       },
       world: this.worldHealthSnapshot(now),
       photoPosts: this.photoPostSchedulerSnapshot(),
+      scheduledPosts: this.rotationSchedulerSnapshot(),
       curriculum: this.curriculumCoverageSnapshot(),
       daily: days,
     };
@@ -2476,11 +2504,15 @@ export class RubyHighService extends Service {
   }
 
   startRotationScheduler(): void {
-    if (this.rotationSchedulerTimer) return;
+    if (this.rotationSchedulerTimer || !this.rotationScheduler.getSnapshot().enabled) return;
     this.rotationSchedulerTimer = setInterval(() => {
       void this.runRotationSchedulerTick();
     }, GENERAL_POST_SCHEDULER_INTERVAL_MS);
     this.rotationSchedulerTimer.unref?.();
+    // Production scales to zero. An immediate eligibility check lets a cold
+    // start service an overdue daily post instead of requiring 15 minutes of
+    // continuous traffic before the first interval fires.
+    void this.runRotationSchedulerTick();
   }
 
   stopRotationScheduler(): void {
@@ -2488,19 +2520,42 @@ export class RubyHighService extends Service {
     this.rotationSchedulerTimer = null;
   }
 
-  async runRotationSchedulerTick(): Promise<void> {
+  async runRotationSchedulerTick(
+    options: { force?: boolean; teacherId?: string } = {},
+  ): Promise<ScheduledPostResult | null> {
+    if (this.rotationSchedulerRunning) return null;
     const xSocial = this.getXSocialService();
-    if (!xSocial) return;
+    if (!xSocial) return null;
 
-    const teacher = this.getFirstConnectedTeacher();
-    if (!teacher) return;
+    const teacher = options.teacherId
+      ? this.getConnectedTeacher(options.teacherId)
+      : this.getFirstConnectedTeacher();
+    if (!teacher) return null;
 
-    const recentNames = this.getRecentActiveStudentNames();
+    this.rotationSchedulerRunning = true;
+    const before = JSON.stringify(this.rotationScheduler.getState());
     try {
-      await this.rotationScheduler.tick(xSocial, () => this.getFirstConnectedTeacher(), () => recentNames);
+      const now = Date.now();
+      return await this.rotationScheduler.tick(
+        xSocial,
+        teacher,
+        this.getScheduledSchoolUpdateContext(now),
+        now,
+        { force: options.force },
+      );
     } catch (err) {
       log.error("rotation-scheduler.tick-failed", err);
+      return null;
+    } finally {
+      if (JSON.stringify(this.rotationScheduler.getState()) !== before) {
+        await this.persistScheduledPostSchedulerState();
+      }
+      this.rotationSchedulerRunning = false;
     }
+  }
+
+  async runScheduledSchoolUpdateNow(teacherId = "ruby"): Promise<ScheduledPostResult | null> {
+    return this.runRotationSchedulerTick({ force: true, teacherId });
   }
 
   private getXSocialService(): XSocialService | null {
@@ -2519,13 +2574,106 @@ export class RubyHighService extends Service {
     return teacherById(targetId) ?? null;
   }
 
-  private getRecentActiveStudentNames(): string[] {
-    const students = this.getRecentlyActiveStudents(Date.now());
-    return students.map((s) => s.name).slice(0, 10);
+  private getConnectedTeacher(teacherId: string): TeacherCharacter | null {
+    const xSocial = this.getXSocialService();
+    if (!xSocial) return null;
+    const status = xSocial.getStatus(teacherId);
+    if (!status.connected || !status.hasTweetWrite) return null;
+    const teacher = teacherById(teacherId);
+    return teacher.id === teacherId ? teacher : null;
   }
 
-  rotationSchedulerSnapshot(): GeneralSchedulerState {
+  getScheduledSchoolUpdateContext(now = Date.now()): ScheduledSchoolUpdateContext {
+    const memories = this.getDailyMemories();
+    const world = this.getSchoolWorldSnapshot(30, now);
+    const recentCutoff = now - 48 * 60 * 60 * 1000;
+    const recentEvents = world.recentEvents.filter((event) => event.at >= recentCutoff);
+    const eventCounts: ScheduledSchoolUpdateContext["recentEvents"] = {
+      roomGoalProgress: 0,
+      relationshipMoments: 0,
+      futuresResolved: 0,
+      comicPagesUnlocked: 0,
+    };
+    for (const event of recentEvents) {
+      switch (event.kind) {
+        case "room.goal-progress": eventCounts.roomGoalProgress += 1; break;
+        case "relationship.ticked": eventCounts.relationshipMoments += 1; break;
+        case "mash.axis-resolved": eventCounts.futuresResolved += 1; break;
+        case "comic.page-unlocked": eventCounts.comicPagesUnlocked += 1; break;
+      }
+    }
+    let updatedSessionsLast24h = 0;
+    const dayAgo = now - 24 * 60 * 60 * 1000;
+    for (const state of this.sessions.values()) {
+      const updatedAt = Number(state.updatedAt ?? 0);
+      if (Number.isFinite(updatedAt) && updatedAt >= dayAgo && updatedAt <= now) {
+        updatedSessionsLast24h += 1;
+      }
+    }
+    const guestPack = weeklyAutoGuestPack(new Date(now));
+    const guestFaculty = guestPack ? guestFacultyForPack(guestPack) : null;
+    const guestCourse = guestPack && guestFaculty
+      ? coursesForPack(guestPack).find((course) => course.facultyId === guestFaculty.id) ?? null
+      : null;
+    const guestImageUrl = guestFaculty
+      ? teacherFullPortraitUrl(
+          guestFaculty.id,
+          guestFaculty.assetTeacherId,
+          guestFaculty.profileImageUrl,
+        )
+      : undefined;
+    return {
+      date: new Date(now).toISOString().slice(0, 10),
+      updatedSessionsLast24h,
+      activeStudents: world.activeStudents,
+      activeRooms: world.activeRooms.slice(0, 6).map((room) => ({
+        area: room.facultyId === LOUNGE_FACULTY.id ? "teacher-lounge" as const : "classroom" as const,
+        grade: room.grade,
+        activeStudents: room.activeStudents,
+        goalProgress: room.goal.progress,
+        goalTarget: room.goal.target,
+      })),
+      highlights: {
+        newStudents: memories.charactersCreated.length,
+        classesPassed: memories.classesPassed.length,
+        gradesAdvanced: memories.gradesAdvanced.length,
+        graduations: memories.graduations.length,
+      },
+      recentEvents: eventCounts,
+      ...(guestPack && guestFaculty
+        ? {
+            featuredGuest: {
+              weekKey: guestWeekKey(new Date(now)),
+              packId: guestPack.id,
+              facultyId: guestFaculty.id,
+              displayName: guestFaculty.displayName,
+              courseTitle: guestCourse?.title ?? guestPack.name,
+              bio: guestFaculty.bio.slice(0, 500),
+              ...(guestFaculty.xHandle
+                ? { xHandle: guestFaculty.xHandle.replace(/^@/, "").slice(0, 15) }
+                : {}),
+              ...(guestImageUrl && guestImageUrl.length <= 2_048
+                ? { imageUrl: guestImageUrl }
+                : {}),
+            },
+          }
+        : {}),
+    };
+  }
+
+  rotationSchedulerSnapshot(): GeneralSchedulerSnapshot {
     return this.rotationScheduler.getSnapshot();
+  }
+
+  private persistScheduledPostSchedulerState(options: { surfaceErrors?: boolean } = {}): Promise<void> {
+    if (!this.store.saveServiceState) return Promise.resolve();
+    const record = scheduledPostSchedulerStateRecord(this.rotationScheduler.getState());
+    const save = this.store.saveServiceState(record).catch((err) => {
+      log.error("scheduled-post-scheduler.persist-failed", err);
+      if (options.surfaceErrors) throw err;
+    });
+    if (!options.surfaceErrors) this.trackBackgroundWrite(save);
+    return save;
   }
 
   async runPhotoPostSchedulerTick(): Promise<DailyPhotoPostResult | null> {
@@ -4026,7 +4174,7 @@ export class RubyHighService extends Service {
       productId: input.productId.trim().slice(0, 96) || `card-pack-${packCount}`,
       packCount,
       cardCount,
-      status: "active",
+      status: input.status === "opened" ? "opened" : "active",
       issuedAt: at,
       updatedAt: at,
       ...(input.source ? { source: input.source } : {}),
@@ -4492,6 +4640,42 @@ export class RubyHighService extends Service {
     return normalizeHallPassPacks(state.wallet.hallPassPacks);
   }
 
+  recordHallPassPackOnChainOpened(
+    sessionId: string,
+    assetAddress: string,
+    metadataUri?: string,
+  ): RubyHighHallPassPack | null {
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const packs = normalizeHallPassPacks(state.wallet.hallPassPacks);
+    const asset = assetAddress.trim();
+    const pack = packs.find((candidate) => candidate.assetAddress === asset);
+    if (!pack) return null;
+    const cleanMetadataUri = typeof metadataUri === "string" ? metadataUri.trim() : "";
+    let changed = false;
+    if (pack.status !== "opened") {
+      pack.status = "opened";
+      changed = true;
+    }
+    if (cleanMetadataUri && pack.metadataUri !== cleanMetadataUri) {
+      pack.metadataUri = cleanMetadataUri;
+      changed = true;
+    }
+    if (pack.ownershipMissCount || pack.ownershipLastMissAt) {
+      delete pack.ownershipMissCount;
+      delete pack.ownershipLastMissAt;
+      changed = true;
+    }
+    if (changed) {
+      const at = Date.now();
+      pack.updatedAt = at;
+      state.wallet.hallPassPacks = normalizeHallPassPacks(packs);
+      state.updatedAt = at;
+      void this.persistSession(sessionId);
+    }
+    return pack;
+  }
+
   reconcileHallPassPacksForOwner(
     sessionId: string,
     ownerWalletAddress: string,
@@ -4506,20 +4690,35 @@ export class RubyHighService extends Service {
     const removed: RubyHighHallPassPack[] = [];
     const restored: RubyHighHallPassPack[] = [];
     const at = Date.now();
+    let changed = false;
     for (const pack of packs) {
       if (pack.ownerWalletAddress !== owner || pack.status === "opened") continue;
       const isOwnedOnChain = owned.has(pack.assetAddress);
       if (isOwnedOnChain && pack.status === "void") {
         pack.status = "active";
         pack.updatedAt = at;
+        delete pack.ownershipMissCount;
+        delete pack.ownershipLastMissAt;
+        changed = true;
         restored.push(pack);
       } else if (!isOwnedOnChain && pack.status === "active") {
-        pack.status = "void";
+        const missCount = Math.max(0, Math.floor(Number(pack.ownershipMissCount ?? 0))) + 1;
+        pack.ownershipMissCount = missCount;
+        pack.ownershipLastMissAt = at;
         pack.updatedAt = at;
-        removed.push(pack);
+        changed = true;
+        if (missCount >= 3) {
+          pack.status = "void";
+          removed.push(pack);
+        }
+      } else if (isOwnedOnChain && (pack.ownershipMissCount || pack.ownershipLastMissAt)) {
+        delete pack.ownershipMissCount;
+        delete pack.ownershipLastMissAt;
+        pack.updatedAt = at;
+        changed = true;
       }
     }
-    if (removed.length > 0 || restored.length > 0) {
+    if (changed) {
       state.wallet.hallPassPacks = normalizeHallPassPacks(packs);
       state.updatedAt = at;
       void this.persistSession(sessionId);
@@ -4593,6 +4792,41 @@ export class RubyHighService extends Service {
     if (transactionMessageHash) card.pendingMintTransactionHash = transactionMessageHash;
     else delete card.pendingMintTransactionHash;
     card.pendingMintPreparedAt = at;
+    delete card.pendingMintSignature;
+    delete card.pendingMintSubmittedAt;
+    card.updatedAt = at;
+    state.wallet.hallPassCards = normalizeHallPassCards(cards);
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return card;
+  }
+
+  recordHallPassCardMintSubmission(sessionId: string, input: HallPassCardMintSubmissionInput): RubyHighHallPassCard {
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const cards = normalizeHallPassCards(state.wallet.hallPassCards);
+    const card = cards.find((candidate) => candidate.id === input.cardId);
+    if (!card) throw new Error("Card not found.");
+    if (card.status !== "active" || card.mintAddress || card.mintSignature) {
+      throw new Error("Only a pending card can record a mint submission.");
+    }
+    const ownerWalletAddress = input.ownerWalletAddress.trim();
+    const mintAddress = input.mintAddress.trim();
+    const metadataUri = input.metadataUri.trim();
+    const mintSignature = input.mintSignature.trim();
+    if (!ownerWalletAddress || !mintAddress || !metadataUri || !mintSignature) {
+      throw new Error("Card mint submission is incomplete.");
+    }
+    if (
+      card.pendingMintOwnerWalletAddress !== ownerWalletAddress ||
+      card.pendingMintAddress !== mintAddress ||
+      card.pendingMintMetadataUri !== metadataUri
+    ) {
+      throw new Error("Card mint submission does not match the prepared card.");
+    }
+    const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
+    card.pendingMintSignature = mintSignature;
+    card.pendingMintSubmittedAt = at;
     card.updatedAt = at;
     state.wallet.hallPassCards = normalizeHallPassCards(cards);
     state.updatedAt = Date.now();
@@ -4643,6 +4877,10 @@ export class RubyHighService extends Service {
     delete card.pendingMintMetadataUri;
     delete card.pendingMintTransactionHash;
     delete card.pendingMintPreparedAt;
+    delete card.pendingMintSignature;
+    delete card.pendingMintSubmittedAt;
+    card.onChainRevealPending = true;
+    delete card.onChainRevealAttemptedAt;
     card.revealedAt = at;
     card.updatedAt = at;
     state.wallet.hallPassCards = normalizeHallPassCards(cards);
@@ -4682,6 +4920,39 @@ export class RubyHighService extends Service {
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return { state, applied: true, transaction, card };
+  }
+
+  pendingHallPassCardReveals(sessionId: string, ownerWalletAddress?: string): RubyHighHallPassCard[] {
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const owner = typeof ownerWalletAddress === "string" ? ownerWalletAddress.trim() : "";
+    return normalizeHallPassCards(state.wallet.hallPassCards).filter((card) => (
+      card.status === "active" &&
+      !!card.mintAddress &&
+      !!card.mintSignature &&
+      card.onChainRevealPending === true &&
+      (!owner || card.ownerWalletAddress === owner)
+    ));
+  }
+
+  recordHallPassCardRevealAttempt(
+    sessionId: string,
+    cardId: string,
+    completed: boolean,
+    at = Date.now(),
+  ): RubyHighHallPassCard {
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const cards = normalizeHallPassCards(state.wallet.hallPassCards);
+    const card = cards.find((candidate) => candidate.id === cardId);
+    if (!card) throw new Error("Card not found.");
+    card.onChainRevealAttemptedAt = Math.max(1, Math.floor(at));
+    card.onChainRevealPending = !completed;
+    card.updatedAt = Math.max(card.updatedAt, card.onChainRevealAttemptedAt);
+    state.wallet.hallPassCards = normalizeHallPassCards(cards);
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return card;
   }
 
   grantMeritStars(sessionId: string, input: MeritStarMutationInput): MeritStarMutationResult {
@@ -5008,6 +5279,7 @@ export class RubyHighService extends Service {
       storedMetricEvents,
       storedSchoolEvents,
       storedPhotoPostSchedulerState,
+      storedScheduledPostSchedulerState,
       storedPublicWorldRoomState,
       storedPublicWorldRoomOutcomeState,
       storedPublicWorldTermState,
@@ -5024,6 +5296,7 @@ export class RubyHighService extends Service {
       this.store.loadMetricEvents?.() ?? Promise.resolve([]),
       this.store.loadSchoolEvents?.({ limit: SCHOOL_WORLD_EVENT_CACHE_LIMIT }) ?? Promise.resolve([]),
       this.store.loadServiceState?.(PHOTO_POST_SCHEDULER_STATE_ID) ?? Promise.resolve(null),
+      this.store.loadServiceState?.(SCHEDULED_POST_SCHEDULER_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_ROOMS_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_ROOM_OUTCOMES_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_TERMS_STATE_ID) ?? Promise.resolve(null),
@@ -5081,6 +5354,9 @@ export class RubyHighService extends Service {
     }
     this.pruneSchoolEventRecords();
     this.hydratePhotoPostSchedulerState(storedPhotoPostSchedulerState);
+    this.rotationScheduler = new PostRotationScheduler({
+      state: hydrateScheduledPostSchedulerState(storedScheduledPostSchedulerState),
+    });
     this.hydratePublicWorldRoomState(storedPublicWorldRoomState);
     this.hydratePublicWorldRoomOutcomeState(storedPublicWorldRoomOutcomeState);
     this.hydratePublicWorldTermState(storedPublicWorldTermState);
@@ -6893,6 +7169,7 @@ export class RubyHighService extends Service {
     if (picked != null) {
       const record: AnswerRecord = {
         questionId: q.id,
+        faculty: q.faculty ?? round.classSession?.facultyId ?? state.faculty,
         picked,
         correct: (q.correct ?? "A") as Choice,
         wasCorrect,
@@ -7834,7 +8111,15 @@ export class RubyHighService extends Service {
     // Imported decks are private study material; custom "challenge" boards
     // should not silently rewrite a user's imported source deck. The original
     // Ruby High curriculum is the shared server-side bank we grow over time.
-    if (pack.id !== ORIGINAL_PACK_ID) return;
+    // A rotating Guest Faculty course composes a derived pack id around that
+    // same base school, so core-faculty authored cards still belong in the
+    // original bank while guest cards remain isolated to their source pack.
+    const targetPackId =
+      pack.id === ORIGINAL_PACK_ID ||
+      pack.id.startsWith(`${ORIGINAL_PACK_ID}+guest:`)
+        ? ORIGINAL_PACK_ID
+        : null;
+    if (!targetPackId || question.faculty === GUEST_COURSE_ID) return;
     if (!question.options || !question.correct || !question.subject || !question.difficulty || !question.faculty) return;
     const banked: BankedQuestion = {
       id: question.id,
@@ -7848,12 +8133,12 @@ export class RubyHighService extends Service {
       difficulty: question.difficulty,
       faculty: question.faculty,
     };
-    const updated = appendQuestionToPackBank(pack.id, question.faculty, banked);
+    const updated = appendQuestionToPackBank(targetPackId, question.faculty, banked);
     if (updated) {
       this.persistGlobalPack(updated);
       log.event("question.promoted-to-bank", {
         sessionId: state.sessionId,
-        packId: pack.id,
+        packId: targetPackId,
         faculty: question.faculty,
         questionId: question.id,
       });
@@ -8069,6 +8354,7 @@ export class RubyHighService extends Service {
       const scoreMultiplier = scoreMultiplierForPass(state, passed, reviewAt);
       const record: AnswerRecord = {
         questionId: q.id,
+        faculty: q.faculty ?? round.classSession?.facultyId ?? state.faculty,
         picked: "A" as Choice, // sentinel — opinion answers don't have a letter
         correct: "A" as Choice,
         wasCorrect: passed,
@@ -9473,7 +9759,7 @@ export class RubyHighService extends Service {
       if (!publicId || publicId === viewerPublicId) continue;
       if (!state.currentGrade || !state.faculty) continue;
       if (!characterAllowsPublicSharing(ch)) continue;
-      const lastActive = this.lastActivityFor(ch, state);
+      const { facultyId, lastActive } = this.lastClassroomActivityFor(ch, state);
       if (now - lastActive > weekMs) continue;
       const portraitUrl = customPublicPortraitUrlForCharacter(ch);
       if (!portraitUrl) continue;
@@ -9488,7 +9774,7 @@ export class RubyHighService extends Service {
         name: publicWorldNameReview(ch.name).displayName,
         playbookId: ch.playbookId,
         grade: state.currentGrade,
-        facultyId: state.faculty,
+        facultyId,
         portraitUrl,
         stats: { ...ch.stats },
         classGrades,
@@ -9991,30 +10277,29 @@ export class RubyHighService extends Service {
     return sessionIds;
   }
 
-  private publicSchoolWorldEntries(now = Date.now(), weekMs = 7 * 24 * 60 * 60 * 1000): Array<{ state: QuizState; ch: PlayerCharacter; lastActive: number }> {
-    const entries: Array<{ state: QuizState; ch: PlayerCharacter; lastActive: number }> = [];
+  private publicSchoolWorldEntries(now = Date.now(), weekMs = 7 * 24 * 60 * 60 * 1000): PublicSchoolWorldEntry[] {
+    const entries: PublicSchoolWorldEntry[] = [];
     for (const [, state] of this.sessions) {
       const ch = state.character;
       if (!ch || !state.currentGrade) continue;
       if (!characterAllowsPublicSharing(ch)) continue;
-      const lastActive = this.lastActivityFor(ch, state);
+      const { facultyId, lastActive } = this.lastClassroomActivityFor(ch, state);
       if (now - lastActive > weekMs) continue;
       const hasGrades = characterDailyClassRecords(ch).some((record) => record.status === "complete");
       if (!hasGrades) continue;
-      entries.push({ state, ch, lastActive });
+      entries.push({ state, ch, facultyId, lastActive });
     }
     return entries;
   }
 
-  private publicWorldPresenceFromEntry(entry: { state: QuizState; ch: PlayerCharacter; lastActive: number }): PublicWorldPresenceEntry {
-    const { state, ch, lastActive } = entry;
+  private publicWorldPresenceFromEntry(entry: PublicSchoolWorldEntry): PublicWorldPresenceEntry {
+    const { state, ch, facultyId, lastActive } = entry;
     const classGrades: Record<string, string> = {};
     for (const record of characterDailyClassRecords(ch)) {
       if (record.status === "complete" && record.letterGrade) {
         classGrades[record.facultyId] = record.letterGrade;
       }
     }
-    const facultyId = state.faculty;
     const faculty = facultyForSession(state).find((item) => item.id === facultyId);
     return {
       sessionId: state.sessionId,
@@ -10104,12 +10389,39 @@ export class RubyHighService extends Service {
     return sum / grades.length;
   }
 
-  private lastActivityFor(ch: PlayerCharacter, state: QuizState): number {
+  private lastClassroomActivityFor(ch: PlayerCharacter, state: QuizState): { facultyId: string; lastActive: number } {
     let latest = Number(ch.createdAt ?? 0);
     if (!Number.isFinite(latest) || latest < 0) latest = 0;
+    let facultyId = state.faculty;
+    let latestClassroomAt = -1;
+    const noteClassroomActivity = (rawAt: unknown, rawFaculty: unknown): void => {
+      if (rawAt == null) return;
+      const at = Number(rawAt);
+      if (Number.isFinite(at) && at > latest) latest = at;
+      const faculty = typeof rawFaculty === "string" ? rawFaculty.trim() : "";
+      if (!faculty || !Number.isFinite(at) || at < 0 || at < latestClassroomAt) return;
+      latestClassroomAt = at;
+      facultyId = resolveFacultyIdForSession(state, faculty) ?? faculty;
+    };
+
     for (const record of characterDailyClassRecords(ch)) {
       const t = Number(record.updatedAt ?? record.completedAt ?? 0);
-      if (Number.isFinite(t) && t > latest) latest = t;
+      noteClassroomActivity(t, record.facultyId);
+    }
+    // Card memory supplies room-aware timestamps for existing persisted
+    // sessions, including practice answers that do not update daily classes.
+    for (const memory of Object.values(state.cardMemory ?? {})) {
+      noteClassroomActivity(memory?.lastReviewedAt, memory?.courseId);
+    }
+    for (const answer of Array.isArray(state.history) ? state.history : []) {
+      noteClassroomActivity(answer?.at, answer?.faculty);
+    }
+    const playerAnsweredAt = state.activeRound?.player?.answeredAt;
+    if (playerAnsweredAt != null) {
+      noteClassroomActivity(
+        playerAnsweredAt,
+        state.activeRound?.classSession?.facultyId ?? state.current?.faculty,
+      );
     }
     for (const lu of characterArrayField(ch, "levelUps")) {
       const t = Number(lu.awardedAt ?? 0);
@@ -10117,9 +10429,9 @@ export class RubyHighService extends Service {
     }
     for (const event of Array.isArray(state.schoolEvents) ? state.schoolEvents : []) {
       const t = Number(event.at ?? 0);
-      if (Number.isFinite(t) && t > latest) latest = t;
+      noteClassroomActivity(t, event.faculty);
     }
-    return latest;
+    return { facultyId, lastActive: latest };
   }
 
   /** Reassign pending photos from one teacher to another. Used when a
@@ -10525,6 +10837,7 @@ function normalizeHallPassCard(raw: unknown): RubyHighHallPassCard | null {
     "pendingMintAddress",
     "pendingMintMetadataUri",
     "pendingMintTransactionHash",
+    "pendingMintSignature",
     "mintAddress",
     "mintSignature",
     "metadataUri",
@@ -10554,6 +10867,13 @@ function normalizeHallPassCard(raw: unknown): RubyHighHallPassCard | null {
   if (Number.isFinite(revealedAt) && revealedAt > 0) entry.revealedAt = revealedAt;
   const pendingMintPreparedAt = Math.floor(Number(card.pendingMintPreparedAt ?? 0));
   if (Number.isFinite(pendingMintPreparedAt) && pendingMintPreparedAt > 0) entry.pendingMintPreparedAt = pendingMintPreparedAt;
+  const pendingMintSubmittedAt = Math.floor(Number(card.pendingMintSubmittedAt ?? 0));
+  if (Number.isFinite(pendingMintSubmittedAt) && pendingMintSubmittedAt > 0) entry.pendingMintSubmittedAt = pendingMintSubmittedAt;
+  if (card.onChainRevealPending === true) entry.onChainRevealPending = true;
+  const onChainRevealAttemptedAt = Math.floor(Number(card.onChainRevealAttemptedAt ?? 0));
+  if (Number.isFinite(onChainRevealAttemptedAt) && onChainRevealAttemptedAt > 0) {
+    entry.onChainRevealAttemptedAt = onChainRevealAttemptedAt;
+  }
   const burnedAt = Math.floor(Number(card.burnedAt ?? 0));
   if (Number.isFinite(burnedAt) && burnedAt > 0) entry.burnedAt = burnedAt;
   if (
@@ -10691,6 +11011,12 @@ function normalizeHallPassPack(raw: unknown): RubyHighHallPassPack | null {
   if (Number.isFinite(revealSlot) && revealSlot >= 0) entry.revealSlot = revealSlot;
   const openedAt = Math.floor(Number(pack.openedAt ?? 0));
   if (Number.isFinite(openedAt) && openedAt > 0) entry.openedAt = openedAt;
+  const ownershipMissCount = Math.floor(Number(pack.ownershipMissCount ?? 0));
+  if (Number.isFinite(ownershipMissCount) && ownershipMissCount > 0) entry.ownershipMissCount = ownershipMissCount;
+  const ownershipLastMissAt = Math.floor(Number(pack.ownershipLastMissAt ?? 0));
+  if (Number.isFinite(ownershipLastMissAt) && ownershipLastMissAt > 0) {
+    entry.ownershipLastMissAt = ownershipLastMissAt;
+  }
   return entry;
 }
 

@@ -1,0 +1,119 @@
+{
+  "name": "@cenetex/plugin-ruby-high",
+  "version": "0.1.0",
+  "description": "Send an elizaOS agent to Ruby High to enroll, attend classes, answer questions, and learn alongside humans and agents.",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "author": "RATi Open Software Foundation",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "images",
+    "README.md",
+    "elizaos.plugin.json"
+  ],
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run",
+    "check": "npm run typecheck && npm run test && npm run build"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "^1.7.2 || ^2.0.0-alpha.0 || ^2.0.3-beta.0 || >=2.0.0 <3"
+  },
+  "devDependencies": {
+    "@elizaos/core": "^1.7.2",
+    "tsup": "^8.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": "github:cenetex/plugin-ruby-high",
+  "license": "MIT",
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "elizaos-plugin",
+    "eliza-plugin",
+    "ruby-high",
+    "education",
+    "agents",
+    "game"
+  ],
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "RUBY_HIGH_URL": {
+        "type": "string",
+        "description": "Ruby High server URL; defaults to https://ruby-high.fly.dev."
+      },
+      "RUBY_HIGH_AGENT_TOKEN": {
+        "type": "string",
+        "description": "Device-approved Ruby High agent bearer token."
+      }
+    },
+    "actions": [
+      "CONNECT_RUBY_HIGH",
+      "ENROLL_RUBY_HIGH",
+      "ATTEND_RUBY_HIGH",
+      "ANSWER_RUBY_HIGH",
+      "CHANGE_RUBY_HIGH_CLASS",
+      "CHECK_RUBY_HIGH_PROGRESS",
+      "SET_RUBY_HIGH_PUBLIC_PRESENCE",
+      "CONFIGURE_RUBY_HIGH_AUTONOMY"
+    ],
+    "providers": [
+      "RUBY_HIGH_STATE"
+    ],
+    "services": [
+      "ruby-high-agent"
+    ]
+  },
+  "elizaos": {
+    "install": {
+      "npmSpec": "@cenetex/plugin-ruby-high",
+      "defaultChoice": "npm"
+    },
+    "app": {
+      "displayName": "Ruby High",
+      "category": "education",
+      "launchType": "connect",
+      "launchUrl": null,
+      "icon": "./images/logo.jpg",
+      "capabilities": [
+        "education",
+        "agent-gameplay",
+        "bounded-autonomy",
+        "spectate-and-steer"
+      ],
+      "runtimePlugin": "@cenetex/plugin-ruby-high",
+      "viewer": {
+        "url": "/ruby-high/viewer",
+        "postMessageAuth": false,
+        "sandbox": "allow-scripts allow-same-origin allow-popups"
+      },
+      "session": {
+        "mode": "external",
+        "features": [
+          "commands",
+          "telemetry",
+          "suggestions"
+        ]
+      }
+    }
+  }
+}

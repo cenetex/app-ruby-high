@@ -99,10 +99,17 @@ No hosted account or OpenRouter key is needed for these:
 - `GET /api/apps/ruby-high/cohort/:grade` renders the classroom cohort leaderboard for the current grade, scoped to active sessions at that year level.
 - `GET /api/apps/ruby-high/world` returns the privacy-filtered shared school activity model: active classrooms, honor-roll cohorts, recent school events, and low curriculum pools. `?limit=` caps recent events.
 - `GET /api/apps/ruby-high/world/events` streams the same shared school activity model as SSE frames; `?live=1` keeps the stream open briefly for viewer refreshes and future multiplayer clients.
+- `/api/apps/ruby-high/agent/v1` is the versioned agent surface. It uses a human-approved device code, scoped bearer credentials, isolated student state, idempotent mutations, answer-key redaction, bounded autonomy settings, events, revocation, and one-time viewer launches.
 
 ## Service Wiring
 
-The standalone server starts four services (`FacultyService`, `RubyHighService`, `AuthService`, `ChatService`) backed by the content-pack registry under `src/content/`. Ruby High Original is always the base school; public creator packs rotate into one Guest Faculty course automatically each week. Guest Faculty management stays out of permanent classroom chrome.
+The standalone server starts the school, faculty, auth, chat, agent-access, and configured social services backed by the content-pack registry under `src/content/`. Ruby High Original is always the base school; public creator packs rotate into one Guest Faculty course automatically each week. Eliza's built-in 64-question ElizaOS Systems Lab is the first curated guest course, and Eliza remains available as a collectible teacher card.
+
+## ElizaOS agents
+
+The registry-ready ElizaOS package lives in [`packages/plugin-ruby-high`](./packages/plugin-ruby-high). It supports enrollment, classes, answers, progress, explicit public presence, and scheduled attendance through the same authoritative game engine as human players.
+
+Scheduled play is opt-in and server-bounded: 15–1440 minute intervals, at most two classes, eight actions, and two model calls per run. It defaults to one class, six actions, one model call, no public presence, and the Guest Faculty allowlist. The plugin's app view exposes current work, its last scheduler stop reason, an autonomy toggle, and a one-time spectate-and-steer launch.
 
 ## Configuration
 
@@ -118,10 +125,12 @@ The standalone server starts four services (`FacultyService`, `RubyHighService`,
 | `RUBY_HIGH_PRIVY_VERIFICATION_KEY` | — | Optional JWT verification-key fallback for deployments that do not use `RUBY_HIGH_PRIVY_APP_SECRET`. |
 | `RUBY_HIGH_STORE_BACKEND` | `json` | `json` for local dev (atomic file at `~/.ruby-high/state.json`), `sqlite` for production (Fly Volume at `/data/ruby-high.db`). The legacy `dynamodb` backend is archived. |
 | `RUBY_HIGH_STATE_PATH` | `~/.ruby-high/state.json` | State file path. For the `sqlite` backend this is the db file path (e.g. `/data/ruby-high.db`). |
+| `RUBY_HIGH_X_SCHEDULED_POSTS_ENABLED` | `0` | Set to `1` to let the first connected teacher publish one LLM-written classroom/teacher-lounge update per 24 hours. Each update composes a dynamic, identity-locked campus photo from canonical faculty/classmate art, with the static teacher portrait as a generation fallback. The job uses only aggregate public-world activity, skips empty or duplicate context, persists its cadence across restarts, and backs off six hours after a failed attempt. |
 | `RUBY_HIGH_STATE_TTL_SECONDS` | 90 days | TTL for idle sessions (SQLite `kv_expires` index). |
 | `RUBY_HIGH_DYNAMO_TABLE` | — | Legacy: required when backend is `dynamodb`. Ignored for `sqlite`/`json`. |
 | `AWS_REGION` | — | Legacy state-store region. Still used for Tigris portrait storage when `RUBY_HIGH_PORTRAITS_BUCKET` is set. |
 | `RUBY_HIGH_ADMIN_TOKEN` | — | Enables `/api/apps/ruby-high/admin/metrics`. Keep this in secrets only. |
+| `RUBY_HIGH_AGENT_TOKEN_SECRET` | random per process | Optional stable HMAC secret for agent device-token issuance across a server restart. Existing issued bearer tokens remain valid from their stored hashes. Set this through the deployment secret manager. |
 | `RUBY_HIGH_METRICS_TRUST_START` | — | Optional ISO date/time shown in admin metric quality notes after a metrics reset or schema migration. |
 | `RUBY_HIGH_LLM_PROVIDER` | `openrouter` | Set to `local` to use a local OpenAI-compatible `/v1/chat/completions` endpoint. Also inferred as `local` when `RUBY_HIGH_LLM_BASE_URL` is set. |
 | `RUBY_HIGH_LLM_BASE_URL` | `http://127.0.0.1:11434/v1` in local mode | Local OpenAI-compatible base URL. Values ending in `/v1` or `/chat/completions` are both accepted. |

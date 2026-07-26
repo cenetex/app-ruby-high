@@ -192,4 +192,77 @@ describe("graduation photo prompts", () => {
     expect(prompt).toContain("AVOID: plain homeroom");
     expect(prompt).not.toContain("CLASSROOM SCENE");
   });
+
+  it("composes scheduled updates as identity-locked dynamic school photos", async () => {
+    vi.stubEnv("RUBY_HIGH_PUBLIC_BASE", "https://ruby-high.ai");
+    const requests: any[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: unknown, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body || "{}")));
+      return imageResponse("data:image/png;base64,SCHOOLUPDATE");
+    }));
+
+    const { renderScheduledSchoolUpdatePhoto } = await import("../services/character-generation.js");
+    const url = await renderScheduledSchoolUpdatePhoto({
+      apiKey: "sk-test",
+      postText: "The lab tables are lively today. #RubyHigh",
+      context: {
+        date: "2026-07-23",
+        updatedSessionsLast24h: 12,
+        activeStudents: 3,
+        activeRooms: [{ area: "classroom", grade: "10", activeStudents: 3, goalProgress: 2, goalTarget: 3 }],
+        highlights: { newStudents: 1, classesPassed: 2, gradesAdvanced: 0, graduations: 0 },
+        recentEvents: { roomGoalProgress: 2, relationshipMoments: 0, futuresResolved: 0, comicPagesUnlocked: 0 },
+      },
+      participants: [
+        { role: "teacher", id: "ruby", name: "Ruby", imageUrl: "/api/apps/ruby-high/assets/teachers/ruby-full.png" },
+        { role: "student", id: "mika", name: "Mika", imageUrl: "/api/apps/ruby-high/assets/students/mika-full.png" },
+        { role: "student", id: "ravi", name: "Ravi", imageUrl: "/api/apps/ruby-high/assets/students/ravi-full.png" },
+      ],
+    });
+
+    expect(url).toBe("data:image/png;base64,SCHOOLUPDATE");
+    const content = requests[0]?.messages?.[0]?.content;
+    const prompt = Array.isArray(content)
+      ? content.filter((part: any) => part.type === "text").map((part: any) => String(part.text ?? "")).join("\n")
+      : "";
+    const imageParts = Array.isArray(content) ? content.filter((part: any) => part.type === "image_url") : [];
+    expect(imageParts.map((part: any) => part.image_url?.url)).toEqual([
+      "https://ruby-high.ai/api/apps/ruby-high/assets/teachers/ruby-full.png",
+      "https://ruby-high.ai/api/apps/ruby-high/assets/students/mika-full.png",
+      "https://ruby-high.ai/api/apps/ruby-high/assets/students/ravi-full.png",
+    ]);
+    expect(prompt).toContain("REFERENCE IMAGE 1: Ruby - teacher");
+    expect(prompt).toContain("IDENTITY LOCK");
+    expect(prompt).toContain("Ruby High science lab");
+    expect(prompt).toContain("STORY BEAT: The lab tables are lively today. #RubyHigh");
+    expect(prompt).toContain("wide horizontal editorial school photo, 16:9");
+    expect(prompt).toContain("not a graduation ceremony");
+    expect(prompt).toContain("No text, no logos, no captions");
+  });
+
+  it("uses the dedicated teacher lounge scene for lounge updates", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => imageResponse("data:image/png;base64,LOUNGE")));
+    const { renderScheduledSchoolUpdatePhoto } = await import("../services/character-generation.js");
+    await renderScheduledSchoolUpdatePhoto({
+      apiKey: "sk-test",
+      postText: "The lounge debate survived the bell. #RubyHigh",
+      context: {
+        date: "2026-07-23",
+        updatedSessionsLast24h: 3,
+        activeStudents: 1,
+        activeRooms: [{ area: "teacher-lounge", grade: "11", activeStudents: 1, goalProgress: 1, goalTarget: 3 }],
+        highlights: { newStudents: 0, classesPassed: 0, gradesAdvanced: 0, graduations: 0 },
+        recentEvents: { roomGoalProgress: 0, relationshipMoments: 2, futuresResolved: 0, comicPagesUnlocked: 0 },
+      },
+      participants: [
+        { role: "teacher", id: "ruby", name: "Ruby", imageUrl: "https://ruby.test/ruby.png" },
+        { role: "teacher", id: "sally-science", name: "Sally Science", imageUrl: "https://ruby.test/sally.png" },
+        { role: "teacher", id: "professor-edward", name: "Professor Edward", imageUrl: "https://ruby.test/edward.png" },
+      ],
+    });
+    const request = (fetch as any).mock.calls[0];
+    const body = JSON.parse(String(request?.[1]?.body || "{}"));
+    expect(JSON.stringify(body)).toContain("Ruby High teacher's lounge");
+    expect(JSON.stringify(body)).toContain("lively social energy");
+  });
 });

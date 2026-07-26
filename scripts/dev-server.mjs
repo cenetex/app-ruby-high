@@ -8,6 +8,7 @@ import { serveLandingRequest } from "./landing.mjs";
 import { normalizePublicOrigin } from "./public-base.mjs";
 import {
   AuthService,
+  AgentAccessService,
   ChatService,
   FacultyService,
   RubyHighService,
@@ -25,9 +26,7 @@ const STATE_PATH = process.env.RUBY_HIGH_STATE_PATH ?? null;
 const PUBLIC_BASE = normalizePublicOrigin(process.env.RUBY_HIGH_PUBLIC_BASE) ?? `http://${HOST}:${PORT}`;
 const GRADES = ["9", "10", "11", "12"];
 const CLASS_QUESTIONS_PER_DAY = 3;
-const GRADUATION_ROOM_TARGETS = { "9": 1, "10": 2, "11": 3, "12": 4 };
 const GRADUATION_DAYS = { "9": 1, "10": 1, "11": 2, "12": 3 };
-const CORE_GRADUATION_FACULTY = ["ruby", "sally-science", "professor-edward"];
 
 const stateStore = await createStateStore({ jsonPath: STATE_PATH ?? undefined });
 console.log(`[ruby-high] state store: ${stateStore.describe()}`);
@@ -35,6 +34,7 @@ console.log(`[ruby-high] state store: ${stateStore.describe()}`);
 const facultySvc = await FacultyService.start({});
 const authSvc = await AuthService.start({}, stateStore);
 const chatSvc = await ChatService.start({});
+let agentAccessSvc = null;
 
 const fakeRuntime = {
   agentId: "local-ruby",
@@ -43,6 +43,7 @@ const fakeRuntime = {
     if (type === FacultyService.serviceType) return facultySvc;
     if (type === RubyHighService.serviceType) return rubySvc;
     if (type === AuthService.serviceType) return authSvc;
+    if (type === AgentAccessService.serviceType) return agentAccessSvc;
     if (type === ChatService.serviceType) return chatSvc;
     if (type === XSocialService.serviceType) return xSocialSvc;
     if (type === TelegramService.serviceType) return telegramSvc;
@@ -71,6 +72,8 @@ const rubySvc = await (async () => {
   return svc;
 })();
 chatSvc.setRubyHighService(rubySvc);
+agentAccessSvc = new AgentAccessService(fakeRuntime, stateStore);
+await agentAccessSvc.hydrate();
 
 function makeRouteContext(req, res, url) {
   return createRouteContext({
@@ -98,15 +101,6 @@ function classDateForOffset(offset) {
   return date.toISOString().slice(0, 10);
 }
 
-function graduationFacultyIdsForState(state, grade) {
-  const available = new Set((state.contentPack?.faculty ?? facultySvc.faculty()).map((faculty) => faculty.id));
-  const selected = CORE_GRADUATION_FACULTY.filter((facultyId) => available.has(facultyId));
-  for (const faculty of state.contentPack?.faculty ?? facultySvc.faculty()) {
-    if (!selected.includes(faculty.id)) selected.push(faculty.id);
-  }
-  return selected.slice(0, Math.min(GRADUATION_ROOM_TARGETS[grade] ?? 1, selected.length || 1));
-}
-
 async function completeCurrentGradeForDev(sessionId) {
   const state = rubySvc.getOrCreate(sessionId);
   const ch = state.character;
@@ -117,7 +111,11 @@ async function completeCurrentGradeForDev(sessionId) {
     throw err;
   }
 
-  const facultyIds = graduationFacultyIdsForState(state, grade);
+  const graduationGate = rubySvc.graduationGate(sessionId);
+  const facultyIds = Array.from(new Set([
+    ...graduationGate.requiredFacultyIds,
+    ...graduationGate.eligibleFacultyIds,
+  ])).slice(0, graduationGate.requiredRooms);
   const requiredDays = GRADUATION_DAYS[grade] ?? 1;
   const now = Date.now();
   ch.dailyClasses = ch.dailyClasses ?? {};

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ORIGINAL_PACK_ID,
   GUEST_COURSE_ID,
@@ -9,11 +9,15 @@ import {
   getPackByIdForSession,
   MAX_PACKS_PER_OWNER,
   packForSession,
+  publicCreatorPacks,
   registerPublicPack,
   registerPack,
   resetActivePack,
+  guestWeekKey,
+  weeklyAutoGuestPack,
 } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
+import { ELIZAOS_SYSTEMS_LAB_PACK_ID } from "../content/packs/elizaos-systems-lab.js";
 import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 
 // Multi-pack registry tests. Built-in pack is owned by null and pinned;
@@ -21,6 +25,7 @@ import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 // session. LRU per-owner caps registered packs.
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   resetActivePack();
 });
 
@@ -62,11 +67,17 @@ describe("registerPack — ownership + visibility", () => {
     const bobSees = availablePacksForSession("session:bob").map((p) => p.id).sort();
     const guestSees = availablePacksForSession(null).map((p) => p.id).sort();
 
-    // Alice sees the built-in + her own pack, NOT Bob's.
-    expect(aliceSees).toEqual(["agent:alice-1", ORIGINAL_PACK_ID].sort());
-    expect(bobSees).toEqual(["agent:bob-1", ORIGINAL_PACK_ID].sort());
+    // Alice sees the built-ins + her own pack, NOT Bob's.
+    expect(aliceSees).toEqual(
+      ["agent:alice-1", ORIGINAL_PACK_ID, ELIZAOS_SYSTEMS_LAB_PACK_ID].sort(),
+    );
+    expect(bobSees).toEqual(
+      ["agent:bob-1", ORIGINAL_PACK_ID, ELIZAOS_SYSTEMS_LAB_PACK_ID].sort(),
+    );
     // Unauthed (no session) sees only built-ins.
-    expect(guestSees).toEqual([ORIGINAL_PACK_ID]);
+    expect(guestSees).toEqual(
+      [ORIGINAL_PACK_ID, ELIZAOS_SYSTEMS_LAB_PACK_ID].sort(),
+    );
   });
 
   it("getPackByIdForSession enforces ownership — same response for unknown and not-yours", async () => {
@@ -80,6 +91,8 @@ describe("registerPack — ownership + visibility", () => {
     expect(getPackByIdForSession("does-not-exist", "session:bob")).toBeNull();
     // Built-ins are visible to everyone.
     expect(getPackByIdForSession(ORIGINAL_PACK_ID, "session:bob")?.id).toBe(ORIGINAL_PACK_ID);
+    expect(getPackByIdForSession(ELIZAOS_SYSTEMS_LAB_PACK_ID, "session:bob")?.id)
+      .toBe(ELIZAOS_SYSTEMS_LAB_PACK_ID);
   });
 
   it("registerPack refuses to overwrite a pinned built-in pack id", async () => {
@@ -153,19 +166,39 @@ describe("registerPack — LRU eviction per owner", () => {
 });
 
 describe("packForSession — fallback semantics", () => {
-  it("falls back to the global active pack on null / unknown / cross-owner activePackId", async () => {
+  it("falls back to the global school with its automatic guest on session states", async () => {
     await getActivePack();
     registerPack(fakePack("agent:alice-1"), "session:alice");
 
     expect(packForSession(null).id).toBe(ORIGINAL_PACK_ID);
-    expect(packForSession({ activePackId: null }).id).toBe(ORIGINAL_PACK_ID);
-    expect(packForSession({ activePackId: "agent:does-not-exist" }).id).toBe(ORIGINAL_PACK_ID);
-    expect(packForSession({ sessionId: "session:bob", activePackId: "agent:alice-1" }).id).toBe(ORIGINAL_PACK_ID);
+    expect(packForSession({ activePackId: null }).id)
+      .toContain(`${ORIGINAL_PACK_ID}+guest`);
+    expect(packForSession({ activePackId: "agent:does-not-exist" }).id)
+      .toBe(ORIGINAL_PACK_ID);
+    expect(packForSession({ sessionId: "session:bob", activePackId: "agent:alice-1" }).id)
+      .toBe(ORIGINAL_PACK_ID);
     expect(packForSession({ sessionId: "session:alice", activePackId: "agent:alice-1" }).id).toBe("agent:alice-1");
   });
 });
 
 describe("packForSession — weekly guest composition", () => {
+  it("honors a configured featured guest only for its scheduled week", async () => {
+    await getActivePack();
+    registerPublicPack(fakePack("pack:featured-alternative"), 1_000);
+    const date = new Date("2026-07-21T12:00:00.000Z");
+    const baseline = weeklyAutoGuestPack(date);
+    const override = publicCreatorPacks().find((pack) => pack.id !== baseline?.id);
+    expect(baseline).not.toBeNull();
+    expect(override).toBeDefined();
+
+    vi.stubEnv("RUBY_HIGH_FEATURED_GUEST_PACK_ID", override!.id);
+    vi.stubEnv("RUBY_HIGH_FEATURED_GUEST_WEEK_KEY", guestWeekKey(date));
+    expect(weeklyAutoGuestPack(date)?.id).toBe(override!.id);
+
+    vi.stubEnv("RUBY_HIGH_FEATURED_GUEST_WEEK_KEY", "2099-W01");
+    expect(weeklyAutoGuestPack(date)?.id).toBe(baseline!.id);
+  });
+
   it("keeps Ruby High as the base school and adds one stable guest course", async () => {
     await getActivePack();
     const guestPack = fakePack("pack:guest-signals");

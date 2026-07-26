@@ -52,6 +52,11 @@ type RubySocialSnapshotService = {
   hasClassPhotoRevealTarget?: (candidates: readonly ClassPhotoCandidate[]) => boolean;
   enqueueClassPhotoReveal?: (teacherFacultyId: string, imageUrl: string, candidates: readonly ClassPhotoCandidate[]) => string | null;
   maybePostDailyPhoto?: (opts?: { photoId?: string }) => Promise<DailyPhotoPostResult | null> | DailyPhotoPostResult | null;
+  runScheduledSchoolUpdateNow?: (teacherId?: string) => Promise<{
+    tweetId: string;
+    teacherId: string;
+    contextFingerprint: string;
+  } | null>;
 };
 
 function rubySocialService(xSocial: XSocialService): RubySocialSnapshotService | null {
@@ -225,6 +230,32 @@ export async function handleXSocialRoutes(
     const rsvc = rubySocialService(xSocial);
     const snapshot = await freshSchoolSnapshot(rsvc) ?? { topByYear: {}, photoPool: [], classPhotoHistory: [], dailyMemories: {} };
     ctx.json(ctx.res, snapshot);
+    return true;
+  }
+
+  // POST /x/post-scheduled/:teacherId — force one generated school update (admin only)
+  if (ctx.method === "POST" && pathname.startsWith(`${X_SOCIAL_PREFIX}/post-scheduled/`)) {
+    if (!requireAdminAuth(ctx)) { ctx.error(ctx.res, "Admin authentication required.", 401); return true; }
+    const teacherId = pathname.slice(`${X_SOCIAL_PREFIX}/post-scheduled/`.length);
+    if (!teacherId) { ctx.error(ctx.res, "Teacher ID is required.", 400); return true; }
+    const rsvc = rubySocialService(xSocial);
+    if (!rsvc?.runScheduledSchoolUpdateNow) {
+      ctx.error(ctx.res, "Ruby High scheduled posting service is unavailable.", 503);
+      return true;
+    }
+    try {
+      const result = await rsvc.runScheduledSchoolUpdateNow(teacherId);
+      if (!result) {
+        ctx.json(ctx.res, {
+          ok: false,
+          error: "Scheduled update failed, has no meaningful activity, or another post is already running.",
+        }, 409);
+        return true;
+      }
+      ctx.json(ctx.res, { ok: true, forced: true, ...result });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : "Scheduled update failed", 500);
+    }
     return true;
   }
 

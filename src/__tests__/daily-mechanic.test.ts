@@ -762,6 +762,10 @@ describe("Streak + grade advancement", () => {
     // for this grade so all per-class gates are met up front; the test
     // exercises only the streak arithmetic.
     attachCharacter(ruby, sid, "12");
+    ruby.getOrCreate(sid).character!.dailyClasses = completedClassesForGrade(
+      "12",
+      [...TEACHING_FACULTY_IDS, "guest"],
+    );
     const ch = ruby.getOrCreate(sid).character!;
     ch.streak = { grade: "12", count: 0 };
     ch.yearbook = [
@@ -815,6 +819,7 @@ describe("Streak + grade advancement", () => {
     markFacultyMastered(ruby, faculty, sid, "ruby");
     markFacultyMastered(ruby, faculty, sid, "sally-science");
     markFacultyMastered(ruby, faculty, sid, "professor-edward");
+    markFacultyMastered(ruby, faculty, sid, "guest");
 
     ruby.getOrCreate(sid);
     ruby.completeGraduation(sid, { kind: "advantage" });
@@ -1038,6 +1043,7 @@ describe("Streak + grade advancement", () => {
 
     markFacultyMastered(ruby, faculty, sid, "ruby");
     markFacultyMastered(ruby, faculty, sid, "sally-science");
+    markFacultyMastered(ruby, faculty, sid, "guest");
     expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBeUndefined();
     markFacultyMastered(ruby, faculty, sid, "professor-edward");
 

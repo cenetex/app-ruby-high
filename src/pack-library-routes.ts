@@ -1366,6 +1366,7 @@ function draftFromPublishedPack(
       quote: "",
       ...(faculty.assetTeacherId ? { assetTeacherId: faculty.assetTeacherId } : {}),
       ...(faculty.profileImageUrl ? { profileImageUrl: faculty.profileImageUrl } : {}),
+      ...(faculty.xHandle ? { socialsUrl: `https://x.com/${faculty.xHandle}` } : {}),
       ...(faculty.stats ? { stats: faculty.stats } : {}),
       materials: materialsFromPublishedFaculty(faculty),
       sourceCards: (faculty.sourceCards ?? []).map((card) => ({ ...card, faculty: draftFacultyId })),
@@ -2389,6 +2390,7 @@ function packFromDraft(draft: StoredDraftContentPackRecord): ContentPack {
       shortName: teacher.displayName.split(/\s+/)[0] || "Teacher",
       ...(teacher.assetTeacherId ? { assetTeacherId: teacher.assetTeacherId } : {}),
       ...(teacher.profileImageUrl ? { profileImageUrl: teacher.profileImageUrl } : {}),
+      ...(xHandleFromSocialsUrl(teacher.socialsUrl) ? { xHandle: xHandleFromSocialsUrl(teacher.socialsUrl) } : {}),
       ...(teacher.stats ? { stats: teacher.stats } : {}),
       subjects,
       bio: teacherBio || "A custom Ruby High teacher.",
@@ -3085,7 +3087,25 @@ function cleanOptionalImageField(bodyValue: string): Partial<StoredDraftTeacherR
 }
 
 function cleanTeacherAssetId(value: string): string {
-  return value === "ruby" || value === "sally-science" || value === "professor-edward" ? value : "";
+  return value === "ruby" ||
+      value === "sally-science" ||
+      value === "professor-edward" ||
+      value === "eliza"
+    ? value
+    : "";
+}
+
+function xHandleFromSocialsUrl(value: string | undefined): string {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    if (host !== "x.com" && host !== "twitter.com") return "";
+    const handle = url.pathname.split("/").filter(Boolean)[0] ?? "";
+    return /^[A-Za-z0-9_]{1,15}$/.test(handle) ? handle : "";
+  } catch {
+    return "";
+  }
 }
 
 function cleanTeacherStats(value: unknown): CharacterStats | undefined {

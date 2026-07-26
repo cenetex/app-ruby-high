@@ -15,6 +15,7 @@ import { getLoadedPack, MAX_PACKS_PER_OWNER, registerPack, resetActivePack } fro
 import type { ContentPack } from "../content/types.js";
 import { FIRST_BELL_SET_CODE, FIRST_BELL_SET_NAME } from "../services/hall-pass-card-catalog.js";
 import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
+import { cardMemoryKey, defaultCardMemory } from "../services/ruby-high/helpers.js";
 import { dailyKey, type AnswerRecord, type QuizState } from "../types.js";
 
 let tmpDir: string;
@@ -346,6 +347,70 @@ describe("Hall Pass wallet", () => {
       mintSignature: "5mSharedMintSignature11111111111111111111111111111111111111",
       metadataUri: "https://ruby-high.ai/card.json",
     })).toThrow(/already been recorded/);
+  });
+
+  it("persists card mint recovery and reveal retry markers across restarts", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:nft-mint-recovery-persistence";
+    const ownerWalletAddress = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
+    const mintAddress = "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump";
+    const metadataUri = "https://ruby-high.ai/card-recovery.json";
+    const mintSignature = "5mPersistentMintSignature111111111111111111111111111111111";
+    const card = ruby.grantHallPassCards(sid, {
+      cardCount: 1,
+      idempotencyKey: "solana:card-mint-recovery-persistence",
+      source: "solana",
+    }).cards![0]!;
+    ruby.recordHallPassCardMintPreparation(sid, {
+      cardId: card.id,
+      ownerWalletAddress,
+      mintAddress,
+      metadataUri,
+      transactionMessageHash: "persistent-transaction-message-hash",
+    });
+    ruby.recordHallPassCardMintSubmission(sid, {
+      cardId: card.id,
+      ownerWalletAddress,
+      mintAddress,
+      metadataUri,
+      mintSignature,
+    });
+    await ruby.flushSession(sid);
+    await ruby.stop();
+    activeRuby = null;
+
+    const restored = new RubyHighService({} as never, new StateStore(storePath));
+    await restored["hydrate"]();
+    activeRuby = restored;
+    expect(restored.mintableHallPassCards(sid)[0]).toMatchObject({
+      id: card.id,
+      pendingMintAddress: mintAddress,
+      pendingMintSignature: mintSignature,
+      pendingMintSubmittedAt: expect.any(Number),
+    });
+
+    restored.recordHallPassCardMint(sid, {
+      cardId: card.id,
+      ownerWalletAddress,
+      mintAddress,
+      mintSignature,
+      metadataUri,
+    });
+    await restored.flushSession(sid);
+    await restored.stop();
+    activeRuby = null;
+
+    const restoredAgain = new RubyHighService({} as never, new StateStore(storePath));
+    await restoredAgain["hydrate"]();
+    activeRuby = restoredAgain;
+    expect(restoredAgain.pendingHallPassCardReveals(sid, ownerWalletAddress)).toEqual([
+      expect.objectContaining({
+        id: card.id,
+        mintAddress,
+        mintSignature,
+        onChainRevealPending: true,
+      }),
+    ]);
   });
 
   it("records multiple NFT card burns from one owner-signed transaction", async () => {
@@ -2060,7 +2125,45 @@ describe("RubyHighService Phase 1", () => {
     expect(JSON.stringify(world)).not.toContain("No Class Noor");
   });
 
-  it("lists same-grade human students by their current room only when they have custom public portraits", async () => {
+  it("places public students in the classroom where they were last active instead of their selected room", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+    const student = attachTestCharacter(ruby, "test:world-last-active-room");
+    student.sessionId = "test:world-last-active-room";
+    student.currentGrade = "10";
+    student.faculty = "ruby";
+    student.character!.name = "Moving Mina";
+    student.character!.createdAt = now - 10_000;
+    student.character!.portraitDataUrl = "/api/apps/ruby-high/assets/portrait/moving-mina.png";
+    const homeroomClass = completedClassRecord("10", "ruby", "2026-06-14", "A", 300);
+    homeroomClass.completedAt = now - 5_000;
+    homeroomClass.updatedAt = now - 5_000;
+    student.character!.dailyClasses = { ruby: homeroomClass };
+    student.cardMemory = {
+      [cardMemoryKey("sally-science", "science-practice")]: {
+        ...defaultCardMemory("sally-science", "science-practice"),
+        lastReviewedAt: now - 1_000,
+      },
+    };
+
+    const world = ruby.getSchoolWorldSnapshot(10, now);
+    const roomStudents = ruby.getPublicRoomHumanStudentsForSession("test:world-last-active-viewer", now);
+
+    expect(world.activeRooms).toEqual([
+      expect.objectContaining({
+        facultyId: "sally-science",
+        displayName: "Sally Science",
+        students: [expect.objectContaining({ name: "Moving Mina", lastActive: now - 1_000 })],
+      }),
+    ]);
+    expect(roomStudents).toContainEqual(expect.objectContaining({
+      name: "Moving Mina",
+      facultyId: "sally-science",
+      lastActive: now - 1_000,
+    }));
+  });
+
+  it("lists human students by their last active room only when they have custom public portraits", async () => {
     const { ruby } = await makeServices();
     const now = Date.UTC(2026, 5, 15, 12);
     const viewer = attachTestCharacter(ruby, "test:room-human-viewer");

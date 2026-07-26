@@ -23,6 +23,7 @@ let handleAppRoutes = null;
 let stateStore = null;
 let facultySvc = null;
 let authSvc = null;
+let agentAccessSvc = null;
 let chatSvc = null;
 let rubySvc = null;
 let xSocialSvc = null;
@@ -37,6 +38,7 @@ const fakeRuntime = {
     if (type === "ruby-high-faculty") return facultySvc;
     if (type === "ruby-high") return rubySvc;
     if (type === "ruby-high-auth") return authSvc;
+    if (type === "ruby-high-agent-access") return agentAccessSvc;
     if (type === "ruby-high-chat") return chatSvc;
     if (type === "x-social") return xSocialSvc;
     if (type === "telegram") return telegramSvc;
@@ -49,6 +51,7 @@ async function bootServices() {
   const mod = await import("../dist/index.js");
   const {
     AuthService,
+    AgentAccessService,
     ChatService,
     FacultyService,
     RubyHighService,
@@ -71,8 +74,11 @@ async function bootServices() {
   svc.setFacultyService(facultySvc);
   chatSvc.setRubyHighService(svc);
   rubySvc = svc;
+  agentAccessSvc = new AgentAccessService(fakeRuntime, stateStore);
+  await agentAccessSvc.hydrate();
   try {
     xSocialSvc = await XSocialService.start(fakeRuntime);
+    svc.startRotationScheduler();
   } catch (err) {
     console.error("XSocialService failed to start:", err.message);
     xSocialSvc = null;

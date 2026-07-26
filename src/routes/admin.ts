@@ -1618,6 +1618,14 @@ function buildAdminMetricsSchema(): {
         caveat: "Retry and last-attempt state is in memory; queue size comes from saved game state.",
       },
       {
+        path: "ruby.scheduledPosts",
+        label: "Scheduled school updates",
+        source: "RubyHighService aggregate world context and durable scheduled-post service state",
+        semantics: "Whether the aggregate LLM-to-X text-and-composed-photo job is enabled, its daily/retry cadence, last attempt/post, posting teacher, context fingerprint, and latest skip reason.",
+        reliability: "authoritative",
+        caveat: "Fly scale-to-zero means overdue work runs on the next service cold start rather than at an exact wall-clock minute.",
+      },
+      {
         path: "ruby.essayReports",
         label: "Essay reports",
         source: "QuizState.essayReports",
