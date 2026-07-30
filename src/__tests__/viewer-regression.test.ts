@@ -151,6 +151,8 @@ describe("viewer regression guardrails", () => {
     expect(VIEWER_CSS).toContain("--composer-min: 50px");
     expect(VIEWER_CSS).toContain("grid-template-rows: auto minmax(0, auto) minmax(56px, 1fr) auto");
     expect(VIEWER_CSS).toContain("max-height: 46dvh");
+    expect(cssRule(".blackboard-meta .pill.class-mode")).toContain("order: -1");
+    expect(cssRule(".blackboard-meta .pill.faculty")).toContain("display: none");
     expect(VIEWER_CSS).not.toContain('.shell[data-mode="round-live"] .world-panel');
   });
 
@@ -164,11 +166,16 @@ describe("viewer regression guardrails", () => {
     expect(VIEWER_CSS).toContain("--border:");
     expect(VIEWER_CSS).toContain("--bg-card:");
     expect(VIEWER_CSS).toContain("--focus-ring:");
+    expect(VIEWER_CSS).toContain("--text-mute: #9ba4ba");
     expect(cssRule(".typed-answer-input")).toContain("font: 600 16px/1");
     expect(cssRule(".take-starters button")).toContain("min-height: 36px");
     expect(VIEWER_CSS).toContain('body :focus-visible:not([disabled]):not([tabindex="-1"])');
     expect(cssRule(".congrats-toast")).toContain("white-space: normal");
     expect(cssRule(".announcements-panel")).toContain("max-height: calc(100dvh");
+    expect(cssRule(".announcements-panel")).toContain("overflow-y: auto");
+    expect(cssRule(".announcements-panel")).toContain("overflow-x: hidden");
+    expect(cssRule(".answer.is-correct")).toContain("opacity: 1");
+    expect(cssRule(".answer.C")).toContain("color: #1a2238");
     expectScriptToContain(script, 'status.className = "visually-hidden"');
     expectScriptToContain(script, 'item.setAttribute("aria-current", "step")');
   });
@@ -1056,8 +1063,10 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="account-trust-list"');
     expect(html).toContain("Receipts");
     expectScriptToContain(script, "function accountPaneItemView(id, activePane)");
+    expectScriptToContain(script, "function accountPaneKeyTarget(key, currentIndex, tabCount)");
     expectScriptToContain(script, "function normalizeAccountPane(pane)");
     expectScriptToContain(script, "const view = accountPaneItemView(rawId, active);");
+    expectScriptToContain(script, "const targetIndex = accountPaneKeyTarget(event.key, currentIndex, els.accountTabs.length);");
     expect(characters).toBeGreaterThan(-1);
     expect(wallet).toBeGreaterThan(characters);
     expect(html).not.toContain('class="account-section account-ai-section"');
@@ -1137,6 +1146,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'return "Chat " + formatWholeNumber(nextChatCost(t)) + " ⭐";');
     expectScriptToContain(script, 'offlineClassroom ? "Continue" : chatActionLabel(t)');
     expectScriptToContain(script, 'const advanceLabel = teacherChatEnabled() ? chatActionLabel(lastTelemetry) : "Continue";');
+    expectScriptToContain(script, "const offlineLiveRound = live && !teacherChatEnabled();");
+    expectScriptToContain(script, "ceremonyReady || offlineLiveRound");
     expectScriptToContain(script, "Connect AI for hints.");
     expect(script).not.toContain("Connect OpenRouter for hints.");
   });

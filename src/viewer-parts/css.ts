@@ -35,7 +35,7 @@ export const VIEWER_CSS = `
     --line: rgba(255,255,255,0.07);
     --text: #ecf0fb;
     --text-soft: #aab1c8;
-    --text-mute: #7c8499;
+    --text-mute: #9ba4ba;
     --text-dim: #9199b0;
     --text-fade: #8992a8;
     --accent: #d22a2a;
@@ -2696,8 +2696,8 @@ export const VIEWER_CSS = `
     font-weight: 700;
   }
   .pill.faculty { background: var(--accent); color: #fff; }
-  .pill.difficulty.easy { background: var(--diff-easy); color: #fff; }
-  .pill.difficulty.medium { background: var(--diff-medium); color: #fff; }
+  .pill.difficulty.easy { background: var(--diff-easy); color: #1a2238; }
+  .pill.difficulty.medium { background: var(--diff-medium); color: #1a2238; }
   .pill.difficulty.hard { background: var(--diff-hard); color: #fff; }
   .pill.subject { background: var(--bg-elev-2); color: var(--text-soft); }
   .pill.stat {
@@ -2904,12 +2904,12 @@ export const VIEWER_CSS = `
   }
   .answer.A { --bg: #f0922a; }
   .answer.B { --bg: #f7d33a; }
-  .answer.C { --bg: #4cb555; color: #fff; }
+  .answer.C { --bg: #4cb555; color: #1a2238; }
   .answer.C .badge { color: #1a2238; }
-  .answer.D { --bg: #3aa3e0; color: #fff; }
+  .answer.D { --bg: #3aa3e0; color: #1a2238; }
   .answer.D .badge { color: #1a2238; }
-  .answer.is-correct { outline: 3px solid #1f7c2a; outline-offset: -1px; }
-  .answer.is-wrong { outline: 3px solid #a01818; outline-offset: -1px; opacity: 0.85; }
+  .answer.is-correct { outline: 3px solid #1f7c2a; outline-offset: -1px; opacity: 1; }
+  .answer.is-wrong { outline: 3px solid #a01818; outline-offset: -1px; opacity: 0.72; }
   /* Advantage roll crossed this choice off the board. */
   .answer.is-eliminated {
     opacity: 0.35;
@@ -7285,7 +7285,7 @@ export const VIEWER_CSS = `
     padding: 28px 24px 20px;
     text-align: center;
     position: relative;
-    overflow: hidden;
+    overflow-x: hidden;
   }
   .announcements-panel::before {
     content: "";
@@ -7462,6 +7462,12 @@ export const VIEWER_CSS = `
       overflow-x: auto;
       padding: 6px calc(var(--safe-right) + 8px) 6px calc(var(--safe-left) + 8px);
       scrollbar-width: none;
+    }
+    .blackboard-meta .pill.class-mode {
+      order: -1;
+    }
+    .blackboard-meta .pill.faculty {
+      display: none;
     }
     .blackboard-meta::-webkit-scrollbar { display: none; }
     .daily-class-progress {

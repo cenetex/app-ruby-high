@@ -19,7 +19,23 @@ test("quick-rolls a first student directly into First Bell", async ({ page }) =>
   await expect(page.locator("#daily-class-progress")).toContainText("Your Take");
   await expect(page.locator("#daily-class-progress")).toContainText("Result");
   await expect(page.locator(".answer:not([disabled])").first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator("#stream")).not.toContainText("Make your first student");
 
+  expect(errors).toEqual([]);
+});
+
+test("keeps Customize as a preview until Freshman year is started", async ({ page }) => {
+  const { errors } = await openViewer(page);
+  await dismissAnnouncements(page);
+
+  await page.getByRole("button", { name: "Customize", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Start Freshman Year", exact: true })).toBeVisible();
+  await page.locator("#sheet-close").click();
+
+  await page.reload();
+  await dismissAnnouncements(page);
+  await expect(page.getByRole("button", { name: "Quick roll a student", exact: true })).toBeVisible();
+  await expect(page.locator(".answer:not([disabled])")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -30,6 +46,7 @@ test("boots as a guest, creates a character, answers a card, and opens account t
   await createCharacter(page);
   const firstAnswer = page.locator(".answer:not([disabled])").first();
   await expect(firstAnswer).toBeVisible();
+  await expect(page.locator("#next-btn")).toBeHidden();
   await firstAnswer.click();
   await expect(page.locator("#board-reveal")).toBeVisible();
   const reportModal = page.locator(".first-bell-overlay");
@@ -41,6 +58,7 @@ test("boots as a guest, creates a character, answers a card, and opens account t
   await expect(reportModal.getByRole("button", { name: "Open student card" })).toBeFocused();
   await reportModal.getByRole("button", { name: "Continue" }).click();
   await expect(reportModal).not.toBeVisible();
+  await expect(page.locator(".answer.is-correct")).toHaveCSS("opacity", "1");
   await expect(page.locator("#shell")).not.toHaveAttribute("inert", "");
   await expect(page.locator("#shell")).not.toHaveAttribute("aria-hidden", "true");
   await expect(page.locator("#next-btn")).toBeFocused();
@@ -60,6 +78,12 @@ test("boots as a guest, creates a character, answers a card, and opens account t
   await expect(page.locator("#shell")).toHaveAttribute("inert", "");
   await expect(page.locator("#shell")).toHaveAttribute("aria-hidden", "true");
   await expect(page.locator("#account-tab-account")).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.locator("#account-tab-wallet")).toBeFocused();
+  await expect(page.locator("#account-panel-wallet")).toBeVisible();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.locator("#account-tab-account")).toBeFocused();
+  await expect(page.locator("#account-panel-account")).toBeVisible();
 
   await page.locator("#privy-close").focus();
   await page.keyboard.press("Shift+Tab");

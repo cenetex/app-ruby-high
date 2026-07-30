@@ -119,14 +119,18 @@ export function runViewerClient(bootstrap) {
     const t = lastTelemetry;
     const round = t && t.active_round;
     const cur = t && t.current;
+    const live = !!(round && !round.resolved && cur);
     const ceremonyReady = !!(t && t.graduation_ready && !cur);
     const inFreeformRound = !!(
-      round && !round.resolved && cur
+      live
       && (t.is_opinion || cur.type === "typed-answer" || cur.type === "image-occlusion")
     );
-    els.nextBtn.hidden = !available || inFreeformRound || ceremonyReady;
+    // Offline multiple-choice rounds already have one clear action: answer
+    // the board. A second full-width "Continue" button only opens an AI hint
+    // dead end, so keep it out of the hierarchy until the reveal is ready.
+    const offlineLiveRound = live && !teacherChatEnabled();
+    els.nextBtn.hidden = !available || inFreeformRound || ceremonyReady || offlineLiveRound;
     els.nextBtn.textContent = nextQuestionButtonLabel(t);
-    const live = !!(round && !round.resolved && cur);
     const postClass = postClassState(t);
     els.nextBtn.title = live
       ? (teacherChatEnabled() ? chatCostTitle(t, "Ask for a hint.") : "Answer the board to continue")
@@ -4992,7 +4996,9 @@ export function runViewerClient(bootstrap) {
     const todayFaculty = t && t.faculty_roster && Array.isArray(t.faculty_roster)
       ? t.faculty_roster.find(function(f) { return f.id === t.faculty; })
       : null;
-    const facultyName = todayFaculty ? (todayFaculty.name || "Ruby") : "Ruby";
+    const facultyName = todayFaculty
+      ? (todayFaculty.displayName || todayFaculty.shortName || todayFaculty.name || "Ruby")
+      : "Ruby";
     const grade = t && t.current_grade;
     const gradeLabel = grade ? ("Grade " + grade) : "";
 
@@ -5061,22 +5067,22 @@ export function runViewerClient(bootstrap) {
 
 
   // ── onboarding / first-visit intro ──────────────────────────────────────
-  let onboardingShown = false;
-  function showOnboarding() {
-    if (onboardingShown) return;
-    onboardingShown = true;
+  function syncOnboardingActions(t) {
     const actions = document.getElementById("onboarding-actions");
-    if (actions) actions.hidden = false;
-    // Hide the create-character fallback button — the onboarding
-    // "Roll a student" button replaces it.
+    const visible = !!authed && !(t && t.character);
+    if (actions) actions.hidden = !visible;
+    // The richer first-run actions replace the legacy fallback button.
     const emptyAction = document.getElementById("blackboard-empty-action");
-    if (emptyAction) emptyAction.hidden = true;
+    if (emptyAction && visible) emptyAction.hidden = true;
   }
 
   function render(s) {
     if (!s || !s.telemetry) return;
     const t = s.telemetry;
+    const gainedCharacter = !lastTelemetry?.character && !!t.character;
     lastTelemetry = t;
+    if (gainedCharacter && els.stream.children.length > 0) clearStream();
+    syncOnboardingActions(t);
     syncAiStateFromTelemetry(t);
     syncBillingWallet(t);
     renderAccountPage();
@@ -5097,8 +5103,6 @@ export function runViewerClient(bootstrap) {
       // so the teacher isn't hidden behind an intro screen.
       if (t.current || t.active_round) {
         setTimeout(() => openCharacterCreation(), 0);
-      } else {
-        showOnboarding();
       }
     }
     setAccent(t.facultyAccent);
@@ -6664,11 +6668,6 @@ export function runViewerClient(bootstrap) {
     // is gone in this PR.
     const inFlight = { all: false, name: false, personality: false, arcAnswer: false, flavorQuote: false, stats: false, playbook: false, portrait: false, saving: false };
     let aiPortraitDataUrl = null; // when set, replaces the default at save-time
-    let characterPersisted = false;
-    let autosaveQueue = Promise.resolve(false);
-    let queuedAutosaves = 0;
-    let autosaveVersion = 0;
-    let savedAutosaveVersion = 0;
     const OFFLINE_NAMES = ["Iris", "Nova", "Vee", "Mara", "Jules", "Theo", "Rin", "Cass", "Ari", "Nico", "Sol", "Mina"];
     const OFFLINE_VOICES = [
       "Quietly intense, observant, and allergic to obvious answers.",
@@ -6769,20 +6768,16 @@ export function runViewerClient(bootstrap) {
           ? "Reroll student"
           : "Roll a student";
       saveBtn.hidden = !rolled;
-      saveBtn.disabled = !rolled || inFlight.all || inFlight.saving || !latestVisibleCharacterSaved();
+      saveBtn.disabled = !rolled || inFlight.all || inFlight.saving;
       [nameRow, playbookRow, statsRow, personalityRow, quoteRow].forEach(({ reroll }) => {
         const k = reroll.dataset.key;
-        reroll.disabled = !rolled || inFlight.all || !!inFlight[k];
+        reroll.disabled = !rolled || inFlight.all || inFlight.saving || !!inFlight[k];
       });
       const portraitHallPassNeeded = hostedPortraitHallPassNeeded();
       const portraitReason = portraitGenerationStatusReason();
       portraitBtn.hidden = !portraitGenerationVisible();
-      portraitBtn.disabled = !rolled || inFlight.portrait || (!!portraitReason && !portraitHallPassNeeded);
+      portraitBtn.disabled = !rolled || inFlight.portrait || inFlight.saving || (!!portraitReason && !portraitHallPassNeeded);
       portraitBtn.title = portraitReason || "";
-    }
-
-    function latestVisibleCharacterSaved() {
-      return characterPersisted && savedAutosaveVersion >= autosaveVersion;
     }
 
     function portraitGenerationVisible() {
@@ -6839,7 +6834,6 @@ export function runViewerClient(bootstrap) {
       }
       applyDisabled();
       setStatus(isFullRoll ? "Rolling…" : "Rerolling " + components.join(", ") + "…");
-      let shouldAutosave = false;
       try {
         // If the player reroll-cycles the playbook OR the name AFTER
         // generating an AI portrait, the AI image no longer matches —
@@ -6853,7 +6847,6 @@ export function runViewerClient(bootstrap) {
           renderRolled(rolled);
           revealForm();
           setStatus("Offline mode — AI chat and custom portrait are disabled until you enable AI.");
-          shouldAutosave = true;
           return;
         }
         const body = isFullRoll
@@ -6865,7 +6858,6 @@ export function runViewerClient(bootstrap) {
         // First roll lands → swap from loading-state to form.
         revealForm();
         setStatus("");
-        shouldAutosave = true;
       } catch (err) {
         revealForm();
         setStatus(err && err.message ? err.message : "Roll failed — try again.", true);
@@ -6875,8 +6867,7 @@ export function runViewerClient(bootstrap) {
         } else {
           for (const c of components) inFlight[c] = false;
         }
-        if (shouldAutosave) void scheduleCharacterAutosave();
-        else applyDisabled();
+        applyDisabled();
       }
     }
 
@@ -6954,7 +6945,6 @@ export function runViewerClient(bootstrap) {
         if (typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements, data.characterSlots);
         portraitBtn.textContent = "✨ Try again";
         portraitStatus.textContent = "AI portrait ready.";
-        void scheduleCharacterAutosave();
       } catch (err) {
         portraitStatus.textContent = err && err.message ? err.message : "Couldn't generate — keeping the default.";
         portraitStatus.classList.add("is-invalid");
@@ -6965,7 +6955,7 @@ export function runViewerClient(bootstrap) {
       }
     });
 
-    function currentCharacterAutosaveSnapshot() {
+    function currentCharacterSnapshot() {
       if (!rolled) return null;
       const portraitUrl = aiPortraitDataUrl || defaultPortraitFor(rolled.playbookId);
       return {
@@ -6979,68 +6969,30 @@ export function runViewerClient(bootstrap) {
       };
     }
 
-    async function persistCharacterSnapshot(snapshot, version) {
-      const commandType = characterPersisted ? "update-character" : "create-character";
-      setStatus(characterPersisted ? "Saving changes..." : "Saving...");
-      try {
-        const data = await command({
-          type: commandType,
-          ...snapshot,
-        });
-        if (data && data.session) {
-          characterPersisted = true;
-          savedAutosaveVersion = Math.max(savedAutosaveVersion, version);
-          if (version === autosaveVersion) setStatus("Saved.");
-          return true;
-        }
-        if (version === autosaveVersion) setStatus("Autosave failed - try again.", true);
-        return false;
-      } catch (err) {
-        if (version === autosaveVersion) setStatus(err && err.message ? err.message : "Autosave failed - try again.", true);
-        return false;
-      }
-    }
-
-    function scheduleCharacterAutosave() {
-      const snapshot = currentCharacterAutosaveSnapshot();
-      if (!snapshot) return autosaveQueue;
-      const version = ++autosaveVersion;
-      queuedAutosaves += 1;
+    async function beginClassFromCharacter() {
+      if (!rolled || inFlight.all || inFlight.saving) return;
+      const snapshot = currentCharacterSnapshot();
+      if (!snapshot) return;
       inFlight.saving = true;
       applyDisabled();
-      autosaveQueue = autosaveQueue
-        .catch(() => false)
-        .then(async () => {
-          try {
-            return await persistCharacterSnapshot(snapshot, version);
-          } finally {
-            queuedAutosaves = Math.max(0, queuedAutosaves - 1);
-            inFlight.saving = queuedAutosaves > 0;
-            applyDisabled();
-          }
-        });
-      return autosaveQueue;
-    }
-
-    async function beginClassFromCharacter() {
-      if (!rolled || inFlight.all) return;
-      let saved = false;
+      setStatus("Enrolling...");
       try {
-        saved = await autosaveQueue;
-      } catch {
-        saved = false;
+        const data = await command({
+          type: "create-character",
+          ...snapshot,
+        });
+        if (!data || !data.session) {
+          setStatus("Could not start Freshman year — try again.", true);
+          return;
+        }
+        closeSheet();
+        setTimeout(() => {
+          if (lastTelemetry && shouldAutoStartClass(lastTelemetry)) void pickNext();
+        }, 0);
+      } finally {
+        inFlight.saving = false;
+        if (sheetOverlayOpen) applyDisabled();
       }
-      if (!saved || !latestVisibleCharacterSaved()) {
-        saved = await scheduleCharacterAutosave();
-      }
-      if (!saved || !latestVisibleCharacterSaved()) {
-        setStatus("Autosave failed - try again.", true);
-        return;
-      }
-      closeSheet();
-      setTimeout(() => {
-        if (lastTelemetry && shouldAutoStartClass(lastTelemetry)) void pickNext();
-      }, 0);
     }
 
     saveBtn.addEventListener("click", () => { void beginClassFromCharacter(); });
@@ -10457,6 +10409,16 @@ export function runViewerClient(bootstrap) {
   if (Array.isArray(els.accountTabs)) {
     els.accountTabs.forEach((tab) => {
       tab.addEventListener("click", () => setAccountPane(tab.getAttribute("data-account-tab")));
+      tab.addEventListener("keydown", (event) => {
+        const currentIndex = els.accountTabs.indexOf(tab);
+        const targetIndex = accountPaneKeyTarget(event.key, currentIndex, els.accountTabs.length);
+        if (targetIndex == null) return;
+        event.preventDefault();
+        const target = els.accountTabs[targetIndex];
+        if (!target) return;
+        setAccountPane(target.getAttribute("data-account-tab"));
+        focusWithoutScroll(target);
+      });
     });
   }
   if (els.accountBuyPasses) els.accountBuyPasses.addEventListener("click", () => openBilling({ mode: "hall-passes" }));

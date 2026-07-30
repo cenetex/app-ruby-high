@@ -130,6 +130,7 @@ const PURE_HELPER_NAMES = [
   "accountWalletPanelView",
   "normalizeAccountPane",
   "accountPaneItemView",
+  "accountPaneKeyTarget",
   "accountTrustPanelView",
   "accountHallPassCardsPanelView",
   "accountHallPassPackTileView",

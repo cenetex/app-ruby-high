@@ -1054,6 +1054,17 @@ export function accountPaneItemView(id: unknown, activePane: unknown): AccountPa
   };
 }
 
+export function accountPaneKeyTarget(key: unknown, currentIndex: unknown, tabCount: unknown): number | null {
+  const count = Math.max(0, Math.floor(Number(tabCount)));
+  const index = Math.floor(Number(currentIndex));
+  if (count < 1 || !Number.isFinite(index) || index < 0 || index >= count) return null;
+  if (key === "Home") return 0;
+  if (key === "End") return count - 1;
+  if (key === "ArrowRight") return (index + 1) % count;
+  if (key === "ArrowLeft") return (index - 1 + count) % count;
+  return null;
+}
+
 export function accountTrustPanelView(payloadInput: NullableRecord, connectedWalletInput: unknown, buildIdInput: unknown): AccountTrustPanelView {
   const payload = payloadInput && typeof payloadInput === "object" ? payloadInput : null;
   const solana = payload && payload.solana && typeof payload.solana === "object" ? payload.solana as LooseRecord : null;
