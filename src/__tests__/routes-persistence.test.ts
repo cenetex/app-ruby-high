@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleAppRoutes, type RouteContext } from "../routes.js";
 import { getActivePack, registerPack, resetActivePack, setActivePack } from "../content/registry.js";
 import { AuthService } from "../services/auth-service.js";
+import { AgentAccessService } from "../services/agent-access-service.js";
 import { FacultyService } from "../services/faculty-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import type {
@@ -74,11 +75,17 @@ class MemorySessionStore implements StateStoreLike {
   describe(): string { return "memory-test-store"; }
 }
 
-function runtimeFor(ruby: RubyHighService, faculty?: FacultyService, auth?: AuthService | null) {
+function runtimeFor(
+  ruby: RubyHighService,
+  faculty?: FacultyService,
+  auth?: AuthService | null,
+  agentAccess?: AgentAccessService | null,
+) {
   return {
     agentId: "test-agent",
     getService(type: string) {
       if (type === AuthService.serviceType) return auth ?? null;
+      if (type === AgentAccessService.serviceType) return agentAccess ?? null;
       if (type === RubyHighService.serviceType) return ruby;
       if (type === FacultyService.serviceType) return faculty;
       return null;
@@ -104,6 +111,7 @@ function makeCommandCtx(
     contentTypeHeader?: string | string[] | null;
     originHeader?: string | string[] | null;
     callbackOrigin?: string;
+    agentAccess?: AgentAccessService | null;
   } = {},
 ): {
   ctx: RouteContext;
@@ -124,7 +132,7 @@ function makeCommandCtx(
     method: "POST",
     pathname: "/api/apps/ruby-high/session/test-session/command",
     url: new URL("https://ruby-high.test/api/apps/ruby-high/session/test-session/command"),
-    runtime: runtimeFor(ruby, faculty, auth),
+    runtime: runtimeFor(ruby, faculty, auth, options.agentAccess),
     res,
     cookieHeader: cookieHeader ?? null,
     apiKeyHeader,
@@ -318,6 +326,60 @@ describe("command route persistence and scheduler misses", () => {
       expect(record).not.toBeNull();
       expect(ruby.getOrCreate(auth.stateKeyForRecord(record!)).character?.name).toBe("Ari");
     } finally {
+      await auth.stop();
+    }
+  });
+
+  it("keeps browser commands on the launched agent viewer session", async () => {
+    await getActivePack();
+    const store = new MemorySessionStore();
+    const ruby = new RubyHighService({} as never, store);
+    const auth = await AuthService.start({} as never, store);
+    const agentRuntime = {
+      agentId: "agent-viewer-route-test",
+      character: { name: "ElizaOS Agent" },
+      getService: () => null,
+      getSetting: (key: string) =>
+        key === "RUBY_HIGH_AGENT_TOKEN_SECRET"
+          ? "agent-viewer-route-secret"
+          : null,
+    };
+    const agentAccess = new AgentAccessService(agentRuntime as never, store);
+    await agentAccess.hydrate();
+    try {
+      const issued = await agentAccess.issueDeviceCode({
+        agentName: "ElizaOS Agent",
+        scopes: ["school:read", "student:play"],
+      });
+      const credential = await agentAccess.approveDeviceCode(
+        issued.userCode,
+        "rh:user:owner",
+      );
+      const launchCode = await agentAccess.createLaunch(credential.id);
+      const launched = await agentAccess.consumeLaunch(launchCode);
+      const cookie = agentAccess.buildViewerCookie(
+        launched.viewerToken,
+        false,
+      );
+      ruby.getOrCreate(credential.stateKey).hasSeenIntro = false;
+
+      const harness = makeCommandCtx(
+        ruby,
+        { type: "mark-intro-seen" },
+        undefined,
+        null,
+        auth,
+        cookie,
+        { agentAccess },
+      );
+
+      expect(await handleAppRoutes(harness.ctx)).toBe(true);
+      expect(harness.response?.status).toBe(200);
+      expect(ruby.getOrCreate(credential.stateKey).hasSeenIntro).toBe(true);
+      expect(auth.sessionCount()).toBe(0);
+      expect(harness.getHeader("set-cookie")).toBeUndefined();
+    } finally {
+      await agentAccess.stop();
       await auth.stop();
     }
   });

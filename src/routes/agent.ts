@@ -739,7 +739,7 @@ function sendHtml(res: unknown, html: string): void {
   response.setHeader?.("Cache-Control", "no-store");
   response.setHeader?.(
     "Content-Security-Policy",
-    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+    "default-src 'none'; img-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
   );
   response.end?.(html);
 }

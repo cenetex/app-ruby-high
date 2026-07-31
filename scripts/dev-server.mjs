@@ -217,7 +217,9 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/dev/tick-grade") {
     try {
-      const sessionId = authSvc.stateKeyForCookie(req.headers.cookie ?? null);
+      const sessionId =
+        agentAccessSvc.stateKeyForViewerCookie(req.headers.cookie ?? null)
+        ?? authSvc.stateKeyForCookie(req.headers.cookie ?? null);
       const payload = await completeCurrentGradeForDev(sessionId);
       sendJson(res, payload);
     } catch (err) {

@@ -87,6 +87,21 @@ describe("Ruby High Agent API", () => {
     });
   });
 
+  it("allows the branded Eliza avatar on the browser approval page", async () => {
+    const response = await request({
+      method: "GET",
+      path: `${AGENT_API_PREFIX}/connect`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-security-policy"]).toContain(
+      "img-src 'self'",
+    );
+    expect(response.body).toContain(
+      "/api/apps/ruby-high/assets/teachers/eliza-face.png",
+    );
+  });
+
   it("enrolls, attends Eliza's course, hides the answer, and applies an idempotent answer", async () => {
     const issued = await access.issueDeviceCode({
       agentName: "Ada Agent",

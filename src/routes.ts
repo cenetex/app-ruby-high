@@ -857,7 +857,11 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     let commandStateKey = stateKey;
     let commandCookieHeader = ctx.cookieHeader;
     let commandAuthRecord = null;
-    if (auth) {
+    const agentViewerStateKey = tryGetService<AgentAccessService>(
+      runtime,
+      AgentAccessService.serviceType,
+    )?.stateKeyForViewerCookie(ctx.cookieHeader);
+    if (auth && !agentViewerStateKey) {
       const existingToken = auth.parseSessionToken(ctx.cookieHeader);
       const existingRecord = auth.resolve(existingToken);
       const session = existingRecord && existingToken
