@@ -193,6 +193,50 @@ describe("graduation photo prompts", () => {
     expect(prompt).not.toContain("CLASSROOM SCENE");
   });
 
+  it("composes passed-class posts from the actual student, teacher, and class", async () => {
+    vi.stubEnv("RUBY_HIGH_PUBLIC_BASE", "https://ruby-high.ai");
+    const requests: any[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: unknown, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body || "{}")));
+      return imageResponse("data:image/png;base64,CLASSPASSED");
+    }));
+
+    const { renderClassPassedPhoto } = await import("../services/character-generation.js");
+    const url = await renderClassPassedPhoto({
+      apiKey: "sk-test",
+      student: {
+        name: "Theo",
+        imageUrl: "/api/apps/ruby-high/assets/students/indra-full.png",
+      },
+      teacher: {
+        name: "Sally Science",
+        imageUrl: "/api/apps/ruby-high/assets/teachers/sally-science-full.png",
+      },
+      className: "Science Lab",
+      subjects: ["physics", "chemistry", "biology"],
+      grade: "10",
+      letterGrade: "C",
+    });
+
+    expect(url).toBe("data:image/png;base64,CLASSPASSED");
+    const content = requests[0]?.messages?.[0]?.content;
+    const prompt = Array.isArray(content)
+      ? content.filter((part: any) => part.type === "text").map((part: any) => String(part.text ?? "")).join("\n")
+      : "";
+    const imageParts = Array.isArray(content) ? content.filter((part: any) => part.type === "image_url") : [];
+    expect(imageParts.map((part: any) => part.image_url?.url)).toEqual([
+      "https://ruby-high.ai/api/apps/ruby-high/assets/students/indra-full.png",
+      "https://ruby-high.ai/api/apps/ruby-high/assets/teachers/sally-science-full.png",
+    ]);
+    expect(prompt).toContain("REFERENCE IMAGE 1: Theo - the student who passed");
+    expect(prompt).toContain("REFERENCE IMAGE 2: Sally Science - the teacher of Science Lab");
+    expect(prompt).toContain("ACTUAL CLASS: Science Lab");
+    expect(prompt).toContain("SUBJECTS: physics, chemistry, biology");
+    expect(prompt).toContain("immediately after Theo passed Science Lab with a C");
+    expect(prompt).toContain("wide horizontal editorial school photo, 16:9");
+    expect(prompt).toContain("AVOID: solo portraits");
+  });
+
   it("composes scheduled updates as identity-locked dynamic school photos", async () => {
     vi.stubEnv("RUBY_HIGH_PUBLIC_BASE", "https://ruby-high.ai");
     const requests: any[] = [];

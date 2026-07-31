@@ -295,6 +295,84 @@ describe("XSocialService", () => {
       expect(result).toBe("tweet-123");
     });
 
+    it("replaces a passed-class portrait with the actual class composition", async () => {
+      vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "sk-test");
+      vi.stubEnv("RUBY_HIGH_PUBLIC_BASE", "https://ruby-high.ai");
+      await connectRuby(svc);
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            choices: [{
+              message: {
+                images: [{
+                  image_url: { url: PNG_URL },
+                }],
+              },
+            }],
+          }),
+        });
+      mockMediaUpload("media-class-composition");
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { id: "tweet-class-composition" } }),
+      });
+
+      const result = await svc.maybePostMilestone(RUBY_TEACHER, {
+        kind: "class-passed",
+        characterName: "Theo",
+        teacherName: "Sally Science",
+        teacherFacultyId: "sally-science",
+        className: "Science Lab",
+        classSubjects: ["physics", "chemistry"],
+        grade: "10",
+        letterGrade: "C",
+        imageUrl: "/api/apps/ruby-high/assets/students/indra-full.png",
+        studentImageUrl: "/api/apps/ruby-high/assets/students/indra-full.png",
+        teacherImageUrl: "/api/apps/ruby-high/assets/teachers/sally-science-full.png",
+      });
+
+      expect(result).toBe("tweet-class-composition");
+      const imageRequest = mockFetch.mock.calls.find(
+        (call: unknown[]) => String((call as string[])[0]).includes("openrouter.ai"),
+      );
+      expect(imageRequest).toBeDefined();
+      const imageBody = JSON.parse(String((imageRequest?.[1] as RequestInit)?.body || "{}"));
+      const prompt = imageBody.messages?.[0]?.content
+        ?.filter((part: any) => part.type === "text")
+        .map((part: any) => String(part.text ?? ""))
+        .join("\n");
+      expect(prompt).toContain("ACTUAL CLASS: Science Lab");
+      expect(prompt).toContain("Sally Science");
+      const tweetCall = mockFetch.mock.calls.find(
+        (call: unknown[]) => String((call as string[])[0]).includes("/tweets"),
+      );
+      expect(JSON.parse(String((tweetCall?.[1] as RequestInit)?.body))).toMatchObject({
+        media: { media_ids: ["media-class-composition"] },
+      });
+    });
+
+    it("does not fall back to a standalone portrait when class composition is unavailable", async () => {
+      await connectRuby(svc);
+
+      const result = await svc.maybePostMilestone(RUBY_TEACHER, {
+        kind: "class-passed",
+        characterName: "Theo",
+        teacherName: "Ruby",
+        teacherFacultyId: "ruby",
+        className: "Homeroom",
+        classSubjects: ["ai-literacy"],
+        letterGrade: "B",
+        imageUrl: PNG_URL,
+        studentImageUrl: PNG_URL,
+        teacherImageUrl: PNG_URL,
+      });
+
+      expect(result).toBeNull();
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     it("pauses future posts after X rejects a teacher token", async () => {
       await connectRuby(svc);
 

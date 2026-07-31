@@ -378,6 +378,75 @@ export async function renderScheduledSchoolUpdatePhoto(args: {
   return url;
 }
 
+/** Compose the media for a passed-class post from the exact student and
+ *  teacher references. Unlike a portrait milestone, this is an event photo:
+ *  the completed class is visible in the environment and the two people are
+ *  interacting in the immediate aftermath of the result. */
+export async function renderClassPassedPhoto(args: {
+  apiKey: string;
+  student: { name: string; imageUrl: string };
+  teacher: { name: string; imageUrl: string };
+  className: string;
+  subjects: string[];
+  grade?: string;
+  letterGrade?: string;
+}): Promise<string> {
+  const className = args.className.trim();
+  if (!className) throw new Error("Passed-class photos require a class name.");
+  const subjects = args.subjects.map((subject) => subject.trim()).filter(Boolean);
+  const contentParts: Array<Record<string, unknown>> = [
+    {
+      type: "text",
+      text: `REFERENCE IMAGE 1: ${args.student.name} - the student who passed. Use this exact character identity.`,
+    },
+    {
+      type: "image_url",
+      image_url: { url: imageReferenceUrl(args.student.imageUrl) },
+    },
+    {
+      type: "text",
+      text: `REFERENCE IMAGE 2: ${args.teacher.name} - the teacher of ${className}. Use this exact character identity.`,
+    },
+    {
+      type: "image_url",
+      image_url: { url: imageReferenceUrl(args.teacher.imageUrl) },
+    },
+    {
+      type: "text",
+      text: [
+        `Create a candid Ruby High photo of ${args.student.name} and ${args.teacher.name} immediately after ${args.student.name} passed ${className}${args.letterGrade ? ` with a ${args.letterGrade}` : ""}.`,
+        "IDENTITY LOCK: Both reference images are canonical character sheets. Preserve each person's hair, face, skin tone, outfit, silhouette, proportions, age, role, and art style. Adapt pose and expression only. Include exactly these two people.",
+        "",
+        `ACTUAL CLASS: ${className}.`,
+        subjects.length > 0
+          ? `SUBJECTS: ${subjects.join(", ")}. The room, teaching materials, and activity must unmistakably belong to these subjects.`
+          : "The room, teaching materials, and activity must unmistakably belong to this named class.",
+        args.grade ? `STUDENT YEAR: Grade ${args.grade}.` : "",
+        `MOMENT: The lesson has just ended. ${args.student.name} is reacting to the result while ${args.teacher.name} responds in character beside the evidence of the completed class.`,
+        "COMPOSITION: wide horizontal editorial school photo, 16:9. Show both people from head to at least knees, at different depths and angles, naturally interacting with each other and the classroom. Keep both faces clear.",
+        "ENVIRONMENT: a specific, lived-in Ruby High classroom for the named class—not a generic portrait backdrop. Include relevant desks, tools, books, experiments, screens, notes, or class materials, but no readable text.",
+        "AVOID: solo portraits, character sheets, plain or gradient backgrounds, formal lineup, generic empty classroom, graduation imagery, trophies, extra people, character redesigns, outfit swaps, visible grades, captions, speech bubbles, logos, and watermarks.",
+        "STYLE: JRPG/anime-influenced school editorial, bold black outlines, vibrant flat colors, subtle cel shading, polished yearbook-quality finish.",
+      ].filter(Boolean).join("\n"),
+    },
+  ];
+
+  const body = await openRouterJson<PortraitResponse>({
+    apiKey: args.apiKey,
+    label: "class-passed-photo",
+    timeoutMs: PORTRAIT_TIMEOUT_MS * 2,
+    body: {
+      model: PORTRAIT_MODEL,
+      modalities: ["image", "text"],
+      messages: [{ role: "user", content: contentParts }],
+      max_tokens: PORTRAIT_MAX_TOKENS,
+    },
+  });
+  const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+  if (!url) throw new Error("Passed-class photo generation returned no image.");
+  return url;
+}
+
 function scheduledSchoolUpdatePhotoFacts(context: ScheduledSchoolUpdateContext): string[] {
   const facts: string[] = [];
   if (context.activeStudents > 0) facts.push(`${context.activeStudents} students are active around campus.`);

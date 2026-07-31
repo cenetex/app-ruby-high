@@ -62,6 +62,10 @@ export interface XMilestoneContext {
   grade?: string;
   teacherName?: string;
   teacherFacultyId?: string;
+  className?: string;
+  classSubjects?: string[];
+  studentImageUrl?: string;
+  teacherImageUrl?: string;
   letterGrade?: string;
   arcAnswer?: string;
   flavorQuote?: string;
@@ -721,7 +725,7 @@ export class XSocialService extends Service {
     const token = this.tokens.get(teacher.id);
     if (!token) return null;
 
-    const imageUrl = ctx.imageUrl ?? ctx.portraitUrl ?? ctx.diplomaUrl ?? null;
+    let imageUrl = ctx.imageUrl ?? ctx.portraitUrl ?? ctx.diplomaUrl ?? null;
     const reserveDailyPhotoSlot = !!imageUrl && (ctx.reserveDailyPhotoSlot ?? milestoneUsesDailyPhotoSlot(ctx.kind));
     let reservedPhotoSlot = false;
     if (reserveDailyPhotoSlot) {
@@ -786,6 +790,25 @@ export class XSocialService extends Service {
       return null;
     }
 
+    if (
+      !isDryRun
+      && ctx.kind === "class-passed"
+      && ctx.className
+      && ctx.studentImageUrl
+      && ctx.teacherImageUrl
+    ) {
+      const composition = await this.generateClassPassedPhoto(ctx);
+      if (!composition) {
+        log.event("x-social.class-passed-composition-required", {
+          teacherId: teacher.id,
+          className: ctx.className,
+        });
+        await releasePhotoSlot();
+        return null;
+      }
+      imageUrl = composition;
+    }
+
     // Every real X post must carry media. The daily photo slot, when relevant,
     // was reserved before text generation to prevent concurrency.
     let mediaId: string | null = null;
@@ -840,6 +863,43 @@ export class XSocialService extends Service {
       return await this.uploadMedia(token, imageBytes);
     } catch (err) {
       log.error("x-social.media-upload-failed", err, { teacherId: token.teacherId, kind });
+      return null;
+    }
+  }
+
+  private async generateClassPassedPhoto(ctx: XMilestoneContext): Promise<string | null> {
+    const apiKey = process.env.RUBY_HIGH_OPENROUTER_API_KEY ?? process.env.OPENROUTER_KEY ?? "";
+    if (!apiKey || !ctx.className || !ctx.studentImageUrl || !ctx.teacherImageUrl) {
+      log.event("x-social.class-passed-composition-unavailable", {
+        hasApiKey: !!apiKey,
+        hasClassName: !!ctx.className,
+        hasStudentImage: !!ctx.studentImageUrl,
+        hasTeacherImage: !!ctx.teacherImageUrl,
+      });
+      return null;
+    }
+    const { renderClassPassedPhoto } = await import("./character-generation.js");
+    try {
+      return await renderClassPassedPhoto({
+        apiKey,
+        student: {
+          name: ctx.characterName,
+          imageUrl: ctx.studentImageUrl,
+        },
+        teacher: {
+          name: ctx.teacherName || "Ruby High teacher",
+          imageUrl: ctx.teacherImageUrl,
+        },
+        className: ctx.className,
+        subjects: ctx.classSubjects ?? [],
+        grade: ctx.grade,
+        letterGrade: ctx.letterGrade,
+      });
+    } catch (err) {
+      log.error("x-social.class-passed-composition-failed", err, {
+        className: ctx.className,
+        teacherFacultyId: ctx.teacherFacultyId,
+      });
       return null;
     }
   }
