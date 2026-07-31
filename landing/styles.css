@@ -22,6 +22,8 @@
   --mint: #d8f2e9;
   --rose: #fde3e2;
   --parchment: #eee3c7;
+  --agent-ink: #09263b;
+  --agent-teal: #42d6c0;
   --blackline: 3px solid var(--ink);
   --shadow: 9px 9px 0 rgba(25, 22, 18, 0.9);
 }
@@ -290,6 +292,201 @@ nav a {
 
 .faculty-sally {
   transform: translateY(3%);
+}
+
+.agents-section {
+  background:
+    radial-gradient(circle at 18% 20%, rgba(66, 214, 192, 0.18) 0 2px, transparent 2.6px) 0 0 / 16px 16px,
+    var(--agent-ink);
+  border-top: var(--blackline);
+  color: #fff9df;
+}
+
+.agents-frame {
+  align-items: center;
+  display: grid;
+  gap: clamp(28px, 5vw, 64px);
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
+  margin: 0 auto;
+  max-width: 1240px;
+}
+
+.agents-media {
+  min-width: 0;
+  padding: 0 18px 38px 0;
+  position: relative;
+}
+
+.agents-launch-art {
+  aspect-ratio: 16 / 10;
+  border: var(--blackline);
+  box-shadow: 12px 12px 0 var(--agent-teal);
+  object-fit: cover;
+  width: 100%;
+}
+
+.agents-app-badge {
+  align-items: center;
+  background: var(--cream);
+  border: var(--blackline);
+  bottom: 0;
+  box-shadow: 6px 6px 0 var(--ink);
+  color: var(--ink);
+  display: flex;
+  gap: 12px;
+  left: clamp(16px, 4vw, 48px);
+  padding: 10px 18px 10px 10px;
+  position: absolute;
+  transform: rotate(-2deg);
+}
+
+.agents-app-badge img {
+  height: 68px;
+  object-fit: contain;
+  width: 68px;
+}
+
+.agents-app-badge p {
+  margin: 0;
+}
+
+.agents-app-badge span {
+  color: var(--blue);
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.agents-app-badge strong {
+  display: block;
+  font-family: Schoolbell, ui-sans-serif, system-ui, sans-serif;
+  font-size: 2rem;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.agents-caption {
+  background: var(--yellow);
+  border: var(--blackline);
+  box-shadow: 5px 5px 0 var(--ink);
+  color: var(--ink);
+  font-family: Caveat, ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+  font-weight: 800;
+  margin: 0;
+  padding: 4px 14px 7px;
+  position: absolute;
+  right: 0;
+  top: 20px;
+  transform: rotate(3deg);
+}
+
+.agents-copy {
+  min-width: 0;
+}
+
+.agents-copy .section-kicker {
+  color: var(--agent-teal);
+}
+
+.agents-copy h2 {
+  font-family: Schoolbell, ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(3.4rem, 6.7vw, 6.6rem);
+  font-weight: 400;
+  line-height: 0.86;
+  margin: 0;
+  max-width: 720px;
+}
+
+.agents-lede {
+  color: #d9f6f1;
+  font-size: clamp(1.02rem, 1.55vw, 1.2rem);
+  font-weight: 690;
+  margin: 22px 0 0;
+  max-width: 680px;
+}
+
+.agents-feature-list {
+  display: grid;
+  gap: 0;
+  list-style: none;
+  margin: 26px 0 0;
+  padding: 0;
+}
+
+.agents-feature-list li {
+  border-top: 1px solid rgba(216, 242, 233, 0.3);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 40px minmax(0, 1fr);
+  padding: 14px 0;
+}
+
+.agents-feature-list li:last-child {
+  border-bottom: 1px solid rgba(216, 242, 233, 0.3);
+}
+
+.agents-feature-list li > span {
+  color: var(--agent-teal);
+  font-family: Schoolbell, ui-sans-serif, system-ui, sans-serif;
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.agents-feature-list strong {
+  color: #fff;
+  font-size: 1rem;
+}
+
+.agents-feature-list p {
+  color: #bfe1dc;
+  margin: 3px 0 0;
+}
+
+.agents-install {
+  background: #061b2a;
+  border: 2px solid var(--agent-teal);
+  box-shadow: 5px 5px 0 var(--agent-teal);
+  margin-top: 24px;
+  overflow: auto;
+  padding: 12px 14px;
+}
+
+.agents-install span {
+  color: var(--agent-teal);
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}
+
+.agents-install code {
+  color: #fff9df;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: clamp(0.78rem, 1.3vw, 0.95rem);
+  white-space: nowrap;
+}
+
+.agents-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.agents-actions .primary-action {
+  background: var(--agent-teal);
+}
+
+.agents-actions .secondary-action {
+  background: transparent;
+  border-color: var(--cream);
+  box-shadow: 4px 4px 0 var(--cream);
+  color: var(--cream);
 }
 
 .section {
@@ -832,6 +1029,14 @@ nav a {
     height: min(46svh, 410px);
   }
 
+  .agents-frame {
+    grid-template-columns: 1fr;
+  }
+
+  .agents-copy {
+    max-width: 720px;
+  }
+
   .section-copy,
   .collect-section,
   .yearbook-spread {
@@ -934,6 +1139,39 @@ nav a {
 
   .section {
     padding-inline: 18px;
+  }
+
+  .agents-section {
+    padding-block: 52px 58px;
+  }
+
+  .agents-media {
+    padding: 0 8px 48px 0;
+  }
+
+  .agents-caption {
+    display: none;
+  }
+
+  .agents-app-badge {
+    left: 12px;
+  }
+
+  .agents-app-badge img {
+    height: 58px;
+    width: 58px;
+  }
+
+  .agents-app-badge strong {
+    font-size: 1.7rem;
+  }
+
+  .agents-copy h2 {
+    font-size: clamp(3.4rem, 17vw, 5.3rem);
+  }
+
+  .agents-actions a {
+    width: 100%;
   }
 
   .comic-heading h2 {
