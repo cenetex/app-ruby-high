@@ -7,7 +7,7 @@ import { FacultyService } from "../services/faculty-service.js";
 import { addLogObserver } from "../services/logger.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
-import type { Choice, Grade } from "../types.js";
+import type { Grade } from "../types.js";
 
 // Canonical telemetry events the retention dashboard depends on. The
 // product cannot be tuned without measurement; these names are the
@@ -95,13 +95,14 @@ describe("Canonical event log emissions", () => {
     const { ruby } = await makeServices();
     const sid = "test:events-mc";
     attachCharacter(ruby, sid);
-    ruby.pose(sid, {
+    const state = ruby.pose(sid, {
       prompt: "2 + 2 = ?",
-      options: { A: "3", B: "4", C: "5", D: "6" },
-      correct: "B",
+      correct: "4",
+      decoys: ["3", "5", "6"],
       faculty: "ruby",
     });
-    ruby.submitAnswer(sid, "B" as Choice);
+    const correctChoice = state.current!.correctChoice!;
+    ruby.submitAnswer(sid, correctChoice);
 
     const names = emittedNames();
     expect(names).toContain("question.posed");
@@ -112,8 +113,8 @@ describe("Canonical event log emissions", () => {
     expect(posed.faculty).toBe("ruby");
 
     const picked = captured.find((e) => e.name === "answer.picked")!;
-    expect(picked.picked).toBe("B");
-    expect(picked.correct).toBe("B");
+    expect(picked.picked).toBe(correctChoice);
+    expect(picked.correct).toBe(correctChoice);
     expect(picked.wasCorrect).toBe(true);
   });
 

@@ -65,12 +65,9 @@ describe("ContentPack registry", () => {
       for (const q of f.questions) {
         expect(q.id).toBeTruthy();
         expect(q.prompt).toBeTruthy();
-        expect(["A", "B", "C", "D"]).toContain(q.correct);
-        const options = q.options!;
-        expect(options.A).toBeTruthy();
-        expect(options.B).toBeTruthy();
-        expect(options.C).toBeTruthy();
-        expect(options.D).toBeTruthy();
+        expect(q.correct).toBeTruthy();
+        expect(q.decoys?.length).toBeGreaterThanOrEqual(3);
+        expect(new Set([q.correct, ...(q.decoys ?? [])]).size).toBeGreaterThanOrEqual(4);
         expect(["head", "heart", "hustle", "honor"]).toContain(q.stat);
       }
     }

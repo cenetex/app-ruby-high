@@ -2059,12 +2059,14 @@ describe("admin metrics route", () => {
     expect(persistedDrafts[0]!.teachers[0]!.questions).toHaveLength(6);
     expect(persistedDrafts[0]!.teachers[0]!.questions[0]).toMatchObject({
       type: "multiple-choice",
-      correct: "A",
+      correct: "Turn agent-culture into a small classroom scenario with one clear operational judgment",
+      decoys: expect.any(Array),
       faculty: expect.stringMatching(/^draft-/),
       minGrade: "10",
       difficulty: "easy",
       explanation: expect.stringContaining("Ruby Research Corpus"),
     });
+    expect(persistedDrafts[0]!.teachers[0]!.questions[0]!.decoys).toHaveLength(3);
     expect(ruby.publicWorldTeacherAgendas().find((agenda) => agenda.grade === "10" && agenda.facultyId === "ruby")).toMatchObject({
       draftId: persistedDrafts[0]!.id,
       draftStatus: "review-draft-created",

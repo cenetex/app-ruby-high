@@ -2,13 +2,15 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  CHOICES,
   DIFFICULTIES,
   type BankedQuestion,
   type CharacterStats,
-  type Choice,
   type Difficulty,
 } from "../../types.js";
+import {
+  multipleChoiceDefinition,
+  validateMultipleChoiceDefinition,
+} from "../../question-choices.js";
 import type {
   ContentPack,
   PackCurriculumMetadata,
@@ -147,20 +149,26 @@ function parseQuestion(value: unknown, index: number): BankedQuestion {
   if (!DIFFICULTIES.includes(difficulty)) {
     throw new Error(`questions[${index}].difficulty must be easy, medium, or hard.`);
   }
-  const correct = requiredString(row.correct, `questions[${index}].correct`) as Choice;
-  if (!CHOICES.includes(correct)) {
-    throw new Error(`questions[${index}].correct must be A, B, C, or D.`);
-  }
-  if (!row.options || typeof row.options !== "object") {
-    throw new Error(`questions[${index}].options must be an object.`);
-  }
-  const optionRow = row.options as Record<string, unknown>;
-  const options = {
-    A: requiredString(optionRow.A, `questions[${index}].options.A`),
-    B: requiredString(optionRow.B, `questions[${index}].options.B`),
-    C: requiredString(optionRow.C, `questions[${index}].options.C`),
-    D: requiredString(optionRow.D, `questions[${index}].options.D`),
+  const optionRow = row.options && typeof row.options === "object"
+    ? row.options as Record<string, unknown>
+    : undefined;
+  const candidate = {
+    correct: typeof row.correct === "string" ? row.correct : undefined,
+    decoys: Array.isArray(row.decoys) ? row.decoys.filter((value): value is string => typeof value === "string") : undefined,
+    options: optionRow
+      ? {
+          A: String(optionRow.A ?? ""),
+          B: String(optionRow.B ?? ""),
+          C: String(optionRow.C ?? ""),
+          D: String(optionRow.D ?? ""),
+        }
+      : undefined,
   };
+  const definition = multipleChoiceDefinition(candidate);
+  const definitionErrors = validateMultipleChoiceDefinition(candidate);
+  if (!definition || definitionErrors.length > 0) {
+    throw new Error(`questions[${index}] invalid MCQ definition: ${definitionErrors.join(", ") || "correct/decoys missing"}.`);
+  }
   const stat = requiredString(row.stat, `questions[${index}].stat`) as keyof CharacterStats;
   if (!["head", "heart", "hustle", "honor"].includes(stat)) {
     throw new Error(`questions[${index}].stat is invalid.`);
@@ -171,8 +179,8 @@ function parseQuestion(value: unknown, index: number): BankedQuestion {
     subject,
     difficulty,
     stat,
-    options,
-    correct,
+    correct: definition.correct,
+    decoys: definition.decoys,
     explanation: requiredString(row.explanation, `questions[${index}].explanation`),
     faculty: ELIZAOS_SYSTEMS_LAB_FACULTY_ID,
   };
@@ -194,11 +202,9 @@ function validateEditorialShape(
     throw new Error("ElizaOS Systems Lab question prompts must be unique.");
   }
   const difficultyCounts = { easy: 0, medium: 0, hard: 0 };
-  const correctChoiceCounts: Record<Choice, number> = { A: 0, B: 0, C: 0, D: 0 };
   const moduleCounts = new Map(curriculum.modules.map((module) => [module, 0]));
   for (const question of questions) {
     difficultyCounts[question.difficulty] += 1;
-    correctChoiceCounts[question.correct ?? "A"] += 1;
     if (!moduleCounts.has(question.subject)) {
       throw new Error(`Unknown ElizaOS Systems Lab module: ${question.subject}.`);
     }
@@ -211,11 +217,6 @@ function validateEditorialShape(
   ) {
     throw new Error(
       `ElizaOS Systems Lab difficulty mix must be 30/42/24; found ${difficultyCounts.easy}/${difficultyCounts.medium}/${difficultyCounts.hard}.`,
-    );
-  }
-  if (CHOICES.some((choice) => correctChoiceCounts[choice] !== 24)) {
-    throw new Error(
-      `ElizaOS Systems Lab answer positions must be balanced 24/24/24/24; found ${CHOICES.map((choice) => correctChoiceCounts[choice]).join("/")}.`,
     );
   }
   for (const [module, count] of moduleCounts) {

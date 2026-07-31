@@ -133,7 +133,6 @@ function parseCorpusQuestions(raw, facultyId) {
         difficulty,
         minGrade: difficulty === "easy" ? "10" : difficulty === "medium" ? "11" : "12",
         faculty: facultyId,
-        correct: "A",
       };
     })
     .filter(Boolean);
@@ -454,6 +453,51 @@ function offlineApiScript(data) {
     return entries.length ? entries[entries.length - 1].difficulty : null;
   }
 
+  function materializeQuestion(q) {
+    if ((q.type || "multiple-choice") !== "multiple-choice") return q;
+    var correct = String(q.correct || "").trim();
+    var decoys = Array.isArray(q.decoys)
+      ? q.decoys.map(function(value) { return String(value || "").trim(); }).filter(Boolean)
+      : [];
+    if (!decoys.length && q.options && CHOICES.indexOf(correct) !== -1) {
+      var legacyChoice = correct;
+      correct = String(q.options[legacyChoice] || "").trim();
+      decoys = CHOICES
+        .filter(function(choice) { return choice !== legacyChoice; })
+        .map(function(choice) { return String(q.options[choice] || "").trim(); })
+        .filter(Boolean);
+    }
+    if (!correct || decoys.length < 3) throw new Error("Offline MCQ is missing correct answer text or decoys.");
+    var candidateDecoys = decoys.slice();
+    for (var i = candidateDecoys.length - 1; i > 0; i -= 1) {
+      var decoySwap = Math.floor(Math.random() * (i + 1));
+      var decoyTmp = candidateDecoys[i];
+      candidateDecoys[i] = candidateDecoys[decoySwap];
+      candidateDecoys[decoySwap] = decoyTmp;
+    }
+    var answers = [{ text: correct, isCorrect: true }]
+      .concat(candidateDecoys.slice(0, 3).map(function(text) { return { text, isCorrect: false }; }));
+    for (var j = answers.length - 1; j > 0; j -= 1) {
+      var answerSwap = Math.floor(Math.random() * (j + 1));
+      var answerTmp = answers[j];
+      answers[j] = answers[answerSwap];
+      answers[answerSwap] = answerTmp;
+    }
+    var options = {};
+    var correctChoice = "A";
+    answers.forEach(function(answer, index) {
+      var choice = CHOICES[index];
+      options[choice] = answer.text;
+      if (answer.isCorrect) correctChoice = choice;
+    });
+    return {
+      correct,
+      decoys,
+      options,
+      correctChoice
+    };
+  }
+
   function pickQuestion(state) {
     const facultyId = state.faculty === "lounge" ? "ruby" : state.faculty;
     const bank = questionBank(facultyId);
@@ -479,6 +523,7 @@ function offlineApiScript(data) {
       : basePool;
     if (!pool.length) throw new Error("No offline questions are bundled for this room.");
     const q = clone(pool[Math.floor(Math.random() * pool.length)]);
+    const posed = materializeQuestion(q);
     state.askedQuestionIds.push(q.id);
     state.faculty = facultyId;
     state.subject = q.subject || null;
@@ -486,8 +531,10 @@ function offlineApiScript(data) {
       id: q.id,
       prompt: q.prompt,
       type: q.type || "multiple-choice",
-      options: q.options || { A: "", B: "", C: "", D: "" },
-      correct: q.correct || "A",
+      correct: posed.correct,
+      decoys: posed.decoys,
+      options: posed.options,
+      correctChoice: posed.correctChoice,
       explanation: q.explanation || null,
       subject: q.subject || null,
       stat: q.stat || "head",
@@ -498,7 +545,7 @@ function offlineApiScript(data) {
       media: []
     };
     state.lastReveal = null;
-    state.activeRound = buildRound(state, q);
+    state.activeRound = buildRound(state, state.current);
     transition(state, "asking");
     return state;
   }
@@ -507,7 +554,7 @@ function offlineApiScript(data) {
     const startedAt = now();
     const room = roomForFaculty(state.faculty);
     const studentIds = room && ROOM_COHORT[room.id] ? ROOM_COHORT[room.id] : ["lyra", "sami"];
-    const correct = q.correct || "A";
+    const correct = q.correctChoice || "A";
     const wrong = CHOICES.filter(function(c) { return c !== correct; });
     return {
       questionId: q.id,
@@ -581,7 +628,7 @@ function offlineApiScript(data) {
     picked = String(picked || "").toUpperCase();
     if (CHOICES.indexOf(picked) === -1) throw new Error("Pick must be A, B, C, or D.");
     const q = state.current;
-    const correct = q.correct || "A";
+    const correct = q.correctChoice || "A";
     const wasCorrect = picked === correct;
     const answeredAt = now();
     const roll = roll2d6();
@@ -662,7 +709,7 @@ function offlineApiScript(data) {
       dice: r.dice,
       total,
       outcome,
-      eliminated: pickEliminated(state.current.correct || "A", outcome),
+      eliminated: pickEliminated(state.current.correctChoice || "A", outcome),
       rolledAt: now()
     };
     state.activeRound.advantage = advantage;
@@ -862,7 +909,7 @@ function offlineApiScript(data) {
           answeredAt: answered ? (round.startedAt + n.delayMs) : null,
           isLocked: answered,
           pick: reveal && answered ? n.plannedPick : null,
-          isCorrect: reveal && answered && state.current ? n.plannedPick === state.current.correct : null
+          isCorrect: reveal && answered && state.current ? n.plannedPick === state.current.correctChoice : null
         };
       }),
       player: {

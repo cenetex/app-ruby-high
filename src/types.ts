@@ -222,9 +222,19 @@ export interface Question {
   /** Defaults to "multiple-choice". Opinion questions skip A/B/C/D and ask
    *  for a written response, graded by the teacher LLM. */
   type?: QuestionType;
-  /** Multiple-choice fields — required when type === "multiple-choice". */
+  /**
+   * Authored multiple-choice definition. `correct` is the answer text, never
+   * an A/B/C/D slot. `decoys` may contain more than three candidates; each
+   * pose samples three of them.
+   */
+  correct?: string;
+  decoys?: string[];
+  /**
+   * Posed-board multiple-choice fields. These are derived afresh whenever a
+   * card is posed and must not be persisted back into the authored bank.
+   */
   options?: Record<Choice, string>;
-  correct?: Choice;
+  correctChoice?: Choice;
   /** Typed-answer / image-occlusion fields. expectedAnswer is intentionally
    *  omitted from public telemetry until reveal. */
   expectedAnswer?: string;

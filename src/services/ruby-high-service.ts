@@ -44,6 +44,12 @@ import {
 } from "./ruby-high/curriculum-coverage.js";
 import { builtInTeacherResearchCorpusForFaculty } from "./ruby-high/teacher-research-corpus.js";
 import { quickRollStudentForSeed } from "./ruby-high/quick-roll.js";
+import {
+  correctAnswerForQuestion,
+  correctChoiceForQuestion,
+  materializeMultipleChoice,
+  multipleChoiceDefinition,
+} from "../question-choices.js";
 import { teacherById, type TeacherCharacter } from "../characters/teachers.js";
 import { Service, type IAgentRuntime } from "../runtime.js";
 import {
@@ -188,6 +194,7 @@ import {
 import {
   activeFaculty,
   appendQuestionToPackBank,
+  courseForFacultyForSession,
   coursesForPack,
   facultyByIdForSession,
   facultyForSession,
@@ -238,8 +245,13 @@ import {
 
 export interface PoseInput {
   prompt: string;
-  options: Record<Choice, string>;
-  correct: Choice;
+  /** Semantic answer text. Legacy callers may still send A/B/C/D with options. */
+  correct: string;
+  /** Candidate wrong answers; three are sampled for each pose. */
+  decoys?: string[];
+  /** Legacy compatibility for pre-value-schema tool calls and persisted tests. */
+  options?: Record<Choice, string>;
+  correctChoice?: Choice;
   explanation?: string;
   subject?: string;
   stat?: keyof CharacterStats;
@@ -5339,7 +5351,7 @@ export class RubyHighService extends Service {
     const mod = state.character?.stats[stat] ?? 0;
     const total = r.total + mod;
     const outcome = classifyTotal(total);
-    const correct = (state.current?.correct ?? "A") as Choice;
+    const correct = state.current ? correctChoiceForQuestion(state.current) ?? "A" : "A";
     const eliminated = pickEliminatedChoices(correct, outcome);
     const advantage: AdvantageRoll = {
       rolled: true,
@@ -6748,6 +6760,7 @@ export class RubyHighService extends Service {
     const correctAnswer = reveal.expectedAnswer
       ?? question.expectedAnswer
       ?? question.options?.[reveal.correct]
+      ?? correctAnswerForQuestion(question)
       ?? reveal.correct;
     const report: FirstBellReport = {
       reportId: `first-bell:${createHash("sha256").update(`${state.sessionId}:${question.id}:${now}`).digest("hex").slice(0, 16)}`,
@@ -6816,7 +6829,6 @@ export class RubyHighService extends Service {
       subject: card.subject,
       difficulty: card.difficulty,
       faculty: card.faculty,
-      correct: "A",
     };
     question.stat = statForQuestion(question);
     return question;
@@ -6837,8 +6849,7 @@ export class RubyHighService extends Service {
     return faculty?.questions.find((q) =>
       (q.sourceCardId === source.id || q.id === source.id) &&
       (q.type ?? "multiple-choice") === "multiple-choice" &&
-      !!q.options &&
-      !!q.correct
+      !!multipleChoiceDefinition(q)
     ) ?? null;
   }
 
@@ -6856,7 +6867,7 @@ export class RubyHighService extends Service {
   }
 
   private normalizeGeneratedMcQuestion(source: PackSourceCard, q: BankedQuestion): BankedQuestion {
-    if (!q.options || !q.correct) {
+    if (!multipleChoiceDefinition(q)) {
       throw new Error("Distractor generation did not return a playable multiple-choice question.");
     }
     return {
@@ -7266,11 +7277,12 @@ export class RubyHighService extends Service {
 
     // Determine first-correct across the whole field.
     const corrects: Array<{ id: string; at: number }> = [];
-    if (round.player.answeredAt != null && round.player.picked === q.correct) {
+    const correctChoice = correctChoiceForQuestion(q) ?? "A";
+    if (round.player.answeredAt != null && round.player.picked === correctChoice) {
       corrects.push({ id: "player", at: round.player.answeredAt });
     }
     for (const entry of round.npcs) {
-      if (entry.plannedPick === q.correct && entry.answeredAt != null) {
+      if (entry.plannedPick === correctChoice && entry.answeredAt != null) {
         corrects.push({ id: entry.studentId, at: entry.answeredAt });
       }
     }
@@ -7280,7 +7292,7 @@ export class RubyHighService extends Service {
     // Player scoring. Forfeits (timer expired with no pick) count toward
     // total but don't fake a picked letter in answer history.
     const picked = round.player.picked ?? null;
-    const rawCorrect = !forfeit && picked != null && picked === q.correct;
+    const rawCorrect = !forfeit && picked != null && picked === correctChoice;
     let affinitySave: { facultyId: string } | null = null;
     if (!rawCorrect && !forfeit && picked != null && state.character && state.currentGrade) {
       const affinity = state.character.classAffinity?.[state.currentGrade];
@@ -7320,7 +7332,7 @@ export class RubyHighService extends Service {
         questionId: q.id,
         faculty: q.faculty ?? round.classSession?.facultyId ?? state.faculty,
         picked,
-        correct: (q.correct ?? "A") as Choice,
+        correct: correctChoice,
         wasCorrect,
         at: round.player.answeredAt ?? round.expiresAt,
         ...(isTypedQuestion ? { answerText, expectedAnswer: q.expectedAnswer ?? acceptedAnswers[0] } : {}),
@@ -7368,8 +7380,8 @@ export class RubyHighService extends Service {
     // Class Clown void: retroactively fix NPCs, history, and score.
     if (classClownVoid) {
       for (const entry of round.npcs) {
-        if (entry.plannedPick !== q.correct && entry.answeredAt != null) {
-          entry.plannedPick = q.correct ?? "A";
+        if (entry.plannedPick !== correctChoice && entry.answeredAt != null) {
+          entry.plannedPick = correctChoice;
           entry.outcome = "mixed";
           entry.rolledTotal = Math.max(0, entry.rolledTotal);
         }
@@ -7422,8 +7434,7 @@ export class RubyHighService extends Service {
     // tick the daily-class counter or the graduation gate.
     const progress = this.applyPlayerProgress(state, wasCorrect, state.faculty, classProgress);
     if (progress.dailyTicked) {
-      const correctAns = (q.correct ?? "A") as Choice;
-      this.applyCohortDaily(state, correctAns, dailyKey());
+      this.applyCohortDaily(state, correctChoice, dailyKey());
     }
 
     const questionSnapshot = {
@@ -7437,7 +7448,7 @@ export class RubyHighService extends Service {
       questionId: q.id,
       ...questionSnapshot,
       picked: (picked ?? "A") as Choice, // UI-only; audit lives in history
-      correct: (q.correct ?? "A") as Choice,
+      correct: correctChoice,
       wasCorrect,
       forfeit,
       explanation: q.explanation ?? null,
@@ -8102,39 +8113,21 @@ export class RubyHighService extends Service {
   }
 
   /**
-   * Randomize A/B/C/D order every time a question is posed, so the correct
-   * slot is never a learnable tell. The stored bank order (and any author bias
-   * toward "B", or the LLM's habit of writing the right answer first) becomes
-   * irrelevant because the student sees a fresh permutation each view. Grading
-   * reads state.current.correct, which we remap here, so the shuffle stays
-   * self-consistent. The correct option is tracked by identity, not text, so it
-   * survives even if two options share wording. A new options object is built
-   * rather than mutating in place, so a question that still references the
-   * shared in-memory bank object is never corrupted.
+   * Build a fresh A/B/C/D board from the semantic answer definition.
    *
-   * Gated by RUBY_HIGH_SHUFFLE_CHOICES (default on; set to "0" under test for a
-   * deterministic stored order — see vitest.config.ts and choice-shuffle.test.ts).
+   * Authored cards never own a "correct letter." Every pose independently
+   * samples three decoys, shuffles all four values, and records the resulting
+   * slot in `correctChoice`. Grading reads only that posed mapping.
    */
-  private shuffleQuestionChoices(question: Question): void {
-    if (process.env.RUBY_HIGH_SHUFFLE_CHOICES === "0") return;
-    if (question.type !== "multiple-choice" || !question.options || !question.correct) return;
-    const items = CHOICES.map((slot) => ({
-      text: question.options![slot] ?? "",
-      isCorrect: slot === question.correct,
-    }));
-    for (let i = items.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [items[i], items[j]] = [items[j], items[i]];
-    }
-    const options = {} as Record<Choice, string>;
-    let correct: Choice = question.correct;
-    items.forEach((item, index) => {
-      const slot = CHOICES[index]!;
-      options[slot] = item.text;
-      if (item.isCorrect) correct = slot;
+  private materializeQuestionChoices(question: Question): void {
+    if ((question.type ?? "multiple-choice") !== "multiple-choice") return;
+    const materialized = materializeMultipleChoice(question, {
+      shuffle: process.env.RUBY_HIGH_SHUFFLE_CHOICES !== "0",
     });
-    question.options = options;
-    question.correct = correct;
+    question.correct = materialized.correct;
+    question.decoys = materialized.decoys;
+    question.options = materialized.options;
+    question.correctChoice = materialized.correctChoice;
   }
 
   pose(sessionId: string, input: PoseInput): QuizState {
@@ -8142,15 +8135,6 @@ export class RubyHighService extends Service {
     this.assertBoardMutationAllowed(state, "post");
     if (state.character?.pendingGraduation) {
       throw new Error("Graduation ceremony is ready — choose a level-up reward before starting another question.");
-    }
-    if (!CHOICES.includes(input.correct)) {
-      throw new Error(`'correct' must be one of ${CHOICES.join(", ")}`);
-    }
-    for (const c of CHOICES) {
-      const v = input.options[c];
-      if (typeof v !== "string" || v.trim().length === 0) {
-        throw new Error(`Option ${c} is missing or empty`);
-      }
     }
     const id = input.questionId ?? `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
     const facultyId = this.resolveQuestionFaculty(state, input.faculty);
@@ -8160,8 +8144,10 @@ export class RubyHighService extends Service {
       id,
       prompt: input.prompt.trim(),
       type: "multiple-choice",
-      options: { ...input.options },
       correct: input.correct,
+      ...(input.decoys ? { decoys: [...input.decoys] } : {}),
+      ...(input.options ? { options: { ...input.options } } : {}),
+      ...(input.correctChoice ? { correctChoice: input.correctChoice } : {}),
       explanation: input.explanation?.trim() || undefined,
       subject,
       stat: normalizeQuestionStat(input.stat) ?? undefined,
@@ -8170,7 +8156,7 @@ export class RubyHighService extends Service {
       rarity: input.rarity,
     };
     question.stat = statForQuestion(question);
-    this.shuffleQuestionChoices(question);
+    this.materializeQuestionChoices(question);
     state.current = question;
     state.subject = question.subject ?? state.subject;
     state.faculty = question.faculty ?? state.faculty;
@@ -8205,17 +8191,14 @@ export class RubyHighService extends Service {
       throw new Error("Graduation ceremony is ready — choose a level-up reward before starting another question.");
     }
     const type: QuestionType = q.type ?? "multiple-choice";
-    const question: Question = { ...q, type };
+    const question: Question = {
+      ...q,
+      type,
+      ...(q.decoys ? { decoys: [...q.decoys] } : {}),
+      ...(q.options ? { options: { ...q.options } } : {}),
+    };
     if (type === "multiple-choice") {
-      if (!question.options || !question.correct) {
-        throw new Error(`Question ${q.id} is missing multiple-choice options.`);
-      }
-      for (const c of CHOICES) {
-        const v = question.options[c];
-        if (typeof v !== "string" || v.trim().length === 0) {
-          throw new Error(`Question ${q.id} option ${c} is missing or empty.`);
-        }
-      }
+      this.materializeQuestionChoices(question);
     } else if (type === "typed-answer" || type === "image-occlusion") {
       const answers = question.acceptedAnswers?.filter((answer) => answer.trim().length > 0) ?? [];
       if (!question.expectedAnswer && answers.length === 0) {
@@ -8223,11 +8206,10 @@ export class RubyHighService extends Service {
       }
       question.acceptedAnswers = answers.length > 0 ? answers : [question.expectedAnswer ?? ""];
       question.expectedAnswer = question.expectedAnswer ?? question.acceptedAnswers[0]!;
-      question.correct = "A";
+      question.correctChoice = "A";
       question.canGenerateMc = q.canGenerateMc !== false;
     }
     question.stat = statForQuestion(question);
-    this.shuffleQuestionChoices(question);
     state.current = question;
     state.subject = question.subject ?? state.subject;
     state.faculty = question.faculty ?? state.faculty;
@@ -8267,13 +8249,14 @@ export class RubyHighService extends Service {
         ? ORIGINAL_PACK_ID
         : null;
     if (!targetPackId || question.faculty === GUEST_COURSE_ID) return;
-    if (!question.options || !question.correct || !question.subject || !question.difficulty || !question.faculty) return;
+    const definition = multipleChoiceDefinition(question);
+    if (!definition || !question.subject || !question.difficulty || !question.faculty) return;
     const banked: BankedQuestion = {
       id: question.id,
       prompt: question.prompt,
       type: "multiple-choice",
-      options: question.options as Record<Choice, string>,
-      correct: question.correct,
+      correct: definition.correct,
+      decoys: definition.decoys,
       explanation: question.explanation,
       subject: question.subject,
       stat: question.stat,
@@ -8322,7 +8305,7 @@ export class RubyHighService extends Service {
             answeredAt: null,
           };
         }
-        const correctAnswer = question.correct ?? "A";
+        const correctAnswer = correctChoiceForQuestion(question) ?? "A";
         const questionStat = statForQuestion(question);
         let r = rollNpcAnswer(npc.stats, correctAnswer, questionStat);
         // Heart: pep talk — give one classmate per round a re-roll on a miss.
@@ -8862,7 +8845,9 @@ export class RubyHighService extends Service {
     round.player.answeredAt = Date.now();
     log.event("answer.picked", {
       sessionId, faculty: state.faculty, questionId: q.id,
-      picked, correct: q.correct, wasCorrect: picked === q.correct,
+      picked,
+      correct: correctChoiceForQuestion(q),
+      wasCorrect: picked === correctChoiceForQuestion(q),
       rarity: q.rarity,
     });
     this.recordFunnelStep(state, "first_question_answered", {
@@ -8997,7 +8982,14 @@ export class RubyHighService extends Service {
 
     const classSession = round?.classSession;
     const cardRole = round?.cardRole;
-    const question: Question = { ...mc, type: "multiple-choice", canGenerateMc: false };
+    const question: Question = {
+      ...mc,
+      type: "multiple-choice",
+      canGenerateMc: false,
+      ...(mc.decoys ? { decoys: [...mc.decoys] } : {}),
+      ...(mc.options ? { options: { ...mc.options } } : {}),
+    };
+    this.materializeQuestionChoices(question);
     question.stat = statForQuestion(question);
     state.current = question;
     state.subject = question.subject ?? state.subject;
@@ -10697,6 +10689,29 @@ export class RubyHighService extends Service {
   }
 
   private xMilestoneContextWithImage(ctx: XMilestoneContext, state: QuizState): XMilestoneContext {
+    if (ctx.kind === "class-passed" && ctx.teacherFacultyId) {
+      const ch = state.character;
+      const faculty = facultyByIdForSession(state, ctx.teacherFacultyId);
+      const course = courseForFacultyForSession(state, ctx.teacherFacultyId);
+      const studentImageUrl = ch?.portraitDataUrl || defaultPlayerPortraitUrl(ch?.playbookId);
+      const teacherImageUrl = teacherFullPortraitUrl(
+        ctx.teacherFacultyId,
+        faculty?.assetTeacherId,
+        faculty?.profileImageUrl,
+      ) || teacherPortraitUrl(
+        ctx.teacherFacultyId,
+        faculty?.assetTeacherId,
+        faculty?.profileImageUrl,
+      );
+      return {
+        ...ctx,
+        teacherName: faculty?.displayName || ctx.teacherName,
+        className: course?.title || faculty?.displayName || ctx.teacherName || "Class",
+        classSubjects: course?.subjects?.length ? course.subjects : faculty?.subjects ?? [],
+        studentImageUrl,
+        ...(teacherImageUrl ? { teacherImageUrl } : {}),
+      };
+    }
     if (ctx.imageUrl || ctx.portraitUrl || ctx.diplomaUrl) return ctx;
     const ch = state.character;
     return {

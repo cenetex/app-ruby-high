@@ -2106,7 +2106,7 @@ describe("chat event context", () => {
         ruby.recordOpinion(sessionId, "player", "I need stronger evidence before I can defend the claim.");
         ruby.recordGrades(sessionId, [{ responder: "player", score: 3, comment: "Too general." }], "player");
       } else {
-        const wrong = posed.current!.correct === "A" ? "B" : "A";
+        const wrong = posed.current!.correctChoice === "A" ? "B" : "A";
         ruby.submitAnswer(sessionId, wrong as "A" | "B" | "C" | "D");
       }
       ruby.clearBoard(sessionId);
@@ -2616,7 +2616,7 @@ describe("chat event context", () => {
         ruby.recordOpinion(sessionId, "player", "I need stronger evidence before I can defend the claim.");
         ruby.recordGrades(sessionId, [{ responder: "player", score: 3, comment: "Too general." }], "player");
       } else {
-        const wrong = posed.current!.correct === "A" ? "B" : "A";
+        const wrong = posed.current!.correctChoice === "A" ? "B" : "A";
         ruby.submitAnswer(sessionId, wrong as "A" | "B" | "C" | "D");
       }
       ruby.clearBoard(sessionId);
@@ -2738,7 +2738,7 @@ describe("chat event context", () => {
     grantChatStars(sessionId);
     ruby.pickAndPose(sessionId, { faculty: "ruby" });
     const questionId = ruby.getOrCreate(sessionId).current!.id;
-    const correct = ruby.getOrCreate(sessionId).current!.correct as "A" | "B" | "C" | "D";
+    const correct = ruby.getOrCreate(sessionId).current!.correctChoice as "A" | "B" | "C" | "D";
     ruby.submitAnswer(sessionId, correct);
 
     (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {

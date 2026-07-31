@@ -7,7 +7,6 @@ const FACULTY_FILES = [
   ["sally-science", "assets/questions/sally-science.json"],
   ["professor-edward", "assets/questions/professor-edward.json"],
 ];
-const CHOICES = ["A", "B", "C", "D"];
 const DIFFICULTIES = ["easy", "medium", "hard"];
 const GRADES = ["9", "10", "11", "12"];
 const STATS = ["head", "heart", "hustle", "honor"];
@@ -103,18 +102,20 @@ function checkFaculty(path, facultyId, questions) {
     if (!STATS.includes(question.stat)) fail(label, `invalid stat ${question.stat}`);
     else stats[question.stat] += 1;
 
-    if (!CHOICES.includes(question.correct)) fail(label, `invalid correct choice ${question.correct}`);
-    if (!question.options || typeof question.options !== "object") {
-      fail(label, "options missing");
+    const correct = normalizeWhitespace(question.correct);
+    if (!correct) fail(label, "correct answer missing");
+    if (!Array.isArray(question.decoys) || question.decoys.length < 3) {
+      fail(label, "decoys must contain at least three answers");
     } else {
       const optionKeys = new Set();
-      for (const choice of CHOICES) {
-        const option = normalizeWhitespace(question.options[choice]);
-        if (!option) fail(label, `options.${choice} missing`);
-        if (option.length > OPTION_MAX) fail(label, `options.${choice} too long (${option.length} > ${OPTION_MAX})`);
-        if (META_OPTION_RE.test(option)) fail(label, `options.${choice} uses meta-answer wording`);
+      for (const [optionIndex, rawOption] of [correct, ...question.decoys].entries()) {
+        const field = optionIndex === 0 ? "correct" : `decoys[${optionIndex - 1}]`;
+        const option = normalizeWhitespace(rawOption);
+        if (!option) fail(label, `${field} missing`);
+        if (option.length > OPTION_MAX) fail(label, `${field} too long (${option.length} > ${OPTION_MAX})`);
+        if (META_OPTION_RE.test(option)) fail(label, `${field} uses meta-answer wording`);
         const optionKey = normalizeOption(option);
-        if (optionKey && optionKeys.has(optionKey)) fail(label, `duplicate option text: ${option}`);
+        if (optionKey && optionKeys.has(optionKey)) fail(label, `duplicate answer text: ${option}`);
         optionKeys.add(optionKey);
       }
     }

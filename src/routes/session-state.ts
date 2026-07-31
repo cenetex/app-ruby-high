@@ -55,6 +55,7 @@ import {
   type HostedEntitlementStatus,
 } from "../hosted-entitlements.js";
 import { APP_DISPLAY_NAME, APP_NAME, APP_ROUTE_PREFIX } from "./constants.js";
+import { correctChoiceForQuestion } from "../question-choices.js";
 
 interface FacultyTelemetry extends FacultyMember {
   questionCount: number;
@@ -216,7 +217,9 @@ function deriveActiveRound(state: QuizState) {
         answeredAt: n.answeredAt,
         isLocked,
         pick: !isOpinion && reveal && isLocked ? n.plannedPick : null,
-        isCorrect: !isOpinion && reveal && isLocked && state.current ? n.plannedPick === state.current.correct : null,
+        isCorrect: !isOpinion && reveal && isLocked && state.current
+          ? n.plannedPick === correctChoiceForQuestion(state.current)
+          : null,
       };
     }),
     player: {

@@ -145,7 +145,7 @@ describe("Ruby High Agent API", () => {
 
     const internal = ruby.getOrCreate(exchanged.credential.stateKey);
     const version = internal.updatedAt;
-    const correct = internal.current?.correct;
+    const correct = internal.current?.correctChoice;
     expect(correct).toMatch(/^[A-D]$/);
     const answered = await request({
       path: `${AGENT_API_PREFIX}/actions`,
@@ -235,7 +235,7 @@ describe("Ruby High Agent API", () => {
         requestId: "restart-answer-0001",
         ifVersion: beforeAnswer.updatedAt,
         type: "ANSWER",
-        input: { picked: beforeAnswer.current?.correct },
+        input: { picked: beforeAnswer.current?.correctChoice },
       },
       authorization,
     });

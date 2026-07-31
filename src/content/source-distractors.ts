@@ -18,7 +18,7 @@
  *    the user's quota.
  */
 
-import type { BankedQuestion, Choice, Difficulty } from "../types.js";
+import type { BankedQuestion, Difficulty } from "../types.js";
 import type { PackMediaAsset } from "./types.js";
 import { classifyQuestionStat } from "../question-stats.js";
 import {
@@ -133,16 +133,11 @@ export async function cardToMcQuestion(
         .map((lower) => cleaned.find((d) => d.toLowerCase() === lower)!);
       if (unique.length < 3) continue; // model under-delivered, retry
 
-      // Shuffle correct + 3 distractors into A/B/C/D and record the slot.
-      const all = [card.back, unique[0]!, unique[1]!, unique[2]!];
-      const order = shuffle(all);
-      const correctIdx = order.findIndex((s) => normalizeAnswer(s) === normalizeAnswer(card.back));
-      const correct = (["A", "B", "C", "D"] as Choice[])[correctIdx]!;
       return {
         id: `anki-${card.noteId}`,
         prompt: card.front,
-        options: { A: order[0]!, B: order[1]!, C: order[2]!, D: order[3]! },
-        correct,
+        correct: card.back.trim(),
+        decoys: unique,
         explanation: undefined,
         subject: opts.subject,
         stat: classifyQuestionStat({
@@ -209,13 +204,4 @@ async function callOpenRouterForDistractors(
 
 function normalizeAnswer(s: string): string {
   return s.toLowerCase().replace(/\s+/g, " ").trim();
-}
-
-function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j]!, a[i]!];
-  }
-  return a;
 }

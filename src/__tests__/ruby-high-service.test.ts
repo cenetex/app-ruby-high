@@ -1055,7 +1055,7 @@ describe("RubyHighService Phase 1", () => {
       const s = ruby.pickAndPose(sid, { faculty: "ruby" });
       const id = s.current!.id;
       seen.add(id);
-      ruby.submitAnswer(sid, s.current!.correct!);
+      ruby.submitAnswer(sid, s.current!.correctChoice!);
     }
     expect(seen.size).toBeGreaterThan(0);
     expect(ruby.questionBankStatus(sid, "ruby").total).toBeGreaterThanOrEqual(total);
@@ -1151,11 +1151,11 @@ describe("RubyHighService Phase 1", () => {
     ruby.setActivePackForSession(freshmanSid, freshmanPack.id);
     ruby.selectGrade(freshmanSid, "9");
     const posed = ruby.pickAndPose(freshmanSid, { faculty: "level-test-course" });
-    ruby.submitAnswer(freshmanSid, posed.current!.correct!);
+    ruby.submitAnswer(freshmanSid, posed.current!.correctChoice!);
     ruby.getOrCreate(freshmanSid).history.push({
       questionId: posed.current!.id,
-      picked: posed.current!.correct!,
-      correct: posed.current!.correct!,
+      picked: posed.current!.correctChoice!,
+      correct: posed.current!.correctChoice!,
       wasCorrect: true,
       at: Date.now() + 1,
     });
@@ -1340,7 +1340,7 @@ describe("RubyHighService Phase 1", () => {
     expect(() => ruby.pickAndPose(sid, { faculty: "ruby" })).toThrow(/Cannot post another question while a question is live/);
     expect(() => ruby.clearBoard(sid)).toThrow(/Cannot clear the board while a question is live/);
 
-    ruby.submitAnswer(sid, first.current!.correct!);
+    ruby.submitAnswer(sid, first.current!.correctChoice!);
     const second = ruby.pickAndPose(sid, { faculty: "ruby" });
     expect(second.current!.id).not.toBe(firstId);
   });
@@ -1350,7 +1350,7 @@ describe("RubyHighService Phase 1", () => {
     const sid = "test:3";
     ruby.pickAndPose(sid, { faculty: "ruby" });
     let s = ruby.getOrCreate(sid);
-    const correct = s.current!.correct!;
+    const correct = s.current!.correctChoice!;
     s = ruby.submitAnswer(sid, correct);
     expect(s.score).toMatchObject({ correct: 1, total: 1, points: 80, possible: 100 });
     expect(s.wallet).toMatchObject({ meritStars: 80, hallPasses: 0 });
@@ -1359,7 +1359,7 @@ describe("RubyHighService Phase 1", () => {
 
     ruby.pickAndPose(sid, { faculty: "ruby" });
     s = ruby.getOrCreate(sid);
-    const wrong = s.current!.correct! === "A" ? "B" : "A";
+    const wrong = s.current!.correctChoice! === "A" ? "B" : "A";
     s = ruby.submitAnswer(sid, wrong);
     // Wrong answers earn no points (the dice can't pile on a miss).
     // session.points stays at the previous correct's value; possible still ticks.
@@ -4387,7 +4387,7 @@ describe("RubyHighService Phase 1", () => {
     const { ruby } = await makeServices();
     const sid = "test:5";
     ruby.pickAndPose(sid, { faculty: "sally-science" });
-    const correct = ruby.getOrCreate(sid).current!.correct!;
+    const correct = ruby.getOrCreate(sid).current!.correctChoice!;
     ruby.submitAnswer(sid, correct);
     await ruby.flush();
 
@@ -4475,7 +4475,7 @@ describe("RubyHighService Phase 1", () => {
     state.askedQuestionIds = ["level-medium"];
     const picked = ruby.pickAndPose(sid, { faculty: "level-test-course" });
     expect(["level-easy", "level-medium"]).toContain(picked.current?.id);
-    ruby.submitAnswer(sid, picked.current!.correct!);
+    ruby.submitAnswer(sid, picked.current!.correctChoice!);
 
     const review = ruby.pickAndPose(sid, { faculty: "level-test-course" });
     expect(["level-easy", "level-medium"]).toContain(review.current?.id);
@@ -4568,7 +4568,7 @@ describe("RubyHighService Phase 1", () => {
 
     for (let i = 0; i < 3; i++) {
       const state = ruby.pickAndPose(sid, { faculty: "sally-science" });
-      ruby.submitAnswer(sid, state.current!.correct!);
+      ruby.submitAnswer(sid, state.current!.correctChoice!);
       const memory = ruby.getOrCreate(sid).cardMemory!;
       const key = Object.keys(memory)[0]!;
       memory[key]!.dueAt = Date.now() - 1;
@@ -4643,7 +4643,7 @@ describe("RubyHighService Phase 1", () => {
       openElectiveSlots: 0,
     });
 
-    ruby.submitAnswer(sid, state.current!.correct!);
+    ruby.submitAnswer(sid, state.current!.correctChoice!);
     ruby.clearBoard(sid);
     state = ruby.pickAndPose(sid, { faculty: "professor-edward" });
     expect(state.activeRound?.classSession?.mode).toBe("practice");
@@ -4662,7 +4662,7 @@ describe("RubyHighService Phase 1", () => {
       Date.now = () => new Date("2026-05-05T18:00:00Z").getTime();
       for (let i = 0; i < 3; i++) {
         const posed = ruby.pickAndPose(sid, { faculty: "vocab-test-course" });
-        ruby.submitAnswer(sid, posed.current!.correct!);
+        ruby.submitAnswer(sid, posed.current!.correctChoice!);
         ruby.getOrCreate(sid).cardMemory!["vocab-test-course::vocab-streak-q1"]!.dueAt = Date.now() - 1;
       }
     } finally {
@@ -4692,7 +4692,7 @@ describe("RubyHighService Phase 1", () => {
     try {
       Date.now = () => new Date("2026-05-05T18:00:00Z").getTime();
       const posed = ruby.pickAndPose(sid, { faculty: "vocab-test-course", mode: "practice" });
-      ruby.submitAnswer(sid, posed.current!.correct!);
+      ruby.submitAnswer(sid, posed.current!.correctChoice!);
     } finally {
       Date.now = realNow;
     }
@@ -4719,7 +4719,7 @@ describe("RubyHighService Phase 1", () => {
     for (let i = 0; i < 3; i += 1) {
       const posed = ruby.pickAndPose(sid, { faculty: "level-test-course" });
       answeredIds.push(posed.current!.id);
-      ruby.submitAnswer(sid, posed.current!.correct!);
+      ruby.submitAnswer(sid, posed.current!.correctChoice!);
       ruby.clearBoard(sid);
     }
 
@@ -4744,7 +4744,7 @@ describe("RubyHighService Phase 1", () => {
 
     for (let i = 0; i < 3; i += 1) {
       const posed = ruby.pickAndPose(sid, { faculty: "level-test-course" });
-      const correct = posed.current!.correct!;
+      const correct = posed.current!.correctChoice!;
       const wrong = correct === "A" ? "B" : "A";
       ruby.submitAnswer(sid, i === 2 ? wrong : correct);
       ruby.clearBoard(sid);
@@ -4774,7 +4774,7 @@ describe("RubyHighService Phase 1", () => {
 
     for (let i = 0; i < 3; i += 1) {
       const posed = ruby.pickAndPose(sid, { faculty: "level-test-course" });
-      const correct = posed.current!.correct!;
+      const correct = posed.current!.correctChoice!;
       const wrong = correct === "A" ? "B" : "A";
       ruby.submitAnswer(sid, i === 2 ? wrong : correct);
       ruby.clearBoard(sid);
@@ -4802,7 +4802,7 @@ describe("RubyHighService Phase 1", () => {
       Date.now = () => new Date("2026-05-05T18:00:00Z").getTime();
       for (let i = 0; i < 3; i++) {
         const posed = ruby.pickAndPose(sid, { faculty: "vocab-test-course" });
-        ruby.submitAnswer(sid, posed.current!.correct!);
+        ruby.submitAnswer(sid, posed.current!.correctChoice!);
         ruby.getOrCreate(sid).cardMemory!["vocab-test-course::vocab-streak-two-day-q1"]!.dueAt = Date.now() - 1;
       }
     } finally {
@@ -4832,7 +4832,7 @@ describe("RubyHighService Phase 1", () => {
       Date.now = () => new Date("2026-05-05T18:00:00Z").getTime();
       for (let i = 0; i < 3; i++) {
         const posed = ruby.pickAndPose(sid, { faculty: "vocab-test-course" });
-        ruby.submitAnswer(sid, posed.current!.correct!);
+        ruby.submitAnswer(sid, posed.current!.correctChoice!);
         ruby.getOrCreate(sid).cardMemory!["vocab-test-course::vocab-streak-three-day-q1"]!.dueAt = Date.now() - 1;
       }
     } finally {
@@ -4862,7 +4862,7 @@ describe("RubyHighService Phase 1", () => {
       Date.now = () => new Date("2026-05-05T18:00:00Z").getTime();
       for (let i = 0; i < 3; i++) {
         const posed = ruby.pickAndPose(sid, { faculty: "vocab-test-course" });
-        ruby.submitAnswer(sid, posed.current!.correct!);
+        ruby.submitAnswer(sid, posed.current!.correctChoice!);
         ruby.getOrCreate(sid).cardMemory!["vocab-test-course::vocab-streak-cap-q1"]!.dueAt = Date.now() - 1;
       }
     } finally {
@@ -4892,7 +4892,7 @@ describe("RubyHighService Phase 1", () => {
       const state = ruby.pickAndPose(sid, { faculty: "level-test-course" });
       const questionId = state.current?.id;
       expect(questionId).toMatch(/^level-/);
-      ruby.submitAnswer(sid, state.current!.correct!);
+      ruby.submitAnswer(sid, state.current!.correctChoice!);
       const memory = ruby.getOrCreate(sid).cardMemory!;
       memory[`level-test-course::${questionId}`]!.dueAt = Date.now() - 1;
     }
@@ -5157,7 +5157,7 @@ describe("RubyHighService Phase 1", () => {
         ruby.recordOpinion(sid, "player", "I trust specific evidence and check claims that skip the source.");
         ruby.recordGrades(sid, [{ responder: "player", score: 8, comment: "Specific and grounded." }], "player");
       } else {
-        ruby.submitAnswer(sid, posed.current!.correct!);
+        ruby.submitAnswer(sid, posed.current!.correctChoice!);
       }
       if (i < 9) ruby.clearBoard(sid);
     }
@@ -5205,7 +5205,7 @@ describe("RubyHighService Phase 1", () => {
     for (let i = 0; i < 2; i++) {
       const posed = ruby.pickAndPose(sid, { faculty: facultyId });
       expect(posed.activeRound?.cardRole).toBe("class");
-      ruby.submitAnswer(sid, posed.current!.correct!);
+      ruby.submitAnswer(sid, posed.current!.correctChoice!);
       ruby.clearBoard(sid);
     }
 
@@ -5333,7 +5333,7 @@ describe("RubyHighService Phase 1", () => {
     const state = ruby.getOrCreate(sid);
     // Simulate player answering — set answeredAt without resolving the round
     state.activeRound!.player.answeredAt = Date.now();
-    state.activeRound!.player.picked = state.current!.correct as "A" | "B" | "C" | "D";
+    state.activeRound!.player.picked = state.current!.correctChoice as "A" | "B" | "C" | "D";
     ruby.forceAdvanceRound(sid);
     const after = ruby.getOrCreate(sid);
     expect(after.activeRound?.resolved).toBe(true);
@@ -5344,7 +5344,7 @@ describe("RubyHighService Phase 1", () => {
     const { ruby } = await makeServices();
     const sid = "test:6";
     ruby.pickAndPose(sid, { faculty: "ruby" });
-    ruby.submitAnswer(sid, ruby.getOrCreate(sid).current!.correct!);
+    ruby.submitAnswer(sid, ruby.getOrCreate(sid).current!.correctChoice!);
     expect(ruby.getOrCreate(sid).score.correct).toBe(1);
 
     ruby.resetSession(sid);

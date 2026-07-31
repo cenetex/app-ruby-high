@@ -484,8 +484,8 @@ describe("command route persistence and scheduler misses", () => {
       };
       await runCommand(firstCookie, { type: "pick", faculty: "ruby" });
       await runCommand(secondCookie, { type: "pick", faculty: "ruby" });
-      await runCommand(firstCookie, { type: "answer", picked: firstState.current!.correct });
-      await runCommand(secondCookie, { type: "answer", picked: secondState.current!.correct });
+      await runCommand(firstCookie, { type: "answer", picked: firstState.current!.correctChoice });
+      await runCommand(secondCookie, { type: "answer", picked: secondState.current!.correctChoice });
 
       const world = ruby.getSchoolWorldSnapshot(10, now);
       expect(world.activeRooms[0]).toMatchObject({

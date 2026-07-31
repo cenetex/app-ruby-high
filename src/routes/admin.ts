@@ -16,6 +16,7 @@ import type { ContentPack, PackSourceCard } from "../content/types.js";
 import { APP_ROUTE_PREFIX, X_SOCIAL_PREFIX } from "./constants.js";
 import type { RouteContext } from "./context.js";
 import type { BankedQuestion, Grade } from "../types.js";
+import { multipleChoiceDefinition } from "../question-choices.js";
 
 export const ADMIN_PATH = `${APP_ROUTE_PREFIX}/admin`;
 export const ADMIN_METRICS_PATH = `${APP_ROUTE_PREFIX}/admin/metrics`;
@@ -741,7 +742,7 @@ async function generateAdminCurriculumDraftQuestionsWithLlm(
             `Grade brief: ${step.gradeBrief ?? "none"}`,
             `Primary source packets: ${adminCurriculumSourcePacketPrompt(step)}`,
             `Source cards: ${sourceCards.slice(0, 8).map((card) => `[${card.id} ${card.subject}/${card.difficulty}] ${card.front} => ${card.back}`).join(" | ") || "none"}`,
-            "Each question must include: id, type='multiple-choice', prompt, options A-D, correct='A'|'B'|'C'|'D', explanation, subject, difficulty, minGrade, faculty, stat.",
+            "Each question must include: id, type='multiple-choice', prompt, correct answer text, decoys (array of at least 3 plausible wrong answers), explanation, subject, difficulty, minGrade, faculty, stat.",
             "Use faculty as the draft faculty id. Use stat one of head, heart, hustle, honor.",
           ].join("\n"),
         },
@@ -775,19 +776,29 @@ function normalizeAdminCurriculumLlmQuestion(
 ): BankedQuestion | null {
   if (!entry || typeof entry !== "object") return null;
   const record = entry as Record<string, unknown>;
-  const options = record.options && typeof record.options === "object" ? record.options as Record<string, unknown> : {};
+  const options = record.options && typeof record.options === "object" ? record.options as Record<string, unknown> : null;
+  const definition = multipleChoiceDefinition({
+    correct: typeof record.correct === "string" ? record.correct : undefined,
+    decoys: Array.isArray(record.decoys)
+      ? record.decoys.filter((value): value is string => typeof value === "string")
+      : undefined,
+    options: options
+      ? {
+          A: String(options.A ?? ""),
+          B: String(options.B ?? ""),
+          C: String(options.C ?? ""),
+          D: String(options.D ?? ""),
+        }
+      : undefined,
+  });
+  if (!definition) return null;
   const id = String(record.id || `draft-${slugForAdminId(`${step.facultyId}-${step.grade}-llm-${index + 1}`)}`).trim();
   const question: BankedQuestion = {
     id: slugForAdminId(id).startsWith("draft-") ? slugForAdminId(id) : `draft-${slugForAdminId(id)}`,
     type: "multiple-choice",
     prompt: String(record.prompt || "").trim(),
-    options: {
-      A: String(options.A || "").trim(),
-      B: String(options.B || "").trim(),
-      C: String(options.C || "").trim(),
-      D: String(options.D || "").trim(),
-    },
-    correct: ["A", "B", "C", "D"].includes(String(record.correct)) ? String(record.correct) as BankedQuestion["correct"] : "A",
+    correct: definition.correct,
+    decoys: definition.decoys,
     explanation: String(record.explanation || "").trim(),
     subject: slugForAdminId(String(record.subject || step.focusSubjects[0] || step.weakSubjects[0] || "teacher-research")).slice(0, 48) || "teacher-research",
     difficulty: step.targetDifficulty as BankedQuestion["difficulty"],
@@ -908,12 +919,13 @@ function buildAdminCurriculumCandidateQuestions(
   const count = adminCurriculumCandidateCount(step, sourceCards);
   return topics.slice(0, count).map((topic, index): BankedQuestion => {
     const n = index + 1;
+    const answers = adminCurriculumCandidateOptions(step, topic);
     return {
       id: `draft-${slugForAdminId(`${step.facultyId}-${step.grade}-${topic.label}-${n}`)}`,
       type: "multiple-choice",
       prompt: adminCurriculumCandidatePrompt(step, topic),
-      options: adminCurriculumCandidateOptions(step, topic),
-      correct: "A",
+      correct: answers.A,
+      decoys: [answers.B, answers.C, answers.D],
       explanation: adminCurriculumCandidateExplanation(step, topic),
       subject: topic.subject,
       difficulty: step.targetDifficulty as BankedQuestion["difficulty"],
@@ -1004,7 +1016,7 @@ function adminCurriculumCandidatePrompt(
 function adminCurriculumCandidateOptions(
   step: AdminCurriculumReplenishmentStep,
   topic: { label: string; sourcePrompt?: string },
-): BankedQuestion["options"] {
+): NonNullable<BankedQuestion["options"]> {
   if (step.facultyId === "sally-science") {
     return {
       A: `Use a concrete ${topic.label} scenario with variables, evidence, and one tested misconception`,
@@ -1143,6 +1155,7 @@ function adminCurriculumReviewFingerprint(
       prompt: question.prompt,
       options: question.options,
       correct: question.correct,
+      decoys: question.decoys,
       expectedAnswer: question.expectedAnswer,
       acceptedAnswers: question.acceptedAnswers,
       explanation: question.explanation,

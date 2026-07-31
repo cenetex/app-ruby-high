@@ -232,7 +232,7 @@ async function generateBatch(args) {
     `Teacher: ${args.config.title}`,
     `Faculty id: ${args.config.id}`,
     `Teacher research interests: ${args.config.description}`,
-    `Teacher voice — write EVERY question (prompt and options) in this voice, not as flat trivia: ${args.config.voice}`,
+    `Teacher voice — write EVERY question (prompt and answers) in this voice, not as flat trivia: ${args.config.voice}`,
     `Current research pass: ${args.lane}`,
     researchBriefPrompt(args.researchBrief),
     `Write exactly ${args.count} new multiple-choice study questions for Ruby High.`,
@@ -240,7 +240,7 @@ async function generateBatch(args) {
     "Return only JSON. No markdown fences.",
     PROVIDER === "local" ? "Return compact minified JSON in one line. Do not add commentary, analysis, or whitespace-heavy formatting." : "",
     "Use this exact shape:",
-    `{"questions":[{"prompt":"...","subject":"...","difficulty":"easy","minGrade":"10","stat":"head","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`,
+    `{"questions":[{"prompt":"...","subject":"...","difficulty":"easy","minGrade":"10","stat":"head","correct":"the correct answer text","decoys":["wrong answer 1","wrong answer 2","wrong answer 3"],"explanation":"..."}]}`,
     "Rules:",
     "- Questions must be answerable from the teacher research corpus below.",
     "- Avoid duplicating existing cards or simply restating a source card word-for-word.",
@@ -254,7 +254,7 @@ async function generateBatch(args) {
     "- difficulty must be easy, medium, or hard.",
     "- minGrade must be 10 for easy generated questions, 11 for medium generated questions, and 12 for hard generated questions. Freshman grade 9 is reserved for the hand-curated starter cards.",
     "- stat must be head, heart, hustle, or honor.",
-    "- correct must be A, B, C, or D.",
+    "- correct must be the correct answer text. decoys must contain at least three plausible wrong answer strings.",
     existingQuestionPrompt(args.existing),
     sourceCardAvoidPrompt(args.avoidCards),
     questionBalanceStatusPrompt(args.existing),
@@ -438,7 +438,7 @@ async function writeSnapshot(config, parsed, questions) {
 function normalizeGeneratedQuestions(value, opts) {
   if (!Array.isArray(value)) return [];
   const seenPrompts = new Set(opts.existing.map((q) => normalizeText(q.prompt)));
-  const seenAnswers = new Set(opts.existing.map((q) => normalizeText(q.options?.[q.correct] ?? "")));
+  const seenAnswers = new Set(opts.existing.map((q) => normalizeText(q.correct ?? "")));
   for (const card of opts.avoidCards ?? []) {
     seenAnswers.add(normalizeText(card.back));
   }
@@ -452,9 +452,9 @@ function normalizeGeneratedQuestions(value, opts) {
     const prompt = boundedGeneratedText(entry.prompt ?? entry.question, GENERATED_PROMPT_MAX);
     if (!isUsableGeneratedPrompt(prompt) || seenPrompts.has(normalizeText(prompt))) continue;
     if (tooSimilarToAny(prompt, existingPrompts)) continue;
-    const optionSet = generatedQuestionOptions(entry);
-    if (!optionSet) continue;
-    const correctAnswer = optionSet.options[optionSet.correct];
+    const definition = generatedQuestionDefinition(entry);
+    if (!definition) continue;
+    const correctAnswer = definition.correct;
     if (seenAnswers.has(normalizeText(correctAnswer))) continue;
     const target = opts.targets[out.length] ?? null;
     const subject = normalizeSubject(cleanGeneratedText(entry.subject ?? entry.topic, 80) || opts.fallbackSubject);
@@ -470,8 +470,8 @@ function normalizeGeneratedQuestions(value, opts) {
       minGrade,
       stat,
       prompt,
-      options: optionSet.options,
-      correct: optionSet.correct,
+      correct: definition.correct,
+      decoys: definition.decoys,
       explanation,
       faculty: opts.facultyId,
     });
@@ -482,8 +482,40 @@ function normalizeGeneratedQuestions(value, opts) {
   return out;
 }
 
-function generatedQuestionOptions(record) {
-  const answer = boundedGeneratedText(record.answer ?? record.correctAnswer, GENERATED_OPTION_MAX);
+function generatedQuestionDefinition(record) {
+  const hasSemanticDecoys = Array.isArray(record.decoys) || Array.isArray(record.distractors);
+  const explicitCorrect = boundedGeneratedText(
+    record.answer
+      ?? record.correctAnswer
+      ?? (
+        typeof record.correct === "string"
+        && (hasSemanticDecoys || !/^[A-D]$/i.test(record.correct.trim()))
+          ? record.correct
+          : ""
+      ),
+    GENERATED_OPTION_MAX,
+  );
+  const rawDecoys = Array.isArray(record.decoys)
+    ? record.decoys
+    : Array.isArray(record.distractors)
+      ? record.distractors
+      : [];
+  const explicitDecoys = rawDecoys
+    .map((entry) => boundedGeneratedText(entry, GENERATED_OPTION_MAX))
+    .filter(Boolean)
+    .filter((entry) => normalizeText(entry) !== normalizeText(explicitCorrect));
+  if (
+    explicitCorrect &&
+    !META_OPTION_RE.test(explicitCorrect) &&
+    new Set(explicitDecoys.map(normalizeText)).size >= 3
+  ) {
+    return {
+      correct: explicitCorrect,
+      decoys: Array.from(new Map(explicitDecoys.map((entry) => [normalizeText(entry), entry])).values()),
+    };
+  }
+
+  const answer = explicitCorrect;
   const rawOptions = record.options;
   let values = [];
   if (Array.isArray(rawOptions)) {
@@ -501,11 +533,13 @@ function generatedQuestionOptions(record) {
   if (values.length < 4 || values.some((entry) => !entry)) return null;
   if (values.some((entry) => META_OPTION_RE.test(entry))) return null;
   if (new Set(values.map((entry) => normalizeText(entry))).size < 4) return null;
-  const options = { A: values[0], B: values[1], C: values[2], D: values[3] };
-  const correct = cleanChoice(record.correct)
-    ?? correctChoiceFromAnswer(options, answer)
-    ?? "A";
-  return { options, correct };
+  const correctIndex = cleanChoiceIndex(record.correct)
+    ?? values.findIndex((value) => normalizeText(value) === normalizeText(answer));
+  const resolvedIndex = correctIndex >= 0 ? correctIndex : 0;
+  return {
+    correct: values[resolvedIndex],
+    decoys: values.filter((_, index) => index !== resolvedIndex),
+  };
 }
 
 function pruneInvalidGeneratedQuestions(config, questions) {
@@ -524,10 +558,11 @@ function isGeneratedQuestion(config, question) {
 function generatedQuestionLooksUsable(question) {
   const prompt = normalizeWhitespace(question?.prompt);
   if (!isUsableGeneratedPrompt(prompt, question?.difficulty)) return false;
-  if (!CHOICES.includes(question?.correct)) return false;
-  if (!question?.options || typeof question.options !== "object") return false;
+  const correct = normalizeWhitespace(question?.correct);
+  if (!correct || correct.length > GENERATED_OPTION_MAX || META_OPTION_RE.test(correct)) return false;
+  if (!Array.isArray(question?.decoys) || question.decoys.length < 3) return false;
   if (!cleanGrade(question?.minGrade)) return false;
-  const values = CHOICES.map((choice) => normalizeWhitespace(question.options[choice]));
+  const values = [correct, ...question.decoys.map(normalizeWhitespace)];
   if (values.some((entry) => !entry || entry.length > GENERATED_OPTION_MAX || META_OPTION_RE.test(entry))) return false;
   if (new Set(values.map((entry) => normalizeText(entry))).size < 4) return false;
   const explanation = normalizeWhitespace(question?.explanation);
@@ -725,15 +760,11 @@ function minimumGradeForGeneratedDifficulty(difficulty) {
   return "12";
 }
 
-function cleanChoice(value) {
+function cleanChoiceIndex(value) {
+  if (typeof value === "number") return value >= 0 && value <= 3 ? Math.floor(value) : null;
   const raw = cleanGeneratedText(value, 4).toUpperCase();
-  return CHOICES.includes(raw) ? raw : null;
-}
-
-function correctChoiceFromAnswer(options, answer) {
-  const normalized = normalizeText(answer);
-  if (!normalized) return null;
-  return CHOICES.find((choice) => normalizeText(options[choice]) === normalized) ?? null;
+  const index = CHOICES.indexOf(raw);
+  return index >= 0 ? index : null;
 }
 
 function normalizeText(value) {

@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 describe("ElizaOS Systems Lab", () => {
-  it("ships a hand-curated 96-question, twelve-module bank with a balanced answer key", async () => {
+  it("ships a hand-curated 96-question, twelve-module value-based bank", async () => {
     const pack = await getElizaOsSystemsLab();
     const questions = pack.faculty[0]!.questions;
     const difficulty = questions.reduce(
@@ -26,13 +26,6 @@ describe("ElizaOS Systems Lab", () => {
         return counts;
       },
       { easy: 0, medium: 0, hard: 0 },
-    );
-    const correctChoices = questions.reduce(
-      (counts, question) => {
-        counts[question.correct ?? "A"] += 1;
-        return counts;
-      },
-      { A: 0, B: 0, C: 0, D: 0 },
     );
     const modules = new Map<string, number>();
     for (const question of questions) {
@@ -54,7 +47,6 @@ describe("ElizaOS Systems Lab", () => {
     expect(questions).toHaveLength(96);
     expect(new Set(questions.map((question) => question.prompt)).size).toBe(96);
     expect(difficulty).toEqual({ easy: 30, medium: 42, hard: 24 });
-    expect(correctChoices).toEqual({ A: 24, B: 24, C: 24, D: 24 });
     expect([...modules.values()]).toEqual(new Array(12).fill(8));
     expect([...modules.keys()]).toEqual(
       expect.arrayContaining([
@@ -74,7 +66,8 @@ describe("ElizaOS Systems Lab", () => {
       expect(
         [
           question.prompt,
-          ...Object.values(question.options ?? {}),
+          question.correct,
+          ...(question.decoys ?? []),
           question.explanation,
         ].join(" "),
         `${question.id} must not drift into another product`,

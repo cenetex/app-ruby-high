@@ -49,21 +49,16 @@ function distractorChunk(distractors: string[]): string {
 }
 
 describe("generateBankFromCards — happy path", () => {
-  it("turns each card into a BankedQuestion with 4 options + correct slot", async () => {
+  it("turns each card into a value-based BankedQuestion", async () => {
     mockOpenRouter(() => ({ ok: true, body: distractorChunk(["Wrong1", "Wrong2", "Wrong3"]) }));
     const cards = makeCards(3);
     const result = await generateBankFromCards(cards, baseOpts);
     expect(result.questions).toHaveLength(3);
     expect(result.skipped).toBe(0);
     for (const q of result.questions) {
-      expect(["A", "B", "C", "D"]).toContain(q.correct);
-      const options = q.options!;
-      const correct = q.correct!;
-      const correctOption = options[correct];
-      // Correct option matches the card's back ("A1", "A2", or "A3")
-      expect(correctOption).toMatch(/^A\d+$/);
-      // All four options unique
-      const set = new Set(Object.values(options));
+      expect(q.correct).toMatch(/^A\d+$/);
+      expect(q.decoys).toHaveLength(3);
+      const set = new Set([q.correct, ...q.decoys!]);
       expect(set.size).toBe(4);
       // Faculty id stamped per the schema
       expect(q.faculty).toBe("test-teacher");

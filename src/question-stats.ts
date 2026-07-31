@@ -1,4 +1,5 @@
 import type { CharacterStats, Question } from "./types.js";
+import { correctAnswerForQuestion } from "./question-choices.js";
 
 export type QuestionStat = keyof CharacterStats;
 
@@ -10,14 +11,16 @@ export function normalizeQuestionStat(value: unknown): QuestionStat | null {
   return QUESTION_STATS.includes(v as QuestionStat) ? (v as QuestionStat) : null;
 }
 
-export function statForQuestion(question: Pick<Question, "stat" | "prompt" | "subject" | "explanation" | "options" | "correct">): QuestionStat {
+export function statForQuestion(
+  question: Pick<Question, "stat" | "prompt" | "subject" | "explanation" | "options" | "correct" | "decoys" | "correctChoice">,
+): QuestionStat {
   const explicit = normalizeQuestionStat(question.stat);
   if (explicit) return explicit;
   return classifyQuestionStat({
     prompt: question.prompt,
     subject: question.subject,
     explanation: question.explanation,
-    correctAnswer: question.correct && question.options ? question.options[question.correct] : undefined,
+    correctAnswer: correctAnswerForQuestion(question) ?? undefined,
   });
 }
 

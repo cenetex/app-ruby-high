@@ -461,7 +461,7 @@ describe("NPC cohort — runs in parallel with the player", () => {
     const sid = "test:cohort-init";
     attachCharacter(ruby, sid);
     ruby.playDaily(sid, new Date("2026-05-04T18:00:00Z"));
-    const correct = ruby.getOrCreate(sid).current!.correct! as Choice;
+    const correct = ruby.getOrCreate(sid).current!.correctChoice! as Choice;
     ruby.submitAnswer(sid, correct);
     const cohort = ruby.getOrCreate(sid).npcCohort;
     expect(cohort).toBeDefined();
@@ -523,7 +523,7 @@ describe("NPC cohort — runs in parallel with the player", () => {
       graduated: true,
     }];
     ruby.playDaily(sid, new Date("2026-05-04T18:00:00Z"));
-    const correct = ruby.getOrCreate(sid).current!.correct! as Choice;
+    const correct = ruby.getOrCreate(sid).current!.correctChoice! as Choice;
     ruby.submitAnswer(sid, correct);
     const after = ruby.getOrCreate(sid).npcCohort!.find((n) => n.id === "indra")!;
     // Graduated state preserved — no streak mutation.
@@ -747,7 +747,7 @@ describe("Streak + grade advancement", () => {
     attachCharacter(ruby, sid, "9");
     // Day 1 = sally
     ruby.playDaily(sid, new Date("2026-05-04T18:00:00Z"));
-    const c1 = ruby.getOrCreate(sid).current!.correct! as Choice;
+    const c1 = ruby.getOrCreate(sid).current!.correctChoice! as Choice;
     ruby.submitAnswer(sid, c1);
     const ch = ruby.getOrCreate(sid).character!;
     expect(ch.subjectScores).toBeDefined();

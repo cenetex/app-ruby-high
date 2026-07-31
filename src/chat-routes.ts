@@ -72,6 +72,7 @@ import { STUDENTS, type StudentCharacter } from "./characters/students.js";
 import { teacherById } from "./characters/teachers.js";
 import { PLAYBOOKS } from "./characters/playbooks.js";
 import { statForQuestion } from "./question-stats.js";
+import { correctChoiceForQuestion } from "./question-choices.js";
 import { roll2d6, classifyTotal, type RoundOutcome } from "./types.js";
 import {
   hostedEntitlementStatus,
@@ -599,7 +600,10 @@ function buildResolvedAnswerBriefing(args: {
   const subject = cleanText(c?.subject) ?? q?.subject ?? reveal?.questionSubject;
   const difficulty = cleanText(c?.difficulty) ?? q?.difficulty ?? reveal?.questionDifficulty;
   const picked = cleanText(c?.picked)?.toUpperCase() ?? reveal?.picked;
-  const correct = cleanText(c?.correct)?.toUpperCase() ?? reveal?.correct ?? q?.correct ?? "?";
+  const correct = cleanText(c?.correct)?.toUpperCase()
+    ?? reveal?.correct
+    ?? (q ? correctChoiceForQuestion(q) : null)
+    ?? "?";
   const forfeit = c?.forfeit === true || reveal?.forfeit === true;
   const wasCorrect = typeof c?.wasCorrect === "boolean"
     ? c.wasCorrect

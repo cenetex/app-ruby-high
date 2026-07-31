@@ -411,7 +411,7 @@ describe("ChatService.send — message composition", () => {
     registerPack(pack, sid);
     ruby.setActivePackForSession(sid, pack.id);
     const state = ruby.pickAndPose(sid, { faculty: "sally-science" });
-    ruby.submitAnswer(sid, state.current!.correct === "A" ? "B" : "A");
+    ruby.submitAnswer(sid, state.current!.correctChoice === "A" ? "B" : "A");
 
     for await (const _ of chat.send({
       apiKey: "sk-test",

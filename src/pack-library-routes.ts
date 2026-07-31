@@ -25,7 +25,8 @@ import {
   weeklyAutoGuestPack,
 } from "./content/registry.js";
 import type { ContentPack, PackSourceCard } from "./content/types.js";
-import type { BankedQuestion, CharacterStats, Choice, Difficulty } from "./types.js";
+import type { BankedQuestion, CharacterStats, Difficulty } from "./types.js";
+import { correctAnswerForQuestion } from "./question-choices.js";
 import type {
   StoredCourseSlotRecord,
   StoredDraftContentPackRecord,
@@ -1272,7 +1273,7 @@ function searchablePackFields(pack: ContentPack): Array<{ text: string; weight: 
     add(10, faculty.systemPrompt);
     for (const question of faculty.questions) {
       add(25, question.prompt, question.subject, question.explanation, question.rubric, question.acceptedAnswers);
-      add(15, Object.values(question.options ?? {}));
+      add(15, question.correct, question.decoys, Object.values(question.options ?? {}));
     }
     for (const card of faculty.sourceCards ?? []) {
       add(25, card.front, card.back, card.subject);
@@ -1445,7 +1446,7 @@ function materialsFromPublishedFaculty(faculty: ContentPack["faculty"][number]):
   const sourceCards = (faculty.sourceCards ?? []).map((card) =>
     [`## ${card.front}`, card.back].filter(Boolean).join("\n\n"));
   const questions = faculty.questions.map((question) => {
-    const correct = question.correct && question.options ? question.options[question.correct] : "";
+    const correct = correctAnswerForQuestion(question) ?? "";
     return [
       `## ${question.prompt}`,
       correct ? `Correct answer: ${correct}` : "",
@@ -1503,7 +1504,7 @@ function teacherDetail(teacher: StoredDraftTeacherRecord) {
           prompt: question.prompt,
           subject: question.subject,
           explanation: question.explanation,
-          correctAnswer: question.correct && question.options ? question.options[question.correct] : undefined,
+          correctAnswer: correctAnswerForQuestion(question) ?? undefined,
         }),
         type: question.type ?? "multiple-choice",
       })),
@@ -2116,9 +2117,9 @@ async function generateCourseQuestionBatchWithAi(args: {
     `Write exactly ${args.questionCount} multiple-choice study questions from the course materials.`,
     "Return only JSON. Do not include markdown fences.",
     "Use this exact shape:",
-    `{"questions":[{"prompt":"...","subject":"...","difficulty":"easy","stat":"head","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`,
+    `{"questions":[{"prompt":"...","subject":"...","difficulty":"easy","stat":"head","correct":"the correct answer","decoys":["plausible wrong answer 1","plausible wrong answer 2","plausible wrong answer 3"],"explanation":"..."}]}`,
     "If you mention quoted titles or phrases inside a JSON string, use single quotes or escaped double quotes so the JSON remains valid.",
-    "Questions must be answerable from the materials. Avoid duplicating existing cards. Difficulty must be easy, medium, or hard. Stat must be head, heart, hustle, or honor. correct must be A, B, C, or D.",
+    "Questions must be answerable from the materials. Avoid duplicating existing cards. Difficulty must be easy, medium, or hard. Stat must be head, heart, hustle, or honor. correct must contain the answer text, and decoys must contain at least three distinct plausible wrong answers.",
     existingQuestionPrompt(args.existingQuestions),
     questionBalanceStatusPrompt(args.existingQuestions.map((question) => ({
       difficulty: question.difficulty,
@@ -2217,9 +2218,9 @@ async function generateAdditionalQuestionsWithAi(args: {
     `Write exactly ${requestedCount} new multiple-choice study questions from the course materials.`,
     "Return only JSON. Do not include markdown fences.",
     "Use this exact shape:",
-    `{"questions":[{"prompt":"...","subject":"...","difficulty":"easy","stat":"head","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`,
+    `{"questions":[{"prompt":"...","subject":"...","difficulty":"easy","stat":"head","correct":"the correct answer","decoys":["plausible wrong answer 1","plausible wrong answer 2","plausible wrong answer 3"],"explanation":"..."}]}`,
     "If you mention quoted titles or phrases inside a JSON string, use single quotes or escaped double quotes so the JSON remains valid.",
-    "Questions must be answerable from the materials. Avoid duplicating existing cards. Difficulty must be easy, medium, or hard. Stat must be head, heart, hustle, or honor. correct must be A, B, C, or D.",
+    "Questions must be answerable from the materials. Avoid duplicating existing cards. Difficulty must be easy, medium, or hard. Stat must be head, heart, hustle, or honor. correct must contain the answer text, and decoys must contain at least three distinct plausible wrong answers.",
     questionBalanceStatusPrompt(existingBalance),
     questionBalancePrompt(balanceTargets),
     "Course materials:",
@@ -2455,7 +2456,7 @@ function balanceItemsForTeacher(teacher: StoredDraftTeacherRecord): QuestionBala
       prompt: question.prompt,
       subject: question.subject,
       explanation: question.explanation,
-      correctAnswer: question.correct && question.options ? question.options[question.correct] : undefined,
+      correctAnswer: correctAnswerForQuestion(question) ?? undefined,
     }),
   }));
   const fromSourceCards = teacher.sourceCards.map((card) => ({
@@ -2605,27 +2606,27 @@ function normalizeGeneratedQuestions(
     const record = asRecord(entry);
     if (!record) return;
     const prompt = cleanGeneratedText(firstString(record, ["prompt", "question"]), 420);
-    const optionSet = generatedQuestionOptions(record);
-    if (!prompt || !optionSet) return;
+    const definition = generatedQuestionDefinition(record);
+    if (!prompt || !definition) return;
     const subject = cleanGeneratedText(firstString(record, ["subject", "topic"]), 80) || opts.subject || "open study";
     const target = opts.balanceTargets?.[questions.length] ?? null;
     const difficulty = target?.difficulty ?? cleanDifficulty(firstString(record, ["difficulty", "level"]));
     const explanation = cleanGeneratedText(
       firstString(record, ["explanation", "rationale", "answer"]),
       800,
-    ) || optionSet.options[optionSet.correct];
+    ) || definition.correct;
     const stat = target?.stat ?? normalizeQuestionStat(firstString(record, ["stat", "trait", "attribute"])) ?? classifyQuestionStat({
       prompt,
       subject,
-      correctAnswer: optionSet.options[optionSet.correct],
+      correctAnswer: definition.correct,
       explanation,
     });
     questions.push({
       id: `${opts.facultyId}-ai-${startIndex + index + 1}`,
       type: "multiple-choice",
       prompt,
-      options: optionSet.options,
-      correct: optionSet.correct,
+      correct: definition.correct,
+      decoys: definition.decoys,
       explanation,
       subject,
       difficulty,
@@ -2636,8 +2637,35 @@ function normalizeGeneratedQuestions(
   return questions;
 }
 
-function generatedQuestionOptions(record: Record<string, unknown>): { options: Record<Choice, string>; correct: Choice } | null {
-  const answer = cleanGeneratedText(firstString(record, ["answer", "correctAnswer"]), 220);
+function generatedQuestionDefinition(record: Record<string, unknown>): { correct: string; decoys: string[] } | null {
+  const hasSemanticDecoys = Array.isArray(record.decoys) || Array.isArray(record.distractors);
+  const explicitCorrect = cleanGeneratedText(
+    firstString(record, ["answer", "correctAnswer"])
+      || (
+        typeof record.correct === "string"
+        && (hasSemanticDecoys || !/^[A-D]$/i.test(record.correct.trim()))
+          ? record.correct
+          : ""
+      ),
+    220,
+  );
+  const rawDecoys = Array.isArray(record.decoys)
+    ? record.decoys
+    : Array.isArray(record.distractors)
+      ? record.distractors
+      : [];
+  const explicitDecoys = rawDecoys
+    .map((entry) => cleanGeneratedText(typeof entry === "string" ? entry : "", 220))
+    .filter(Boolean)
+    .filter((entry) => normalizeGeneratedAnswer(entry) !== normalizeGeneratedAnswer(explicitCorrect));
+  if (explicitCorrect && new Set(explicitDecoys.map(normalizeGeneratedAnswer)).size >= 3) {
+    return {
+      correct: explicitCorrect,
+      decoys: Array.from(new Map(explicitDecoys.map((entry) => [normalizeGeneratedAnswer(entry), entry])).values()),
+    };
+  }
+
+  const answer = explicitCorrect;
   const rawOptions = record.options;
   let values: string[] = [];
   if (Array.isArray(rawOptions)) {
@@ -2649,23 +2677,18 @@ function generatedQuestionOptions(record: Record<string, unknown>): { options: R
     }
   }
   if (values.filter(Boolean).length < 4 && answer) {
-    const distractors = Array.isArray(record.distractors)
-      ? record.distractors.map((entry) => cleanGeneratedText(typeof entry === "string" ? entry : "", 220)).filter(Boolean)
-      : [];
-    values = [answer, ...distractors].slice(0, 4);
+    values = [answer, ...explicitDecoys].slice(0, 4);
   }
   values = values.slice(0, 4).map((entry) => cleanGeneratedText(entry, 220));
   if (values.length < 4 || values.some((entry) => !entry)) return null;
-  const options: Record<Choice, string> = {
-    A: values[0]!,
-    B: values[1]!,
-    C: values[2]!,
-    D: values[3]!,
+  const correctIndex = cleanChoiceIndex(record.correct)
+    ?? values.findIndex((value) => normalizeGeneratedAnswer(value) === normalizeGeneratedAnswer(answer));
+  const resolvedIndex = correctIndex >= 0 ? correctIndex : 0;
+  const correct = values[resolvedIndex]!;
+  return {
+    correct,
+    decoys: values.filter((_, index) => index !== resolvedIndex),
   };
-  const correct = cleanChoice(record.correct)
-    ?? correctChoiceFromAnswer(options, answer)
-    ?? "A";
-  return { options, correct };
 }
 
 function parseJsonObject(text: string, label = "Generator"): unknown {
@@ -2843,17 +2866,12 @@ function cleanGeneratedText(value: unknown, max: number): string {
   return value.replace(/\s+/g, " ").trim().slice(0, max);
 }
 
-function cleanChoice(value: unknown): Choice | null {
-  if (typeof value === "number") return (["A", "B", "C", "D"] as Choice[])[value] ?? null;
+function cleanChoiceIndex(value: unknown): number | null {
+  if (typeof value === "number") return value >= 0 && value <= 3 ? Math.floor(value) : null;
   if (typeof value !== "string") return null;
   const upper = value.trim().toUpperCase();
-  return upper === "A" || upper === "B" || upper === "C" || upper === "D" ? upper : null;
-}
-
-function correctChoiceFromAnswer(options: Record<Choice, string>, answer: string): Choice | null {
-  const normalized = normalizeGeneratedAnswer(answer);
-  if (!normalized) return null;
-  return (["A", "B", "C", "D"] as Choice[]).find((choice) => normalizeGeneratedAnswer(options[choice]) === normalized) ?? null;
+  const index = ["A", "B", "C", "D"].indexOf(upper);
+  return index >= 0 ? index : null;
 }
 
 function normalizeGeneratedAnswer(value: string): string {
