@@ -4,9 +4,11 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_OPENROUTER_MODEL } from "../../model-defaults.js";
 import {
   DIFFICULTIES,
+  GRADES,
   type BankedQuestion,
   type CharacterStats,
   type Difficulty,
+  type Grade,
 } from "../../types.js";
 import {
   multipleChoiceDefinition,
@@ -150,6 +152,10 @@ function parseQuestion(value: unknown, index: number): BankedQuestion {
   if (!DIFFICULTIES.includes(difficulty)) {
     throw new Error(`questions[${index}].difficulty must be easy, medium, or hard.`);
   }
+  const minGrade = requiredString(row.minGrade, `questions[${index}].minGrade`) as Grade;
+  if (!GRADES.includes(minGrade)) {
+    throw new Error(`questions[${index}].minGrade must be 9, 10, 11, or 12.`);
+  }
   const optionRow = row.options && typeof row.options === "object"
     ? row.options as Record<string, unknown>
     : undefined;
@@ -179,6 +185,7 @@ function parseQuestion(value: unknown, index: number): BankedQuestion {
     prompt,
     subject,
     difficulty,
+    minGrade,
     stat,
     correct: definition.correct,
     decoys: definition.decoys,
@@ -203,13 +210,60 @@ function validateEditorialShape(
     throw new Error("ElizaOS Systems Lab question prompts must be unique.");
   }
   const difficultyCounts = { easy: 0, medium: 0, hard: 0 };
+  const gradeCounts = Object.fromEntries(GRADES.map((grade) => [grade, 0])) as Record<Grade, number>;
+  const statCounts: Record<keyof CharacterStats, number> = {
+    head: 0,
+    heart: 0,
+    hustle: 0,
+    honor: 0,
+  };
   const moduleCounts = new Map(curriculum.modules.map((module) => [module, 0]));
+  const moduleGradeCounts = new Map(
+    curriculum.modules.map((module) => [
+      module,
+      Object.fromEntries(GRADES.map((grade) => [grade, 0])) as Record<Grade, number>,
+    ]),
+  );
   for (const question of questions) {
     difficultyCounts[question.difficulty] += 1;
+    statCounts[question.stat!] += 1;
+    const minGrade = question.minGrade;
+    if (!minGrade) {
+      throw new Error(`ElizaOS Systems Lab question '${question.id}' must declare minGrade.`);
+    }
+    gradeCounts[minGrade] += 1;
+    if ((minGrade === "9" && question.difficulty !== "easy") ||
+      (minGrade === "10" && question.difficulty === "hard") ||
+      (minGrade === "11" && question.difficulty !== "medium") ||
+      (minGrade === "12" && question.difficulty !== "hard")) {
+      throw new Error(
+        `ElizaOS Systems Lab question '${question.id}' has difficulty '${question.difficulty}' outside the grade ${minGrade} progression.`,
+      );
+    }
+    const decoys = question.decoys ?? [];
+    if (decoys.length < 5) {
+      throw new Error(`ElizaOS Systems Lab question '${question.id}' must provide at least 5 decoys.`);
+    }
+    const comparableDecoys = decoys.filter((decoy) => lengthSimilarity(decoy, question.correct ?? "") >= 0.7);
+    if (comparableDecoys.length < 2) {
+      throw new Error(
+        `ElizaOS Systems Lab question '${question.id}' needs at least 2 decoys comparable in length to its answer.`,
+      );
+    }
+    const correctLength = question.correct!.trim().length;
+    const decoyLengths = decoys.map((decoy) => decoy.trim().length);
+    const shortestDecoy = Math.min(...decoyLengths);
+    const longestDecoy = Math.max(...decoyLengths);
+    if (correctLength < shortestDecoy - 5 || correctLength > longestDecoy + 5) {
+      throw new Error(
+        `ElizaOS Systems Lab question '${question.id}' reveals its answer through an option-length outlier.`,
+      );
+    }
     if (!moduleCounts.has(question.subject)) {
       throw new Error(`Unknown ElizaOS Systems Lab module: ${question.subject}.`);
     }
     moduleCounts.set(question.subject, (moduleCounts.get(question.subject) ?? 0) + 1);
+    moduleGradeCounts.get(question.subject)![minGrade] += 1;
   }
   if (
     difficultyCounts.easy !== 30 ||
@@ -224,7 +278,35 @@ function validateEditorialShape(
     if (count !== 8) {
       throw new Error(`ElizaOS Systems Lab module '${module}' must contain 8 questions; found ${count}.`);
     }
+    const gradeMix = moduleGradeCounts.get(module)!;
+    for (const grade of GRADES) {
+      if (gradeMix[grade] !== 2) {
+        throw new Error(
+          `ElizaOS Systems Lab module '${module}' must contain 2 grade ${grade} questions; found ${gradeMix[grade]}.`,
+        );
+      }
+    }
   }
+  for (const grade of GRADES) {
+    if (gradeCounts[grade] !== 24) {
+      throw new Error(
+        `ElizaOS Systems Lab must contain 24 grade ${grade} questions; found ${gradeCounts[grade]}.`,
+      );
+    }
+  }
+  for (const [stat, count] of Object.entries(statCounts)) {
+    if (count !== 24) {
+      throw new Error(
+        `ElizaOS Systems Lab must contain 24 ${stat} questions; found ${count}.`,
+      );
+    }
+  }
+}
+
+function lengthSimilarity(left: string, right: string): number {
+  const shorter = Math.min(left.trim().length, right.trim().length);
+  const longer = Math.max(left.trim().length, right.trim().length);
+  return longer === 0 ? 0 : shorter / longer;
 }
 
 function requiredString(value: unknown, field: string): string {
