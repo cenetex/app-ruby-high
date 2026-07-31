@@ -12,6 +12,26 @@ const openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
 const timeoutMs = Number(process.env.RUBY_HIGH_NFT_IMAGE_TIMEOUT_MS || 180_000);
 
 const targets = {
+  "brand-eliza-plugin-launch": {
+    group: "brand",
+    name: "Ruby High × elizaOS launch",
+    source: "assets/brand/ruby-eliza-plugin-launch.jpg",
+    references: [
+      "assets/brand/ruby-eliza-plugin-launch.jpg",
+      "assets/teachers/ruby-full.png",
+      "assets/teachers/eliza-full.png",
+      "assets/nft/market-cards/location-science-lab.png",
+    ],
+    prompt: [
+      "Create wide Ruby High brand key art for the elizaOS app launch.",
+      "Ruby, the canonical pink-bob host from reference 2, sits on the LEFT and points toward a laptop where a friendly agent workflow is visible.",
+      "Eliza, the canonical black-haired systems teacher from reference 3, sits on the RIGHT holding a tablet and collaborating with Ruby.",
+      "Preserve both teachers' exact face, hair, glasses, clothing, jewelry, and accent-color identities from their avatar references.",
+      "Use the warm, richly detailed Ruby High science classroom language from reference 4, with books, notebooks, a mug, and subtle lab objects supporting the scene.",
+      "The old launch art in reference 1 is composition guidance only; replace its generic left figure with canonical Ruby and improve the whole scene's identity consistency.",
+      "Friendly premium product-key-art energy, clear focal hierarchy, generous safe crop around both characters, laptop, and tablet.",
+    ].join(" "),
+  },
   "item-hall-pass": {
     group: "item",
     name: "Hall Pass",
@@ -244,14 +264,14 @@ async function fetchImageUrl(url) {
 }
 
 function promptFor(target) {
-  const aspectInstruction = target.group === "location"
+  const aspectInstruction = target.group === "location" || target.group === "brand"
     ? "Composition: wide landscape scene, designed for a 16:9 NFT image."
     : target.group === "rare-teacher"
       ? "Composition: tall character/avatar portrait, designed for a 3:4 NFT image."
       : "Composition: square object-focused collectible image, designed for a 1:1 NFT image.";
   return [
-    `Regenerate Ruby High NFT art for: ${target.name}.`,
-    `Use the attached image only as composition/reference. Create a clean, high-quality standalone source image, not a screenshot of a card.`,
+    `${target.group === "brand" ? "Generate Ruby High brand art" : "Regenerate Ruby High NFT art"} for: ${target.name}.`,
+    "Use the attached images as explicit identity, environment, and composition references. Create a clean, high-quality standalone source image, not a screenshot of a card.",
     target.prompt,
     aspectInstruction,
     "",
@@ -263,7 +283,8 @@ function promptFor(target) {
 async function generateOne(apiKey, id) {
   const target = targets[id];
   if (!target) throw new Error(`unknown target id: ${id}`);
-  const reference = await dataUrlFor(target.source);
+  const referencePaths = target.references ?? [target.source];
+  const references = await Promise.all(referencePaths.map(dataUrlFor));
   const body = {
     model,
     modalities: ["image"],
@@ -271,11 +292,19 @@ async function generateOne(apiKey, id) {
       role: "user",
       content: [
         { type: "text", text: promptFor(target) },
-        { type: "image_url", image_url: { url: reference } },
+        ...references.map((reference) => ({
+          type: "image_url",
+          image_url: { url: reference },
+        })),
       ],
     }],
     image_config: {
-      aspect_ratio: target.group === "location" ? "16:9" : target.group === "rare-teacher" ? "3:4" : "1:1",
+      aspect_ratio:
+        target.group === "location" || target.group === "brand"
+          ? "16:9"
+          : target.group === "rare-teacher"
+            ? "3:4"
+            : "1:1",
       image_size: "1K",
     },
     max_tokens: 4000,
