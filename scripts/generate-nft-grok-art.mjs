@@ -12,6 +12,22 @@ const openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
 const timeoutMs = Number(process.env.RUBY_HIGH_NFT_IMAGE_TIMEOUT_MS || 180_000);
 
 const targets = {
+  "brand-eliza-plugin-icon": {
+    group: "brand-icon",
+    name: "Ruby High elizaOS app icon",
+    source: "assets/brand/ruby-high-app-icon.png",
+    references: [
+      "assets/teachers/ruby-face.png",
+      "assets/ruby-high-logo.png",
+    ],
+    prompt: [
+      "Create a dedicated square Ruby High app icon, designed to stay unmistakable at 24–72 pixels.",
+      "Use a close head-and-shoulders crop of canonical Ruby from reference 1: pink bob, round glasses, friendly confident expression, white science coat.",
+      "Frame Ruby inside a simple deep-navy collegiate crest or rounded badge with one pale-blue RH monogram inspired by reference 2.",
+      "Keep Ruby's face dominant, the silhouette clean, and contrast high. No scene, no tiny details, no words beyond the optional large RH monogram.",
+      "Premium illustrated product icon, centered composition, generous safe area for a rounded-square crop.",
+    ].join(" "),
+  },
   "brand-eliza-plugin-launch": {
     group: "brand",
     name: "Ruby High × elizaOS launch",
@@ -266,6 +282,8 @@ async function fetchImageUrl(url) {
 function promptFor(target) {
   const aspectInstruction = target.group === "location" || target.group === "brand"
     ? "Composition: wide landscape scene, designed for a 16:9 NFT image."
+    : target.group === "brand-icon"
+      ? "Composition: square app icon, designed to remain clear at very small launcher sizes."
     : target.group === "rare-teacher"
       ? "Composition: tall character/avatar portrait, designed for a 3:4 NFT image."
       : "Composition: square object-focused collectible image, designed for a 1:1 NFT image.";
@@ -302,6 +320,8 @@ async function generateOne(apiKey, id) {
       aspect_ratio:
         target.group === "location" || target.group === "brand"
           ? "16:9"
+          : target.group === "brand-icon"
+            ? "1:1"
           : target.group === "rare-teacher"
             ? "3:4"
             : "1:1",
