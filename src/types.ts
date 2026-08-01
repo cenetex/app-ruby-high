@@ -647,6 +647,8 @@ export interface RubyHighWallet {
   meritStars: number;
   /** Paid/entitlement currency for hosted creative generation. */
   hallPasses: number;
+  /** Hall Passes owed after a purchase reversal exceeds the spendable balance. */
+  hallPassDebt?: number;
   /** One-time account welcome grant marker. */
   welcomeHallPassesGrantedAt?: number;
   /** Server-hosted text AI access. Null/expired means BYOK or local AI is required. */

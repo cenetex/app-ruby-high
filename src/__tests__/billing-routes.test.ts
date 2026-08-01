@@ -227,6 +227,7 @@ afterEach(async () => {
   restoreCorePackVerifier = null;
   restoreCorePackPurchaseBuilder = null;
   restoreHallPassBurnVerifier = null;
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   await auth.stop();
   await ruby.flush();
@@ -718,7 +719,7 @@ describe("Stripe webhook", () => {
     });
   });
 
-  it("asks Stripe to retry while a reversal balance is still outstanding", async () => {
+  it("records durable debt when a reversal exceeds the spendable balance", async () => {
     process.env.RUBY_HIGH_STRIPE_WEBHOOK_SECRET = "whsec_ruby";
     const stateKey = "rh:user:stripe-refund-outstanding";
     ruby.grantHallPasses(stateKey, {
@@ -747,23 +748,77 @@ describe("Stripe webhook", () => {
 
     await deliverStripeEvent(refundEvent);
     expect(lastResponse).toMatchObject({
-      status: 500,
-      body: { error: expect.stringContaining("retry this webhook") },
-    });
-    expect(ruby.walletTransactions(stateKey).filter((transaction) => (
-      transaction.metadata?.stripeReversalAdjustment === true
-    ))).toHaveLength(0);
-
-    ruby.grantHallPasses(stateKey, {
-      amount: 5,
-      idempotencyKey: "test:balance-for-stripe-retry",
-      source: "admin",
-    });
-    await deliverStripeEvent(refundEvent);
-    expect(lastResponse).toMatchObject({
       status: 200,
       body: { applied: true, reversals: [{ amount: -5, hallPasses: 0 }] },
     });
+    expect(ruby.walletTransactions(stateKey).filter((transaction) => (
+      transaction.metadata?.stripeReversalAdjustment === true
+    ))).toHaveLength(1);
+    expect(ruby.getOrCreate(stateKey).wallet).toMatchObject({ hallPasses: 0, hallPassDebt: 5 });
+
+    ruby.grantHallPasses(stateKey, {
+      amount: 3,
+      idempotencyKey: "test:partial-debt-payment",
+      source: "admin",
+    });
+    expect(ruby.getOrCreate(stateKey).wallet).toMatchObject({ hallPasses: 0, hallPassDebt: 2 });
+
+    await deliverStripeEvent(refundEvent);
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: { applied: false, reversals: [{ amount: 0, hallPasses: 0 }] },
+    });
+
+    ruby.grantHallPasses(stateKey, {
+      amount: 3,
+      idempotencyKey: "test:finish-debt-payment",
+      source: "admin",
+    });
+    expect(ruby.getOrCreate(stateKey).wallet).toMatchObject({ hallPasses: 1 });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassDebt ?? 0).toBe(0);
+  });
+
+  it("backfills historical Stripe purchases before reconciling a refund", async () => {
+    process.env.RUBY_HIGH_STRIPE_WEBHOOK_SECRET = "whsec_ruby";
+    process.env.RUBY_HIGH_STRIPE_SECRET_KEY = "sk_test_ruby";
+    const stateKey = "rh:user:stripe-historical-refund";
+    ruby.grantHallPasses(stateKey, {
+      amount: 5,
+      amountCents: 199,
+      idempotencyKey: "stripe:checkout:cs_historical_refund",
+      source: "stripe",
+      metadata: {
+        stripeCheckoutSessionId: "cs_historical_refund",
+        hallPassProductId: "hall-pass-5",
+        amountTotal: 199,
+      },
+    });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      data: [{ id: "cs_historical_refund", payment_intent: "pi_historical_refund" }],
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deliverStripeEvent({
+      id: "evt_historical_refund",
+      type: "refund.created",
+      data: { object: {
+        id: "re_historical_refund",
+        payment_intent: "pi_historical_refund",
+        amount: 199,
+        status: "succeeded",
+      } },
+    });
+
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: { applied: true, reversals: [{ sessionId: stateKey, amount: -5, hallPasses: 0 }] },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.stripe.com/v1/checkout/sessions?payment_intent=pi_historical_refund&limit=1",
+      expect.objectContaining({ headers: { Authorization: "Bearer sk_test_ruby" } }),
+    );
+    expect(ruby.walletTransaction(stateKey, "stripe:checkout:cs_historical_refund")?.metadata)
+      .toMatchObject({ stripePaymentIntentId: "pi_historical_refund" });
   });
 
   it("reconciles Stripe disputes and restores funds after a win", async () => {
@@ -1627,7 +1682,7 @@ describe("RevenueCat webhook", () => {
     expect(ruby.walletTransaction(stateKey, "revenuecat:grant:tx_rc_refund_first_20:HLP")).toBeNull();
   });
 
-  it("reports the actual RevenueCat reversal delta when the wallet has fewer Hall Passes than the refund", async () => {
+  it("records RevenueCat reversal debt when the wallet has fewer Hall Passes than the refund", async () => {
     process.env.RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH = "Bearer rc-secret";
     const stateKey = "rh:user:rc-partial-refund";
     ruby.grantHallPasses(stateKey, {
@@ -1688,8 +1743,7 @@ describe("RevenueCat webhook", () => {
         received: true,
         applied: true,
         sessionId: stateKey,
-        amount: -5,
-        requestedAmount: -20,
+        amount: -20,
         hallPasses: 0,
       },
     });
@@ -1697,8 +1751,9 @@ describe("RevenueCat webhook", () => {
     expect(transactions).toContainEqual(expect.objectContaining({
       id: "revenuecat:reversal:tx_rc_partial_refund_20:HLP",
       kind: "hall-pass-revoke",
-      hallPasses: -5,
+      hallPasses: -20,
     }));
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassDebt).toBe(15);
   });
 
   it("can fulfill RevenueCat virtual currency transaction events", async () => {

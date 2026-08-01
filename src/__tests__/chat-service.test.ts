@@ -209,9 +209,9 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
-  // Drain any in-flight persistSession writes before nuking the dir,
-  // otherwise a fire-and-forget write can race the rm and trip ENOTEMPTY.
-  if (activeRuby) await activeRuby.flush();
+  // Stop also detaches the global log sink. A plain flush leaves that sink
+  // able to schedule another write between the flush and directory cleanup.
+  if (activeRuby) await activeRuby.stop();
   await rm(tmpDir, { recursive: true, force: true });
 });
 

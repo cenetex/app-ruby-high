@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
-import { assertSafeImageUrl } from "./safe-url.js";
+import { fetchSafeImageBuffer } from "./safe-url.js";
 import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve, dirname } from "node:path";
@@ -29,38 +29,6 @@ import {
 import { PostAnalytics } from "./ruby-high/post-analytics.js";
 
 const MAX_REMOTE_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_REMOTE_IMAGE_REDIRECTS = 3;
-
-async function readLimitedImageResponse(response: Response): Promise<Buffer> {
-  const declaredLength = Number(response.headers.get("content-length") ?? "");
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_REMOTE_IMAGE_BYTES) {
-    throw new Error("Remote image is too large.");
-  }
-  if (!response.body || typeof response.body.getReader !== "function") {
-    const bytes = Buffer.from(await response.arrayBuffer());
-    if (bytes.length > MAX_REMOTE_IMAGE_BYTES) throw new Error("Remote image is too large.");
-    return bytes;
-  }
-  const reader = response.body.getReader();
-  const chunks: Buffer[] = [];
-  let total = 0;
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-      total += value.byteLength;
-      if (total > MAX_REMOTE_IMAGE_BYTES) {
-        await reader.cancel().catch(() => undefined);
-        throw new Error("Remote image is too large.");
-      }
-      chunks.push(Buffer.from(value));
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  return Buffer.concat(chunks, total);
-}
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -1062,33 +1030,7 @@ export class XSocialService extends Service {
       url = `${base}${url}`;
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15_000);
-    try {
-      let currentUrl = url;
-      for (let redirects = 0; redirects <= MAX_REMOTE_IMAGE_REDIRECTS; redirects += 1) {
-        // Revalidate every hop. fetch's default redirect handling would allow a
-        // public URL to bounce the server into a private network destination.
-        await assertSafeImageUrl(currentUrl);
-        const res = await fetch(currentUrl, {
-          headers: { Accept: "image/*" },
-          redirect: "manual",
-          signal: controller.signal,
-        });
-        if ([301, 302, 303, 307, 308].includes(res.status)) {
-          if (redirects >= MAX_REMOTE_IMAGE_REDIRECTS) throw new Error("Image URL redirected too many times.");
-          const location = res.headers.get("location")?.trim();
-          if (!location) throw new Error("Image URL redirected without a location.");
-          currentUrl = new URL(location, currentUrl).toString();
-          continue;
-        }
-        if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
-        return await readLimitedImageResponse(res);
-      }
-      throw new Error("Image URL redirected too many times.");
-    } finally {
-      clearTimeout(timeout);
-    }
+    return await fetchSafeImageBuffer(url, { maxBytes: MAX_REMOTE_IMAGE_BYTES });
   }
 
   /** Detect image MIME type from magic bytes. Defaults to image/png. */

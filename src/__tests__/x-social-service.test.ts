@@ -9,6 +9,7 @@ import {
 } from "../services/x-social-service.js";
 import type { TeacherCharacter } from "../characters/teachers.js";
 import type { ScheduledSchoolUpdateContext } from "../services/ruby-high/post-types.js";
+import { fetchSafeImageBuffer } from "../services/safe-url.js";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -152,16 +153,32 @@ describe("XSocialService", () => {
   });
 
   it("revalidates image redirect destinations before fetching them", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
+    const requester = vi.fn(async (_url: URL, _address: unknown, _signal: AbortSignal) => new Response(null, {
       status: 302,
-      headers: new Headers({ location: "http://127.0.0.1/private-image.png" }),
-    });
-    const resolveImage = (svc as unknown as { resolveImageToBuffer: (url: string) => Promise<Buffer> })
-      .resolveImageToBuffer.bind(svc);
+      headers: { location: "https://private.example/private-image.png" },
+    }));
+    const resolver = vi.fn(async (hostname: string) => hostname === "private.example"
+      ? [{ address: "127.0.0.1", family: 4 as const }]
+      : [{ address: "1.1.1.1", family: 4 as const }]);
 
-    await expect(resolveImage("https://1.1.1.1/image.png")).rejects.toThrow("Image URL must use https");
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    await expect(fetchSafeImageBuffer("https://public.example/image.png", {
+      lookup: resolver,
+      request: requester,
+    })).rejects.toThrow("private or reserved");
+    expect(requester).toHaveBeenCalledTimes(1);
+    expect(requester.mock.calls[0]?.[1]).toEqual({ address: "1.1.1.1", family: 4 });
+  });
+
+  it("stops reading remote images at the configured byte limit", async () => {
+    const requester = vi.fn(async (_url: URL, _address: unknown, _signal: AbortSignal) => (
+      new Response(new Uint8Array(11), { status: 200 })
+    ));
+
+    await expect(fetchSafeImageBuffer("https://public.example/image.png", {
+      maxBytes: 10,
+      lookup: async () => [{ address: "1.1.1.1", family: 4 }],
+      request: requester,
+    })).rejects.toThrow("Remote image is too large.");
   });
 
   describe("beginConnect", () => {

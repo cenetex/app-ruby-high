@@ -24,6 +24,7 @@ import {
 } from "../services/core-pack-nfts.js";
 import { APP_ROUTE_PREFIX } from "./constants.js";
 import type { RouteContext } from "./context.js";
+import type { RubyHighWalletTransaction } from "../types.js";
 
 export {
   courseSlotCost,
@@ -72,6 +73,10 @@ interface StripeCheckoutSession {
   amount_total?: number;
   currency?: string;
   metadata?: Record<string, string | undefined>;
+}
+
+interface StripeCheckoutSessionList {
+  data?: StripeCheckoutSession[];
 }
 
 interface StripeEvent {
@@ -785,6 +790,48 @@ function stripeObjectId(value: unknown): string {
   return "";
 }
 
+async function resolveStripePurchase(
+  ruby: RubyHighService,
+  paymentIntentId: string,
+): Promise<{ sessionId: string; transaction: RubyHighWalletTransaction } | null> {
+  const direct = ruby.walletTransactionOwnerByMetadata(
+    "stripePaymentIntentId",
+    paymentIntentId,
+    "hall-pass-grant",
+  );
+  if (direct) return direct;
+
+  // Purchases created before PaymentIntent ids were persisted still contain
+  // their Checkout Session id. Stripe can deterministically recover that
+  // relationship, after which we backfill the local transaction once.
+  const stripeKey = envTrim("RUBY_HIGH_STRIPE_SECRET_KEY");
+  if (!stripeKey) return null;
+  const query = new URLSearchParams({ payment_intent: paymentIntentId, limit: "1" });
+  const response = await fetch(`${STRIPE_API_BASE}/checkout/sessions?${query}`, {
+    headers: { Authorization: `Bearer ${stripeKey}` },
+    signal: AbortSignal.timeout(10_000),
+  });
+  const payload = await response.json().catch(() => ({})) as StripeCheckoutSessionList & {
+    error?: { message?: string };
+  };
+  if (!response.ok) {
+    throw new Error(payload.error?.message || `Stripe purchase lookup failed with ${response.status}; retry this webhook.`);
+  }
+  for (const checkout of payload.data ?? []) {
+    const checkoutId = checkout.id?.trim();
+    if (!checkoutId) continue;
+    const owner = ruby.walletTransactionOwnerByMetadata(
+      "stripeCheckoutSessionId",
+      checkoutId,
+      "hall-pass-grant",
+    );
+    if (!owner) continue;
+    ruby.annotateWalletTransaction(owner.sessionId, owner.transaction.id, { stripePaymentIntentId: paymentIntentId });
+    return owner;
+  }
+  return null;
+}
+
 function fulfillStripeCheckout(ruby: RubyHighService, session: StripeCheckoutSession): {
   sessionId: string;
   amount: number;
@@ -1022,11 +1069,7 @@ async function fulfillStripeReversal(
   event: StripeEvent,
   marker: StripeReversalMarker,
 ): Promise<{ applied: boolean; sessionId: string; amount: number; hallPasses: number; reason?: string }> {
-  const purchase = ruby.walletTransactionOwnerByMetadata(
-    "stripePaymentIntentId",
-    marker.paymentIntentId,
-    "hall-pass-grant",
-  );
+  const purchase = await resolveStripePurchase(ruby, marker.paymentIntentId);
   if (!purchase) throw new Error("Stripe purchase is not recorded yet; retry this webhook.");
   const purchasedHallPasses = Math.max(0, Math.floor(Number(purchase.transaction.hallPasses ?? 0)));
   const purchaseCents = Math.max(0, Math.floor(Number(
@@ -1073,14 +1116,8 @@ async function fulfillStripeReversal(
       reason: "balance-already-reconciled",
     };
   }
-  const availableHallPasses = ruby.hallPassBalance(purchase.sessionId);
-  const adjustmentAmount = delta > 0 ? Math.min(delta, availableHallPasses) : Math.abs(delta);
-  if (adjustmentAmount <= 0) {
-    await ruby.flushSession(purchase.sessionId);
-    throw new Error(`Stripe reversal has ${delta} Hall Pass${delta === 1 ? "" : "es"} outstanding; retry this webhook.`);
-  }
   const adjustmentInput = {
-    amount: adjustmentAmount,
+    amount: Math.abs(delta),
     idempotencyKey: `stripe:reconcile:${marker.idempotencyKey}:${target.desired}:${target.netReversed}`,
     source: "stripe" as const,
     description: delta > 0 ? "Stripe purchase reversed" : "Stripe dispute funds restored",
@@ -1101,16 +1138,11 @@ async function fulfillStripeReversal(
     ? ruby.revokeHallPasses(purchase.sessionId, adjustmentInput)
     : ruby.refundHallPasses(purchase.sessionId, adjustmentInput);
   await ruby.flushSession(purchase.sessionId);
-  const actualAdjustment = Math.abs(Math.floor(Number(adjustment.transaction.hallPasses ?? 0)));
-  if (actualAdjustment < Math.abs(delta)) {
-    const outstanding = Math.abs(delta) - actualAdjustment;
-    throw new Error(`Stripe reversal has ${outstanding} Hall Pass${outstanding === 1 ? "" : "es"} outstanding; retry this webhook.`);
-  }
   return {
     applied: adjustment.applied,
     sessionId: purchase.sessionId,
     amount: Math.floor(Number(adjustment.transaction.hallPasses ?? 0)),
-    hallPasses: adjustment.state.wallet.hallPasses,
+    hallPasses: ruby.hallPassBalance(purchase.sessionId),
   };
 }
 
