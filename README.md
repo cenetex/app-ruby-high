@@ -162,10 +162,10 @@ Scheduled play is opt-in and server-bounded: 15–1440 minute intervals, at most
 | `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` | — | Metaplex Core collection address for Ruby High pack NFTs. Create once with `npm run nft:create-core-collection`, then set this value. |
 | `RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS` | — | Metaplex Core collection address for Ruby High: First Bell card NFTs. Create once with `npm run nft:create-card-collection`, then set this value. |
 | `RUBY_HIGH_SOLANA_TREASURY_OWNER` | `AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j` | Treasury wallet that receives native SOL for pack purchases. |
-| `RUBY_HIGH_SOLANA_PACK_1_SOL` | `0.01` | Native SOL price for one five-card pack. |
-| `RUBY_HIGH_SOLANA_PACK_3_SOL` | `0.028` | Native SOL price for three packs. |
-| `RUBY_HIGH_SOLANA_PACK_5_SOL` | `0.045` | Native SOL price for five packs. |
-| `RUBY_HIGH_SOLANA_PACK_10_SOL` | `0.085` | Native SOL price for ten packs. |
+| `RUBY_HIGH_SOLANA_PACK_1_SOL` | `0.01` (development only) | Native SOL price for one five-card pack. All four pack prices are required explicitly in production. |
+| `RUBY_HIGH_SOLANA_PACK_3_SOL` | `0.028` (development only) | Native SOL price for three packs. All four pack prices are required explicitly in production. |
+| `RUBY_HIGH_SOLANA_PACK_5_SOL` | `0.045` (development only) | Native SOL price for five packs. All four pack prices are required explicitly in production. |
+| `RUBY_HIGH_SOLANA_PACK_10_SOL` | `0.085` (development only) | Native SOL price for ten packs. All four pack prices are required explicitly in production. |
 | `RUBY_HIGH_HOSTED_AI_HALL_PASS_COST` | `1` | Legacy only. Server-hosted text AI no longer sells timed activation windows. |
 | `RUBY_HIGH_HOSTED_AI_DURATION_HOURS` | `168` | Legacy only. Server-hosted text AI is sponsored when `RUBY_HIGH_OPENROUTER_API_KEY` is configured. |
 | `RUBY_HIGH_HOSTED_AI_DURATION_MS` | — | Legacy only. Server-hosted text AI is sponsored when `RUBY_HIGH_OPENROUTER_API_KEY` is configured. |
@@ -208,12 +208,12 @@ Web purchases use Stripe Checkout for Hall Passes only:
 - `POST /api/apps/ruby-high/billing/stripe/webhook` verifies Stripe signatures and grants Hall Passes idempotently from Checkout metadata. Stripe does not sell card packs or Solana collectibles.
 - `POST /api/apps/ruby-high/billing/card-burn` verifies owner-signed card burns and credits 5 Hall Passes per burned card. Hosted features then spend Hall Passes normally.
 
-Stripe webhook events to send: `checkout.session.completed` and, if using asynchronous payment methods, `checkout.session.async_payment_succeeded`.
+Stripe webhook events to send: `checkout.session.completed`; `checkout.session.async_payment_succeeded` when using asynchronous payment methods; `refund.created`, `refund.updated`, `refund.failed`, and `charge.refunded` for refunds; and `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`, `charge.dispute.funds_withdrawn`, plus `charge.dispute.funds_reinstated` for disputes. Refund and dispute events reconcile the paid Hall Pass grant by PaymentIntent id and are idempotent across Stripe retries. Inquiry/warning disputes do not revoke Hall Passes unless Stripe reports that funds were withdrawn.
 
 Solana purchases are separate from Stripe and use native SOL to mint a Metaplex Core pack NFT:
 
 - The default treasury wallet is `AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j`.
-- Default prices are `0.01`, `0.028`, `0.045`, and `0.085` SOL for 1, 3, 5, and 10 packs.
+- Development fallback prices are `0.01`, `0.028`, `0.045`, and `0.085` SOL for 1, 3, 5, and 10 packs. Production checkout stays disabled until all four prices are set explicitly; price them against the 25-Hall-Pass redemption floor per pack rather than relying on these development values.
 - Create the Core collection once with `npm run nft:create-core-collection`, then set `RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS` to the printed address.
 - Create the Core card collection once with `npm run nft:create-card-collection`, then set `RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS` to the printed address.
 - The current First Bell runtime manifest has 24 mintable profiles and a 12-profile alternate-art expansion, for 36 draft profiles total in `src/services/hall-pass-card-catalog.ts`. Revealed metadata includes `Set`, `Set Code`, `Set Number`, `Card Profile ID`, `Card Name`, `Subject`, media traits, and creator attribution. Reveal proof data stays under `properties.provenance` instead of visible marketplace traits.

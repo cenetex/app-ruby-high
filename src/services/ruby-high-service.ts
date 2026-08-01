@@ -3856,6 +3856,33 @@ export class RubyHighService extends Service {
     return null;
   }
 
+  walletTransactions(sessionId: string): RubyHighWalletTransaction[] {
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const ledger = Object.values(state.wallet.operationLedger ?? {});
+    return ledger.length > 0 ? ledger : [...(state.wallet.transactions ?? [])];
+  }
+
+  walletTransactionOwnerByMetadata(
+    metadataKey: string,
+    metadataValue: string,
+    kind?: RubyHighWalletTransactionKind,
+  ): { sessionId: string; transaction: RubyHighWalletTransaction } | null {
+    const key = metadataKey.trim();
+    const value = metadataValue.trim();
+    if (!key || !value) return null;
+    for (const [sessionId, state] of this.sessions.entries()) {
+      state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+      const transactions = Object.values(state.wallet.operationLedger ?? {});
+      const fallback = state.wallet.transactions ?? [];
+      const transaction = (transactions.length > 0 ? transactions : fallback).find((candidate) => (
+        (!kind || candidate.kind === kind) && String(candidate.metadata?.[key] ?? "") === value
+      ));
+      if (transaction) return { sessionId, transaction };
+    }
+    return null;
+  }
+
   recordWalletMarker(
     sessionId: string,
     input: {
@@ -4622,7 +4649,11 @@ export class RubyHighService extends Service {
       card.burnSignature = burn.burnSignature;
     }
     state.wallet.hallPassCards = normalizeHallPassCards(cards);
-    state.wallet.hallPasses = Math.max(0, Math.floor(Number(state.wallet.hallPasses ?? 0))) + hallPasses;
+    const current = Math.max(0, Math.floor(Number(state.wallet.hallPasses ?? 0)));
+    const debt = Math.max(0, Math.floor(Number(state.wallet.hallPassDebt ?? 0)));
+    const net = current - debt + hallPasses;
+    state.wallet.hallPasses = Math.max(0, net);
+    state.wallet.hallPassDebt = Math.max(0, -net);
     attachHallPassCardMetadata(transaction, burnedCards);
     recordWalletTransaction(state, transaction);
     this.recordMetricEvent("commerce", {
@@ -5221,15 +5252,16 @@ export class RubyHighService extends Service {
     if (existing) return { state, applied: false, transaction: existing };
 
     const current = Math.max(0, Math.floor(Number(state.wallet.hallPasses ?? 0)));
+    const debt = Math.max(0, Math.floor(Number(state.wallet.hallPassDebt ?? 0)));
     if (kind === "hall-pass-spend" && current < amount) {
       throw new Error(`Not enough Hall Passes. Need ${amount}, have ${current}.`);
     }
-    const appliedAmount = kind === "hall-pass-revoke" ? Math.min(current, amount) : amount;
+    const isDebit = kind === "hall-pass-spend" || kind === "hall-pass-revoke";
     const transaction: RubyHighWalletTransaction = {
       id,
       kind,
       at: typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now(),
-      hallPasses: kind === "hall-pass-spend" || kind === "hall-pass-revoke" ? -appliedAmount : appliedAmount,
+      hallPasses: isDebit ? -amount : amount,
       ...(input.source ? { source: input.source } : {}),
       ...(input.description ? { description: input.description } : {}),
       ...(input.metadata ? { metadata: input.metadata } : {}),
@@ -5237,9 +5269,9 @@ export class RubyHighService extends Service {
         ? { amountCents: Math.floor(input.amountCents) }
         : {}),
     };
-    state.wallet.hallPasses = kind === "hall-pass-spend" || kind === "hall-pass-revoke"
-      ? current - appliedAmount
-      : current + appliedAmount;
+    const net = current - debt + (isDebit ? -amount : amount);
+    state.wallet.hallPasses = Math.max(0, net);
+    state.wallet.hallPassDebt = Math.max(0, -net);
     recordWalletTransaction(state, transaction);
     this.recordMetricEvent("commerce", {
       sessionId,
@@ -11525,6 +11557,9 @@ function normalizeWalletTransaction(raw: unknown): RubyHighWalletTransaction | n
   if (typeof tx.photoDayCredits === "number" && Number.isFinite(tx.photoDayCredits)) {
     entry.photoDayCredits = Math.floor(tx.photoDayCredits);
   }
+  if (typeof tx.amountCents === "number" && Number.isFinite(tx.amountCents)) {
+    entry.amountCents = Math.floor(tx.amountCents);
+  }
   const source = normalizedWalletSource(tx.source);
   if (source) {
     entry.source = source;
@@ -11572,7 +11607,11 @@ function normalizeWallet(wallet: unknown, fallbackMeritStars: number): QuizState
   const src = wallet && typeof wallet === "object" ? wallet as Partial<QuizState["wallet"]> : {};
   const transactions = normalizeWalletTransactions(src.transactions);
   const operationLedger = normalizeWalletOperationLedger(src.operationLedger, transactions);
-  const hallPasses = Math.max(0, Math.floor(Number(src.hallPasses ?? 0)));
+  const rawHallPasses = Math.max(0, Math.floor(Number(src.hallPasses ?? 0)));
+  const rawHallPassDebt = Math.max(0, Math.floor(Number(src.hallPassDebt ?? 0)));
+  const netHallPasses = rawHallPasses - rawHallPassDebt;
+  const hallPasses = Math.max(0, netHallPasses);
+  const hallPassDebt = Math.max(0, -netHallPasses);
   const hallPassCards = normalizeHallPassCards(src.hallPassCards)
     .filter((card) => card.grantTransactionId !== WELCOME_HALL_PASS_GRANT_ID || !!card.mintAddress || !!card.mintSignature);
   const hallPassPacks = normalizeHallPassPacks(src.hallPassPacks);
@@ -11580,6 +11619,7 @@ function normalizeWallet(wallet: unknown, fallbackMeritStars: number): QuizState
   return {
     meritStars: Math.max(0, Math.floor(Number(src.meritStars ?? fallbackMeritStars))),
     hallPasses,
+    ...(hallPassDebt > 0 ? { hallPassDebt } : {}),
     ...(Number.isFinite(welcomeHallPassesGrantedAt) && welcomeHallPassesGrantedAt > 0
       ? { welcomeHallPassesGrantedAt }
       : {}),

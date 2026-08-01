@@ -1489,7 +1489,8 @@ async function updateOpenedCorePackNft(
 }
 
 function publicBaseUrlForRequest(ctx: RouteContext): string | undefined {
-  const envBase = process.env.RUBY_HIGH_PUBLIC_BASE_URL?.trim();
+  const envBase = process.env.RUBY_HIGH_PUBLIC_BASE?.trim()
+    || process.env.RUBY_HIGH_PUBLIC_BASE_URL?.trim();
   if (envBase) return envBase;
   if (!ctx.url) return undefined;
   return `${ctx.url.protocol}//${ctx.url.host}`;

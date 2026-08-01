@@ -14,6 +14,7 @@ const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
   RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS,
   RUBY_HIGH_SOLANA_RPC_URL: process.env.RUBY_HIGH_SOLANA_RPC_URL,
+  RUBY_HIGH_PUBLIC_BASE: process.env.RUBY_HIGH_PUBLIC_BASE,
   RUBY_HIGH_PUBLIC_BASE_URL: process.env.RUBY_HIGH_PUBLIC_BASE_URL,
   RUBY_HIGH_NFT_METADATA_STORAGE: process.env.RUBY_HIGH_NFT_METADATA_STORAGE,
   RUBY_HIGH_NFT_METADATA_ARWEAVE_JWK: process.env.RUBY_HIGH_NFT_METADATA_ARWEAVE_JWK,
@@ -72,6 +73,18 @@ describe("Core pack NFT checkout transactions", () => {
       cardCount: 4,
       paymentSignature: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
     })).toContain("cards=5");
+  });
+
+  it("uses the canonical configured public origin for pack metadata", () => {
+    process.env.RUBY_HIGH_PUBLIC_BASE = "https://staging.ruby-high.example";
+    process.env.RUBY_HIGH_PUBLIC_BASE_URL = "https://legacy.ruby-high.example";
+
+    expect(corePackNftMetadataUri({
+      productId: "card-pack-1",
+      packCount: 1,
+      cardCount: 5,
+      paymentSignature: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
+    })).toMatch(/^https:\/\/staging\.ruby-high\.example\//);
   });
 
   it("builds an opened pack metadata URL that forces opened imagery", () => {

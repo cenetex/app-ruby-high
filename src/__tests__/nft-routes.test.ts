@@ -1834,6 +1834,7 @@ describe("Hall Pass NFT routes", () => {
   });
 
   it("rate limits repeated wallet pack syncs before calling the on-chain fetcher", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
     signInUser("sync-pack-rate-limit");
     const fetchOwned = vi.fn(async () => [] as OwnedCorePackNft[]);
     restorePackFetcher = setOwnedCorePackNftFetcherForTest(fetchOwned);

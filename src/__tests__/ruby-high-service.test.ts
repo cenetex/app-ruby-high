@@ -205,6 +205,43 @@ describe("Hall Pass wallet", () => {
     })).toThrow(/Not enough Hall Passes/);
   });
 
+  it("persists reversal debt and settles it before exposing future grants", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:wallet-reversal-debt";
+
+    ruby.grantHallPasses(sid, {
+      amount: 5,
+      idempotencyKey: "stripe:checkout:debt-test",
+      source: "stripe",
+    });
+    ruby.spendHallPasses(sid, {
+      amount: 5,
+      idempotencyKey: "hosted-image:debt-test",
+      source: "hosted-image",
+    });
+    const reversal = ruby.revokeHallPasses(sid, {
+      amount: 5,
+      idempotencyKey: "stripe:refund:debt-test",
+      source: "stripe",
+    });
+
+    expect(reversal.transaction.hallPasses).toBe(-5);
+    expect(reversal.state.wallet).toMatchObject({ hallPasses: 0, hallPassDebt: 5 });
+    expect(() => ruby.spendHallPasses(sid, {
+      amount: 1,
+      idempotencyKey: "hosted-image:while-in-debt",
+      source: "hosted-image",
+    })).toThrow(/Not enough Hall Passes/);
+
+    ruby.grantHallPasses(sid, {
+      amount: 7,
+      idempotencyKey: "stripe:checkout:after-debt",
+      source: "stripe",
+    });
+    expect(ruby.getOrCreate(sid).wallet.hallPasses).toBe(2);
+    expect(ruby.getOrCreate(sid).wallet.hallPassDebt ?? 0).toBe(0);
+  });
+
   it("spends Merit Stars idempotently", async () => {
     const { ruby } = await makeServices();
     const sid = "rh:user:merit-stars";
@@ -2888,6 +2925,7 @@ describe("RubyHighService Phase 1", () => {
   it("uses term level two to start a four-student Term Rally with a visible Rally Spark reward", async () => {
     const { ruby } = await makeServices();
     const start = Date.UTC(2026, 5, 12, 12);
+    usePublicWorldFixtureTime(start + 7 * 24 * 60 * 60 * 1000 + 60_000);
     const sessions = ["test:term-rally-a", "test:term-rally-b", "test:term-rally-c", "test:term-rally-d"].map((sid, index) => {
       const state = attachTestCharacter(ruby, sid);
       state.sessionId = sid;

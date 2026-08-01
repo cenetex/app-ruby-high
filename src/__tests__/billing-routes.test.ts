@@ -26,8 +26,14 @@ let ruby: RubyHighService;
 let lastResponse: { status: number; body: any } | null = null;
 
 const ORIGINAL_ENV = {
+  NODE_ENV: process.env.NODE_ENV,
   RUBY_HIGH_STRIPE_SECRET_KEY: process.env.RUBY_HIGH_STRIPE_SECRET_KEY,
   RUBY_HIGH_STRIPE_WEBHOOK_SECRET: process.env.RUBY_HIGH_STRIPE_WEBHOOK_SECRET,
+  RUBY_HIGH_STRIPE_CURRENCY: process.env.RUBY_HIGH_STRIPE_CURRENCY,
+  RUBY_HIGH_HALL_PASS_5_CENTS: process.env.RUBY_HIGH_HALL_PASS_5_CENTS,
+  RUBY_HIGH_HALL_PASS_20_CENTS: process.env.RUBY_HIGH_HALL_PASS_20_CENTS,
+  RUBY_HIGH_HALL_PASS_50_CENTS: process.env.RUBY_HIGH_HALL_PASS_50_CENTS,
+  RUBY_HIGH_HALL_PASS_100_CENTS: process.env.RUBY_HIGH_HALL_PASS_100_CENTS,
   RUBY_HIGH_OPENROUTER_API_KEY: process.env.RUBY_HIGH_OPENROUTER_API_KEY,
   RUBY_HIGH_HOSTED_AI_HALL_PASS_COST: process.env.RUBY_HIGH_HOSTED_AI_HALL_PASS_COST,
   RUBY_HIGH_HOSTED_AI_DURATION_MS: process.env.RUBY_HIGH_HOSTED_AI_DURATION_MS,
@@ -115,6 +121,16 @@ function stripeSignature(rawBody: string, secret: string, timestamp = Math.floor
     .update(`${timestamp}.${rawBody}`)
     .digest("hex");
   return `t=${timestamp},v1=${signature}`;
+}
+
+async function deliverStripeEvent(event: Record<string, unknown>, secret = "whsec_ruby"): Promise<void> {
+  const rawBody = JSON.stringify(event);
+  await handleBillingRoutes(makeCtx({
+    method: "POST",
+    path: "/api/apps/ruby-high/billing/stripe/webhook",
+    rawBody,
+    stripeSignature: stripeSignature(rawBody, secret),
+  }), deps());
 }
 
 function stubCorePackPurchaseBuilderForTest(opts: {
@@ -211,6 +227,7 @@ afterEach(async () => {
   restoreCorePackVerifier = null;
   restoreCorePackPurchaseBuilder = null;
   restoreHallPassBurnVerifier = null;
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   await auth.stop();
   await ruby.flush();
@@ -259,6 +276,42 @@ describe("billing products", () => {
         diploma: { configured: false, cost: 3, affordable: false, canUseHosted: false },
       },
       creator: { courseSlotCost: 3, questionGenerationCost: 1, moreQuestionsCount: 6 },
+    });
+  });
+
+  it("requires every SOL pack price to be explicit in production", async () => {
+    process.env.NODE_ENV = "production";
+
+    await handleBillingRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/billing/products",
+    }), deps());
+
+    expect(lastResponse?.body.solana).toMatchObject({
+      configured: false,
+      reason: expect.stringContaining("RUBY_HIGH_SOLANA_PACK_1_SOL"),
+    });
+
+    process.env.RUBY_HIGH_SOLANA_PACK_1_SOL = "0.02";
+    process.env.RUBY_HIGH_SOLANA_PACK_3_SOL = "0.06";
+    process.env.RUBY_HIGH_SOLANA_PACK_5_SOL = "0.10";
+    process.env.RUBY_HIGH_SOLANA_PACK_10_SOL = "0.20";
+    await handleBillingRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/billing/products",
+    }), deps());
+
+    expect(lastResponse?.body.solana.configured).toBe(true);
+
+    process.env.RUBY_HIGH_SOLANA_PACK_3_SOL = "not-a-price";
+    await handleBillingRoutes(makeCtx({
+      method: "GET",
+      path: "/api/apps/ruby-high/billing/products",
+    }), deps());
+
+    expect(lastResponse?.body.solana).toMatchObject({
+      configured: false,
+      reason: expect.stringContaining("RUBY_HIGH_SOLANA_PACK_3_SOL"),
     });
   });
 
@@ -457,17 +510,23 @@ describe("Stripe Checkout", () => {
     const params = new URLSearchParams(capturedBody);
     expect(params.get("client_reference_id")).toBe(stateKey);
     expect(params.get("metadata[ruby_high_session_id]")).toBe(stateKey);
+    expect(params.get("metadata[billing_terms_version]")).toBe("ruby-high-stripe-terms-v1");
     expect(params.get("metadata[hall_pass_product_id]")).toBe("hall-pass-50");
     expect(params.get("metadata[card_pack_id]")).toBeNull();
     expect(params.get("metadata[pack_count]")).toBeNull();
     expect(params.get("metadata[card_count]")).toBeNull();
     expect(params.get("metadata[hall_passes]")).toBe("50");
+    expect(params.get("metadata[hall_pass_unit_amount]")).toBe("1499");
+    expect(params.get("metadata[hall_pass_currency]")).toBe("usd");
     expect(params.get("payment_intent_data[metadata][ruby_high_session_id]")).toBe(stateKey);
+    expect(params.get("payment_intent_data[metadata][billing_terms_version]")).toBe("ruby-high-stripe-terms-v1");
     expect(params.get("payment_intent_data[metadata][hall_pass_product_id]")).toBe("hall-pass-50");
     expect(params.get("payment_intent_data[metadata][card_pack_id]")).toBeNull();
     expect(params.get("payment_intent_data[metadata][pack_count]")).toBeNull();
     expect(params.get("payment_intent_data[metadata][card_count]")).toBeNull();
     expect(params.get("payment_intent_data[metadata][hall_passes]")).toBe("50");
+    expect(params.get("payment_intent_data[metadata][hall_pass_unit_amount]")).toBe("1499");
+    expect(params.get("payment_intent_data[metadata][hall_pass_currency]")).toBe("usd");
     expect(params.get("line_items[0][price_data][unit_amount]")).toBe("1499");
   });
 });
@@ -519,6 +578,346 @@ describe("Stripe webhook", () => {
     expect(lastResponse).toMatchObject({ status: 200, body: { received: true, applied: false, hallPasses: 50, amount: 50 } });
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(50);
     expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.grantTransactionId === "stripe:checkout:cs_paid_1") ?? []).toHaveLength(0);
+  });
+
+  it("fulfills the immutable terms captured when Checkout was created", async () => {
+    process.env.RUBY_HIGH_STRIPE_WEBHOOK_SECRET = "whsec_ruby";
+    process.env.RUBY_HIGH_HALL_PASS_50_CENTS = "2599";
+    process.env.RUBY_HIGH_STRIPE_CURRENCY = "cad";
+    const stateKey = "rh:user:stripe-snapshotted-terms";
+
+    await deliverStripeEvent({
+      id: "evt_snapshotted_terms",
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_snapshotted_terms",
+          payment_intent: "pi_snapshotted_terms",
+          payment_status: "paid",
+          client_reference_id: stateKey,
+          amount_total: 1499,
+          currency: "usd",
+          metadata: {
+            ruby_high_session_id: stateKey,
+            billing_terms_version: "ruby-high-stripe-terms-v1",
+            hall_pass_product_id: "hall-pass-50",
+            hall_passes: "50",
+            hall_pass_unit_amount: "1499",
+            hall_pass_currency: "usd",
+          },
+        },
+      },
+    });
+
+    expect(lastResponse).toMatchObject({ status: 200, body: { applied: true, hallPasses: 50 } });
+    expect(ruby.walletTransaction(stateKey, "stripe:checkout:cs_snapshotted_terms")).toMatchObject({
+      amountCents: 1499,
+      metadata: {
+        stripePaymentIntentId: "pi_snapshotted_terms",
+        billingTermsVersion: "ruby-high-stripe-terms-v1",
+      },
+    });
+  });
+
+  it("revokes a refunded Stripe purchase idempotently", async () => {
+    process.env.RUBY_HIGH_STRIPE_WEBHOOK_SECRET = "whsec_ruby";
+    const stateKey = "rh:user:stripe-refund";
+    await deliverStripeEvent({
+      id: "evt_refund_purchase",
+      type: "checkout.session.completed",
+      data: { object: {
+        id: "cs_refund_purchase",
+        payment_intent: "pi_refund_purchase",
+        payment_status: "paid",
+        client_reference_id: stateKey,
+        amount_total: 699,
+        currency: "usd",
+        metadata: {
+          ruby_high_session_id: stateKey,
+          billing_terms_version: "ruby-high-stripe-terms-v1",
+          hall_pass_product_id: "hall-pass-20",
+          hall_passes: "20",
+          hall_pass_unit_amount: "699",
+          hall_pass_currency: "usd",
+        },
+      } },
+    });
+    const refundEvent = {
+      id: "evt_refund_created",
+      created: 1_800_000_000,
+      type: "refund.created",
+      data: { object: {
+        id: "re_refund_purchase",
+        payment_intent: "pi_refund_purchase",
+        amount: 699,
+        status: "succeeded",
+      } },
+    };
+
+    await deliverStripeEvent(refundEvent);
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: { applied: true, reversals: [{ sessionId: stateKey, amount: -20, hallPasses: 0 }] },
+    });
+
+    await deliverStripeEvent(refundEvent);
+    expect(lastResponse).toMatchObject({ status: 200, body: { applied: false } });
+    expect(ruby.hallPassBalance(stateKey)).toBe(0);
+  });
+
+  it("restores Hall Passes when a refund fails", async () => {
+    process.env.RUBY_HIGH_STRIPE_WEBHOOK_SECRET = "whsec_ruby";
+    const stateKey = "rh:user:stripe-refund-failed";
+    await deliverStripeEvent({
+      id: "evt_refund_failed_purchase",
+      type: "checkout.session.completed",
+      data: { object: {
+        id: "cs_refund_failed_purchase",
+        payment_intent: "pi_refund_failed_purchase",
+        payment_status: "paid",
+        client_reference_id: stateKey,
+        amount_total: 699,
+        currency: "usd",
+        metadata: {
+          ruby_high_session_id: stateKey,
+          billing_terms_version: "ruby-high-stripe-terms-v1",
+          hall_pass_product_id: "hall-pass-20",
+          hall_passes: "20",
+          hall_pass_unit_amount: "699",
+          hall_pass_currency: "usd",
+        },
+      } },
+    });
+    await deliverStripeEvent({
+      id: "evt_partial_refund",
+      created: 1_800_000_001,
+      type: "refund.created",
+      data: { object: {
+        id: "re_partial_refund",
+        payment_intent: "pi_refund_failed_purchase",
+        amount: 349,
+        status: "pending",
+      } },
+    });
+    expect(ruby.hallPassBalance(stateKey)).toBe(10);
+
+    await deliverStripeEvent({
+      id: "evt_partial_refund_failed",
+      created: 1_800_000_002,
+      type: "refund.failed",
+      data: { object: {
+        id: "re_partial_refund",
+        payment_intent: "pi_refund_failed_purchase",
+        amount: 349,
+        status: "failed",
+      } },
+    });
+
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: { applied: true, reversals: [{ amount: 10, hallPasses: 20 }] },
+    });
+  });
+
+  it("records durable debt when a reversal exceeds the spendable balance", async () => {
+    process.env.RUBY_HIGH_STRIPE_WEBHOOK_SECRET = "whsec_ruby";
+    const stateKey = "rh:user:stripe-refund-outstanding";
+    ruby.grantHallPasses(stateKey, {
+      amount: 5,
+      amountCents: 199,
+      idempotencyKey: "stripe:checkout:cs_refund_outstanding",
+      source: "stripe",
+      metadata: { stripePaymentIntentId: "pi_refund_outstanding", amountTotal: 199 },
+    });
+    ruby.spendHallPasses(stateKey, {
+      amount: 5,
+      idempotencyKey: "test:spend-before-stripe-refund",
+      source: "admin",
+    });
+    const refundEvent = {
+      id: "evt_refund_outstanding",
+      created: 1_800_000_002,
+      type: "refund.created",
+      data: { object: {
+        id: "re_refund_outstanding",
+        payment_intent: "pi_refund_outstanding",
+        amount: 199,
+        status: "succeeded",
+      } },
+    };
+
+    await deliverStripeEvent(refundEvent);
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: { applied: true, reversals: [{ amount: -5, hallPasses: 0 }] },
+    });
+    expect(ruby.walletTransactions(stateKey).filter((transaction) => (
+      transaction.metadata?.stripeReversalAdjustment === true
+    ))).toHaveLength(1);
+    expect(ruby.getOrCreate(stateKey).wallet).toMatchObject({ hallPasses: 0, hallPassDebt: 5 });
+
+    ruby.grantHallPasses(stateKey, {
+      amount: 3,
+      idempotencyKey: "test:partial-debt-payment",
+      source: "admin",
+    });
+    expect(ruby.getOrCreate(stateKey).wallet).toMatchObject({ hallPasses: 0, hallPassDebt: 2 });
+
+    await deliverStripeEvent(refundEvent);
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: { applied: false, reversals: [{ amount: 0, hallPasses: 0 }] },
+    });
+
+    ruby.grantHallPasses(stateKey, {
+      amount: 3,
+      idempotencyKey: "test:finish-debt-payment",
+      source: "admin",
+    });
+    expect(ruby.getOrCreate(stateKey).wallet).toMatchObject({ hallPasses: 1 });
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassDebt ?? 0).toBe(0);
+  });
+
+  it("backfills historical Stripe purchases before reconciling a refund", async () => {
+    process.env.RUBY_HIGH_STRIPE_WEBHOOK_SECRET = "whsec_ruby";
+    process.env.RUBY_HIGH_STRIPE_SECRET_KEY = "sk_test_ruby";
+    const stateKey = "rh:user:stripe-historical-refund";
+    ruby.grantHallPasses(stateKey, {
+      amount: 5,
+      amountCents: 199,
+      idempotencyKey: "stripe:checkout:cs_historical_refund",
+      source: "stripe",
+      metadata: {
+        stripeCheckoutSessionId: "cs_historical_refund",
+        hallPassProductId: "hall-pass-5",
+        amountTotal: 199,
+      },
+    });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      data: [{ id: "cs_historical_refund", payment_intent: "pi_historical_refund" }],
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deliverStripeEvent({
+      id: "evt_historical_refund",
+      type: "refund.created",
+      data: { object: {
+        id: "re_historical_refund",
+        payment_intent: "pi_historical_refund",
+        amount: 199,
+        status: "succeeded",
+      } },
+    });
+
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: { applied: true, reversals: [{ sessionId: stateKey, amount: -5, hallPasses: 0 }] },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.stripe.com/v1/checkout/sessions?payment_intent=pi_historical_refund&limit=1",
+      expect.objectContaining({ headers: { Authorization: "Bearer sk_test_ruby" } }),
+    );
+    expect(ruby.walletTransaction(stateKey, "stripe:checkout:cs_historical_refund")?.metadata)
+      .toMatchObject({ stripePaymentIntentId: "pi_historical_refund" });
+  });
+
+  it("reconciles Stripe disputes and restores funds after a win", async () => {
+    process.env.RUBY_HIGH_STRIPE_WEBHOOK_SECRET = "whsec_ruby";
+    const stateKey = "rh:user:stripe-dispute";
+    await deliverStripeEvent({
+      id: "evt_dispute_purchase",
+      type: "checkout.session.completed",
+      data: { object: {
+        id: "cs_dispute_purchase",
+        payment_intent: "pi_dispute_purchase",
+        payment_status: "paid",
+        client_reference_id: stateKey,
+        amount_total: 199,
+        currency: "usd",
+        metadata: {
+          ruby_high_session_id: stateKey,
+          billing_terms_version: "ruby-high-stripe-terms-v1",
+          hall_pass_product_id: "hall-pass-5",
+          hall_passes: "5",
+          hall_pass_unit_amount: "199",
+          hall_pass_currency: "usd",
+        },
+      } },
+    });
+    await deliverStripeEvent({
+      id: "evt_dispute_created",
+      created: 1_800_000_003,
+      type: "charge.dispute.created",
+      data: { object: {
+        id: "dp_dispute_purchase",
+        payment_intent: "pi_dispute_purchase",
+        amount: 199,
+        status: "needs_response",
+      } },
+    });
+    expect(ruby.hallPassBalance(stateKey)).toBe(0);
+
+    await deliverStripeEvent({
+      id: "evt_dispute_won",
+      created: 1_800_000_004,
+      type: "charge.dispute.closed",
+      data: { object: {
+        id: "dp_dispute_purchase",
+        payment_intent: "pi_dispute_purchase",
+        amount: 199,
+        status: "won",
+      } },
+    });
+
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: { applied: true, reversals: [{ amount: 5, hallPasses: 5 }] },
+    });
+  });
+
+  it("does not revoke for an inquiry unless Stripe reports funds withdrawn", async () => {
+    process.env.RUBY_HIGH_STRIPE_WEBHOOK_SECRET = "whsec_ruby";
+    const stateKey = "rh:user:stripe-inquiry";
+    ruby.grantHallPasses(stateKey, {
+      amount: 5,
+      amountCents: 199,
+      idempotencyKey: "stripe:checkout:cs_inquiry_purchase",
+      source: "stripe",
+      metadata: { stripePaymentIntentId: "pi_inquiry_purchase", amountTotal: 199 },
+    });
+    const dispute = {
+      id: "dp_inquiry_purchase",
+      payment_intent: "pi_inquiry_purchase",
+      amount: 199,
+      status: "warning_needs_response",
+    };
+
+    await deliverStripeEvent({
+      id: "evt_inquiry_created",
+      created: 1_800_000_005,
+      type: "charge.dispute.created",
+      data: { object: dispute },
+    });
+    expect(ruby.hallPassBalance(stateKey)).toBe(5);
+
+    await deliverStripeEvent({
+      id: "evt_inquiry_funds_withdrawn",
+      created: 1_800_000_006,
+      type: "charge.dispute.funds_withdrawn",
+      data: { object: dispute },
+    });
+    expect(ruby.hallPassBalance(stateKey)).toBe(0);
+
+    await deliverStripeEvent({
+      id: "evt_inquiry_funds_reinstated",
+      created: 1_800_000_007,
+      type: "charge.dispute.funds_reinstated",
+      data: { object: dispute },
+    });
+    expect(lastResponse).toMatchObject({
+      status: 200,
+      body: { applied: true, reversals: [{ amount: 5, hallPasses: 5 }] },
+    });
   });
 
   it("rejects signed Checkout webhooks when pack metadata does not match the paid amount", async () => {
@@ -1283,7 +1682,7 @@ describe("RevenueCat webhook", () => {
     expect(ruby.walletTransaction(stateKey, "revenuecat:grant:tx_rc_refund_first_20:HLP")).toBeNull();
   });
 
-  it("reports the actual RevenueCat reversal delta when the wallet has fewer Hall Passes than the refund", async () => {
+  it("records RevenueCat reversal debt when the wallet has fewer Hall Passes than the refund", async () => {
     process.env.RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH = "Bearer rc-secret";
     const stateKey = "rh:user:rc-partial-refund";
     ruby.grantHallPasses(stateKey, {
@@ -1344,8 +1743,7 @@ describe("RevenueCat webhook", () => {
         received: true,
         applied: true,
         sessionId: stateKey,
-        amount: -5,
-        requestedAmount: -20,
+        amount: -20,
         hallPasses: 0,
       },
     });
@@ -1353,8 +1751,9 @@ describe("RevenueCat webhook", () => {
     expect(transactions).toContainEqual(expect.objectContaining({
       id: "revenuecat:reversal:tx_rc_partial_refund_20:HLP",
       kind: "hall-pass-revoke",
-      hallPasses: -5,
+      hallPasses: -20,
     }));
+    expect(ruby.getOrCreate(stateKey).wallet.hallPassDebt).toBe(15);
   });
 
   it("can fulfill RevenueCat virtual currency transaction events", async () => {

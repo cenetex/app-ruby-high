@@ -1825,7 +1825,11 @@ function normalizeSerial(serial: string): string {
 }
 
 function publicBaseUrlFromEnv(env: NodeJS.ProcessEnv = process.env): string {
-  return cleanBaseUrl(cleanEnv(env.RUBY_HIGH_PUBLIC_BASE_URL) || DEFAULT_PUBLIC_BASE_URL);
+  return cleanBaseUrl(
+    cleanEnv(env.RUBY_HIGH_PUBLIC_BASE) ||
+    cleanEnv(env.RUBY_HIGH_PUBLIC_BASE_URL) ||
+    DEFAULT_PUBLIC_BASE_URL,
+  );
 }
 
 function publicWebsiteUrl(publicBaseUrl: string): string {

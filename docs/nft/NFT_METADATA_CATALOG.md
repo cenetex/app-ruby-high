@@ -10,7 +10,8 @@ metadata service is implemented by:
 - `src/routes/assets.ts`
 
 Default public base URL is `https://ruby-high.ai` unless
-`RUBY_HIGH_PUBLIC_BASE_URL` is set. Default NFT symbol is `RUBY` unless
+`RUBY_HIGH_PUBLIC_BASE` is set (`RUBY_HIGH_PUBLIC_BASE_URL` remains a legacy
+fallback). Default NFT symbol is `RUBY` unless
 `RUBY_HIGH_SOLANA_NFT_SYMBOL` is set.
 
 The proposed production set expansion lives in
