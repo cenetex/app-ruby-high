@@ -5,6 +5,7 @@ const serverEntry = readFileSync(new URL("../../scripts/server.mjs", import.meta
 const devServerEntry = readFileSync(new URL("../../scripts/dev-server.mjs", import.meta.url), "utf8");
 const httpServer = readFileSync(new URL("../../scripts/http-server.mjs", import.meta.url), "utf8");
 const httpLimits = readFileSync(new URL("../../scripts/http-limits.mjs", import.meta.url), "utf8");
+const landingServer = readFileSync(new URL("../../scripts/landing.mjs", import.meta.url), "utf8");
 const publicBase = readFileSync(new URL("../../scripts/public-base.mjs", import.meta.url), "utf8");
 const deployFly = readFileSync(new URL("../../scripts/deploy-fly.mjs", import.meta.url), "utf8");
 const dockerfile = readFileSync(new URL("../../Dockerfile", import.meta.url), "utf8");
@@ -115,6 +116,40 @@ describe("production startup guardrails", () => {
     expect(httpServer).toContain('import { bodyLimitForPath } from "./http-limits.mjs";');
     expect(httpServer).toContain("readJsonBody(req, bodyLimitForPath(pathname))");
     expect(httpLimits).not.toContain("/packs/import-");
+  });
+
+  it("applies baseline HTTP hardening and bounded request parsing", () => {
+    expect(httpServer).toContain("applyHttpSecurityHeaders");
+    expect(httpServer).toContain('"X-Content-Type-Options", "nosniff"');
+    expect(httpServer).toContain('"Referrer-Policy", "strict-origin-when-cross-origin"');
+    expect(httpServer).toContain('"Strict-Transport-Security"');
+    expect(landingServer).toContain("frame-ancestors 'none'");
+    for (const entry of [serverEntry, devServerEntry]) {
+      expect(entry).toContain("server.headersTimeout = 15_000");
+      expect(entry).toContain("server.requestTimeout = 30_000");
+      expect(entry).toContain("server.maxHeadersCount = 100");
+    }
+  });
+
+  it("trusts proxy identity headers only when explicitly configured", () => {
+    expect(httpServer).toContain("deriveClientIp(req, trustProxy = false)");
+    expect(serverEntry).toContain("RUBY_HIGH_TRUST_PROXY");
+    expect(serverEntry).toContain("trustProxy: TRUST_PROXY");
+    expect(serverEntry).toContain('new URL(PUBLIC_BASE).protocol !== "https:"');
+    expect(flyConfig).toContain('RUBY_HIGH_TRUST_PROXY = "true"');
+    expect(flyConfig).toContain('RUBY_HIGH_PUBLIC_BASE = "https://ruby-high.ai"');
+  });
+
+  it("rejects absolute or authority-form request targets", () => {
+    expect(httpServer).toContain("parseRequestUrl(raw, base)");
+    expect(httpServer).toContain('target.startsWith("//")');
+    expect(serverEntry).toContain("parseRequestUrl(req.url, PUBLIC_BASE");
+    expect(devServerEntry).toContain("parseRequestUrl(req.url, PUBLIC_BASE)");
+  });
+
+  it("does not expose unexpected production exception details", () => {
+    expect(serverEntry).toContain('sendJson(res, { error: "Internal server error." }, 500)');
+    expect(serverEntry).not.toContain('sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 500)');
   });
 
   it("keeps the dev grade-completion helper available for browser journeys", () => {

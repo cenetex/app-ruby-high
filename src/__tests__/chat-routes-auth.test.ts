@@ -290,6 +290,8 @@ describe("auth callback redirect sanitization", () => {
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(200);
+    expect(res.getHeader("content-security-policy")).toEqual(expect.stringContaining("frame-ancestors 'none'"));
+    expect(res.getHeader("referrer-policy")).toBe("no-referrer");
     expect(res.body).toContain('window.location.replace("/api/apps/ruby-high/viewer")');
     expect(res.body).toContain('localStorage.getItem("rh_openrouter_persist")');
     expect(res.body).toContain("sessionStorage");

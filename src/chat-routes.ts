@@ -1403,6 +1403,7 @@ export interface ChatRouteContext {
  *  shared NAT and a script-from-the-same-IP get separate buckets. */
 const CHAT_LIMITER = new TokenBucket(60, 1);
 const PORTRAIT_LIMITER = new TokenBucket(8, 1 / 30); // image gen: 8 burst, ~1 every 30s
+const AUTH_LIMITER = new TokenBucket(30, 0.5); // auth/session creation: 30 burst, ~1 every 2s
 const CHAT_EVENT_TURN_TTL_MS = 2 * 60 * 60 * 1000;
 const CHAT_EVENT_TURN_MAX_KEYS = 5_000;
 const CHAT_EVENT_TURN_SEQ = new Map<string, { seq: number; lastSeen: number }>();
@@ -1412,6 +1413,7 @@ const limiterGcTimer = setInterval(() => {
   const now = Date.now();
   CHAT_LIMITER.gc(now);
   PORTRAIT_LIMITER.gc(now);
+  AUTH_LIMITER.gc(now);
   gcChatEventTurnSeq(now);
 }, 60 * 60 * 1000);
 if (typeof limiterGcTimer === "object" && limiterGcTimer && "unref" in limiterGcTimer) {
@@ -1421,6 +1423,13 @@ if (typeof limiterGcTimer === "object" && limiterGcTimer && "unref" in limiterGc
 function rateLimitKey(ctx: ChatRouteContext, sessionToken: string | null): string {
   const ip = ctx.clientIp || "no-ip";
   return `${ip}:${sessionToken ?? "anon"}`;
+}
+
+function takeAuthToken(ctx: ChatRouteContext): boolean {
+  const key = `${ctx.clientIp || "no-ip"}:${ctx.pathname}`;
+  if (AUTH_LIMITER.take(key)) return true;
+  reject429(ctx, AUTH_LIMITER.retryAfterSeconds(key));
+  return false;
 }
 
 function chatEventTurnGuard(sessionId: string, faculty: string, rawSeq: unknown): () => boolean {
@@ -1963,6 +1972,15 @@ function redirect(res: unknown, location: string): void {
   r.end();
 }
 
+function setAuthHtmlSecurityHeaders(res: NodeLikeResponse): void {
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
+  );
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+}
+
 function safeAuthRedirect(raw: string | null | undefined): string {
   if (!raw) return DEFAULT_AUTH_REDIRECT;
   const trimmed = raw.trim();
@@ -2042,6 +2060,7 @@ function writeAuthCallbackHtml(
 </html>`;
   const r = res as NodeLikeResponse;
   r.statusCode = 200;
+  setAuthHtmlSecurityHeaders(r);
   r.setHeader("Content-Type", "text/html; charset=utf-8");
   r.setHeader("Cache-Control", "no-store");
   r.end(html);
@@ -2078,6 +2097,7 @@ function writeAuthDeclinedHtml(res: unknown, redirectTo: string): void {
 </html>`;
   const r = res as NodeLikeResponse;
   r.statusCode = 200;
+  setAuthHtmlSecurityHeaders(r);
   r.setHeader("Content-Type", "text/html; charset=utf-8");
   r.setHeader("Cache-Control", "no-store");
   r.end(html);
@@ -2167,6 +2187,18 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
 
   const buildCallback = defaultCallbackBuilder(ctx);
   const secure = ctx.isSecure ?? false;
+
+  if (
+    (
+      ctx.pathname === `${AUTH_PREFIX}/start` ||
+      ctx.pathname === `${AUTH_PREFIX}/guest` ||
+      ctx.pathname === `${AUTH_PREFIX}/privy` ||
+      ctx.pathname === `${AUTH_PREFIX}/callback`
+    ) &&
+    !takeAuthToken(ctx)
+  ) {
+    return true;
+  }
 
   // ── auth ──────────────────────────────────────────────────────────────────
   if (ctx.method === "GET" && ctx.pathname === `${AUTH_PREFIX}/start`) {

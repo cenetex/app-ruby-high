@@ -184,6 +184,7 @@ export function sendHtmlResponse(
   res: unknown,
   html: string,
   acceptEncoding?: string | string[] | null,
+  additionalCsp = "",
 ): void {
   const response = res as {
     end: (body?: string | Buffer) => void;
@@ -198,12 +199,13 @@ export function sendHtmlResponse(
   response.setHeader("Vary", "Accept-Encoding");
   response.removeHeader?.("X-Frame-Options");
   const existingCsp = response.getHeader?.("Content-Security-Policy");
-  const normalized =
+  const existing =
     typeof existingCsp === "string"
       ? existingCsp.trim()
       : Array.isArray(existingCsp)
         ? existingCsp.join("; ").trim()
         : "";
+  const normalized = [existing, additionalCsp.trim()].filter(Boolean).join("; ");
   response.setHeader("Content-Security-Policy", mergeViewerCsp(normalized, html));
   if (headerIncludes(acceptEncoding, "gzip")) {
     response.setHeader("Content-Encoding", "gzip");

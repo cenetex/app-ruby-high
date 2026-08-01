@@ -72,6 +72,12 @@ async function sendLandingFile(req, res, pathname) {
     res.statusCode = 200;
     res.setHeader("Content-Type", contentTypeFor(fileUrl.pathname));
     res.setHeader("Cache-Control", cacheControlFor(pathname));
+    if (fileUrl.pathname.endsWith(".html")) {
+      res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'; style-src 'self'; font-src 'self'; img-src 'self'",
+      );
+    }
     if (req.method === "HEAD") {
       res.end();
       return;

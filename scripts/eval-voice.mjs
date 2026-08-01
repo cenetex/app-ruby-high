@@ -11,10 +11,10 @@ import { TEACHERS } from "../dist/index.js";
 
 const apiKey = process.env.RUBY_HIGH_OPENROUTER_API_KEY?.trim() || "";
 const requireApi = process.env.RUBY_HIGH_EVAL_REQUIRE_API === "1";
-const judgeModel = process.env.RUBY_HIGH_EVAL_MODEL || "openai/gpt-4.1-mini";
 const referer = process.env.RUBY_HIGH_OPENROUTER_REFERER || "https://ruby-high.local";
 const title = process.env.RUBY_HIGH_OPENROUTER_TITLE || "Ruby High Voice Eval";
 const teachers = Object.values(TEACHERS);
+const judgeModel = process.env.RUBY_HIGH_EVAL_MODEL || teachers[0]?.defaultModel || "openai/gpt-5.6-luna";
 
 const references = [
   {
@@ -112,7 +112,7 @@ async function judgeReference({ teacher, ref }) {
           ].join("\n"),
         },
       ],
-      temperature: 0,
+      reasoning_effort: "none",
       max_tokens: 180,
     }),
   });

@@ -82,6 +82,21 @@ export function resolveCourseModel(): string {
   return resolveLlmModel(process.env.RUBY_HIGH_COURSE_MODEL ?? DEFAULT_COURSE_MODEL);
 }
 
+export function prepareLlmRequestBody<T extends Record<string, unknown>>(body: T): T & { model: string } {
+  const model = resolveLlmModel(String(body.model ?? ""));
+  const prepared: Record<string, unknown> = {
+    ...body,
+    model,
+  };
+  if (!isLocalLlmProvider() && model.startsWith("openai/gpt-5.6-")) {
+    delete prepared.temperature;
+    if (model === DEFAULT_OPENROUTER_MODEL && prepared.reasoning_effort == null) {
+      prepared.reasoning_effort = "none";
+    }
+  }
+  return prepared as T & { model: string };
+}
+
 export function resolveLlmApiKey(userApiKey?: string | null): string | null {
   if (isLocalLlmProvider()) {
     return (
@@ -127,15 +142,12 @@ export async function fetchLlmChatCompletions(
   const timer = ctrl && args.timeoutMs ? setTimeout(() => ctrl.abort(), args.timeoutMs) : null;
   const startedAt = Date.now();
   const provider = llmProviderInfo();
-  const model = resolveLlmModel(String(args.body.model ?? ""));
+  const body = prepareLlmRequestBody(args.body);
   try {
     const response = await fetch(provider.chatCompletionsUrl, {
       method: "POST",
       headers: llmHeaders(args.apiKey, { title: args.title }),
-      body: JSON.stringify({
-        ...args.body,
-        model,
-      }),
+      body: JSON.stringify(body),
       signal: args.signal ?? ctrl?.signal,
     });
     log.event("llm.usage", {
@@ -143,7 +155,7 @@ export async function fetchLlmChatCompletions(
       feature: args.title ?? args.label ?? "llm",
       provider: provider.name,
       mode: provider.kind,
-      model,
+      model: body.model,
       status: response.ok ? "success" : "error",
       httpStatus: response.status,
       durationMs: Date.now() - startedAt,
@@ -155,7 +167,7 @@ export async function fetchLlmChatCompletions(
       feature: args.title ?? args.label ?? "llm",
       provider: provider.name,
       mode: provider.kind,
-      model,
+      model: body.model,
       status: "error",
       durationMs: Date.now() - startedAt,
     });
@@ -181,10 +193,7 @@ export async function* streamLlmChatCompletions(
   yield* chatCompletionStream({
     url: provider.chatCompletionsUrl,
     headers: llmHeaders(apiKey, { title: args.title }),
-    body: {
-      ...args.body,
-      model: resolveLlmModel(String(args.body.model ?? "")),
-    },
+    body: prepareLlmRequestBody(args.body),
     label,
     providerName: provider.name,
     timeoutMs: args.timeoutMs ?? OPENROUTER_STREAM_TIMEOUT_MS,

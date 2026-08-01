@@ -17,6 +17,7 @@ export interface OpenRouterRequest {
   stream?: boolean;
   max_tokens?: number;
   temperature?: number;
+  reasoning_effort?: "none" | "low" | "medium" | "high" | "xhigh" | "max";
   [key: string]: unknown;
 }
 

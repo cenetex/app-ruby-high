@@ -36,12 +36,39 @@ export function readJsonBodyForPath(req, pathname) {
   return readJsonBody(req, bodyLimitForPath(pathname));
 }
 
-export function deriveClientIp(req) {
+export function booleanSetting(value, fallback = false) {
+  if (typeof value !== "string" || value.trim() === "") return fallback;
+  return /^(?:1|true|yes|on)$/i.test(value.trim());
+}
+
+export function parseRequestUrl(raw, base) {
+  const target = typeof raw === "string" && raw ? raw : "/";
+  if (!target.startsWith("/") || target.startsWith("//") || /[\r\n]/.test(target)) {
+    throw new Error("Invalid request target");
+  }
+  return new URL(target, base);
+}
+
+export function deriveClientIp(req, trustProxy = false) {
+  if (!trustProxy) return req.socket?.remoteAddress ?? null;
   const forwarded = req.headers["x-forwarded-for"];
   if (typeof forwarded === "string" && forwarded.length > 0) {
-    return forwarded.split(",")[0].trim();
+    const chain = forwarded.split(",").map((part) => part.trim()).filter(Boolean);
+    return chain.at(-1) ?? req.socket?.remoteAddress ?? null;
   }
   return req.socket?.remoteAddress ?? null;
+}
+
+export function applyHttpSecurityHeaders(res, { secure = false } = {}) {
+  if (res.headersSent) return;
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("X-DNS-Prefetch-Control", "off");
+  res.setHeader("Permissions-Policy", "camera=(), geolocation=(), microphone=()");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  if (secure) {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000");
+  }
 }
 
 export function sendJson(res, data, status = 200) {
@@ -52,7 +79,7 @@ export function sendJson(res, data, status = 200) {
   res.end(JSON.stringify(data));
 }
 
-export function createRouteContext({ req, res, url, runtime, isSecure, callbackBase }) {
+export function createRouteContext({ req, res, url, runtime, isSecure, callbackBase, trustProxy = false }) {
   const apiKeyRaw = req.headers["x-openrouter-key"];
   const apiKeyHeader = Array.isArray(apiKeyRaw) ? (apiKeyRaw[0] ?? null) : (apiKeyRaw ?? null);
   return {
@@ -66,7 +93,7 @@ export function createRouteContext({ req, res, url, runtime, isSecure, callbackB
     visitorHeader: req.headers["x-ruby-high-visitor"] ?? null,
     apiKeyHeader,
     isSecure,
-    clientIp: deriveClientIp(req),
+    clientIp: deriveClientIp(req, trustProxy),
     contentTypeHeader: req.headers["content-type"] ?? null,
     originHeader: req.headers.origin ?? null,
     authorizationHeader: req.headers.authorization ?? null,

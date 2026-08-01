@@ -3,7 +3,14 @@
 
 import { createServer } from "node:http";
 import { URL } from "node:url";
-import { buildHealthPayload, createRouteContext, readJsonBodyForPath, sendJson } from "./http-server.mjs";
+import {
+  applyHttpSecurityHeaders,
+  buildHealthPayload,
+  createRouteContext,
+  parseRequestUrl,
+  readJsonBodyForPath,
+  sendJson,
+} from "./http-server.mjs";
 import { serveLandingRequest } from "./landing.mjs";
 import { normalizePublicOrigin } from "./public-base.mjs";
 import {
@@ -160,7 +167,14 @@ async function completeCurrentGradeForDev(sessionId) {
 }
 
 const server = createServer(async (req, res) => {
-  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? HOST}`);
+  applyHttpSecurityHeaders(res);
+  let url;
+  try {
+    url = parseRequestUrl(req.url, PUBLIC_BASE);
+  } catch {
+    sendJson(res, { error: "Invalid request target." }, 400);
+    return;
+  }
 
   if (req.method === "GET" && (url.pathname === "/health" || url.pathname === "/healthz")) {
     sendJson(res, healthPayload());
@@ -267,6 +281,11 @@ const server = createServer(async (req, res) => {
     sendJson(res, { error: "Not found", path: url.pathname }, 404);
   }
 });
+
+server.headersTimeout = 15_000;
+server.requestTimeout = 30_000;
+server.keepAliveTimeout = 5_000;
+server.maxHeadersCount = 100;
 
 server.listen(PORT, HOST, () => {
   console.log(`Ruby High dev server listening at ${PUBLIC_BASE}`);

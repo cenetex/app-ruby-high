@@ -12,6 +12,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import type { IAgentRuntime } from "../runtime.js";
 import { Service } from "../runtime.js";
+import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 import { log } from "./logger.js";
 import { fetchLlmChatCompletions, hasConfiguredLlmCredential } from "./llm-provider.js";
 import type { TeacherCharacter } from "../characters/teachers.js";
@@ -26,6 +27,40 @@ import {
   type ScheduledSchoolUpdateContext,
 } from "./ruby-high/post-types.js";
 import { PostAnalytics } from "./ruby-high/post-analytics.js";
+
+const MAX_REMOTE_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_REMOTE_IMAGE_REDIRECTS = 3;
+
+async function readLimitedImageResponse(response: Response): Promise<Buffer> {
+  const declaredLength = Number(response.headers.get("content-length") ?? "");
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_REMOTE_IMAGE_BYTES) {
+    throw new Error("Remote image is too large.");
+  }
+  if (!response.body || typeof response.body.getReader !== "function") {
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > MAX_REMOTE_IMAGE_BYTES) throw new Error("Remote image is too large.");
+    return bytes;
+  }
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > MAX_REMOTE_IMAGE_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error("Remote image is too large.");
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks, total);
+}
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -265,9 +300,9 @@ class JsonXTokenStore implements XTokenStore {
   }
 
   private async write(data: Record<string, XTokenRecord>): Promise<void> {
-    await mkdir(dirname(this.filePath), { recursive: true });
+    await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
     const tmp = `${this.filePath}.tmp`;
-    await writeFile(tmp, JSON.stringify(data), "utf-8");
+    await writeFile(tmp, JSON.stringify(data), { encoding: "utf-8", mode: 0o600 });
     await rename(tmp, this.filePath);
   }
 
@@ -1015,7 +1050,9 @@ export class XSocialService extends Service {
     if (imageUrl.startsWith("data:")) {
       const comma = imageUrl.indexOf(",");
       if (comma === -1) throw new Error("Invalid data URL");
-      return Buffer.from(imageUrl.slice(comma + 1), "base64");
+      const bytes = Buffer.from(imageUrl.slice(comma + 1), "base64");
+      if (bytes.length > MAX_REMOTE_IMAGE_BYTES) throw new Error("Image is too large.");
+      return bytes;
     }
 
     // Relative path: resolve against the public base.
@@ -1025,18 +1062,30 @@ export class XSocialService extends Service {
       url = `${base}${url}`;
     }
 
-    // Validate URL safety to prevent SSRF (DNS-resolving guard).
-    await assertSafeImageUrl(url);
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
-      const res = await fetch(url, { signal: controller.signal });
-      if (!res.ok) {
-        throw new Error(`Failed to fetch image: ${res.status}`);
+      let currentUrl = url;
+      for (let redirects = 0; redirects <= MAX_REMOTE_IMAGE_REDIRECTS; redirects += 1) {
+        // Revalidate every hop. fetch's default redirect handling would allow a
+        // public URL to bounce the server into a private network destination.
+        await assertSafeImageUrl(currentUrl);
+        const res = await fetch(currentUrl, {
+          headers: { Accept: "image/*" },
+          redirect: "manual",
+          signal: controller.signal,
+        });
+        if ([301, 302, 303, 307, 308].includes(res.status)) {
+          if (redirects >= MAX_REMOTE_IMAGE_REDIRECTS) throw new Error("Image URL redirected too many times.");
+          const location = res.headers.get("location")?.trim();
+          if (!location) throw new Error("Image URL redirected without a location.");
+          currentUrl = new URL(location, currentUrl).toString();
+          continue;
+        }
+        if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
+        return await readLimitedImageResponse(res);
       }
-      const arrayBuffer = await res.arrayBuffer();
-      return Buffer.from(arrayBuffer);
+      throw new Error("Image URL redirected too many times.");
     } finally {
       clearTimeout(timeout);
     }
@@ -1710,7 +1759,7 @@ export class XSocialService extends Service {
       try {
         const response = await fetchLlmChatCompletions({
           body: {
-            model: process.env.RUBY_HIGH_COURSE_MODEL ?? "qwen/qwen3.7-max",
+            model: DEFAULT_OPENROUTER_MODEL,
             messages: [{ role: "user", content: prompt }],
             max_tokens: 200,
             temperature: 0.7,
@@ -1785,7 +1834,7 @@ export class XSocialService extends Service {
       try {
         const response = await fetchLlmChatCompletions({
           body: {
-            model: process.env.RUBY_HIGH_COURSE_MODEL ?? "qwen/qwen3.7-max",
+            model: DEFAULT_OPENROUTER_MODEL,
             messages: [{ role: "user", content: prompt }],
             max_tokens: 200,
             temperature: 0.6,

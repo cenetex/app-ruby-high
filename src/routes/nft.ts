@@ -46,6 +46,7 @@ import {
 } from "../services/hall-pass-card-catalog.js";
 import type { RubyHighHallPassCard, RubyHighHallPassPack, RubyHighWalletTransaction } from "../types.js";
 import type { RouteContext } from "./context.js";
+import { constantTimeSecretEqual } from "../services/secret-comparison.js";
 
 interface NftDeps {
   auth: AuthService;
@@ -150,7 +151,7 @@ function authorizeCosyWorldExport(ctx: RouteContext): boolean {
     ctx.error(ctx.res, "CosyWorld ownership export is not configured.", 503);
     return false;
   }
-  if (bearerTokenFromAuthHeader(ctx.authorizationHeader) !== expected) {
+  if (!constantTimeSecretEqual(bearerTokenFromAuthHeader(ctx.authorizationHeader), expected)) {
     ctx.error(ctx.res, "CosyWorld ownership export requires authorization.", 401);
     return false;
   }

@@ -1,3 +1,6 @@
+import { mkdtemp, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import { SqliteStateStore } from "../services/sqlite-state-store.js";
 import type { QuizState } from "../types.js";
@@ -21,6 +24,18 @@ const session = (id: string, updatedAt = 1): QuizState =>
   ({ sessionId: id, updatedAt } as unknown as QuizState);
 
 describe("SqliteStateStore", () => {
+  it("creates database files with owner-only filesystem permissions", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ruby-high-sqlite-mode-"));
+    const path = join(dir, "state.db");
+    const s = new SqliteStateStore({ path, ttlSeconds: 0 });
+    try {
+      expect((await stat(path)).mode & 0o777).toBe(0o600);
+    } finally {
+      s.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("round-trips sessions", async () => {
     const s = store();
     await s.saveSession(session("rh:user:a", 10));

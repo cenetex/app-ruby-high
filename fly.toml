@@ -32,6 +32,10 @@ primary_region = "iad"
   PORT = "8080"
   HOST = "0.0.0.0"
   NODE_ENV = "production"
+  RUBY_HIGH_PUBLIC_BASE = "https://ruby-high.ai"
+  # Fly's edge is the only public ingress, so its forwarded client/protocol
+  # headers may be used for rate limiting and secure request detection.
+  RUBY_HIGH_TRUST_PROXY = "true"
   RUBY_HIGH_STORE_BACKEND = "sqlite"
   RUBY_HIGH_STATE_PATH = "/data/ruby-high.db"
   AWS_REGION = "us-east-1"

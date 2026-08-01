@@ -1482,6 +1482,7 @@ describe("admin metrics route", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers["content-type"]).toContain("text/html");
+    expect(response.headers["content-security-policy"]).toContain("frame-ancestors 'none'");
     expect(response.body).toContain("Ruby High Admin");
     expect(response.body).toContain("/api/apps/ruby-high/admin/metrics");
     expect(response.body).toContain("/api/apps/ruby-high/admin/metrics/schema");
@@ -1518,7 +1519,8 @@ describe("admin metrics route", () => {
     expect(response.body).toContain("worldStreamMetricValue");
     expect(response.body).toContain("Identity records");
     expect(response.body).toContain("guest / BYOK OpenRouter / Privy");
-    expect(response.body).toContain("localStorage");
+    expect(response.body).toContain("sessionStorage");
+    expect(response.body).not.toContain("localStorage.getItem(tokenKey)");
     expect(response.body).not.toContain("admin-test-token");
     expect(response.body).not.toContain("\"auth\":");
     const script = String(response.body).match(/<script>([\s\S]*)<\/script>/)?.[1] ?? "";

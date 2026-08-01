@@ -675,7 +675,12 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   }
 
   if (ctx.method === "GET" && ctx.pathname === ADMIN_PATH) {
-    sendHtmlResponse(ctx.res, renderAdminDashboardHtml(), ctx.acceptEncoding);
+    sendHtmlResponse(
+      ctx.res,
+      renderAdminDashboardHtml(),
+      ctx.acceptEncoding,
+      "frame-ancestors 'none'",
+    );
     return true;
   }
 

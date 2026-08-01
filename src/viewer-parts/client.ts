@@ -10499,14 +10499,11 @@ export function runViewerClient(bootstrap) {
   const onboardingCreateBtn = document.getElementById("onboarding-create-btn");
   const onboardingCustomizeBtn = document.getElementById("onboarding-customize-btn");
   const onboardingBooksBtn = document.getElementById("onboarding-books-btn");
-  if (onboardingCreateBtn) onboardingCreateBtn.addEventListener("click", async () => {
-    onboardingCreateBtn.disabled = true;
-    try {
-      await command({ type: "quick-roll-student" });
-    } finally {
-      onboardingCreateBtn.disabled = false;
-    }
-  });
+  // Quick Roll still supplies the first candidate immediately, but it lands
+  // in the creation sheet before enrollment. That keeps the fast first-run
+  // path while preserving whole-student rerolls, field rerolls, and the AI
+  // portrait affordance until the player explicitly starts Freshman year.
+  if (onboardingCreateBtn) onboardingCreateBtn.addEventListener("click", openCharacterCreation);
   if (onboardingCustomizeBtn) onboardingCustomizeBtn.addEventListener("click", openCharacterCreation);
   if (onboardingBooksBtn) onboardingBooksBtn.addEventListener("click", () => {
     window.open("https://ratimics.gumroad.com", "_blank", "noopener,noreferrer");

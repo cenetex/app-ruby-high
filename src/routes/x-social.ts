@@ -7,6 +7,7 @@ import type {
 } from "../services/ruby-high-service.js";
 import type { RouteContext } from "./context.js";
 import { X_SOCIAL_CONNECT_PATH, X_SOCIAL_CALLBACK_PATH, X_SOCIAL_PREFIX } from "./constants.js";
+import { constantTimeSecretEqual } from "../services/secret-comparison.js";
 
 const TELEGRAM_TOKEN_PLACEHOLDER = "(already set)";
 
@@ -15,8 +16,8 @@ function requireAdminAuth(ctx: RouteContext): boolean {
   if (!token) return false;
   const auth = ctx.authorizationHeader;
   if (typeof auth !== "string") return false;
-  if (auth === `Bearer ${token}` || auth === token) return true;
-  return false;
+  const match = auth.trim().match(/^Bearer\s+(.+)$/i);
+  return constantTimeSecretEqual(match?.[1]?.trim() ?? auth.trim(), token);
 }
 
 function sendRedirect(res: unknown, url: string, status = 302): void {
@@ -137,6 +138,9 @@ export async function handleXSocialRoutes(
       const html = `<!doctype html><html><head><title>Connected</title><style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#1a1a2e;color:#eee;text-align:center;}h1{color:#4ade80;}p{color:#94a3b8;}</style></head><body><div><h1>Connected to X</h1><p>The teacher account is now linked. You can close this window.</p></div></body></html>`;
       const r = ctx.res as { setHeader?: (n: string, v: string) => void; writeHead?: (s: number, h: Record<string, string>) => void; end?: (b?: string) => void };
       if (r.setHeader) {
+        r.setHeader("Content-Security-Policy", "default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; style-src 'unsafe-inline'");
+        r.setHeader("Referrer-Policy", "no-referrer");
+        r.setHeader("X-Content-Type-Options", "nosniff");
         r.setHeader("Content-Type", "text/html; charset=utf-8");
         r.writeHead?.(200, { "Content-Type": "text/html; charset=utf-8" });
         r.end?.(html);
