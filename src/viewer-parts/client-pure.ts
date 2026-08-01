@@ -10,9 +10,6 @@ type LooseRecord = Record<string, any>;
 type NullableRecord = LooseRecord | null | undefined;
 type MarkdownRenderOptions = { inline?: boolean };
 type LegacyCryptoWindow = Window & { msCrypto?: Crypto };
-type WorldFeedEvent = LooseRecord & { id?: unknown; at?: unknown };
-type WorldFeedRoomView = { title: string; meta: string; pressureText?: string };
-type WorldFeedEventView = { id?: string; label: string; age: string };
 type QuestionPromptImageView = { src: string; alt: string };
 export type LeaderboardGradeChipView = { className: string; text: string };
 export type LeaderboardRowView = {
@@ -54,6 +51,16 @@ export type GuestSpotlightView = {
   actionText: string;
   actionDisabled: boolean;
 };
+export type DailyClassProgressStepView = {
+  key: "evidence-1" | "evidence-2" | "take" | "result";
+  label: string;
+  state: "complete" | "current" | "upcoming";
+};
+export type DailyClassProgressView = {
+  visible: boolean;
+  steps: DailyClassProgressStepView[];
+  continuationLabel: string;
+};
 export type SubjectGradeChipView = {
   className: string;
   title: string;
@@ -61,6 +68,46 @@ export type SubjectGradeChipView = {
   iconText: string;
   gradeText: string;
 };
+
+export function dailyClassProgressView(telemetry: NullableRecord): DailyClassProgressView {
+  const progress = telemetry && telemetry.active_course_progress;
+  const today = progress && progress.today;
+  const classSession = telemetry && telemetry.active_round && telemetry.active_round.classSession;
+  const hasContext = !!(
+    telemetry
+    && telemetry.character
+    && today
+    && (
+      today.status === "active"
+      || today.status === "complete"
+      || (classSession && classSession.mode === "class")
+    )
+  );
+  const count = Math.max(0, Math.min(3, Math.floor(Number(today && today.questionCount) || 0)));
+  const complete = !!(today && today.status === "complete");
+  const currentIndex = complete ? 3 : Math.min(2, count);
+  const definitions: Array<{ key: DailyClassProgressStepView["key"]; label: string }> = [
+    { key: "evidence-1", label: "Evidence 1" },
+    { key: "evidence-2", label: "Evidence 2" },
+    { key: "take", label: "Your Take" },
+    { key: "result", label: "Result" },
+  ];
+  const steps = definitions.map((definition, index): DailyClassProgressStepView => ({
+    ...definition,
+    state: index < currentIndex ? "complete" : index === currentIndex ? "current" : "upcoming",
+  }));
+  return {
+    visible: hasContext,
+    steps,
+    continuationLabel: currentIndex === 1
+      ? "Next: Evidence 2"
+      : currentIndex === 2
+        ? "Next: Your Take"
+        : currentIndex === 3
+          ? "View Result"
+          : "Start Evidence 1",
+  };
+}
 export type AccountPublicWorldView = {
   hasCharacter: boolean;
   hasPublicName: boolean;
@@ -316,7 +363,19 @@ export type WelcomeHallPassPopupView = {
 };
 export type ClassmateArcProgress = { value: number; total: number };
 type RoomCompletionProgress = { value: number; total: number };
-export type RoomChannelStudentView = { id: string; name: string };
+export type RoomChannelStudentView = {
+  id: string;
+  name: string;
+  portraitUrl?: string;
+  kind?: "npc" | "human";
+  facultyId?: string;
+  grade?: string;
+  playbookId?: string;
+  stats?: unknown;
+  classGrades?: unknown;
+  yearbookCount?: unknown;
+  lastActive?: unknown;
+};
 export type RoomChannelRowView = {
   roomId: string;
   facultyId: string;
@@ -562,14 +621,7 @@ export function formatMoney(cents: unknown, currency?: unknown): string {
     return code + " " + amount.toFixed(2);
   }
 }
-export function formatTokenAmount(amount: unknown, symbol?: unknown): string {
-  const numeric = Number(amount);
-  const text = Number.isFinite(numeric)
-    ? numeric.toLocaleString(undefined, { maximumFractionDigits: 9 })
-    : String(amount || "0");
-  return text + " $" + String(symbol || "RUBY").toUpperCase();
-}
-export function formatTokenDisplayAmount(value: unknown): string {
+export function formatSolDisplayAmount(value: unknown): string {
   const raw = String(value || "").trim();
   const parsed = Number(raw);
   if (!raw) return "?";
@@ -793,9 +845,8 @@ export function walletTransactionDescription(tx: NullableRecord): string {
 export function walletTransactionPackDeltaText(tx: NullableRecord): string {
   const metadata = tx && tx.metadata && typeof tx.metadata === "object" ? tx.metadata : {};
   const packCount = Math.max(1, Math.floor(Number(metadata.packCount || 1)));
-  const tokenAmount = metadata.solanaTokenAmount || "";
-  const tokenSymbol = metadata.solanaTokenSymbol || "RUBY";
-  return "-" + formatTokenDisplayAmount(tokenAmount) + " " + tokenSymbol + " · +" + packCountLabel(packCount);
+  const amount = metadata.solanaAmountSol || "";
+  return "-" + formatSolDisplayAmount(amount) + " SOL · +" + packCountLabel(packCount);
 }
 
 export function walletTransactionSource(tx: NullableRecord): string {
@@ -913,8 +964,6 @@ export function accountCharacterPanelView(slotsInput: NullableRecord, walletInpu
 export function accountAiPanelView(aiInput: NullableRecord, opts?: NullableRecord): AccountAiPanelView {
   const ai = aiInput || {};
   const cost = positiveWholeNumber(ai.cost || 1, 1);
-  const durationMs = ai.durationMs || 604_800_000;
-  const durationLabel = formatDuration(durationMs);
   const costLabel = hallPassCostLabel(cost);
   const authed = !!(opts && opts.authed);
   const billingBusy = !!(opts && opts.billingBusy);
@@ -1005,6 +1054,17 @@ export function accountPaneItemView(id: unknown, activePane: unknown): AccountPa
   };
 }
 
+export function accountPaneKeyTarget(key: unknown, currentIndex: unknown, tabCount: unknown): number | null {
+  const count = Math.max(0, Math.floor(Number(tabCount)));
+  const index = Math.floor(Number(currentIndex));
+  if (count < 1 || !Number.isFinite(index) || index < 0 || index >= count) return null;
+  if (key === "Home") return 0;
+  if (key === "End") return count - 1;
+  if (key === "ArrowRight") return (index + 1) % count;
+  if (key === "ArrowLeft") return (index - 1 + count) % count;
+  return null;
+}
+
 export function accountTrustPanelView(payloadInput: NullableRecord, connectedWalletInput: unknown, buildIdInput: unknown): AccountTrustPanelView {
   const payload = payloadInput && typeof payloadInput === "object" ? payloadInput : null;
   const solana = payload && payload.solana && typeof payload.solana === "object" ? payload.solana as LooseRecord : null;
@@ -1017,7 +1077,6 @@ export function accountTrustPanelView(payloadInput: NullableRecord, connectedWal
   const connectedWallet = String(connectedWalletInput || "").trim();
   const buildId = String(buildIdInput || "dev");
   const treasury = solana && solana.recipient;
-  const tokenMint = solana && solana.mint;
   const packCollection = corePacks && corePacks.collectionAddress;
   const cardCollection = nfts && nfts.collectionAddress;
   return {
@@ -1035,9 +1094,9 @@ export function accountTrustPanelView(payloadInput: NullableRecord, connectedWal
         href: solanaAccountLink(treasury),
       },
       {
-        label: "Pack payment token",
-        value: tokenMint ? shortWallet(tokenMint) : "Shown before wallet payment",
-        href: solanaAccountLink(tokenMint),
+        label: "Pack payment",
+        value: "Native SOL",
+        href: "",
       },
       {
         label: "Pack collection",
@@ -1629,248 +1688,10 @@ export function clipEssayText(value: unknown, max: number): string {
   return text.slice(0, Math.max(0, max - 1)).trim() + "…";
 }
 
-// ── shared school feed helpers ─────────────────────────────────────
-// This is the first typed extraction from the MMO-facing viewer surface.
-// Keep replay/cursor/event-list math here so the giant serialized client only
-// owns DOM state and rendering.
-export const WORLD_FEED_EVENT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-
-export function normalizedWorldFeedEventAt(value: unknown): number {
-  const at = Number(value || 0);
-  return Number.isFinite(at) && at > 0 ? at : 0;
-}
-
-export function pruneWorldFeedEventList(events: unknown, now: unknown, maxAgeMs = 7 * 24 * 60 * 60 * 1000): { events: WorldFeedEvent[]; lastEventAt: number } {
-  const cutoff = Math.max(0, Number(now || Date.now()) - maxAgeMs);
-  const kept = (Array.isArray(events) ? events : [])
-    .filter((event): event is WorldFeedEvent => {
-      if (!event || typeof event !== "object") return false;
-      const at = normalizedWorldFeedEventAt((event as WorldFeedEvent).at);
-      return at >= cutoff;
-    });
-  const lastEventAt = kept.reduce((max, event) => Math.max(max, normalizedWorldFeedEventAt(event.at)), 0);
-  return { events: kept, lastEventAt };
-}
-
-export function mergeWorldFeedEventList(events: unknown, event: unknown, now: unknown, maxEvents = 8): { events: WorldFeedEvent[]; lastEventAt: number } {
-  if (!event || typeof event !== "object" || !(event as WorldFeedEvent).id) {
-    return pruneWorldFeedEventList(events, now);
-  }
-  const normalized = { ...(event as WorldFeedEvent), at: normalizedWorldFeedEventAt((event as WorldFeedEvent).at) };
-  const existing = (Array.isArray(events) ? events : []).filter((entry): entry is WorldFeedEvent => (
-      !!entry && typeof entry === "object" && (entry as WorldFeedEvent).id !== normalized.id
-  ));
-  const next = [normalized, ...existing]
-    .filter((entry) => entry && entry.id)
-    .sort((a, b) => Number(b.at || 0) - Number(a.at || 0) || String(b.id).localeCompare(String(a.id)))
-    .slice(0, Math.max(1, Math.floor(Number(maxEvents) || 8)));
-  return pruneWorldFeedEventList(next, now);
-}
-
-export function worldFeedEventDisplayLabel(event: unknown): string {
-  if (!event || typeof event !== "object") return "World event";
-  const record = event as WorldFeedEvent;
-  if (record.kind === "room.goal-progress" && record.complete && record.rewardLabel) {
-    return String(record.rewardLabel) + (record.bonusLabel ? " · " + String(record.bonusLabel) : "");
-  }
-  if (record.label) return String(record.label);
-  if (record.kind === "room.goal-progress") return "Live class progress";
-  if (record.kind === "comic.page-unlocked") return "Comic page unlocked";
-  if (record.kind === "relationship.ticked") return "Classmate bond shifted";
-  if (record.kind === "mash.axis-resolved") return "Classmate profile sharpened";
-  return "School world changed";
-}
-
-export function worldFeedEventAgeLabel(at: unknown, now: unknown = Date.now()): string {
-  const ms = Math.max(0, Number(now || 0) - Number(at || 0));
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return "now";
-  if (mins < 60) return mins + "m";
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return hours + "h";
-  return Math.floor(hours / 24) + "d";
-}
-
 export function worldFeedGradeLabel(grade: unknown): string {
   const key = String(grade || "");
   const labels = VIEWER_CONSTANTS.GRADE_LABELS as Record<string, string>;
   return labels[key] || (key ? "Grade " + key : "Grade");
-}
-
-export function worldFeedFacultyLabel(facultyId: unknown, roster: unknown): string {
-  const id = String(facultyId || "");
-  const found = (Array.isArray(roster) ? roster : []).find((faculty) => (
-    !!faculty && typeof faculty === "object" && (faculty as LooseRecord).id === id
-  )) as LooseRecord | undefined;
-  return String((found && (found.displayName || found.name)) || id || "Class");
-}
-
-export function worldFeedRoomTitle(room: unknown, roster: unknown): string {
-  const record = room && typeof room === "object" ? room as LooseRecord : {};
-  return worldFeedGradeLabel(record.grade) + " · " + worldFeedFacultyLabel(record.facultyId, roster);
-}
-
-export function worldFeedSummaryLabel(activeStudents: unknown, activeRooms: unknown, error?: unknown, summary?: unknown): string {
-  if (error) return "World feed paused";
-  const students = Math.max(0, Math.floor(Number(activeStudents || 0)));
-  const roomCount = Array.isArray(activeRooms) ? activeRooms.length : Math.max(0, Math.floor(Number(activeRooms || 0)));
-  const studentText = students === 1 ? "1 student" : students + " students";
-  const roomText = roomCount === 1 ? "1 room" : roomCount + " rooms";
-  const record = summary && typeof summary === "object" ? summary as LooseRecord : {};
-  const sparks = Math.max(0, Math.floor(Number(record.studySparks && typeof record.studySparks === "object" ? (record.studySparks as LooseRecord).total : 0)));
-  const sparkText = sparks > 0 ? " · " + sparks + " Study " + (sparks === 1 ? "Spark" : "Sparks") : "";
-  const term = record.termProgress && typeof record.termProgress === "object" ? record.termProgress as LooseRecord : null;
-  const termLabel = term && typeof term.label === "string" && term.label.trim() ? " · " + term.label.trim() : "";
-  const ruleRows = worldFeedTermRuleLabels(record.termRules);
-  const ruleText = ruleRows.length > 0 ? " · " + ruleRows.join(", ") : "";
-  const loops = record.curriculumLoops && typeof record.curriculumLoops === "object" ? record.curriculumLoops as LooseRecord : null;
-  const promotedLoops = Math.max(0, Math.floor(Number(loops?.promoted || 0)));
-  const loopText = promotedLoops > 0 ? " · " + promotedLoops + " curriculum " + (promotedLoops === 1 ? "loop" : "loops") : "";
-  return studentText + " live · " + roomText + sparkText + termLabel + ruleText + loopText;
-}
-
-export function worldFeedTermRuleLabels(termRules: unknown, limit = 2): string[] {
-  const termRulesRecord = termRules && typeof termRules === "object" ? termRules as LooseRecord : null;
-  const byGrade = termRulesRecord && termRulesRecord.byGrade && typeof termRulesRecord.byGrade === "object" ? termRulesRecord.byGrade as LooseRecord : null;
-  if (!byGrade) return [];
-  return Object.keys(byGrade)
-    .sort((a, b) => Number(a) - Number(b) || a.localeCompare(b))
-    .map((grade) => {
-      const rule = byGrade[grade] && typeof byGrade[grade] === "object" ? byGrade[grade] as LooseRecord : null;
-      const label = rule && typeof rule.label === "string" ? rule.label.trim() : "";
-      return label ? label + " in " + worldFeedGradeLabel(grade) : "";
-    })
-    .filter(Boolean)
-    .slice(0, Math.max(0, Math.floor(Number(limit) || 0)));
-}
-
-export function worldFeedRoomPressureLabel(room: unknown, termRules: unknown): string {
-  const record = room && typeof room === "object" ? room as LooseRecord : {};
-  const goal = record.goal && typeof record.goal === "object" ? record.goal as LooseRecord : null;
-  const termRulesRecord = termRules && typeof termRules === "object" ? termRules as LooseRecord : null;
-  const byGrade = termRulesRecord && termRulesRecord.byGrade && typeof termRulesRecord.byGrade === "object" ? termRulesRecord.byGrade as LooseRecord : null;
-  const rule = byGrade && record.grade != null && byGrade[String(record.grade)] && typeof byGrade[String(record.grade)] === "object"
-    ? byGrade[String(record.grade)] as LooseRecord
-    : null;
-  const label = String((goal && goal.ruleLabel) || (rule && rule.label) || "").trim();
-  if (!label) return "";
-  const target = Math.max(1, Math.floor(Number((goal && goal.target) || (rule && rule.target) || 0)));
-  const targetText = target > 0 ? target + "-student " : "";
-  return label + ": " + targetText + "room goal";
-}
-
-export function worldFeedCurriculumPressureLabel(room: unknown, curriculumLoops: unknown): string {
-  const record = room && typeof room === "object" ? room as LooseRecord : {};
-  if (record.grade == null) return "";
-  const loopsRecord = curriculumLoops && typeof curriculumLoops === "object" ? curriculumLoops as LooseRecord : null;
-  const byGrade = loopsRecord && loopsRecord.byGrade && typeof loopsRecord.byGrade === "object" ? loopsRecord.byGrade as LooseRecord : null;
-  const gradeLoops = byGrade && byGrade[String(record.grade)] && typeof byGrade[String(record.grade)] === "object"
-    ? byGrade[String(record.grade)] as LooseRecord
-    : null;
-  if (!gradeLoops) return "";
-  const inReview = Math.max(0, Math.floor(Number(gradeLoops.inReview || 0)));
-  const promoted = Math.max(0, Math.floor(Number(gradeLoops.promoted || 0)));
-  const parts: string[] = [];
-  if (inReview > 0) parts.push(inReview + " in review");
-  if (promoted > 0) parts.push(promoted + " promoted");
-  return parts.length > 0 ? "Curriculum: " + parts.join(", ") : "";
-}
-
-export function worldFeedRoomBonusPressureLabel(room: unknown): string {
-  const record = room && typeof room === "object" ? room as LooseRecord : {};
-  const goal = record.goal && typeof record.goal === "object" ? record.goal as LooseRecord : null;
-  if (!goal || goal.complete !== true) return "";
-  const label = String(goal.bonusLabel || "").trim();
-  return label ? "Bonus: " + label : "";
-}
-
-export function worldFeedRoomPressureText(room: unknown, summary: unknown): string {
-  const record = summary && typeof summary === "object" ? summary as LooseRecord : {};
-  const pressure = [
-    worldFeedRoomPressureLabel(room, record.termRules),
-    worldFeedRoomBonusPressureLabel(room),
-    worldFeedCurriculumPressureLabel(room, record.curriculumLoops),
-  ].filter(Boolean);
-  return pressure.join(" · ");
-}
-
-export function worldFeedRoomViews(rooms: unknown, roster: unknown, termRulesOrLimit: unknown = null, limitInput?: unknown): WorldFeedRoomView[] {
-  const termRules = typeof termRulesOrLimit === "number" ? null : termRulesOrLimit;
-  const limit = typeof termRulesOrLimit === "number" ? termRulesOrLimit : limitInput ?? 5;
-  return (Array.isArray(rooms) ? rooms : [])
-    .slice(0, Math.max(0, Math.floor(Number(limit) || 5)))
-    .map((room) => {
-      const record = room && typeof room === "object" ? room as LooseRecord : {};
-      const activeStudents = Math.max(0, Math.floor(Number(record.activeStudents || 0)));
-      const goal = record.goal && typeof record.goal === "object" ? record.goal as LooseRecord : null;
-      const goalLabel = goal && goal.label ? String(goal.label) : "";
-      const view: WorldFeedRoomView = {
-        title: worldFeedRoomTitle(record, roster),
-        meta: goalLabel || (activeStudents === 1 ? "1 student active" : activeStudents + " students active"),
-      };
-      const pressureText = worldFeedRoomPressureLabel(record, termRules);
-      if (pressureText) view.pressureText = pressureText;
-      return view;
-    });
-}
-
-export function worldFeedRoomViewsForSummary(rooms: unknown, roster: unknown, summary: unknown, limitInput: unknown = 5): WorldFeedRoomView[] {
-  const limit = Math.max(0, Math.floor(Number(limitInput) || 5));
-  return (Array.isArray(rooms) ? rooms : [])
-    .slice(0, limit)
-    .map((room) => {
-      const record = room && typeof room === "object" ? room as LooseRecord : {};
-      const activeStudents = Math.max(0, Math.floor(Number(record.activeStudents || 0)));
-      const goal = record.goal && typeof record.goal === "object" ? record.goal as LooseRecord : null;
-      const goalLabel = goal && goal.label ? String(goal.label) : "";
-      const view: WorldFeedRoomView = {
-        title: worldFeedRoomTitle(record, roster),
-        meta: goalLabel || (activeStudents === 1 ? "1 student active" : activeStudents + " students active"),
-      };
-      const pressureText = worldFeedRoomPressureText(record, summary);
-      if (pressureText) view.pressureText = pressureText;
-      return view;
-    });
-}
-
-export function worldFeedEventViews(events: unknown, now: unknown, limit = 3): WorldFeedEventView[] {
-  return (Array.isArray(events) ? events : [])
-    .slice(0, Math.max(0, Math.floor(Number(limit) || 3)))
-    .map((event) => {
-      const record = event && typeof event === "object" ? event as WorldFeedEvent : {};
-      const id = typeof record.id === "string" && record.id ? record.id : "";
-      const view: WorldFeedEventView = {
-        label: worldFeedEventDisplayLabel(event),
-        age: worldFeedEventAgeLabel(record.at, now),
-      };
-      if (id) view.id = id;
-      return view;
-    });
-}
-
-export function worldFeedPanelView(state: unknown, roster: unknown, now: unknown): {
-  summary: string;
-  rooms: WorldFeedRoomView[];
-  events: WorldFeedEventView[];
-} {
-  const record = state && typeof state === "object" ? state as LooseRecord : {};
-  const rooms = Array.isArray(record.activeRooms) ? record.activeRooms : [];
-  return {
-    summary: worldFeedSummaryLabel(record.activeStudents, rooms, record.error, record.summary),
-    rooms: worldFeedRoomViewsForSummary(rooms, roster, record.summary, 5),
-    events: worldFeedEventViews(record.events, now, 3),
-  };
-}
-
-export function worldFeedEventsUrl(apiBase: unknown, opts: { force?: boolean; lastEventAt?: unknown; lastCursor?: unknown } = {}): string {
-  const force = !!opts.force;
-  const since = force ? 0 : Math.max(0, Number(opts.lastEventAt || 0) - 1);
-  const cursor = !force && typeof opts.lastCursor === "string" && opts.lastCursor
-    ? "&cursor=" + encodeURIComponent(opts.lastCursor)
-    : "";
-  const sinceQuery = !cursor && since > 0 ? "&since=" + encodeURIComponent(String(since)) : "";
-  const liveQuery = force ? "" : "&live=1&streamMs=25000&heartbeatMs=5000";
-  return String(apiBase || "") + "/world/events?limit=8" + cursor + sinceQuery + liveQuery;
 }
 
 // ── race strip view helpers ─────────────────────────────────────────
@@ -2145,11 +1966,13 @@ export function roomChannelRowViews(
   activeFacultyId: unknown,
   students: unknown,
   visibleStudentIds: unknown,
+  publicRoomStudents?: unknown,
 ): RoomChannelRowView[] {
   const roomList = Array.isArray(rooms) ? rooms : [];
   const facultyList = Array.isArray(roster) ? roster : [];
   const cohortRecord = cohort && typeof cohort === "object" ? cohort as LooseRecord : {};
   const studentList = Array.isArray(students) ? students : [];
+  const humanList = Array.isArray(publicRoomStudents) ? publicRoomStudents : [];
   const visibleIds = new Set(Array.isArray(visibleStudentIds)
     ? visibleStudentIds.map((id) => String(id || "")).filter(Boolean)
     : studentList.map((student) => String((student && typeof student === "object" ? (student as LooseRecord).id : "") || "")).filter(Boolean));
@@ -2161,6 +1984,18 @@ export function roomChannelRowViews(
     if (!id) return;
     studentNames.set(id, String(record.name || id));
   });
+  const humansByFaculty = new Map<string, RoomChannelStudentView[]>();
+  humanList.forEach((student) => {
+    const record = student && typeof student === "object" ? student as LooseRecord : null;
+    if (!record) return;
+    const id = String(record.id || "");
+    const name = String(record.name || "Student").trim() || "Student";
+    const facultyId = String(record.facultyId || "");
+    const portraitUrl = String(record.portraitUrl || "").trim();
+    if (!id || !facultyId || !portraitUrl) return;
+    if (!humansByFaculty.has(facultyId)) humansByFaculty.set(facultyId, []);
+    humansByFaculty.get(facultyId)!.push({ ...record, id, name, facultyId, portraitUrl, kind: "human" });
+  });
 
   return roomList
     .filter((room) => !!(room && typeof room === "object" && (room as LooseRecord).teaches))
@@ -2171,6 +2006,17 @@ export function roomChannelRowViews(
       const faculty = facultyList.find((entry) => !!(entry && typeof entry === "object" && String((entry as LooseRecord).id || "") === facultyId)) || null;
       const completionProgress = faculty ? roomCompletionProgressView(faculty) : null;
       const cohortIds = Array.isArray(cohortRecord[roomId]) ? cohortRecord[roomId] : [];
+      const npcStudents = cohortIds
+        .map((id) => String(id || ""))
+        .filter((id) => id && visibleIds.has(id))
+        .map((id) => ({ id, name: studentNames.get(id) || id }));
+      const seen = new Set(npcStudents.map((student) => student.id));
+      const humanStudents = (humansByFaculty.get(facultyId) || [])
+        .filter((student) => {
+          if (seen.has(student.id)) return false;
+          seen.add(student.id);
+          return true;
+        });
       return {
         roomId,
         facultyId,
@@ -2178,10 +2024,7 @@ export function roomChannelRowViews(
         isActive: !!(faculty && String(activeFacultyId || "") === facultyId),
         completionProgress,
         completionLabel: completionProgress ? roomCompletionProgressLabel(faculty, completionProgress) : "",
-        students: cohortIds
-          .map((id) => String(id || ""))
-          .filter((id) => id && visibleIds.has(id))
-          .map((id) => ({ id, name: studentNames.get(id) || id })),
+        students: [...npcStudents, ...humanStudents],
       };
     });
 }
@@ -2191,12 +2034,11 @@ export function packCountLabel(count: unknown): string {
   const n = Number.isFinite(Number(count)) && Number(count) > 0 ? Math.floor(Number(count)) : 1;
   return formatWholeNumber(n) + " Pack" + (n === 1 ? "" : "s");
 }
-export function cardPackTokenSymbol(product: NullableRecord, solana: NullableRecord): string {
-  return String((product && product.tokenSymbol) || (solana && solana.symbol) || "RUBY").trim() || "RUBY";
-}
 export function cardPackDebitLabel(product: NullableRecord, solana: NullableRecord): string {
-  const amount = product && product.tokenAmount != null ? product.tokenAmount : solana && solana.tokenAmount;
-  return "Solana payment: " + formatTokenDisplayAmount(amount) + " " + cardPackTokenSymbol(product, solana);
+  const amount = product && product.solAmount != null
+    ? product.solAmount
+    : solana && solana.solAmount;
+  return "Solana payment: " + formatSolDisplayAmount(amount) + " SOL";
 }
 export function cardPackCreditLabel(product: NullableRecord): string {
   const count = product && Number.isFinite(Number(product.packCount)) ? Number(product.packCount) : 1;
@@ -2272,7 +2114,6 @@ export function billingProductsPanelView(
   const payload = payloadInput && typeof payloadInput === "object" ? payloadInput : {};
   const solana = solanaInput && typeof solanaInput === "object" ? solanaInput : null;
   const hallPassesPerBurnedCard = Math.max(1, Math.floor(Number(opts && opts.hallPassesPerBurnedCard || 5)));
-  const hasRubyToken = !!(opts && opts.hasRubyToken);
   const isCardPacks = mode === "card-packs";
   return {
     titleText: isCardPacks ? "Buy Card Packs" : "Buy Hall Passes",
@@ -2288,12 +2129,10 @@ export function billingProductsPanelView(
     showGetRubyCostLink: false,
     emptyStatusText: isCardPacks ? "No card packs are available." : "No Hall Passes are available.",
     checkoutStatusText: isCardPacks
-      ? (solana && !solana.configured
-        ? "Card pack checkout is not configured on this server."
-        : hasRubyToken ? "" : "Solana pack checkout is missing token configuration.")
+      ? (solana && solana.configured ? "" : "Card pack checkout is not configured on this server.")
       : (payload.configured ? "" : "Stripe checkout is not configured on this server."),
     checkoutStatusError: isCardPacks
-      ? !(solana && solana.configured && hasRubyToken)
+      ? !(solana && solana.configured)
       : !payload.configured,
   };
 }

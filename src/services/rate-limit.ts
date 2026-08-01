@@ -21,6 +21,7 @@
  * |--------------------|----------------|---------:|-------:|-----------|
  * | CHAT_LIMITER       | chat-routes.ts |       60 |  1/sec | POST /chat, /chat/event, /chat/student-chime, /chat/opinion-submit, /chat/character/generate, /chat/reset |
  * | PORTRAIT_LIMITER   | chat-routes.ts |        8 | 1/30s  | POST /chat/character/portrait, /chat/character/diploma |
+ * | AUTH_LIMITER       | chat-routes.ts |       30 | 1/2s   | Auth start, callback, guest-session creation, and Privy exchange |
  * | COMMAND_LIMITER    | routes.ts      |      120 |  2/sec | POST /command (game-state mutation surface) |
  * | PUBLIC_WORLD_ACTION_LIMITER | routes/commands.ts | 6 | 1/min | POST /command school activity safety action |
  * | PUBLIC_READ_LIMITER | routes.ts      |      120 |  2/sec | GET /world, /world/events, /cohort/:grade |
@@ -30,13 +31,11 @@
  *
  * Endpoints intentionally NOT gated:
  *
- * - Most GET routes (auth/me, auth/start, chat/history, viewer, assets, packs,
+ * - Most GET routes (auth/me, chat/history, viewer, assets, packs,
  *   the default session GET) — read-only, cheap, not worth false 429s on a
  *   refresh storm.
  * - POST /control — no-op stub.
  * - POST /auth/logout — single delete, cheap.
- * - GET /auth/callback — cost is one outbound OpenRouter token-exchange.
- *   Acceptable today; revisit if we ever see hostile callback floods.
  * - POST /packs/active — pack switch is a small per-session write.
  */
 export class TokenBucket {

@@ -4,21 +4,21 @@ import { billingCardPackPaymentChoiceView } from "../viewer-parts/client-pure.js
 describe("billingCardPackPaymentChoiceView", () => {
   it("renders configured card-pack checkout copy", () => {
     expect(billingCardPackPaymentChoiceView({
-      symbol: "RUBY",
-      tokenAmount: 2500,
+      symbol: "SOL",
+      solAmount: 0.025,
     }, {
       name: "Ruby High 2-Pack",
       packCount: 2,
       cardCount: 10,
-      tokenSymbol: "RUBY",
-      tokenAmount: 5000,
+      symbol: "SOL",
+      solAmount: 0.05,
     }, {
       cryptoUnavailable: false,
       canPackCheckout: true,
       billingBusy: false,
     })).toEqual({
       titleText: "Buy Ruby High 2-Pack",
-      metaText: "Solana payment: 5,000 RUBY · +2 Packs · 10 cards",
+      metaText: "Solana payment: 0.05 SOL · +2 Packs · 10 cards",
       buttonText: "Buy Pack",
       buttonDisabled: false,
       buttonTitle: "Pay with Solana wallet.",
@@ -45,8 +45,8 @@ describe("billingCardPackPaymentChoiceView", () => {
 
   it("explains when Solana pack checkout is incomplete", () => {
     expect(billingCardPackPaymentChoiceView({
-      symbol: "RUBY",
-      tokenAmount: 100,
+      symbol: "SOL",
+      solAmount: 0.01,
     }, {
       packCount: 1,
       cardCount: 5,
@@ -64,8 +64,8 @@ describe("billingCardPackPaymentChoiceView", () => {
 
   it("disables the buy button while billing is busy", () => {
     expect(billingCardPackPaymentChoiceView({
-      symbol: "DUST",
-      tokenAmount: 12.5,
+      symbol: "SOL",
+      solAmount: 0.0125,
     }, {
       packCount: 1,
       cardCount: 5,
@@ -73,7 +73,7 @@ describe("billingCardPackPaymentChoiceView", () => {
       canPackCheckout: true,
       billingBusy: true,
     })).toMatchObject({
-      metaText: "Solana payment: 12.5 DUST · +1 Pack · 5 cards",
+      metaText: "Solana payment: 0.0125 SOL · +1 Pack · 5 cards",
       buttonText: "Buy Pack",
       buttonDisabled: true,
       buttonTitle: "Pay with Solana wallet.",

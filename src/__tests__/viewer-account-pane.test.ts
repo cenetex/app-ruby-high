@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { accountPaneItemView, normalizeAccountPane } from "../viewer-parts/client-pure.js";
+import {
+  accountPaneItemView,
+  accountPaneKeyTarget,
+  normalizeAccountPane,
+} from "../viewer-parts/client-pure.js";
 
 describe("account pane view", () => {
   it("normalizes account pane ids", () => {
@@ -43,5 +47,15 @@ describe("account pane view", () => {
       selected: false,
       hidden: true,
     });
+  });
+
+  it("moves a roving tab stop with arrows, Home, and End", () => {
+    expect(accountPaneKeyTarget("ArrowRight", 0, 6)).toBe(1);
+    expect(accountPaneKeyTarget("ArrowRight", 5, 6)).toBe(0);
+    expect(accountPaneKeyTarget("ArrowLeft", 0, 6)).toBe(5);
+    expect(accountPaneKeyTarget("Home", 4, 6)).toBe(0);
+    expect(accountPaneKeyTarget("End", 1, 6)).toBe(5);
+    expect(accountPaneKeyTarget("Tab", 1, 6)).toBeNull();
+    expect(accountPaneKeyTarget("ArrowRight", -1, 6)).toBeNull();
   });
 });

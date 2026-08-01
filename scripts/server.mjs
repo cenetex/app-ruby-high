@@ -7,7 +7,14 @@
 
 import { createServer } from "node:http";
 import { URL } from "node:url";
-import { bodyLimitForPath } from "./http-limits.mjs";
+import {
+  applyHttpSecurityHeaders,
+  booleanSetting,
+  buildHealthPayload,
+  createRouteContext,
+  parseRequestUrl,
+  sendJson,
+} from "./http-server.mjs";
 import { serveLandingRequest } from "./landing.mjs";
 import { normalizePublicOrigin } from "./public-base.mjs";
 
@@ -16,13 +23,22 @@ const HOST = process.env.HOST ?? "0.0.0.0";
 const STATE_PATH = process.env.RUBY_HIGH_STATE_PATH
   ?? (process.env.RUBY_HIGH_DATA_DIR ? `${process.env.RUBY_HIGH_DATA_DIR}/state.json` : null);
 const PUBLIC_BASE = normalizePublicOrigin(process.env.RUBY_HIGH_PUBLIC_BASE);
+const TRUST_PROXY = booleanSetting(process.env.RUBY_HIGH_TRUST_PROXY);
 const APP_ROUTE_PREFIX = "/api/apps/ruby-high";
 const VIEWER_PATH = `${APP_ROUTE_PREFIX}/viewer`;
+
+if (
+  process.env.NODE_ENV === "production" &&
+  (!PUBLIC_BASE || new URL(PUBLIC_BASE).protocol !== "https:")
+) {
+  throw new Error("RUBY_HIGH_PUBLIC_BASE must be set to the public HTTPS origin in production.");
+}
 
 let handleAppRoutes = null;
 let stateStore = null;
 let facultySvc = null;
 let authSvc = null;
+let agentAccessSvc = null;
 let chatSvc = null;
 let rubySvc = null;
 let xSocialSvc = null;
@@ -37,6 +53,7 @@ const fakeRuntime = {
     if (type === "ruby-high-faculty") return facultySvc;
     if (type === "ruby-high") return rubySvc;
     if (type === "ruby-high-auth") return authSvc;
+    if (type === "ruby-high-agent-access") return agentAccessSvc;
     if (type === "ruby-high-chat") return chatSvc;
     if (type === "x-social") return xSocialSvc;
     if (type === "telegram") return telegramSvc;
@@ -49,6 +66,7 @@ async function bootServices() {
   const mod = await import("../dist/index.js");
   const {
     AuthService,
+    AgentAccessService,
     ChatService,
     FacultyService,
     RubyHighService,
@@ -71,8 +89,11 @@ async function bootServices() {
   svc.setFacultyService(facultySvc);
   chatSvc.setRubyHighService(svc);
   rubySvc = svc;
+  agentAccessSvc = new AgentAccessService(fakeRuntime, stateStore);
+  await agentAccessSvc.hydrate();
   try {
     xSocialSvc = await XSocialService.start(fakeRuntime);
+    svc.startRotationScheduler();
   } catch (err) {
     console.error("XSocialService failed to start:", err.message);
     xSocialSvc = null;
@@ -86,151 +107,54 @@ async function bootServices() {
   bootReady = true;
 }
 
-function readRawBody(req, maxBytes) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let bytes = 0;
-    let rejected = false;
-    req.on("data", (c) => {
-      if (rejected) return;
-      bytes += c.length;
-      if (bytes > maxBytes) {
-        rejected = true;
-        const err = new Error("Request body too large");
-        err.statusCode = 413;
-        req.destroy();
-        reject(err);
-        return;
-      }
-      chunks.push(c);
-    });
-    req.on("end", () => {
-      if (rejected) return;
-      resolve(Buffer.concat(chunks).toString("utf8"));
-    });
-    req.on("error", (err) => { if (!rejected) reject(err); });
-  });
-}
 
-async function readJsonBody(req, maxBytes) {
-  const buf = await readRawBody(req, maxBytes);
-  return buf ? JSON.parse(buf) : {};
-}
+
 
 function deriveBaseFromReq(req) {
   if (PUBLIC_BASE) return PUBLIC_BASE;
-  // The platform's edge proxy (Fly / any LB / a custom reverse proxy) sets
-  // x-forwarded-* headers; trust the first hop.
-  const proto = (req.headers["x-forwarded-proto"] ?? "http").toString().split(",")[0].trim();
-  const host = (req.headers["x-forwarded-host"] ?? req.headers.host ?? `${HOST}:${PORT}`).toString().split(",")[0].trim();
+  const forwardedProto = TRUST_PROXY ? req.headers["x-forwarded-proto"] : null;
+  const forwardedHost = TRUST_PROXY ? req.headers["x-forwarded-host"] : null;
+  const proto = (forwardedProto ?? (req.socket?.encrypted ? "https" : "http")).toString().split(",").at(-1).trim();
+  const host = (forwardedHost ?? req.headers.host ?? `${HOST}:${PORT}`).toString().split(",").at(-1).trim();
   const requestBase = `${proto}://${host}`;
   return normalizePublicOrigin(requestBase) ?? requestBase;
 }
 
 function isSecureReq(req) {
-  const proto = (req.headers["x-forwarded-proto"] ?? "http").toString().split(",")[0].trim();
+  if (PUBLIC_BASE) return new URL(PUBLIC_BASE).protocol === "https:";
+  if (req.socket?.encrypted) return true;
+  if (!TRUST_PROXY) return false;
+  const proto = (req.headers["x-forwarded-proto"] ?? "http").toString().split(",").at(-1).trim();
   return proto === "https";
 }
 
-function deriveClientIp(req) {
-  // The edge proxy (Fly / LB / reverse proxy) puts the original client IP
-  // first in x-forwarded-for. Fall back to the socket address when the header
-  // is missing (direct connection on a private network).
-  const xff = req.headers["x-forwarded-for"];
-  if (typeof xff === "string" && xff.length > 0) {
-    return xff.split(",")[0].trim();
-  }
-  return req.socket?.remoteAddress ?? null;
-}
-
 function makeRouteContext(req, res, url) {
-  const base = deriveBaseFromReq(req);
-  // Pull the OpenRouter API key out of the X-Openrouter-Key header. Clients
-  // store the key in localStorage (since v0.6 / PR #30) and attach it on
-  // every authed request; the server reads it here without persisting.
-  // Missing this on the production entry was a silent regression — local
-  // dev worked because dev-server.mjs already had the equivalent line, but
-  // the production server returned 401 on every signed-in request because
-  // ctx.apiKeyHeader was always undefined.
-  const apiKeyRaw = req.headers["x-openrouter-key"];
-  const apiKeyHeader = Array.isArray(apiKeyRaw) ? (apiKeyRaw[0] ?? null) : (apiKeyRaw ?? null);
-  return {
-    method: req.method ?? "GET",
-    pathname: url.pathname,
+  return createRouteContext({
+    req,
+    res,
     url,
     runtime: fakeRuntime,
-    res,
-    cookieHeader: req.headers.cookie ?? null,
-    userAgentHeader: req.headers["user-agent"] ?? null,
-    visitorHeader: req.headers["x-ruby-high-visitor"] ?? null,
-    apiKeyHeader,
     isSecure: isSecureReq(req),
-    clientIp: deriveClientIp(req),
-    contentTypeHeader: req.headers["content-type"] ?? null,
-    originHeader: req.headers.origin ?? null,
-    authorizationHeader: req.headers.authorization ?? null,
-    stripeSignatureHeader: req.headers["stripe-signature"] ?? null,
-    ifNoneMatch: req.headers["if-none-match"] ?? null,
-    lastEventIdHeader: req.headers["last-event-id"] ?? null,
-    acceptEncoding: req.headers["accept-encoding"] ?? null,
-    callbackUrlBuilder: (path) => new URL(base).origin + path,
-    error(_r, message, status = 500) {
-      if (res.headersSent) return;
-      res.statusCode = status;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ error: message }));
-    },
-    json(_r, data, status = 200) {
-      if (res.headersSent) return;
-      res.statusCode = status;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify(data));
-    },
-    readRawBody: () => readRawBody(req, bodyLimitForPath(url.pathname)),
-    readJsonBody: () => readJsonBody(req, bodyLimitForPath(url.pathname)),
-  };
+    callbackBase: deriveBaseFromReq(req),
+    trustProxy: TRUST_PROXY,
+  });
 }
 
-// /health diagnostic payload. `build` is the short commit SHA the workflow
-// injects (RUBY_HIGH_BUILD); when running locally it falls back to "dev".
-// `state` is the StateStore backend's own description once boot has loaded it.
+
 function healthPayload() {
-  return {
-    ok: true,
-    app: "ruby-high",
-    build: process.env.RUBY_HIGH_BUILD ?? "dev",
-    state: stateStore?.describe?.() ?? "starting",
-    curriculum: curriculumHealthPayload(),
-  };
+  return buildHealthPayload({ stateStore, facultyService: facultySvc });
 }
 
-function curriculumHealthPayload() {
-  if (!facultySvc?.faculty || !facultySvc?.bank) return null;
-  const byFaculty = {};
-  for (const faculty of facultySvc.faculty()) {
-    byFaculty[faculty.id] = facultySvc.bank(faculty.id)?.questions.length ?? 0;
-  }
-  const totalQuestions = Object.values(byFaculty).reduce((sum, count) => sum + count, 0);
-  return {
-    pack: "ruby-high-original",
-    totalQuestions,
-    byFaculty,
-  };
-}
-
-function sendJson(res, data, status = 200) {
-  if (res.headersSent) return;
-  res.statusCode = status;
-  res.setHeader("Content-Type", "application/json");
-  res.setHeader("Cache-Control", "no-store");
-  res.end(JSON.stringify(data));
-}
 
 function sendStartupHtml(res) {
   if (res.headersSent) return;
   res.statusCode = 503;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "no-store, max-age=0");
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
+  );
   res.setHeader("Retry-After", "1");
   res.end(`<!doctype html>
 <html lang="en">
@@ -305,7 +229,14 @@ function sendStartupHtml(res) {
 }
 
 const server = createServer(async (req, res) => {
-  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? `${HOST}:${PORT}`}`);
+  applyHttpSecurityHeaders(res, { secure: isSecureReq(req) });
+  let url;
+  try {
+    url = parseRequestUrl(req.url, PUBLIC_BASE ?? `http://${HOST}:${PORT}`);
+  } catch {
+    sendJson(res, { error: "Invalid request target." }, 400);
+    return;
+  }
 
   if (req.method === "GET" && url.pathname === "/livez") {
     sendJson(res, {
@@ -326,7 +257,7 @@ const server = createServer(async (req, res) => {
         ...healthPayload(),
         ok: false,
         status: "boot-failed",
-        error: bootError instanceof Error ? bootError.message : String(bootError),
+        error: "Ruby High boot failed.",
         t: Date.now(),
       }, 500);
       return;
@@ -361,8 +292,9 @@ const server = createServer(async (req, res) => {
       const handled = await handleAppRoutes(ctx);
       if (handled) return;
     } catch (err) {
+      console.error("[ruby-high] request failed:", err);
       if (!res.headersSent) {
-        sendJson(res, { error: err instanceof Error ? err.message : String(err) }, 500);
+        sendJson(res, { error: "Internal server error." }, 500);
       }
       return;
     }
@@ -372,6 +304,11 @@ const server = createServer(async (req, res) => {
     sendJson(res, { error: "Not found", path: url.pathname }, 404);
   }
 });
+
+server.headersTimeout = 15_000;
+server.requestTimeout = 30_000;
+server.keepAliveTimeout = 5_000;
+server.maxHeadersCount = 100;
 
 server.listen(PORT, HOST, () => {
   console.log(`[ruby-high] listening on http://${HOST}:${PORT}`);

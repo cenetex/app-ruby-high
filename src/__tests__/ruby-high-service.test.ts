@@ -15,6 +15,7 @@ import { getLoadedPack, MAX_PACKS_PER_OWNER, registerPack, resetActivePack } fro
 import type { ContentPack } from "../content/types.js";
 import { FIRST_BELL_SET_CODE, FIRST_BELL_SET_NAME } from "../services/hall-pass-card-catalog.js";
 import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
+import { cardMemoryKey, defaultCardMemory } from "../services/ruby-high/helpers.js";
 import { dailyKey, type AnswerRecord, type QuizState } from "../types.js";
 
 let tmpDir: string;
@@ -315,6 +316,101 @@ describe("Hall Pass wallet", () => {
       idempotencyKey: "hosted-ai:nft-burn-again",
       source: "hosted-ai",
     })).toThrow(/already burned/);
+  });
+
+  it("rejects replaying one on-chain card NFT as a different in-app card", async () => {
+    const { ruby } = await makeServices();
+    const ownerWalletAddress = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
+    const mintAddress = "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump";
+    const first = ruby.grantHallPassCards("rh:user:first-card-owner", {
+      cardCount: 1,
+      idempotencyKey: "grant:first-card-owner",
+      source: "solana",
+    }).cards![0]!;
+    const second = ruby.grantHallPassCards("rh:user:second-card-owner", {
+      cardCount: 1,
+      idempotencyKey: "grant:second-card-owner",
+      source: "solana",
+    }).cards![0]!;
+    ruby.recordHallPassCardMint("rh:user:first-card-owner", {
+      cardId: first.id,
+      ownerWalletAddress,
+      mintAddress,
+      mintSignature: "5mSharedMintSignature11111111111111111111111111111111111111",
+      metadataUri: "https://ruby-high.ai/card.json",
+    });
+
+    expect(() => ruby.recordHallPassCardMint("rh:user:second-card-owner", {
+      cardId: second.id,
+      ownerWalletAddress,
+      mintAddress,
+      mintSignature: "5mSharedMintSignature11111111111111111111111111111111111111",
+      metadataUri: "https://ruby-high.ai/card.json",
+    })).toThrow(/already been recorded/);
+  });
+
+  it("persists card mint recovery and reveal retry markers across restarts", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:nft-mint-recovery-persistence";
+    const ownerWalletAddress = "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY";
+    const mintAddress = "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump";
+    const metadataUri = "https://ruby-high.ai/card-recovery.json";
+    const mintSignature = "5mPersistentMintSignature111111111111111111111111111111111";
+    const card = ruby.grantHallPassCards(sid, {
+      cardCount: 1,
+      idempotencyKey: "solana:card-mint-recovery-persistence",
+      source: "solana",
+    }).cards![0]!;
+    ruby.recordHallPassCardMintPreparation(sid, {
+      cardId: card.id,
+      ownerWalletAddress,
+      mintAddress,
+      metadataUri,
+      transactionMessageHash: "persistent-transaction-message-hash",
+    });
+    ruby.recordHallPassCardMintSubmission(sid, {
+      cardId: card.id,
+      ownerWalletAddress,
+      mintAddress,
+      metadataUri,
+      mintSignature,
+    });
+    await ruby.flushSession(sid);
+    await ruby.stop();
+    activeRuby = null;
+
+    const restored = new RubyHighService({} as never, new StateStore(storePath));
+    await restored["hydrate"]();
+    activeRuby = restored;
+    expect(restored.mintableHallPassCards(sid)[0]).toMatchObject({
+      id: card.id,
+      pendingMintAddress: mintAddress,
+      pendingMintSignature: mintSignature,
+      pendingMintSubmittedAt: expect.any(Number),
+    });
+
+    restored.recordHallPassCardMint(sid, {
+      cardId: card.id,
+      ownerWalletAddress,
+      mintAddress,
+      mintSignature,
+      metadataUri,
+    });
+    await restored.flushSession(sid);
+    await restored.stop();
+    activeRuby = null;
+
+    const restoredAgain = new RubyHighService({} as never, new StateStore(storePath));
+    await restoredAgain["hydrate"]();
+    activeRuby = restoredAgain;
+    expect(restoredAgain.pendingHallPassCardReveals(sid, ownerWalletAddress)).toEqual([
+      expect.objectContaining({
+        id: card.id,
+        mintAddress,
+        mintSignature,
+        onChainRevealPending: true,
+      }),
+    ]);
   });
 
   it("records multiple NFT card burns from one owner-signed transaction", async () => {
@@ -959,7 +1055,7 @@ describe("RubyHighService Phase 1", () => {
       const s = ruby.pickAndPose(sid, { faculty: "ruby" });
       const id = s.current!.id;
       seen.add(id);
-      ruby.submitAnswer(sid, s.current!.correct!);
+      ruby.submitAnswer(sid, s.current!.correctChoice!);
     }
     expect(seen.size).toBeGreaterThan(0);
     expect(ruby.questionBankStatus(sid, "ruby").total).toBeGreaterThanOrEqual(total);
@@ -1055,11 +1151,11 @@ describe("RubyHighService Phase 1", () => {
     ruby.setActivePackForSession(freshmanSid, freshmanPack.id);
     ruby.selectGrade(freshmanSid, "9");
     const posed = ruby.pickAndPose(freshmanSid, { faculty: "level-test-course" });
-    ruby.submitAnswer(freshmanSid, posed.current!.correct!);
+    ruby.submitAnswer(freshmanSid, posed.current!.correctChoice!);
     ruby.getOrCreate(freshmanSid).history.push({
       questionId: posed.current!.id,
-      picked: posed.current!.correct!,
-      correct: posed.current!.correct!,
+      picked: posed.current!.correctChoice!,
+      correct: posed.current!.correctChoice!,
       wasCorrect: true,
       at: Date.now() + 1,
     });
@@ -1244,7 +1340,7 @@ describe("RubyHighService Phase 1", () => {
     expect(() => ruby.pickAndPose(sid, { faculty: "ruby" })).toThrow(/Cannot post another question while a question is live/);
     expect(() => ruby.clearBoard(sid)).toThrow(/Cannot clear the board while a question is live/);
 
-    ruby.submitAnswer(sid, first.current!.correct!);
+    ruby.submitAnswer(sid, first.current!.correctChoice!);
     const second = ruby.pickAndPose(sid, { faculty: "ruby" });
     expect(second.current!.id).not.toBe(firstId);
   });
@@ -1254,7 +1350,7 @@ describe("RubyHighService Phase 1", () => {
     const sid = "test:3";
     ruby.pickAndPose(sid, { faculty: "ruby" });
     let s = ruby.getOrCreate(sid);
-    const correct = s.current!.correct!;
+    const correct = s.current!.correctChoice!;
     s = ruby.submitAnswer(sid, correct);
     expect(s.score).toMatchObject({ correct: 1, total: 1, points: 80, possible: 100 });
     expect(s.wallet).toMatchObject({ meritStars: 80, hallPasses: 0 });
@@ -1263,7 +1359,7 @@ describe("RubyHighService Phase 1", () => {
 
     ruby.pickAndPose(sid, { faculty: "ruby" });
     s = ruby.getOrCreate(sid);
-    const wrong = s.current!.correct! === "A" ? "B" : "A";
+    const wrong = s.current!.correctChoice! === "A" ? "B" : "A";
     s = ruby.submitAnswer(sid, wrong);
     // Wrong answers earn no points (the dice can't pile on a miss).
     // session.points stays at the previous correct's value; possible still ticks.
@@ -2029,6 +2125,142 @@ describe("RubyHighService Phase 1", () => {
     expect(JSON.stringify(world)).not.toContain("No Class Noor");
   });
 
+  it("places public students in the classroom where they were last active instead of their selected room", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+    const student = attachTestCharacter(ruby, "test:world-last-active-room");
+    student.sessionId = "test:world-last-active-room";
+    student.currentGrade = "10";
+    student.faculty = "ruby";
+    student.character!.name = "Moving Mina";
+    student.character!.createdAt = now - 10_000;
+    student.character!.portraitDataUrl = "/api/apps/ruby-high/assets/portrait/moving-mina.png";
+    const homeroomClass = completedClassRecord("10", "ruby", "2026-06-14", "A", 300);
+    homeroomClass.completedAt = now - 5_000;
+    homeroomClass.updatedAt = now - 5_000;
+    student.character!.dailyClasses = { ruby: homeroomClass };
+    student.cardMemory = {
+      [cardMemoryKey("sally-science", "science-practice")]: {
+        ...defaultCardMemory("sally-science", "science-practice"),
+        lastReviewedAt: now - 1_000,
+      },
+    };
+
+    const world = ruby.getSchoolWorldSnapshot(10, now);
+    const roomStudents = ruby.getPublicRoomHumanStudentsForSession("test:world-last-active-viewer", now);
+
+    expect(world.activeRooms).toEqual([
+      expect.objectContaining({
+        facultyId: "sally-science",
+        displayName: "Sally Science",
+        students: [expect.objectContaining({ name: "Moving Mina", lastActive: now - 1_000 })],
+      }),
+    ]);
+    expect(roomStudents).toContainEqual(expect.objectContaining({
+      name: "Moving Mina",
+      facultyId: "sally-science",
+      lastActive: now - 1_000,
+    }));
+  });
+
+  it("lists human students by their last active room only when they have custom public portraits", async () => {
+    const { ruby } = await makeServices();
+    const now = Date.UTC(2026, 5, 15, 12);
+    const viewer = attachTestCharacter(ruby, "test:room-human-viewer");
+    viewer.sessionId = "test:room-human-viewer";
+    viewer.currentGrade = "10";
+    viewer.faculty = "ruby";
+    viewer.character!.name = "Viewer Mina";
+    viewer.character!.createdAt = now;
+    viewer.character!.portraitDataUrl = "/api/apps/ruby-high/assets/portrait/viewer-mina.png";
+    const viewerClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    viewerClass.completedAt = now;
+    viewerClass.updatedAt = now;
+    viewer.character!.dailyClasses = { ruby: viewerClass };
+
+    const custom = attachTestCharacter(ruby, "test:room-human-custom");
+    custom.sessionId = "test:room-human-custom";
+    custom.currentGrade = "10";
+    custom.faculty = "ruby";
+    custom.character!.name = "Sloan";
+    custom.character!.playbookId = "slacker";
+    custom.character!.createdAt = now;
+    custom.character!.portraitDataUrl = "/api/apps/ruby-high/assets/portrait/sloan.png";
+
+    const defaultPortrait = attachTestCharacter(ruby, "test:room-human-default");
+    defaultPortrait.sessionId = "test:room-human-default";
+    defaultPortrait.currentGrade = "10";
+    defaultPortrait.faculty = "ruby";
+    defaultPortrait.character!.name = "Default Lyra";
+    defaultPortrait.character!.playbookId = "lifer";
+    defaultPortrait.character!.createdAt = now;
+    defaultPortrait.character!.portraitDataUrl = "/api/apps/ruby-high/assets/students/lyra-full.png";
+    const defaultClass = completedClassRecord("10", "ruby", "2026-06-15", "A", 300);
+    defaultClass.completedAt = now;
+    defaultClass.updatedAt = now;
+    defaultPortrait.character!.dailyClasses = { ruby: defaultClass };
+
+    const otherRoom = attachTestCharacter(ruby, "test:room-human-other-room");
+    otherRoom.sessionId = "test:room-human-other-room";
+    otherRoom.currentGrade = "10";
+    otherRoom.faculty = "sally-science";
+    otherRoom.character!.name = "Other Room Noor";
+    otherRoom.character!.createdAt = now;
+    otherRoom.character!.portraitDataUrl = "https://ruby-high-portraits.s3.us-east-1.amazonaws.com/portrait/other-room-noor.png";
+    const otherRoomClass = completedClassRecord("10", "sally-science", "2026-06-15", "A", 300);
+    otherRoomClass.completedAt = now;
+    otherRoomClass.updatedAt = now;
+    otherRoom.character!.dailyClasses = { "sally-science": otherRoomClass };
+
+    const crossGrade = attachTestCharacter(ruby, "test:room-human-cross-grade");
+    crossGrade.sessionId = "test:room-human-cross-grade";
+    crossGrade.currentGrade = "12";
+    crossGrade.faculty = "ruby";
+    crossGrade.character!.name = "Tariq";
+    crossGrade.character!.playbookId = "outsider";
+    crossGrade.character!.createdAt = now;
+    crossGrade.character!.portraitDataUrl = "https://ruby-high-portraits.s3.us-east-1.amazonaws.com/portrait/tariq.png";
+
+    expect(ruby.getPublicRoomHumanStudentsForSession("test:room-human-viewer", now)).toEqual([
+      {
+        id: expect.stringMatching(/^world:session:[a-f0-9]{16}$/),
+        name: "Other Room Noor",
+        playbookId: "lifer",
+        grade: "10",
+        facultyId: "sally-science",
+        portraitUrl: "https://ruby-high-portraits.s3.us-east-1.amazonaws.com/portrait/other-room-noor.png",
+        stats: { head: 99, heart: 99, hustle: 99, honor: 99 },
+        classGrades: { "sally-science": "A" },
+        yearbookCount: 0,
+        lastActive: now,
+      },
+      {
+        id: expect.stringMatching(/^world:session:[a-f0-9]{16}$/),
+        name: "Sloan",
+        playbookId: "slacker",
+        grade: "10",
+        facultyId: "ruby",
+        portraitUrl: "/api/apps/ruby-high/assets/portrait/sloan.png",
+        stats: { head: 99, heart: 99, hustle: 99, honor: 99 },
+        classGrades: {},
+        yearbookCount: 0,
+        lastActive: now,
+      },
+      {
+        id: expect.stringMatching(/^world:session:[a-f0-9]{16}$/),
+        name: "Tariq",
+        playbookId: "outsider",
+        grade: "12",
+        facultyId: "ruby",
+        portraitUrl: "https://ruby-high-portraits.s3.us-east-1.amazonaws.com/portrait/tariq.png",
+        stats: { head: 99, heart: 99, hustle: 99, honor: 99 },
+        classGrades: {},
+        yearbookCount: 0,
+        lastActive: now,
+      },
+    ]);
+  });
+
   it("keeps public-world-hidden characters out of rooms while preserving social consent", async () => {
     const { ruby } = await makeServices();
     const now = Date.UTC(2026, 5, 15, 12);
@@ -2701,6 +2933,7 @@ describe("RubyHighService Phase 1", () => {
       expect(ruby.publicWorldSummarySnapshot(now + 1).studySparks.byGrade["10"]).toBe(day + 1);
     }
     const rallyAt = start + 6 * 24 * 60 * 60 * 1000;
+    usePublicWorldFixtureTime(rallyAt + 60_000);
     expect(ruby.publicWorldSummarySnapshot(rallyAt).termProgress).toMatchObject({
       totalSparks: 6,
       level: 2,
@@ -4155,7 +4388,7 @@ describe("RubyHighService Phase 1", () => {
     const { ruby } = await makeServices();
     const sid = "test:5";
     ruby.pickAndPose(sid, { faculty: "sally-science" });
-    const correct = ruby.getOrCreate(sid).current!.correct!;
+    const correct = ruby.getOrCreate(sid).current!.correctChoice!;
     ruby.submitAnswer(sid, correct);
     await ruby.flush();
 
@@ -4243,7 +4476,7 @@ describe("RubyHighService Phase 1", () => {
     state.askedQuestionIds = ["level-medium"];
     const picked = ruby.pickAndPose(sid, { faculty: "level-test-course" });
     expect(["level-easy", "level-medium"]).toContain(picked.current?.id);
-    ruby.submitAnswer(sid, picked.current!.correct!);
+    ruby.submitAnswer(sid, picked.current!.correctChoice!);
 
     const review = ruby.pickAndPose(sid, { faculty: "level-test-course" });
     expect(["level-easy", "level-medium"]).toContain(review.current?.id);
@@ -4336,7 +4569,7 @@ describe("RubyHighService Phase 1", () => {
 
     for (let i = 0; i < 3; i++) {
       const state = ruby.pickAndPose(sid, { faculty: "sally-science" });
-      ruby.submitAnswer(sid, state.current!.correct!);
+      ruby.submitAnswer(sid, state.current!.correctChoice!);
       const memory = ruby.getOrCreate(sid).cardMemory!;
       const key = Object.keys(memory)[0]!;
       memory[key]!.dueAt = Date.now() - 1;
@@ -4411,7 +4644,7 @@ describe("RubyHighService Phase 1", () => {
       openElectiveSlots: 0,
     });
 
-    ruby.submitAnswer(sid, state.current!.correct!);
+    ruby.submitAnswer(sid, state.current!.correctChoice!);
     ruby.clearBoard(sid);
     state = ruby.pickAndPose(sid, { faculty: "professor-edward" });
     expect(state.activeRound?.classSession?.mode).toBe("practice");
@@ -4430,7 +4663,7 @@ describe("RubyHighService Phase 1", () => {
       Date.now = () => new Date("2026-05-05T18:00:00Z").getTime();
       for (let i = 0; i < 3; i++) {
         const posed = ruby.pickAndPose(sid, { faculty: "vocab-test-course" });
-        ruby.submitAnswer(sid, posed.current!.correct!);
+        ruby.submitAnswer(sid, posed.current!.correctChoice!);
         ruby.getOrCreate(sid).cardMemory!["vocab-test-course::vocab-streak-q1"]!.dueAt = Date.now() - 1;
       }
     } finally {
@@ -4460,7 +4693,7 @@ describe("RubyHighService Phase 1", () => {
     try {
       Date.now = () => new Date("2026-05-05T18:00:00Z").getTime();
       const posed = ruby.pickAndPose(sid, { faculty: "vocab-test-course", mode: "practice" });
-      ruby.submitAnswer(sid, posed.current!.correct!);
+      ruby.submitAnswer(sid, posed.current!.correctChoice!);
     } finally {
       Date.now = realNow;
     }
@@ -4487,7 +4720,7 @@ describe("RubyHighService Phase 1", () => {
     for (let i = 0; i < 3; i += 1) {
       const posed = ruby.pickAndPose(sid, { faculty: "level-test-course" });
       answeredIds.push(posed.current!.id);
-      ruby.submitAnswer(sid, posed.current!.correct!);
+      ruby.submitAnswer(sid, posed.current!.correctChoice!);
       ruby.clearBoard(sid);
     }
 
@@ -4512,7 +4745,7 @@ describe("RubyHighService Phase 1", () => {
 
     for (let i = 0; i < 3; i += 1) {
       const posed = ruby.pickAndPose(sid, { faculty: "level-test-course" });
-      const correct = posed.current!.correct!;
+      const correct = posed.current!.correctChoice!;
       const wrong = correct === "A" ? "B" : "A";
       ruby.submitAnswer(sid, i === 2 ? wrong : correct);
       ruby.clearBoard(sid);
@@ -4542,7 +4775,7 @@ describe("RubyHighService Phase 1", () => {
 
     for (let i = 0; i < 3; i += 1) {
       const posed = ruby.pickAndPose(sid, { faculty: "level-test-course" });
-      const correct = posed.current!.correct!;
+      const correct = posed.current!.correctChoice!;
       const wrong = correct === "A" ? "B" : "A";
       ruby.submitAnswer(sid, i === 2 ? wrong : correct);
       ruby.clearBoard(sid);
@@ -4570,7 +4803,7 @@ describe("RubyHighService Phase 1", () => {
       Date.now = () => new Date("2026-05-05T18:00:00Z").getTime();
       for (let i = 0; i < 3; i++) {
         const posed = ruby.pickAndPose(sid, { faculty: "vocab-test-course" });
-        ruby.submitAnswer(sid, posed.current!.correct!);
+        ruby.submitAnswer(sid, posed.current!.correctChoice!);
         ruby.getOrCreate(sid).cardMemory!["vocab-test-course::vocab-streak-two-day-q1"]!.dueAt = Date.now() - 1;
       }
     } finally {
@@ -4600,7 +4833,7 @@ describe("RubyHighService Phase 1", () => {
       Date.now = () => new Date("2026-05-05T18:00:00Z").getTime();
       for (let i = 0; i < 3; i++) {
         const posed = ruby.pickAndPose(sid, { faculty: "vocab-test-course" });
-        ruby.submitAnswer(sid, posed.current!.correct!);
+        ruby.submitAnswer(sid, posed.current!.correctChoice!);
         ruby.getOrCreate(sid).cardMemory!["vocab-test-course::vocab-streak-three-day-q1"]!.dueAt = Date.now() - 1;
       }
     } finally {
@@ -4630,7 +4863,7 @@ describe("RubyHighService Phase 1", () => {
       Date.now = () => new Date("2026-05-05T18:00:00Z").getTime();
       for (let i = 0; i < 3; i++) {
         const posed = ruby.pickAndPose(sid, { faculty: "vocab-test-course" });
-        ruby.submitAnswer(sid, posed.current!.correct!);
+        ruby.submitAnswer(sid, posed.current!.correctChoice!);
         ruby.getOrCreate(sid).cardMemory!["vocab-test-course::vocab-streak-cap-q1"]!.dueAt = Date.now() - 1;
       }
     } finally {
@@ -4660,7 +4893,7 @@ describe("RubyHighService Phase 1", () => {
       const state = ruby.pickAndPose(sid, { faculty: "level-test-course" });
       const questionId = state.current?.id;
       expect(questionId).toMatch(/^level-/);
-      ruby.submitAnswer(sid, state.current!.correct!);
+      ruby.submitAnswer(sid, state.current!.correctChoice!);
       const memory = ruby.getOrCreate(sid).cardMemory!;
       memory[`level-test-course::${questionId}`]!.dueAt = Date.now() - 1;
     }
@@ -4899,7 +5132,7 @@ describe("RubyHighService Phase 1", () => {
     expect(facultyB.bank("ruby")!.questions.some((q) => q.id === state.current?.id)).toBe(true);
   });
 
-  it("starts Ruby homeroom with direct class cards", async () => {
+  it("closes a core daily class with a graded take after two evidence cards", async () => {
     const { ruby } = await makeServices();
     const sid = "test:ruby-social-deck";
     ruby.selectGrade(sid, "10");
@@ -4915,26 +5148,80 @@ describe("RubyHighService Phase 1", () => {
     };
 
     const roles: string[] = [];
+    let takeSession: QuizState["activeRound"] = null;
     for (let i = 0; i < 10; i++) {
       const posed = ruby.pickAndPose(sid, { faculty: "ruby" });
       roles.push(posed.activeRound?.cardRole ?? "missing");
       if (posed.activeRound?.type === "opinion") {
+        takeSession = structuredClone(posed.activeRound);
+        expect(posed.current?.opinionPurpose).toBe("daily-take");
         ruby.recordOpinion(sid, "player", "I trust specific evidence and check claims that skip the source.");
         ruby.recordGrades(sid, [{ responder: "player", score: 8, comment: "Specific and grounded." }], "player");
       } else {
-        ruby.submitAnswer(sid, posed.current!.correct!);
+        ruby.submitAnswer(sid, posed.current!.correctChoice!);
       }
       if (i < 9) ruby.clearBoard(sid);
     }
 
-    expect(roles).toEqual(["class", "class", "class", "practice", "practice", "practice", "practice", "practice", "practice", "practice"]);
+    expect(roles).toEqual(["class", "class", "social", "practice", "practice", "practice", "practice", "practice", "practice", "practice"]);
+    expect(takeSession).toMatchObject({
+      type: "opinion",
+      cardRole: "social",
+      classSession: { mode: "class", index: 3, total: 3 },
+    });
     const record = ruby.getOrCreate(sid).character!.dailyClasses![`10:ruby:${dailyKey()}`]!;
     expect(record).toMatchObject({
       status: "complete",
       questionCount: 3,
     });
     expect(record.practiceCount ?? 0).toBe(0);
-    expect(record.socialCount ?? 0).toBe(0);
+    expect(record.socialCount ?? 0).toBe(1);
+    expect(ruby.getOrCreate(sid).character!.essayCompleted).not.toBe(true);
+    expect(ruby.analyticsSnapshot().events.classRitual).toMatchObject({
+      dailyClassStarted: 1,
+      evidenceCardCompleted: 2,
+      takeCardSubmitted: 1,
+      classResultCompleted: 1,
+    });
+  });
+
+  it.each([
+    ["sally-science", /evidence|prediction|variable/i],
+    ["professor-edward", /interpretation|perspective|tension/i],
+  ])("uses a subject-specific daily take for %s", async (facultyId, promptPattern) => {
+    const { ruby } = await makeServices();
+    const sid = `test:core-take:${facultyId}`;
+    ruby.selectGrade(sid, "11");
+    const state = ruby.getOrCreate(sid);
+    state.character = {
+      name: "Test",
+      playbookId: "heart",
+      stats: { head: 99, heart: 99, hustle: 99, honor: 99 },
+      arcAnswer: "—",
+      personality: "—",
+      yearbook: [],
+      createdAt: Date.now(),
+    };
+
+    for (let i = 0; i < 2; i++) {
+      const posed = ruby.pickAndPose(sid, { faculty: facultyId });
+      expect(posed.activeRound?.cardRole).toBe("class");
+      ruby.submitAnswer(sid, posed.current!.correctChoice!);
+      ruby.clearBoard(sid);
+    }
+
+    const take = ruby.pickAndPose(sid, { faculty: facultyId });
+    expect(take.current).toMatchObject({
+      type: "opinion",
+      opinionPurpose: "daily-take",
+      faculty: facultyId,
+    });
+    expect(take.current?.subject).toBeTruthy();
+    expect(take.current?.prompt).toMatch(promptPattern);
+    expect(take.activeRound).toMatchObject({
+      cardRole: "social",
+      classSession: { mode: "class", index: 3, total: 3 },
+    });
   });
 
   it("persists an essay report when an opinion round is graded", async () => {
@@ -4978,6 +5265,29 @@ describe("RubyHighService Phase 1", () => {
         grade: "9",
       },
     });
+    expect(after.character?.essayCompleted).not.toBe(true);
+  });
+
+  it("only a character's assigned grade essay satisfies the essay gate", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:grade-essay-gate";
+    const state = attachTestCharacter(ruby, sid);
+    state.character!.essayPrompt = "What did you learn from a mistake?";
+    state.character!.essayCompleted = false;
+
+    ruby.poseOpinion(sid, {
+      faculty: "ruby",
+      questionId: "grade-essay-q1",
+      prompt: state.character!.essayPrompt,
+      rubric: "Names a concrete mistake and a specific lesson.",
+    });
+    expect(ruby.getOrCreate(sid).current?.opinionPurpose).toBe("grade-essay");
+    ruby.recordOpinion(sid, "player", "I trusted an unsupported claim, then learned to check the source first.");
+    const after = ruby.recordGrades(sid, [
+      { responder: "player", score: 8, comment: "Concrete and specific." },
+    ], "player");
+
+    expect(after.character?.essayCompleted).toBe(true);
   });
 
   it("forceAdvanceRound resolves an idle-triggered open round as a forfeit", async () => {
@@ -5024,7 +5334,7 @@ describe("RubyHighService Phase 1", () => {
     const state = ruby.getOrCreate(sid);
     // Simulate player answering — set answeredAt without resolving the round
     state.activeRound!.player.answeredAt = Date.now();
-    state.activeRound!.player.picked = state.current!.correct as "A" | "B" | "C" | "D";
+    state.activeRound!.player.picked = state.current!.correctChoice as "A" | "B" | "C" | "D";
     ruby.forceAdvanceRound(sid);
     const after = ruby.getOrCreate(sid);
     expect(after.activeRound?.resolved).toBe(true);
@@ -5035,7 +5345,7 @@ describe("RubyHighService Phase 1", () => {
     const { ruby } = await makeServices();
     const sid = "test:6";
     ruby.pickAndPose(sid, { faculty: "ruby" });
-    ruby.submitAnswer(sid, ruby.getOrCreate(sid).current!.correct!);
+    ruby.submitAnswer(sid, ruby.getOrCreate(sid).current!.correctChoice!);
     expect(ruby.getOrCreate(sid).score.correct).toBe(1);
 
     ruby.resetSession(sid);
@@ -5191,5 +5501,77 @@ describe("RubyHighService Phase 1", () => {
       rate: 25 / 525,
     });
     activeRuby = ruby;
+  });
+
+  it("quick-rolls one deterministic student directly into First Bell and is retry-safe", async () => {
+    const { ruby } = await makeServices();
+    const sid = "viewer:quick-roll:one";
+
+    const first = ruby.quickRollIntoFirstBell(sid);
+    expect(first.character).toMatchObject({
+      name: expect.any(String),
+      playbookId: expect.any(String),
+      stats: expect.any(Object),
+      arcAnswer: expect.any(String),
+      personality: expect.any(String),
+    });
+    expect(first.current).toBeTruthy();
+    expect(first.activeRound).toMatchObject({
+      cardRole: "class",
+      classSession: { mode: "class", index: 1, total: 3 },
+    });
+    const firstCharacter = structuredClone(first.character);
+    const firstQuestionId = first.current?.id;
+
+    const retry = ruby.quickRollIntoFirstBell(sid);
+    expect(retry.character).toEqual(firstCharacter);
+    expect(retry.current?.id).toBe(firstQuestionId);
+    expect(ruby.analyticsSnapshot().events.funnel.firstCharacterCreated).toBe(1);
+  });
+
+  it("separates raw and visitor-backed human activation cohorts with ordered deduped steps", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.UTC(2026, 6, 26, 12));
+    const { ruby } = await makeServices();
+    const human = "viewer:activation:human";
+    const smoke = "viewer:activation:smoke";
+
+    ruby.recordAppOpen(human, {
+      clientSurface: "viewer",
+      visitorHash: "visitor-human",
+    });
+    ruby.recordMetricEvent("funnel_step", { sessionId: human, step: "first_character_created", source: "gameplay" });
+    ruby.recordMetricEvent("daily_class_started", { sessionId: human, step: "evidence_1", source: "gameplay" });
+    ruby.recordMetricEvent("funnel_step", { sessionId: human, step: "first_question_answered", source: "gameplay" });
+    ruby.recordMetricEvent("evidence_card_completed", { sessionId: human, step: "evidence_1", source: "gameplay" });
+    ruby.recordMetricEvent("evidence_card_completed", { sessionId: human, step: "evidence_2", source: "gameplay" });
+    ruby.recordMetricEvent("take_card_presented", { sessionId: human, step: "take", source: "gameplay" });
+    ruby.recordMetricEvent("take_card_started", { sessionId: human, step: "take", source: "viewer" });
+    ruby.recordMetricEvent("take_card_submitted", { sessionId: human, step: "take", source: "gameplay" });
+    ruby.recordMetricEvent("class_result_completed", { sessionId: human, step: "class_result", source: "gameplay" });
+    ruby.recordMetricEvent("class_result_viewed", { sessionId: human, step: "class_result", source: "viewer" });
+    ruby.recordMetricEvent("class_result_viewed", { sessionId: human, step: "class_result", source: "viewer" });
+
+    ruby.recordAppOpen(smoke, { clientSurface: "smoke" });
+    ruby.recordMetricEvent("funnel_step", { sessionId: smoke, step: "first_character_created", source: "smoke" });
+
+    const events = ruby.analyticsSnapshot(Date.now()).events;
+    expect(events.activationFunnel.raw).toMatchObject({ sampleSize: 2, eligibleSessions: 2 });
+    expect(events.activationFunnel.humanViewer).toMatchObject({ sampleSize: 1, eligibleSessions: 1 });
+    expect(Object.fromEntries(events.activationFunnel.humanViewer.steps.map((step) => [step.key, step.uniqueSessions]))).toMatchObject({
+      app_open: 1,
+      character_created: 1,
+      daily_class_started: 1,
+      first_answer: 1,
+      evidence_1_completed: 1,
+      evidence_2_completed: 1,
+      take_presented: 1,
+      take_started: 1,
+      take_submitted: 1,
+      result_completed: 1,
+      result_viewed: 1,
+    });
+    expect(events.byClientSurface.viewer).toBeGreaterThan(0);
+    expect(events.byClientSurface.smoke).toBeGreaterThan(0);
   });
 });

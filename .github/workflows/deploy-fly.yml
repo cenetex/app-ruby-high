@@ -15,15 +15,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
 
       - run: npm ci
-      - run: npm audit --omit=dev || true
+      - run: npm run audit:prod
       - run: npm run check:full
       - run: npm run test:coverage
 
@@ -48,7 +48,7 @@ jobs:
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install flyctl
         run: |
@@ -61,7 +61,7 @@ jobs:
           sudo install -m 0755 "$(find /tmp/flyctl -type f -name flyctl -print -quit)" /usr/local/bin/flyctl
           flyctl version
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
 

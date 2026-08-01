@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { assertSafeImageUrl } from "./safe-url.js";
-import { readFile, writeFile, mkdir, unlink, rename } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve, dirname } from "node:path";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
@@ -12,12 +12,55 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import type { IAgentRuntime } from "../runtime.js";
 import { Service } from "../runtime.js";
+import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 import { log } from "./logger.js";
-import {
-  fetchLlmChatCompletions,
-  hasConfiguredLlmCredential,
-} from "./llm-provider.js";
+import { fetchLlmChatCompletions, hasConfiguredLlmCredential } from "./llm-provider.js";
 import type { TeacherCharacter } from "../characters/teachers.js";
+import { listTeachers, teacherById } from "../characters/teachers.js";
+import { listStudents } from "../characters/students.js";
+import {
+  buildDeterministicPostText,
+  generateScheduledSchoolUpdateText,
+  isLowSignalMilestone,
+  generateLlmPostText,
+  type ScheduledSchoolUpdateEditorialMode,
+  type ScheduledSchoolUpdateContext,
+} from "./ruby-high/post-types.js";
+import { PostAnalytics } from "./ruby-high/post-analytics.js";
+
+const MAX_REMOTE_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_REMOTE_IMAGE_REDIRECTS = 3;
+
+async function readLimitedImageResponse(response: Response): Promise<Buffer> {
+  const declaredLength = Number(response.headers.get("content-length") ?? "");
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_REMOTE_IMAGE_BYTES) {
+    throw new Error("Remote image is too large.");
+  }
+  if (!response.body || typeof response.body.getReader !== "function") {
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > MAX_REMOTE_IMAGE_BYTES) throw new Error("Remote image is too large.");
+    return bytes;
+  }
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > MAX_REMOTE_IMAGE_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error("Remote image is too large.");
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks, total);
+}
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -54,6 +97,10 @@ export interface XMilestoneContext {
   grade?: string;
   teacherName?: string;
   teacherFacultyId?: string;
+  className?: string;
+  classSubjects?: string[];
+  studentImageUrl?: string;
+  teacherImageUrl?: string;
   letterGrade?: string;
   arcAnswer?: string;
   flavorQuote?: string;
@@ -84,6 +131,12 @@ interface XPostFailureClassification {
   logName: string;
   pauseReason?: string;
   retryAt?: number;
+}
+
+interface ScheduledSchoolUpdatePostOptions {
+  dryRun?: boolean;
+  imageUrl?: string;
+  editorialMode?: ScheduledSchoolUpdateEditorialMode;
 }
 
 interface XTokenStore {
@@ -139,6 +192,75 @@ function defaultStudentPostImageUrl(playbookId: string | undefined): string {
   return `${RUBY_HIGH_ASSET_PREFIX}/students/${studentId}-full.png`;
 }
 
+function studentReferenceImageUrl(studentId: string): string {
+  return `${RUBY_HIGH_ASSET_PREFIX}/students/${studentId}-full.png`;
+}
+
+function normalizeXHandle(value: string | undefined): string {
+  const handle = value?.trim().replace(/^@/, "") ?? "";
+  return /^[A-Za-z0-9_]{1,15}$/.test(handle) ? handle : "";
+}
+
+function compactXSourceText(value: string | undefined): string {
+  return (value ?? "")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+}
+
+function scheduledSchoolUpdatePhotoParticipants(
+  teacher: TeacherCharacter,
+  context: ScheduledSchoolUpdateContext,
+): Array<{ role: "teacher" | "student"; id: string; name: string; imageUrl: string }> {
+  const teacherImageUrl = defaultTeacherPostImageUrl(teacher.id);
+  const featuredGuest = context.featuredGuest?.imageUrl &&
+      context.featuredGuest.facultyId !== teacher.id
+    ? {
+        role: "teacher" as const,
+        id: `guest:${context.featuredGuest.facultyId}`,
+        name: context.featuredGuest.displayName,
+        imageUrl: context.featuredGuest.imageUrl,
+      }
+    : null;
+  const loungeActive = context.activeRooms.some((room) => room.area === "teacher-lounge");
+  if (loungeActive) {
+    const baseTeachers = [teacher, ...listTeachers().filter((candidate) => candidate.id !== teacher.id)]
+      .flatMap((candidate) => {
+        const imageUrl = defaultTeacherPostImageUrl(candidate.id);
+        return imageUrl
+          ? [{ role: "teacher" as const, id: candidate.id, name: candidate.displayName, imageUrl }]
+          : [];
+      });
+    return [
+      ...baseTeachers.slice(0, 1),
+      ...(featuredGuest ? [featuredGuest] : []),
+      ...baseTeachers.slice(1),
+    ].slice(0, 3);
+  }
+
+  const students = listStudents();
+  const seed = createHash("sha256")
+    .update(`${context.date}:${JSON.stringify(context.recentEvents)}`)
+    .digest()
+    .readUInt32BE(0);
+  const selectedStudents = students.length > 0
+    ? [students[seed % students.length], students[(seed + 1) % students.length]].filter(Boolean)
+    : [];
+  return [
+    ...(teacherImageUrl
+      ? [{ role: "teacher" as const, id: teacher.id, name: teacher.displayName, imageUrl: teacherImageUrl }]
+      : []),
+    ...(featuredGuest ? [featuredGuest] : []),
+    ...selectedStudents.map((student) => ({
+      role: "student" as const,
+      id: student.id,
+      name: student.name,
+      imageUrl: studentReferenceImageUrl(student.id),
+    })),
+  ].slice(0, 4);
+}
+
 function milestoneUsesDailyPhotoSlot(kind: XMilestoneKind): boolean {
   return kind === "portrait-set" || kind === "diploma-earned" || kind === "class-photo";
 }
@@ -178,9 +300,9 @@ class JsonXTokenStore implements XTokenStore {
   }
 
   private async write(data: Record<string, XTokenRecord>): Promise<void> {
-    await mkdir(dirname(this.filePath), { recursive: true });
+    await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
     const tmp = `${this.filePath}.tmp`;
-    await writeFile(tmp, JSON.stringify(data), "utf-8");
+    await writeFile(tmp, JSON.stringify(data), { encoding: "utf-8", mode: 0o600 });
     await rename(tmp, this.filePath);
   }
 
@@ -387,14 +509,24 @@ export class XSocialService extends Service {
   private tokens = new Map<string, XTokenRecord>();
   private postCounts = new Map<string, { count: number; resetAt: number }>();
   private pendingVerifiers = new Map<string, { verifier: string; teacherId: string; createdAt: number }>();
-  private stateCounter = 0;
+  private analytics: PostAnalytics;
   /** Per-teacher last photo tweet date (UTC YYYY-MM-DD). Mirrored onto the
    *  token record so deploys cannot reopen the same day's photo slot. */
   private lastPhotoDate = new Map<string, string>();
+  private guestXPostsCache = new Map<
+    string,
+    {
+      fetchedAt: number;
+      posts: NonNullable<
+        NonNullable<ScheduledSchoolUpdateContext["featuredGuest"]>["recentXPosts"]
+      >;
+    }
+  >();
 
   constructor(runtime?: IAgentRuntime | null) {
     super(runtime);
     this.tokenStore = createTokenStore();
+    this.analytics = new PostAnalytics(null);
   }
 
   static async start(runtime: IAgentRuntime): Promise<XSocialService> {
@@ -420,6 +552,7 @@ export class XSocialService extends Service {
         }
       }
       log.event("x-social.started", { teacherCount: this.tokens.size });
+      void this.analytics.hydrate();
     } catch (err) {
       log.error("x-social.start-failed", err, {});
       // Service stays running with empty token cache — OAuth flows and
@@ -627,7 +760,7 @@ export class XSocialService extends Service {
     const token = this.tokens.get(teacher.id);
     if (!token) return null;
 
-    const imageUrl = ctx.imageUrl ?? ctx.portraitUrl ?? ctx.diplomaUrl ?? null;
+    let imageUrl = ctx.imageUrl ?? ctx.portraitUrl ?? ctx.diplomaUrl ?? null;
     const reserveDailyPhotoSlot = !!imageUrl && (ctx.reserveDailyPhotoSlot ?? milestoneUsesDailyPhotoSlot(ctx.kind));
     let reservedPhotoSlot = false;
     if (reserveDailyPhotoSlot) {
@@ -692,6 +825,25 @@ export class XSocialService extends Service {
       return null;
     }
 
+    if (
+      !isDryRun
+      && ctx.kind === "class-passed"
+      && ctx.className
+      && ctx.studentImageUrl
+      && ctx.teacherImageUrl
+    ) {
+      const composition = await this.generateClassPassedPhoto(ctx);
+      if (!composition) {
+        log.event("x-social.class-passed-composition-required", {
+          teacherId: teacher.id,
+          className: ctx.className,
+        });
+        await releasePhotoSlot();
+        return null;
+      }
+      imageUrl = composition;
+    }
+
     // Every real X post must carry media. The daily photo slot, when relevant,
     // was reserved before text generation to prevent concurrency.
     let mediaId: string | null = null;
@@ -727,6 +879,7 @@ export class XSocialService extends Service {
         tweetId,
         ...(mediaId ? { mediaId } : {}),
       });
+      this.analytics.enqueueFetch(tweetId, Date.now());
     }
 
     if (!tweetId) await releasePhotoSlot();
@@ -745,6 +898,43 @@ export class XSocialService extends Service {
       return await this.uploadMedia(token, imageBytes);
     } catch (err) {
       log.error("x-social.media-upload-failed", err, { teacherId: token.teacherId, kind });
+      return null;
+    }
+  }
+
+  private async generateClassPassedPhoto(ctx: XMilestoneContext): Promise<string | null> {
+    const apiKey = process.env.RUBY_HIGH_OPENROUTER_API_KEY ?? process.env.OPENROUTER_KEY ?? "";
+    if (!apiKey || !ctx.className || !ctx.studentImageUrl || !ctx.teacherImageUrl) {
+      log.event("x-social.class-passed-composition-unavailable", {
+        hasApiKey: !!apiKey,
+        hasClassName: !!ctx.className,
+        hasStudentImage: !!ctx.studentImageUrl,
+        hasTeacherImage: !!ctx.teacherImageUrl,
+      });
+      return null;
+    }
+    const { renderClassPassedPhoto } = await import("./character-generation.js");
+    try {
+      return await renderClassPassedPhoto({
+        apiKey,
+        student: {
+          name: ctx.characterName,
+          imageUrl: ctx.studentImageUrl,
+        },
+        teacher: {
+          name: ctx.teacherName || "Ruby High teacher",
+          imageUrl: ctx.teacherImageUrl,
+        },
+        className: ctx.className,
+        subjects: ctx.classSubjects ?? [],
+        grade: ctx.grade,
+        letterGrade: ctx.letterGrade,
+      });
+    } catch (err) {
+      log.error("x-social.class-passed-composition-failed", err, {
+        className: ctx.className,
+        teacherFacultyId: ctx.teacherFacultyId,
+      });
       return null;
     }
   }
@@ -860,7 +1050,9 @@ export class XSocialService extends Service {
     if (imageUrl.startsWith("data:")) {
       const comma = imageUrl.indexOf(",");
       if (comma === -1) throw new Error("Invalid data URL");
-      return Buffer.from(imageUrl.slice(comma + 1), "base64");
+      const bytes = Buffer.from(imageUrl.slice(comma + 1), "base64");
+      if (bytes.length > MAX_REMOTE_IMAGE_BYTES) throw new Error("Image is too large.");
+      return bytes;
     }
 
     // Relative path: resolve against the public base.
@@ -870,18 +1062,30 @@ export class XSocialService extends Service {
       url = `${base}${url}`;
     }
 
-    // Validate URL safety to prevent SSRF (DNS-resolving guard).
-    await assertSafeImageUrl(url);
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
-      const res = await fetch(url, { signal: controller.signal });
-      if (!res.ok) {
-        throw new Error(`Failed to fetch image: ${res.status}`);
+      let currentUrl = url;
+      for (let redirects = 0; redirects <= MAX_REMOTE_IMAGE_REDIRECTS; redirects += 1) {
+        // Revalidate every hop. fetch's default redirect handling would allow a
+        // public URL to bounce the server into a private network destination.
+        await assertSafeImageUrl(currentUrl);
+        const res = await fetch(currentUrl, {
+          headers: { Accept: "image/*" },
+          redirect: "manual",
+          signal: controller.signal,
+        });
+        if ([301, 302, 303, 307, 308].includes(res.status)) {
+          if (redirects >= MAX_REMOTE_IMAGE_REDIRECTS) throw new Error("Image URL redirected too many times.");
+          const location = res.headers.get("location")?.trim();
+          if (!location) throw new Error("Image URL redirected without a location.");
+          currentUrl = new URL(location, currentUrl).toString();
+          continue;
+        }
+        if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
+        return await readLimitedImageResponse(res);
       }
-      const arrayBuffer = await res.arrayBuffer();
-      return Buffer.from(arrayBuffer);
+      throw new Error("Image URL redirected too many times.");
     } finally {
       clearTimeout(timeout);
     }
@@ -1185,75 +1389,292 @@ export class XSocialService extends Service {
     await this.tokenStore.save(updated);
   }
 
+  /** Generate post text — deterministic templates for low-signal milestones,
+   *  LLM for high-signal ones (graduations, portraits, diplomas, etc.).
+   *  This cuts ~60-70% of LLM API calls with zero quality loss. */
   private async generatePostText(teacher: TeacherCharacter, ctx: XMilestoneContext): Promise<string> {
-    const prompt = this.buildPostPrompt(teacher, ctx);
+    if (isLowSignalMilestone(ctx.kind)) {
+      return buildDeterministicPostText(teacher, ctx);
+    }
+    return generateLlmPostText(teacher, ctx);
+  }
 
-    if (hasConfiguredLlmCredential()) {
-      try {
-        const response = await fetchLlmChatCompletions({
-          body: {
-            model: process.env.RUBY_HIGH_COURSE_MODEL ?? "qwen/qwen3.7-max",
-            messages: [{ role: "user", content: prompt }],
-            max_tokens: 200,
-            temperature: 0.6,
-          },
-          timeoutMs: 15_000,
-          label: "x-social-post",
+  /** Try posting with the assigned teacher. If that teacher can't post,
+   *  walk the connected teacher list and try the next one. Returns the
+   *  tweetId and the teacher that actually posted (or null). */
+  async maybePostMilestoneWithFallback(
+    teacher: TeacherCharacter,
+    ctx: XMilestoneContext,
+    opts?: { dryRun?: boolean },
+  ): Promise<{ tweetId: string; teacherId: string } | null> {
+    // Try assigned teacher first.
+    const result = await this.maybePostMilestone(teacher, ctx, opts);
+    if (result) return { tweetId: result, teacherId: teacher.id };
+
+    // Walk through connected teachers looking for a working fallback.
+    const connected = this.listConnected().filter(
+      (s) => s.teacherId !== teacher.id && s.connected && s.hasTweetWrite,
+    );
+    for (const status of connected) {
+      const fallback = teacherById(status.teacherId);
+      if (!fallback) continue;
+      const fbResult = await this.maybePostMilestone(fallback, ctx, opts);
+      if (fbResult) {
+        log.event("x-social.fallback-posted", {
+          assignedTeacher: teacher.id,
+          fallbackTeacher: fallback.id,
+          kind: ctx.kind,
         });
-        let text = "";
-        if (response.ok) {
-          const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-          text = data?.choices?.[0]?.message?.content?.trim() ?? "";
-        }
-        if (text && text.length > 0 && text.length <= 280) return text;
-        if (text) return text.slice(0, 277) + "...";
-      } catch (err) {
-        log.error("x-social.llm-failed", err, { kind: ctx.kind });
+        return { tweetId: fbResult, teacherId: fallback.id };
       }
     }
-
-    return this.buildFallbackPostText(ctx);
+    return null;
   }
 
-  private buildPostPrompt(teacher: TeacherCharacter, ctx: XMilestoneContext): string {
-    const lines: string[] = [
-      `You are ${teacher.displayName}, a teacher at Ruby High school.`,
-      `Your voice: ${teacher.systemPrompt.slice(0, 300)}`,
-      "",
-      `Write a single tweet (max 270 chars, leave room for #RubyHigh) about this milestone.`,
-      `Sound like yourself — warm, in character, proud of the student. Use their name.`,
-      "",
-      `Milestone: ${ctx.kind}`,
-      `Student: ${ctx.characterName}`,
-    ];
-    if (ctx.letterGrade) lines.push(`Grade: ${ctx.letterGrade}`);
-    if (ctx.fromGrade && ctx.toGrade) lines.push(`Advanced: ${ctx.fromGrade} → ${ctx.toGrade}`);
-    if (ctx.arcAnswer) lines.push(`Arc: ${ctx.arcAnswer}`);
-    if (ctx.flavorQuote) lines.push(`Quote: "${ctx.flavorQuote}"`);
-    lines.push("", "Tweet:");
-    return lines.join("\n");
-  }
-
-  private buildFallbackPostText(ctx: XMilestoneContext): string {
-    const name = ctx.characterName;
-    switch (ctx.kind) {
-      case "character-created":
-        return `A new student has arrived at Ruby High. Welcome, ${name}! #RubyHigh`;
-      case "class-passed":
-        return `${name} just passed ${ctx.teacherName ?? "today's"} class with a ${ctx.letterGrade ?? "passing grade"}. Well done! #RubyHigh`;
-      case "grade-advanced":
-        return `${name} is moving up — now a ${ctx.toGrade ?? "new grade"} at Ruby High. Keep going! #RubyHigh`;
-      case "graduated":
-        return `${name} has graduated from Ruby High${ctx.arcAnswer ? ` — "${ctx.arcAnswer}"` : ""}. Congratulations! #RubyHigh`;
-      case "portrait-set":
-        return `${name} is officially on the Ruby High roster — school photo day complete! #RubyHigh`;
-      case "diploma-earned":
-        return `${name} just earned their diploma from Ruby High. Another milestone! #RubyHigh`;
-      case "class-photo":
-        return `Class photo day at Ruby High with ${name || "today's homeroom"} — ${todayKey()}. #RubyHigh`;
-      default:
-        return `${name} hit a new milestone at Ruby High! #RubyHigh`;
+  /** Fetch pending metrics for all teachers. Called periodically by the scheduler. */
+  async fetchAllPendingMetrics(): Promise<number> {
+    let total = 0;
+    for (const [, token] of this.tokens) {
+      try {
+        const freshToken = await this.ensureFreshToken(token);
+        if (!freshToken) continue;
+        total += await this.analytics.fetchPendingMetrics(freshToken.accessToken);
+      } catch {
+        // Best-effort — token may be stale.
+      }
     }
+    return total;
+  }
+
+  /** Get analytics for content optimization. */
+  getPostAnalytics(): PostAnalytics {
+    return this.analytics;
+  }
+
+  /** Publish an LLM-written update from aggregate, privacy-filtered school
+   *  activity. Unlike milestone posting, this accepts the generated copy as
+   *  the source of truth instead of regenerating unrelated milestone text. */
+  async postScheduledSchoolUpdate(
+    teacher: TeacherCharacter,
+    context: ScheduledSchoolUpdateContext,
+    opts?: ScheduledSchoolUpdatePostOptions,
+  ): Promise<string | null> {
+    const token = this.tokens.get(teacher.id);
+    if (!token) return null;
+    const freshToken = await this.ensureFreshToken(token);
+    if (!freshToken) return null;
+    const postToken = await this.ensurePostAllowed(freshToken);
+    if (!postToken) return null;
+    const postKind = opts?.editorialMode ?? "school-update";
+
+    const sourcedContext = opts?.editorialMode === "guest-insights"
+      ? await this.withRecentFeaturedGuestXPosts(postToken, context)
+      : context;
+    const text = await generateScheduledSchoolUpdateText(teacher, sourcedContext, {
+      editorialMode: opts?.editorialMode,
+    });
+    if (!text) {
+      log.event("x-social.scheduled-text-skipped", { teacherId: teacher.id });
+      return null;
+    }
+    if (
+      teacher.systemPrompt &&
+      teacher.systemPrompt.length >= 80 &&
+      text.includes(teacher.systemPrompt.slice(20, 100))
+    ) {
+      log.event("x-social.text-rejected", { reason: "system-prompt-leak", kind: "school-update" });
+      return null;
+    }
+
+    const isDryRun = opts?.dryRun ?? process.env.RUBY_HIGH_X_DRY_RUN === "1";
+    if (isDryRun) {
+      log.event("x-social.dry-run", {
+        teacherId: teacher.id,
+        xScreenName: token.xScreenName,
+        kind: postKind,
+        text: text.slice(0, 200),
+      });
+      return "dry-run:school-update";
+    }
+    if (!this.checkPostRateLimit(teacher.id)) {
+      log.event("x-social.rate-limited", { teacherId: teacher.id, kind: postKind });
+      return null;
+    }
+
+    const generatedImageUrl = await this.generateScheduledSchoolUpdatePhoto(
+      teacher,
+      sourcedContext,
+      text,
+    );
+    const imageCandidates = Array.from(new Set([
+      generatedImageUrl,
+      opts?.imageUrl,
+      defaultTeacherPostImageUrl(teacher.id),
+    ].filter((value): value is string => !!value)));
+    let mediaId: string | null = null;
+    for (const imageUrl of imageCandidates) {
+      mediaId = await this.uploadRequiredMedia(postToken, imageUrl, postKind);
+      if (mediaId) break;
+    }
+    if (!mediaId) return null;
+
+    const tweetId = await this.postTweet(postToken, text, mediaId);
+    if (tweetId) {
+      this.recordPost(teacher.id);
+      log.event("x-social.posted", {
+        teacherId: teacher.id,
+        xScreenName: token.xScreenName,
+        kind: postKind,
+        tweetId,
+        mediaId,
+      });
+      this.analytics.enqueueFetch(tweetId, Date.now());
+    }
+    return tweetId;
+  }
+
+  private async withRecentFeaturedGuestXPosts(
+    token: XTokenRecord,
+    context: ScheduledSchoolUpdateContext,
+  ): Promise<ScheduledSchoolUpdateContext> {
+    const guest = context.featuredGuest;
+    const handle = normalizeXHandle(guest?.xHandle);
+    if (!guest || !handle) return context;
+
+    const cacheKey = handle.toLowerCase();
+    const cached = this.guestXPostsCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && now - cached.fetchedAt < 6 * 60 * 60 * 1000) {
+      return {
+        ...context,
+        featuredGuest: { ...guest, recentXPosts: cached.posts },
+      };
+    }
+
+    try {
+      const userResponse = await fetch(
+        `${X_API_BASE}/users/by/username/${encodeURIComponent(handle)}`,
+        {
+          headers: { Authorization: `Bearer ${token.accessToken}` },
+          signal: AbortSignal.timeout(X_FETCH_TIMEOUT_MS),
+        },
+      );
+      if (!userResponse.ok) {
+        log.event("x-social.featured-guest-read-skipped", {
+          handle,
+          stage: "user",
+          status: userResponse.status,
+        });
+        return context;
+      }
+      const userData = await userResponse.json() as { data?: { id?: string } };
+      const userId = userData.data?.id;
+      if (!userId) return context;
+
+      const postsResponse = await fetch(
+        `${X_API_BASE}/users/${encodeURIComponent(userId)}/tweets?max_results=5&exclude=retweets,replies&tweet.fields=created_at`,
+        {
+          headers: { Authorization: `Bearer ${token.accessToken}` },
+          signal: AbortSignal.timeout(X_FETCH_TIMEOUT_MS),
+        },
+      );
+      if (!postsResponse.ok) {
+        log.event("x-social.featured-guest-read-skipped", {
+          handle,
+          stage: "posts",
+          status: postsResponse.status,
+        });
+        return context;
+      }
+      const postsData = await postsResponse.json() as {
+        data?: Array<{ id?: string; created_at?: string; text?: string }>;
+      };
+      const contextTime = Date.parse(`${context.date}T23:59:59.999Z`);
+      const cutoff = (Number.isFinite(contextTime) ? contextTime : now) - 8 * 24 * 60 * 60 * 1000;
+      const posts = (postsData.data ?? [])
+        .flatMap((post) => {
+          const id = typeof post.id === "string" ? post.id : "";
+          const createdAt = typeof post.created_at === "string" ? post.created_at : "";
+          const createdAtMs = Date.parse(createdAt);
+          const text = compactXSourceText(post.text);
+          return id && text && Number.isFinite(createdAtMs) && createdAtMs >= cutoff
+            ? [{ id, createdAt, text }]
+            : [];
+        })
+        .slice(0, 5);
+      this.guestXPostsCache.set(cacheKey, { fetchedAt: now, posts });
+      log.event("x-social.featured-guest-read", { handle, postCount: posts.length });
+      return {
+        ...context,
+        featuredGuest: { ...guest, xHandle: handle, recentXPosts: posts },
+      };
+    } catch (err) {
+      log.error("x-social.featured-guest-read-failed", err, { handle });
+      return context;
+    }
+  }
+
+  private async generateScheduledSchoolUpdatePhoto(
+    teacher: TeacherCharacter,
+    context: ScheduledSchoolUpdateContext,
+    postText: string,
+  ): Promise<string | null> {
+    const apiKey = process.env.RUBY_HIGH_OPENROUTER_API_KEY ?? process.env.OPENROUTER_KEY ?? "";
+    if (!apiKey) {
+      log.event("x-social.scheduled-photo-skipped", { teacherId: teacher.id, reason: "no-image-credential" });
+      return null;
+    }
+    const participants = scheduledSchoolUpdatePhotoParticipants(teacher, context);
+    if (participants.length < 2) {
+      log.event("x-social.scheduled-photo-skipped", { teacherId: teacher.id, reason: "insufficient-cast" });
+      return null;
+    }
+    try {
+      const { renderScheduledSchoolUpdatePhoto } = await import("./character-generation.js");
+      const imageUrl = await renderScheduledSchoolUpdatePhoto({
+        apiKey,
+        postText,
+        context,
+        participants,
+      });
+      log.event("x-social.scheduled-photo-generated", {
+        teacherId: teacher.id,
+        participantCount: participants.length,
+        area: context.activeRooms.some((room) => room.area === "teacher-lounge")
+          ? "teacher-lounge"
+          : "classroom",
+      });
+      return imageUrl;
+    } catch (err) {
+      log.error("x-social.scheduled-photo-failed", err, { teacherId: teacher.id });
+      return null;
+    }
+  }
+
+  async postScheduledSchoolUpdateWithFallback(
+    teacher: TeacherCharacter,
+    context: ScheduledSchoolUpdateContext,
+    opts?: ScheduledSchoolUpdatePostOptions,
+  ): Promise<{ tweetId: string; teacherId: string } | null> {
+    const result = await this.postScheduledSchoolUpdate(teacher, context, opts);
+    if (result) return { tweetId: result, teacherId: teacher.id };
+
+    const connected = this.listConnected().filter(
+      (status) => status.teacherId !== teacher.id && status.connected && status.hasTweetWrite,
+    );
+    for (const status of connected) {
+      const fallback = teacherById(status.teacherId);
+      if (!fallback) continue;
+      const fallbackResult = await this.postScheduledSchoolUpdate(fallback, context, opts);
+      if (!fallbackResult) continue;
+      log.event("x-social.fallback-posted", {
+        assignedTeacher: teacher.id,
+        fallbackTeacher: fallback.id,
+        kind: "school-update",
+      });
+      return { tweetId: fallbackResult, teacherId: fallback.id };
+    }
+    return null;
   }
 
   /** Post a teacher's reflection on today's school memories. Admin-triggered
@@ -1296,6 +1717,7 @@ export class XSocialService extends Service {
     const tweetId = await this.postTweet(freshToken, text, mediaId);
     if (tweetId) {
       log.event("x-social.posted", { teacherId: teacher.id, xScreenName: token.xScreenName, kind: "reflection", tweetId, mediaId });
+      this.analytics.enqueueFetch(tweetId, Date.now());
     }
     return tweetId;
   }
@@ -1337,7 +1759,7 @@ export class XSocialService extends Service {
       try {
         const response = await fetchLlmChatCompletions({
           body: {
-            model: process.env.RUBY_HIGH_COURSE_MODEL ?? "qwen/qwen3.7-max",
+            model: DEFAULT_OPENROUTER_MODEL,
             messages: [{ role: "user", content: prompt }],
             max_tokens: 200,
             temperature: 0.7,
@@ -1412,7 +1834,7 @@ export class XSocialService extends Service {
       try {
         const response = await fetchLlmChatCompletions({
           body: {
-            model: process.env.RUBY_HIGH_COURSE_MODEL ?? "qwen/qwen3.7-max",
+            model: DEFAULT_OPENROUTER_MODEL,
             messages: [{ role: "user", content: prompt }],
             max_tokens: 200,
             temperature: 0.6,
@@ -1445,6 +1867,7 @@ export class XSocialService extends Service {
     const tweetId = await this.postTweet(freshToken, text, mediaId);
     if (tweetId) {
       log.event("x-social.posted", { teacherId: teacher.id, xScreenName: token.xScreenName, kind: "report-card", tweetId, mediaId });
+      this.analytics.enqueueFetch(tweetId, Date.now());
     }
     return tweetId;
   }

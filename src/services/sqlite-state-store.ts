@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { dirname } from "node:path";
-import { mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import type { QuizState } from "../types.js";
 import type {
   AuthSessionRecord,
@@ -95,12 +95,13 @@ export class SqliteStateStore implements StateStoreLike {
     this.ttlSeconds = opts.ttlSeconds ?? DEFAULT_TTL_SECONDS;
     if (this.path !== ":memory:") {
       try {
-        mkdirSync(dirname(this.path), { recursive: true });
+        mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
       } catch {
         /* dir may already exist */
       }
     }
     this.db = new DatabaseSync(this.path);
+    if (this.path !== ":memory:") chmodSync(this.path, 0o600);
     // WAL: concurrent readers don't block the writer, and it's what Litestream
     // streams. busy_timeout avoids spurious SQLITE_BUSY under brief contention.
     this.db.exec("PRAGMA journal_mode = WAL;");

@@ -51,9 +51,9 @@ export interface SolanaBillingProduct {
   packCount: number;
   cardCount: number;
   hallPasses: number;
-  tokenAmount: string;
-  tokenAmountBaseUnits: string;
-  tokenSymbol: string;
+  solAmount: string;
+  priceLamports: string;
+  symbol: "SOL";
   description: string;
 }
 
@@ -109,20 +109,8 @@ interface SolanaBillingConfig {
   configured: boolean;
   rpcUrl: string;
   recipient: string;
-  mint: string;
-  symbol: string;
-  decimals: number;
+  symbol: "SOL";
   products: SolanaBillingProduct[];
-}
-
-interface SolanaTokenBalance {
-  accountIndex?: number;
-  mint?: string;
-  owner?: string;
-  uiTokenAmount?: {
-    amount?: string;
-    decimals?: number;
-  };
 }
 
 interface SolanaParsedTransaction {
@@ -130,8 +118,8 @@ interface SolanaParsedTransaction {
   blockTime?: number | null;
   meta?: {
     err?: unknown;
-    preTokenBalances?: SolanaTokenBalance[];
-    postTokenBalances?: SolanaTokenBalance[];
+    preBalances?: number[];
+    postBalances?: number[];
   } | null;
   transaction?: {
     signatures?: string[];
@@ -149,30 +137,21 @@ interface SolanaRpcResponse<T> {
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 const STRIPE_SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
-const DEFAULT_SOLANA_MEMECOIN_MINT = "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump";
 const DEFAULT_SOLANA_TREASURY_OWNER = "AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j";
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const BASE58ISH = /^[1-9A-HJ-NP-Za-km-z]+$/;
-const SOLANA_TOKEN_PRICE_ENVS: Record<string, string> = {
-  "card-pack-1": "RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS",
-  "card-pack-3": "RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS",
-  "card-pack-5": "RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS",
-  "card-pack-10": "RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS",
-  "hall-pass-5": "RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS",
-  "hall-pass-20": "RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS",
-  "hall-pass-50": "RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS",
-  "hall-pass-100": "RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS",
+const SOLANA_PACK_PRICE_ENVS: Record<string, string> = {
+  "card-pack-1": "RUBY_HIGH_SOLANA_PACK_1_SOL",
+  "card-pack-3": "RUBY_HIGH_SOLANA_PACK_3_SOL",
+  "card-pack-5": "RUBY_HIGH_SOLANA_PACK_5_SOL",
+  "card-pack-10": "RUBY_HIGH_SOLANA_PACK_10_SOL",
 };
 
-const SOLANA_TOKEN_PRICE_DEFAULTS: Record<string, string> = {
-  "card-pack-1": "1000000",
-  "card-pack-3": "2800000",
-  "card-pack-5": "4500000",
-  "card-pack-10": "8500000",
-  "hall-pass-5": "1000000",
-  "hall-pass-20": "2800000",
-  "hall-pass-50": "4500000",
-  "hall-pass-100": "8500000",
+const SOLANA_PACK_PRICE_DEFAULTS: Record<string, string> = {
+  "card-pack-1": "0.01",
+  "card-pack-3": "0.028",
+  "card-pack-5": "0.045",
+  "card-pack-10": "0.085",
 };
 
 function envTrim(name: string): string | null {
@@ -185,13 +164,6 @@ function readPositiveIntEnv(name: string, fallback: number): number {
   if (!raw) return fallback;
   const parsed = Math.floor(Number(raw));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function readBoundedIntEnv(name: string, fallback: number, min: number, max: number): number {
-  const raw = envTrim(name);
-  if (!raw) return fallback;
-  const parsed = Math.floor(Number(raw));
-  return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
 }
 
 function billingCurrency(): string {
@@ -221,20 +193,8 @@ function rpcHostForPublicStatus(value: string): string {
   }
 }
 
-function solanaMemecoinMint(): string {
-  return envTrim("RUBY_HIGH_SOLANA_MEMECOIN_MINT") ?? DEFAULT_SOLANA_MEMECOIN_MINT;
-}
-
 function solanaTreasuryOwner(): string {
   return envTrim("RUBY_HIGH_SOLANA_TREASURY_OWNER") ?? DEFAULT_SOLANA_TREASURY_OWNER;
-}
-
-function solanaMemecoinSymbol(): string {
-  return envTrim("RUBY_HIGH_SOLANA_MEMECOIN_SYMBOL") ?? "RUBY";
-}
-
-function solanaMemecoinDecimals(): number {
-  return readBoundedIntEnv("RUBY_HIGH_SOLANA_MEMECOIN_DECIMALS", 6, 0, 18);
 }
 
 export function billingProducts(): BillingProduct[] {
@@ -295,7 +255,7 @@ function isSolanaSignature(value: string): boolean {
   return value.length >= 64 && value.length <= 100 && BASE58ISH.test(value);
 }
 
-function parseTokenAmountToBaseUnits(raw: string, decimals: number): bigint | null {
+function parseDecimalToBaseUnits(raw: string, decimals: number): bigint | null {
   const clean = raw.trim();
   if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(clean)) return null;
   const [whole, fractional = ""] = clean.split(".");
@@ -309,7 +269,7 @@ function parseTokenAmountToBaseUnits(raw: string, decimals: number): bigint | nu
   return units > 0n ? units : null;
 }
 
-function formatTokenAmount(units: bigint, decimals: number): string {
+function formatSolAmount(units: bigint, decimals: number): string {
   if (decimals <= 0) return units.toString();
   const multiplier = 10n ** BigInt(decimals);
   const whole = units / multiplier;
@@ -319,25 +279,22 @@ function formatTokenAmount(units: bigint, decimals: number): string {
   return `${whole}.${fractionalText}`;
 }
 
-function solanaTokenAmountForProduct(product: BillingProduct, decimals: number): { display: string; baseUnits: string } | null {
-  const envName = SOLANA_TOKEN_PRICE_ENVS[product.id];
+function solanaAmountForProduct(product: BillingProduct): { display: string; lamports: string } | null {
+  const envName = SOLANA_PACK_PRICE_ENVS[product.id];
   if (!envName) return null;
-  const raw = envTrim(envName) ?? SOLANA_TOKEN_PRICE_DEFAULTS[product.id] ?? "1000000";
-  const baseUnits = parseTokenAmountToBaseUnits(raw, decimals);
-  if (!baseUnits) return null;
+  const raw = envTrim(envName) ?? SOLANA_PACK_PRICE_DEFAULTS[product.id] ?? "0.01";
+  const lamports = parseDecimalToBaseUnits(raw, 9);
+  if (!lamports) return null;
   return {
-    display: formatTokenAmount(baseUnits, decimals),
-    baseUnits: baseUnits.toString(),
+    display: formatSolAmount(lamports, 9),
+    lamports: lamports.toString(),
   };
 }
 
 function solanaBillingConfig(): SolanaBillingConfig {
-  const decimals = solanaMemecoinDecimals();
-  const mint = solanaMemecoinMint();
   const recipient = solanaTreasuryOwner();
-  const symbol = solanaMemecoinSymbol();
   const products = solanaPackProducts().flatMap((product): SolanaBillingProduct[] => {
-    const price = solanaTokenAmountForProduct(product, decimals);
+    const price = solanaAmountForProduct(product);
     if (!price) return [];
     return [{
       id: product.id,
@@ -345,19 +302,17 @@ function solanaBillingConfig(): SolanaBillingConfig {
       packCount: product.packCount,
       cardCount: product.cardCount,
       hallPasses: product.hallPasses,
-      tokenAmount: price.display,
-      tokenAmountBaseUnits: price.baseUnits,
-      tokenSymbol: symbol,
+      solAmount: price.display,
+      priceLamports: price.lamports,
+      symbol: "SOL",
       description: product.description,
     }];
   });
   return {
-    configured: isBase58Address(mint) && isBase58Address(recipient) && products.length > 0,
+    configured: isBase58Address(recipient) && products.length > 0,
     rpcUrl: solanaRpcUrl(),
     recipient,
-    mint,
-    symbol,
-    decimals,
+    symbol: "SOL",
     products,
   };
 }
@@ -395,15 +350,14 @@ function base58Encode(bytes: Uint8Array): string {
 
 function solanaPaymentReference(sessionId: string, productId: string): string {
   const digest = createHash("sha256")
-    .update(`ruby-high:solana-payment:v1:${sessionId}:${productId}`)
+    .update(`ruby-high:solana-payment:v2:${sessionId}:${productId}`)
     .digest();
   return base58Encode(digest);
 }
 
 function solanaPayUrl(config: SolanaBillingConfig, product: SolanaBillingProduct, reference: string): string {
   const params = new URLSearchParams();
-  params.set("amount", product.tokenAmount);
-  params.set("spl-token", config.mint);
+  params.set("amount", product.solAmount);
   params.set("reference", reference);
   params.set("label", "Ruby High");
   params.set("message", `${product.packCount} Ruby High ${product.packCount === 1 ? "Pack" : "Packs"}`);
@@ -411,7 +365,7 @@ function solanaPayUrl(config: SolanaBillingConfig, product: SolanaBillingProduct
 }
 
 function solanaTransactionKey(signature: string): string {
-  return `solana:spl-token-transfer:${signature.trim()}`;
+  return `solana:sol-transfer:${signature.trim()}`;
 }
 
 function accountKeyPubkey(value: string | { pubkey?: string }): string {
@@ -428,32 +382,18 @@ function solanaTransactionHasAccount(transaction: SolanaParsedTransaction, addre
   return Array.isArray(accountKeys) && accountKeys.some((entry) => accountKeyPubkey(entry) === address);
 }
 
-function tokenBalanceAmount(balance: SolanaTokenBalance): bigint {
-  const amount = balance.uiTokenAmount?.amount;
-  if (typeof amount !== "string" || !/^\d+$/.test(amount)) return 0n;
-  return BigInt(amount);
-}
-
-function solanaTreasuryTokenDelta(transaction: SolanaParsedTransaction, config: SolanaBillingConfig): bigint {
-  const pre = new Map<number, bigint>();
-  const post = new Map<number, bigint>();
-  const collect = (balances: SolanaTokenBalance[] | undefined, target: Map<number, bigint>) => {
-    if (!Array.isArray(balances)) return;
-    for (const balance of balances) {
-      if (balance.mint !== config.mint || balance.owner !== config.recipient) continue;
-      const index = Math.floor(Number(balance.accountIndex));
-      if (!Number.isFinite(index)) continue;
-      target.set(index, tokenBalanceAmount(balance));
-    }
-  };
-  collect(transaction.meta?.preTokenBalances, pre);
-  collect(transaction.meta?.postTokenBalances, post);
-  const indexes = new Set([...pre.keys(), ...post.keys()]);
-  let delta = 0n;
-  for (const index of indexes) {
-    delta += (post.get(index) ?? 0n) - (pre.get(index) ?? 0n);
+function solanaTreasuryLamportDelta(transaction: SolanaParsedTransaction, config: SolanaBillingConfig): bigint {
+  const accountKeys = transaction.transaction?.message?.accountKeys;
+  const index = Array.isArray(accountKeys)
+    ? accountKeys.findIndex((entry) => accountKeyPubkey(entry) === config.recipient)
+    : -1;
+  if (index < 0) return 0n;
+  const pre = transaction.meta?.preBalances?.[index];
+  const post = transaction.meta?.postBalances?.[index];
+  if (!Number.isSafeInteger(pre) || !Number.isSafeInteger(post)) {
+    throw new Error("Solana RPC returned invalid treasury balances.");
   }
-  return delta;
+  return BigInt(post!) - BigInt(pre!);
 }
 
 async function fetchSolanaTransaction(config: SolanaBillingConfig, signature: string): Promise<SolanaParsedTransaction | null> {
@@ -555,8 +495,9 @@ async function verifySolanaPayment(
   product: SolanaBillingProduct,
   sessionId: string,
   signature: string,
+  expectedPayer: string,
   expectedPackAssetAddress = "",
-): Promise<{ reference: string; receivedBaseUnits: string; slot?: number; blockTime?: number | null }> {
+): Promise<{ reference: string; receivedLamports: string; slot?: number; blockTime?: number | null }> {
   const cleanSignature = signature.trim();
   if (!isSolanaSignature(cleanSignature)) throw new Error("Invalid Solana transaction signature.");
   const transaction = await fetchSolanaTransaction(config, cleanSignature);
@@ -570,20 +511,27 @@ async function verifySolanaPayment(
   if (!solanaTransactionHasReference(transaction, reference)) {
     throw new Error("Solana transaction is missing this Ruby High payment reference.");
   }
+  if (!solanaTransactionHasAccount(transaction, expectedPayer)) {
+    throw new Error("Solana transaction is missing the connected buyer wallet.");
+  }
   if (expectedPackAssetAddress && !solanaTransactionHasAccount(transaction, expectedPackAssetAddress)) {
     throw new Error("Solana transaction is missing this Ruby High pack.");
   }
-  const received = solanaTreasuryTokenDelta(transaction, config);
-  const required = BigInt(product.tokenAmountBaseUnits);
+  const received = solanaTreasuryLamportDelta(transaction, config);
+  const required = BigInt(product.priceLamports);
   if (received < required) {
-    throw new Error(`Solana payment is too small. Need ${product.tokenAmount} ${config.symbol}.`);
+    throw new Error("Solana payment is too small for this card pack.");
   }
   return {
     reference,
-    receivedBaseUnits: received.toString(),
+    receivedLamports: received.toString(),
     slot: transaction.slot,
     blockTime: transaction.blockTime,
   };
+}
+
+function isWalletSolFundingError(message: string): boolean {
+  return /needs more SOL|insufficient funds|insufficient lamports|Attempt to debit|0x1\b|needs at least|balance is .*needs/i.test(message);
 }
 
 function firstHeader(value: string | string[] | null | undefined): string {
@@ -1159,9 +1107,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       solana: {
         configured: solana.configured && corePacks.configured,
         recipient: solana.recipient,
-        mint: solana.mint,
         symbol: solana.symbol,
-        decimals: solana.decimals,
         packNfts: corePacks,
         products: solana.products,
       },
@@ -1226,12 +1172,9 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         cardCount: product.cardCount,
         ownerWalletAddress,
         paymentReference: reference,
-        tokenMint: solana.mint,
-        tokenRecipient: solana.recipient,
-        tokenAmount: product.tokenAmount,
-        tokenAmountBaseUnits: product.tokenAmountBaseUnits,
-        tokenDecimals: solana.decimals,
-        tokenSymbol: solana.symbol,
+        solRecipient: solana.recipient,
+        solAmount: product.solAmount,
+        priceLamports: product.priceLamports,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -1240,7 +1183,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         productId: product.id,
         ownerWalletAddress,
       });
-      ctx.error(ctx.res, message, message.startsWith("Need ") ? 402 : 502);
+      ctx.error(ctx.res, message, isWalletSolFundingError(message) ? 402 : 502);
       return true;
     }
     const { rpcUrl: _rpcUrl, ...publicPreparedTransaction } = preparedTransaction;
@@ -1249,9 +1192,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       product,
       ...publicPreparedTransaction,
       recipient: solana.recipient,
-      mint: solana.mint,
       symbol: solana.symbol,
-      decimals: solana.decimals,
       rpcHost: rpcHostForPublicStatus(solana.rpcUrl),
       reference,
       solanaPayUrl: solanaPayUrl(solana, product, reference),
@@ -1301,7 +1242,6 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       requireSignedTransactionAccounts(signedTransactionBase64, [
         ownerWalletAddress,
         solana.recipient,
-        solana.mint,
         reference,
         packAssetAddress,
       ]);
@@ -1399,8 +1339,8 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         catalogHash: existingPack?.catalogHash ?? existing.transaction.metadata?.catalogHash ?? null,
         commitment: existingPack?.commitment ?? existing.transaction.metadata?.commitment ?? null,
         entropySource: existingPack?.entropySource ?? existing.transaction.metadata?.entropySource ?? null,
-        tokenAmount: product.tokenAmount,
-        tokenSymbol: solana.symbol,
+        solAmount: product.solAmount,
+        symbol: solana.symbol,
         entitlements,
       });
       return true;
@@ -1410,7 +1350,14 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       return true;
     }
     try {
-      const verification = await verifySolanaPayment(solana, product, stateKey, signature, packAssetAddress);
+      const verification = await verifySolanaPayment(
+        solana,
+        product,
+        stateKey,
+        signature,
+        ownerWalletAddress,
+        packAssetAddress,
+      );
       const packMint = await verifyCorePackNftMint({
         productId: product.id,
         packCount: product.packCount,
@@ -1431,17 +1378,16 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         serial: packMint.serial,
         idempotencyKey,
         source: "solana",
-        description: `${product.packCount} Ruby High ${product.packCount === 1 ? "Pack" : "Packs"} via ${solana.symbol}`,
+        description: `${product.packCount} Ruby High ${product.packCount === 1 ? "Pack" : "Packs"} via SOL`,
         metadata: {
           solanaSignature: signature,
-          solanaMint: solana.mint,
           solanaRecipient: solana.recipient,
           solanaReference: verification.reference,
-          solanaRequiredBaseUnits: product.tokenAmountBaseUnits,
-          solanaReceivedBaseUnits: verification.receivedBaseUnits,
-          solanaTokenAmount: product.tokenAmount,
-          solanaTokenSymbol: solana.symbol,
-          tokenDebitLabel: `-${product.tokenAmount} ${solana.symbol}`,
+          solanaRequiredLamports: product.priceLamports,
+          solanaReceivedLamports: verification.receivedLamports,
+          solanaAmountSol: product.solAmount,
+          solanaSymbol: "SOL",
+          paymentDebitLabel: `-${product.solAmount} SOL`,
           assetCreditLabel: `+${product.packCount} ${product.packCount === 1 ? "Pack" : "Packs"}`,
           packCount: product.packCount,
           cardCount: product.cardCount,
@@ -1470,8 +1416,8 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         catalogHash: result.pack?.catalogHash ?? null,
         commitment: result.pack?.commitment ?? null,
         entropySource: result.pack?.entropySource ?? null,
-        tokenAmount: product.tokenAmount,
-        tokenSymbol: solana.symbol,
+        solAmount: product.solAmount,
+        symbol: solana.symbol,
         entitlements,
       });
       log.event("billing.solana.pack-minted", {

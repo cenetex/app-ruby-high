@@ -1,4 +1,8 @@
-import { CHOICES, type BankedQuestion, type Choice, type Difficulty, type Grade } from "../../types.js";
+import type { BankedQuestion, Difficulty, Grade } from "../../types.js";
+import {
+  multipleChoiceDefinition,
+  validateMultipleChoiceDefinition,
+} from "../../question-choices.js";
 
 const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
 const GRADES: Grade[] = ["9", "10", "11", "12"];
@@ -98,20 +102,21 @@ function validateMultipleChoiceFields(question: BankedQuestion, label: string, e
     errors.push(`${label}: curriculum candidates must be multiple-choice`);
     return;
   }
-  if (!CHOICES.includes(question.correct as Choice)) {
-    errors.push(`${label}: invalid correct choice ${String(question.correct)}`);
-  }
-  if (!question.options || typeof question.options !== "object") {
-    errors.push(`${label}: options missing`);
+  const definition = multipleChoiceDefinition(question);
+  const definitionErrors = validateMultipleChoiceDefinition(question);
+  if (!definition) {
+    errors.push(`${label}: correct answer and decoys missing`);
     return;
   }
 
   const optionKeys = new Set<string>();
-  for (const choice of CHOICES) {
-    const option = normalizeWhitespace(question.options[choice]);
-    if (!option) errors.push(`${label}: options.${choice} missing`);
-    if (option.length > OPTION_MAX) errors.push(`${label}: options.${choice} too long (${option.length} > ${OPTION_MAX})`);
-    if (META_OPTION_RE.test(option)) errors.push(`${label}: options.${choice} uses meta-answer wording`);
+  for (const message of definitionErrors) errors.push(`${label}: ${message}`);
+  for (const [index, rawOption] of [definition.correct, ...definition.decoys].entries()) {
+    const field = index === 0 ? "correct" : `decoys[${index - 1}]`;
+    const option = normalizeWhitespace(rawOption);
+    if (!option) errors.push(`${label}: ${field} missing`);
+    if (option.length > OPTION_MAX) errors.push(`${label}: ${field} too long (${option.length} > ${OPTION_MAX})`);
+    if (META_OPTION_RE.test(option)) errors.push(`${label}: ${field} uses meta-answer wording`);
     const optionKey = normalizeOption(option);
     if (optionKey && optionKeys.has(optionKey)) errors.push(`${label}: duplicate option text: ${option}`);
     optionKeys.add(optionKey);

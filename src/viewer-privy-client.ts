@@ -68,14 +68,12 @@ interface SolanaPaymentQuote {
     packCount?: number;
     cardCount?: number;
     hallPasses?: number;
-    tokenAmount?: string;
-    tokenAmountBaseUnits?: string;
-    tokenSymbol?: string;
+    solAmount?: string;
+    priceLamports?: string;
+    symbol?: "SOL";
   };
   recipient?: string;
-  mint?: string;
   symbol?: string;
-  decimals?: number;
   reference?: string;
   rpcUrl?: string;
   transaction?: string;

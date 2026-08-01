@@ -393,6 +393,42 @@ describe("RubyHighService.dailyStatus + playDaily", () => {
         questionId: "q_first_bell_report",
         answerText: "First Bell",
       });
+      expect(response.data.telemetry.first_bell_share).toMatchObject({
+        shareId: expect.any(String),
+        grade: "9",
+        url: expect.stringMatching(/^\/api\/apps\/ruby-high\/first-bell\/[a-f0-9]{20}$/),
+      });
+      expect(ruby.analyticsSnapshot().events.referral).toMatchObject({
+        artifactsCreated: 1,
+        sharesInitiated: 0,
+        linkVisits: 0,
+        shareClickThroughRate: null,
+      });
+
+      const shareId = response.data.telemetry.first_bell_share.shareId;
+      let shareResponse: any = null;
+      const shareHandled = await handleAppRoutes({
+        method: "GET",
+        pathname: `/api/apps/ruby-high/first-bell/${shareId}`,
+        url: new URL(`https://ruby.test/api/apps/ruby-high/first-bell/${shareId}?format=json`),
+        runtime,
+        res: {},
+        error: (_res, message, status = 500) => {
+          shareResponse = { status, error: message };
+        },
+        json: (_res, data, status = 200) => {
+          shareResponse = { status, data };
+        },
+        readJsonBody: async () => ({}),
+      });
+      expect(shareHandled).toBe(true);
+      expect(shareResponse.status).toBe(200);
+      expect(shareResponse.data.card).toMatchObject({
+        shareId,
+        characterName: "Pip",
+        prompt: "What does Ruby High call the first quick reward?",
+        answerText: "First Bell",
+      });
     } finally {
       Date.now = realNow;
     }
@@ -425,7 +461,7 @@ describe("NPC cohort — runs in parallel with the player", () => {
     const sid = "test:cohort-init";
     attachCharacter(ruby, sid);
     ruby.playDaily(sid, new Date("2026-05-04T18:00:00Z"));
-    const correct = ruby.getOrCreate(sid).current!.correct! as Choice;
+    const correct = ruby.getOrCreate(sid).current!.correctChoice! as Choice;
     ruby.submitAnswer(sid, correct);
     const cohort = ruby.getOrCreate(sid).npcCohort;
     expect(cohort).toBeDefined();
@@ -487,7 +523,7 @@ describe("NPC cohort — runs in parallel with the player", () => {
       graduated: true,
     }];
     ruby.playDaily(sid, new Date("2026-05-04T18:00:00Z"));
-    const correct = ruby.getOrCreate(sid).current!.correct! as Choice;
+    const correct = ruby.getOrCreate(sid).current!.correctChoice! as Choice;
     ruby.submitAnswer(sid, correct);
     const after = ruby.getOrCreate(sid).npcCohort!.find((n) => n.id === "indra")!;
     // Graduated state preserved — no streak mutation.
@@ -711,7 +747,7 @@ describe("Streak + grade advancement", () => {
     attachCharacter(ruby, sid, "9");
     // Day 1 = sally
     ruby.playDaily(sid, new Date("2026-05-04T18:00:00Z"));
-    const c1 = ruby.getOrCreate(sid).current!.correct! as Choice;
+    const c1 = ruby.getOrCreate(sid).current!.correctChoice! as Choice;
     ruby.submitAnswer(sid, c1);
     const ch = ruby.getOrCreate(sid).character!;
     expect(ch.subjectScores).toBeDefined();
@@ -726,6 +762,10 @@ describe("Streak + grade advancement", () => {
     // for this grade so all per-class gates are met up front; the test
     // exercises only the streak arithmetic.
     attachCharacter(ruby, sid, "12");
+    ruby.getOrCreate(sid).character!.dailyClasses = completedClassesForGrade(
+      "12",
+      [...TEACHING_FACULTY_IDS, "guest"],
+    );
     const ch = ruby.getOrCreate(sid).character!;
     ch.streak = { grade: "12", count: 0 };
     ch.yearbook = [
@@ -779,6 +819,7 @@ describe("Streak + grade advancement", () => {
     markFacultyMastered(ruby, faculty, sid, "ruby");
     markFacultyMastered(ruby, faculty, sid, "sally-science");
     markFacultyMastered(ruby, faculty, sid, "professor-edward");
+    markFacultyMastered(ruby, faculty, sid, "guest");
 
     ruby.getOrCreate(sid);
     ruby.completeGraduation(sid, { kind: "advantage" });
@@ -1002,6 +1043,7 @@ describe("Streak + grade advancement", () => {
 
     markFacultyMastered(ruby, faculty, sid, "ruby");
     markFacultyMastered(ruby, faculty, sid, "sally-science");
+    markFacultyMastered(ruby, faculty, sid, "guest");
     expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBeUndefined();
     markFacultyMastered(ruby, faculty, sid, "professor-edward");
 

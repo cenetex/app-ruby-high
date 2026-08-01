@@ -25,6 +25,16 @@ import {
   type RubyHighPhotoPostSchedulerSnapshot,
 } from "./ruby-high/photo-post-scheduler.js";
 import {
+  PostRotationScheduler,
+  GENERAL_POST_SCHEDULER_INTERVAL_MS,
+  SCHEDULED_POST_SCHEDULER_STATE_ID,
+  hydrateScheduledPostSchedulerState,
+  scheduledPostSchedulerStateRecord,
+  type GeneralSchedulerSnapshot,
+  type ScheduledPostResult,
+} from "./ruby-high/post-scheduler.js";
+import type { ScheduledSchoolUpdateContext } from "./ruby-high/post-types.js";
+import {
   buildCurriculumCoverageSnapshot,
   generationDifficultyForCurriculumGrade,
   type MutableCurriculumCoverageRow,
@@ -33,7 +43,14 @@ import {
   type RubyHighCurriculumReplenishmentPlan,
 } from "./ruby-high/curriculum-coverage.js";
 import { builtInTeacherResearchCorpusForFaculty } from "./ruby-high/teacher-research-corpus.js";
-import { teacherById } from "../characters/teachers.js";
+import { quickRollStudentForSeed } from "./ruby-high/quick-roll.js";
+import {
+  correctAnswerForQuestion,
+  correctChoiceForQuestion,
+  materializeMultipleChoice,
+  multipleChoiceDefinition,
+} from "../question-choices.js";
+import { teacherById, type TeacherCharacter } from "../characters/teachers.js";
 import { Service, type IAgentRuntime } from "../runtime.js";
 import {
   ADVANTAGE_ROLLS_PER_GRADE,
@@ -130,6 +147,7 @@ import {
   type StoredDraftContentPackRecord,
   type StoredMetricEventName,
   type StoredMetricEventRecord,
+  type MetricClientSurface,
   type StoredPackInstallationRecord,
   type StoredPackReview,
   type StoredSchoolEventRecord,
@@ -176,12 +194,15 @@ import {
 import {
   activeFaculty,
   appendQuestionToPackBank,
+  courseForFacultyForSession,
   coursesForPack,
   facultyByIdForSession,
   facultyForSession,
   GUEST_COURSE_ID,
   getActivePack,
+  guestFacultyForPack,
   guestPackForSession,
+  guestWeekKey,
   isPackLoaded,
   MAX_PACKS_PER_OWNER,
   ORIGINAL_PACK_ID,
@@ -192,6 +213,7 @@ import {
   roomForFacultyForSession,
   setActivePack,
   unregisterPack,
+  weeklyAutoGuestPack,
 } from "../content/registry.js";
 import type { ContentPack, PackFaculty, PackSourceCard } from "../content/types.js";
 import { cardToMcQuestion, type DistractorOpts, type SourceCardInput } from "../content/source-distractors.js";
@@ -223,8 +245,13 @@ import {
 
 export interface PoseInput {
   prompt: string;
-  options: Record<Choice, string>;
-  correct: Choice;
+  /** Semantic answer text. Legacy callers may still send A/B/C/D with options. */
+  correct: string;
+  /** Candidate wrong answers; three are sampled for each pose. */
+  decoys?: string[];
+  /** Legacy compatibility for pre-value-schema tool calls and persisted tests. */
+  options?: Record<Choice, string>;
+  correctChoice?: Choice;
   explanation?: string;
   subject?: string;
   stat?: keyof CharacterStats;
@@ -248,6 +275,9 @@ export interface PoseOpinionInput {
   questionId?: string;
   rarity?: Rarity;
   mode?: "class" | "practice";
+  /** Server-owned purpose. Callers may omit it; grade essays are also
+   *  recognized by matching the character's assigned essay prompt. */
+  purpose?: "daily-take" | "grade-essay";
 }
 
 export interface PickAndPoseInput {
@@ -456,6 +486,36 @@ function defaultPlayerPortraitUrl(playbookId: string | undefined): string {
   return studentFullPortraitUrl(studentId);
 }
 
+function defaultPlayerPortraitStudentId(playbookId: string | undefined): string {
+  return PLAYBOOK_DEFAULT_PORTRAIT[playbookId || ""] || "indra";
+}
+
+function customPublicPortraitUrlForCharacter(ch: PlayerCharacter): string | undefined {
+  const raw = String(ch.portraitDataUrl ?? "").trim();
+  if (!raw || raw.length > 2048 || raw.startsWith("//") || /^data:/i.test(raw) || /[\r\n]/.test(raw)) return undefined;
+  let portraitUrl: string | undefined;
+  if (raw.startsWith("/")) {
+    portraitUrl = raw;
+  } else {
+    try {
+      const url = new URL(raw);
+      if (url.protocol === "http:" || url.protocol === "https:") portraitUrl = raw;
+    } catch {
+      portraitUrl = undefined;
+    }
+  }
+  if (!portraitUrl) return undefined;
+  const defaultStudentId = defaultPlayerPortraitStudentId(ch.playbookId);
+  if (portraitUrl === defaultPlayerPortraitUrl(ch.playbookId)) return undefined;
+  try {
+    const path = new URL(portraitUrl, "https://ruby-high.local").pathname;
+    if (path.endsWith(`/assets/students/${defaultStudentId}-full.png`)) return undefined;
+  } catch {
+    if (portraitUrl.endsWith(`/assets/students/${defaultStudentId}-full.png`)) return undefined;
+  }
+  return portraitUrl;
+}
+
 export interface CourseProgress {
   mode: "bank" | "srs";
   facultyId: string;
@@ -646,6 +706,15 @@ export interface HallPassCardMintPreparationInput {
   at?: number;
 }
 
+export interface HallPassCardMintSubmissionInput {
+  cardId: string;
+  ownerWalletAddress: string;
+  mintAddress: string;
+  metadataUri: string;
+  mintSignature: string;
+  at?: number;
+}
+
 export interface HallPassPackMintInput {
   productId: string;
   packCount: number;
@@ -655,6 +724,7 @@ export interface HallPassPackMintInput {
   mintSignature: string;
   metadataUri: string;
   idempotencyKey: string;
+  status?: RubyHighHallPassPackStatus;
   serial?: number;
   source?: RubyHighWalletTransaction["source"];
   description?: string;
@@ -752,6 +822,7 @@ export interface RubyHighAnalyticsSnapshot {
   };
   world: RubyHighWorldHealthSnapshot;
   photoPosts: RubyHighPhotoPostSchedulerSnapshot;
+  scheduledPosts: GeneralSchedulerSnapshot;
   curriculum: RubyHighCurriculumCoverageSnapshot;
   daily: RubyHighAnalyticsDay[];
 }
@@ -909,11 +980,34 @@ export interface RubyHighMetricEventsSnapshot {
     sharesInitiated: number;
     linkVisits: number;
     uniqueReferredVisitors: number;
+    shareClickThroughRate: number | null;
+    uniqueShareClickThroughRate: number | null;
   };
   guestSpotlight: {
     seen: number;
     started: number;
     overrideSet: number;
+  };
+  byClientSurface: Record<MetricClientSurface, number>;
+  activationFunnel: {
+    trustStart: string;
+    raw: ActivationFunnelCohortSnapshot;
+    humanViewer: ActivationFunnelCohortSnapshot;
+  };
+  classRitual: {
+    dailyClassStarted: number;
+    /** Legacy aggregate; prefer evidence1Completed and evidence2Completed. */
+    evidenceCardCompleted: number;
+    evidence1Completed: number;
+    evidence2Completed: number;
+    takeCardPresented: number;
+    takeCardStarted: number;
+    takeCardSubmitted: number;
+    teacherResponseViewed: number;
+    roomReactionViewed: number;
+    classResultCompleted: number;
+    classResultViewed: number;
+    classRecordSaved: number;
   };
   balance: {
     samples: number;
@@ -946,6 +1040,25 @@ export interface RubyHighMetricEventsSnapshot {
     total: number;
     byFeature: Record<string, number>;
   };
+}
+
+export interface ActivationFunnelStepSnapshot {
+  key: string;
+  label: string;
+  uniqueSessions: number;
+  denominator: number;
+  rateFromOpen: number | null;
+  previousStepSessions: number;
+  rateFromPrevious: number | null;
+}
+
+export interface ActivationFunnelCohortSnapshot {
+  cohort: "raw" | "human-viewer";
+  windowStart: string;
+  windowEnd: string;
+  sampleSize: number;
+  eligibleSessions: number;
+  steps: ActivationFunnelStepSnapshot[];
 }
 
 export interface DailyMemoryEntry {
@@ -1245,6 +1358,26 @@ export interface RecentlyActiveStudent {
   portraitUrl?: string;
 }
 
+export interface PublicRoomHumanStudent {
+  id: string;
+  name: string;
+  playbookId: string;
+  grade: Grade;
+  facultyId: string;
+  portraitUrl: string;
+  stats: CharacterStats;
+  classGrades: Record<string, string>;
+  yearbookCount: number;
+  lastActive: number;
+}
+
+interface PublicSchoolWorldEntry {
+  state: QuizState;
+  ch: PlayerCharacter;
+  facultyId: string;
+  lastActive: number;
+}
+
 export interface ClassPhotoCandidate {
   sessionId: string;
   name: string;
@@ -1286,6 +1419,24 @@ export interface YearbookShareCard {
   superlatives: string[];
   yearbookImageUrl?: string;
   source: "current-character" | "student-pool";
+}
+
+export interface FirstBellShareCard {
+  shareId: string;
+  awardedAt: number;
+  characterName: string;
+  playbookId: string | null;
+  grade: Grade | null;
+  facultyId: string;
+  facultyName: string;
+  prompt: string;
+  answerText: string;
+  correctAnswerText?: string;
+  wasCorrect: boolean;
+  encouragement?: string;
+  score?: number;
+  stats?: CharacterStats;
+  portraitDataUrl?: string;
 }
 
 export interface CharacterSlotUnlockInput {
@@ -1341,8 +1492,62 @@ const GLOBAL_PACK_OWNER = "__ruby_high_global__";
 const CLASS_QUESTIONS_PER_DAY = 3;
 const GRADUATION_ROOM_TARGETS: Record<Grade, number> = { "9": 1, "10": 2, "11": 3, "12": 4 };
 const CORE_GRADUATION_FACULTY_ORDER = [RUBY_FACULTY.id, "sally-science", "professor-edward"] as const;
-const RUBY_HOMEROOM_PRACTICE_BEFORE_CLASS: readonly number[] = [0, 0, 0] as const;
-const RUBY_HOMEROOM_SOCIAL_CARDS_PER_DAY = 0;
+const CORE_DAILY_CLASS_FACULTY = new Set<string>(CORE_GRADUATION_FACULTY_ORDER);
+const DAILY_CLASS_PRACTICE_BEFORE_CARD: readonly number[] = [0, 0, 0] as const;
+const DAILY_CLASS_TAKES_PER_DAY = 1;
+const DAILY_CLASS_TAKE_CARDS: Record<string, ReadonlyArray<{ prompt: string; rubric: string; subject: string }>> = {
+  ruby: [
+    {
+      subject: "agent-culture",
+      prompt: "A classmate gives an answer confidently. What is one sign you should trust it, and one sign you should check it?",
+      rubric: "Names one concrete trust signal and one concrete reason to verify, then explains the difference in the student's own words.",
+    },
+    {
+      subject: "agent-culture",
+      prompt: "Choose one claim from today's class. What evidence would make it stronger, and what would make you doubt it?",
+      rubric: "Identifies a specific claim, names relevant evidence, and gives a concrete reason the claim could fail.",
+    },
+    {
+      subject: "agent-culture",
+      prompt: "What is the strongest answer you heard today, and what question would you ask before repeating it as fact?",
+      rubric: "Selects a defensible answer and asks a focused verification question instead of offering a generic reaction.",
+    },
+  ],
+  "sally-science": [
+    {
+      subject: "science",
+      prompt: "Turn one idea from today's class into a testable prediction. What result would prove your prediction wrong?",
+      rubric: "States a specific prediction and a falsifying observation that could realistically be measured.",
+    },
+    {
+      subject: "science",
+      prompt: "Which variable would you control first if you tested one claim from today's class, and why?",
+      rubric: "Names a relevant variable and explains how controlling it separates the claim from a competing explanation.",
+    },
+    {
+      subject: "science",
+      prompt: "What evidence from today's topic is strongest, and what important uncertainty still remains?",
+      rubric: "Cites concrete evidence and distinguishes what it supports from what is still unknown.",
+    },
+  ],
+  "professor-edward": [
+    {
+      subject: "literature",
+      prompt: "Make one interpretation of today's material, then name the detail that best supports it.",
+      rubric: "Offers a specific interpretation and ties it to a concrete detail rather than summarizing the material.",
+    },
+    {
+      subject: "literature",
+      prompt: "Whose perspective is easiest to miss in today's material, and how would including it change the meaning?",
+      rubric: "Identifies a plausible missing perspective and explains a meaningful consequence for the interpretation.",
+    },
+    {
+      subject: "literature",
+      prompt: "What is one tension in today's material that has no easy answer? Defend the side you find stronger.",
+      rubric: "Names a genuine tension, takes a clear position, and supports it with a specific reason or detail.",
+    },
+  ],
+};
 const FIRST_BELL_COMIC_ISSUE_ID = "first-bell";
 const FIRST_BELL_COMIC_TITLE = "Ruby High: Book One - First Bell";
 const FIRST_BELL_COMIC_PAGE_COUNT = 12;
@@ -1483,8 +1688,6 @@ export interface CosyWorldPackOwnership {
   metadataUri?: string;
 }
 
-const COSYWORLD_OWNERSHIP_LOOKUP_CONCURRENCY = 8;
-
 function cosyWorldCardIdsForCard(card: Pick<RubyHighHallPassCard, "characterId" | "canonicalCharacterId">): string[] {
   return [
     card.characterId,
@@ -1492,24 +1695,6 @@ function cosyWorldCardIdsForCard(card: Pick<RubyHighHallPassCard, "characterId" 
   ]
     .map((value) => typeof value === "string" ? value.trim() : "")
     .filter((value, index, values) => !!value && values.indexOf(value) === index);
-}
-
-async function mapWithConcurrency<T, R>(
-  items: readonly T[],
-  concurrency: number,
-  mapper: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const out = new Array<R>(items.length);
-  let nextIndex = 0;
-  const workerCount = Math.max(1, Math.min(Math.floor(concurrency), items.length));
-  await Promise.all(Array.from({ length: workerCount }, async () => {
-    while (nextIndex < items.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      out[index] = await mapper(items[index]!, index);
-    }
-  }));
-  return out;
 }
 
 export class RubyHighService extends Service {
@@ -1536,6 +1721,9 @@ export class RubyHighService extends Service {
   private photoPostSchedulerTimer: ReturnType<typeof setInterval> | null = null;
   private photoPostSchedulerIntervalMs: number | null = null;
   private photoPostSchedulerRunning = false;
+  private rotationScheduler: PostRotationScheduler;
+  private rotationSchedulerTimer: ReturnType<typeof setInterval> | null = null;
+  private rotationSchedulerRunning = false;
   private lastPhotoPostAttemptAt: number | null = null;
   private lastPhotoPostResult: DailyPhotoPostResult | null = null;
   private readonly disposeLogSink: () => void;
@@ -1551,6 +1739,7 @@ export class RubyHighService extends Service {
   constructor(runtime?: IAgentRuntime, store?: StateStoreLike) {
     super(runtime);
     this.store = store ?? getDefaultStateStore();
+    this.rotationScheduler = new PostRotationScheduler();
     this.disposeLogSink = setLogSink((record) => this.recordLogSinkMetricEvent(record));
   }
 
@@ -1558,11 +1747,13 @@ export class RubyHighService extends Service {
     const svc = new RubyHighService(runtime);
     await svc.hydrate();
     svc.startPhotoPostScheduler();
+    svc.startRotationScheduler();
     return svc;
   }
 
   async stop(): Promise<void> {
     this.stopPhotoPostScheduler();
+    this.stopRotationScheduler();
     await this.flush();
     this.disposeLogSink();
     this.sessions.clear();
@@ -1672,12 +1863,21 @@ export class RubyHighService extends Service {
 
   recordAppOpen(
     sessionId: string,
-    input: { source?: string; userAgent?: string; referrer?: string; path?: string; ref?: string; visitorHash?: string | null } = {},
+    input: {
+      source?: string;
+      clientSurface?: MetricClientSurface;
+      userAgent?: string;
+      referrer?: string;
+      path?: string;
+      ref?: string;
+      visitorHash?: string | null;
+    } = {},
   ): void {
     if (input.visitorHash) {
       this.recordMetricEvent("visitor_seen", {
         sessionId,
         visitorHash: input.visitorHash,
+        ...(input.clientSurface ? { clientSurface: input.clientSurface } : {}),
         source: input.source ?? "viewer",
         feature: "viewer",
       });
@@ -1685,6 +1885,7 @@ export class RubyHighService extends Service {
     this.recordMetricEvent("app_open", {
       sessionId,
       ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      ...(input.clientSurface ? { clientSurface: input.clientSurface } : {}),
       source: input.source ?? "viewer",
       feature: "viewer",
       metadata: {
@@ -1698,12 +1899,21 @@ export class RubyHighService extends Service {
 
   async recordAppOpenDurably(
     sessionId: string,
-    input: { source?: string; userAgent?: string; referrer?: string; path?: string; ref?: string; visitorHash?: string | null } = {},
+    input: {
+      source?: string;
+      clientSurface?: MetricClientSurface;
+      userAgent?: string;
+      referrer?: string;
+      path?: string;
+      ref?: string;
+      visitorHash?: string | null;
+    } = {},
   ): Promise<void> {
     if (input.visitorHash) {
       await this.recordMetricEventDurably("visitor_seen", {
         sessionId,
         visitorHash: input.visitorHash,
+        ...(input.clientSurface ? { clientSurface: input.clientSurface } : {}),
         source: input.source ?? "viewer",
         feature: "viewer",
       });
@@ -1711,6 +1921,7 @@ export class RubyHighService extends Service {
     await this.recordMetricEventDurably("app_open", {
       sessionId,
       ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      ...(input.clientSurface ? { clientSurface: input.clientSurface } : {}),
       source: input.source ?? "viewer",
       feature: "viewer",
       metadata: {
@@ -2036,6 +2247,7 @@ export class RubyHighService extends Service {
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
       ...(input.userId ? { userId: input.userId } : {}),
       ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      clientSurface: inferMetricClientSurface(input, this.metricEvents.values()),
       ...(input.source ? { source: input.source } : {}),
       ...(input.feature ? { feature: input.feature } : {}),
       ...(input.step ? { step: input.step } : {}),
@@ -2118,6 +2330,107 @@ export class RubyHighService extends Service {
     return false;
   }
 
+  private recordClassFlowMetric(
+    name: StoredMetricEventName,
+    state: QuizState,
+    input: {
+      faculty: string;
+      grade?: string | null;
+      date?: string | null;
+      step: string;
+      status?: StoredMetricEventRecord["status"];
+      source?: string;
+      clientSurface?: MetricClientSurface;
+      metadata?: Record<string, unknown>;
+    },
+  ): StoredMetricEventRecord | null {
+    const classKey = classFlowMetricKey(input.faculty, input.grade, input.date);
+    const existing = this.findClassFlowMetric(state.sessionId, name, classKey, input.step);
+    if (existing) return existing;
+    return this.recordMetricEvent(name, {
+      sessionId: state.sessionId,
+      source: input.source ?? "gameplay",
+      ...(input.clientSurface ? { clientSurface: input.clientSurface } : {}),
+      feature: "daily_class_ritual",
+      step: input.step,
+      status: input.status ?? "success",
+      metadata: {
+        classKey,
+        faculty: input.faculty,
+        ...(input.grade ? { grade: input.grade } : {}),
+        ...(input.date ? { date: input.date } : {}),
+        ...(input.metadata ?? {}),
+      },
+    });
+  }
+
+  async recordViewerClassFlowMilestoneDurably(
+    sessionId: string,
+    name: "take_card_started" | "class_result_viewed",
+    input: {
+      visitorHash?: string | null;
+      clientSurface?: MetricClientSurface;
+      questionId?: string;
+    } = {},
+  ): Promise<StoredMetricEventRecord | null> {
+    const state = this.getOrCreate(sessionId);
+    const classSession = state.activeRound?.classSession;
+    const faculty = classSession?.facultyId ?? state.faculty;
+    const grade = classSession?.grade ?? state.currentGrade;
+    const date = classSession?.date ?? dailyKey();
+    if (name === "take_card_started") {
+      if (
+        state.current?.opinionPurpose !== "daily-take"
+        || classSession?.mode !== "class"
+        || state.activeRound?.resolved
+      ) {
+        return null;
+      }
+    } else {
+      const record = this.dailyClassRecord(state, faculty, date);
+      if (record?.status !== "complete") return null;
+    }
+    const step = name === "take_card_started" ? "take" : "class_result";
+    const classKey = classFlowMetricKey(faculty, grade, date);
+    const existing = this.findClassFlowMetric(sessionId, name, classKey, step);
+    if (existing) return existing;
+    return await this.recordMetricEventDurably(name, {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      ...(input.clientSurface ? { clientSurface: input.clientSurface } : {}),
+      source: "viewer",
+      feature: "daily_class_ritual",
+      step,
+      status: "success",
+      metadata: {
+        classKey,
+        faculty,
+        ...(grade ? { grade } : {}),
+        date,
+        ...(input.questionId ? { questionId: clippedMetricValue(input.questionId, 160) } : {}),
+      },
+    });
+  }
+
+  private findClassFlowMetric(
+    sessionId: string,
+    name: StoredMetricEventName,
+    classKey: string,
+    step: string,
+  ): StoredMetricEventRecord | null {
+    for (const event of this.metricEvents.values()) {
+      if (
+        event.sessionId === sessionId
+        && event.name === name
+        && event.step === step
+        && event.metadata?.classKey === classKey
+      ) {
+        return event;
+      }
+    }
+    return null;
+  }
+
   analyticsSnapshot(now: number = Date.now()): RubyHighAnalyticsSnapshot {
     const dayMs = 24 * 60 * 60 * 1000;
     const { days, byDate } = buildRubyHighDailyBuckets(now, 14);
@@ -2178,7 +2491,7 @@ export class RubyHighService extends Service {
       meritStars += wallet.meritStars;
       hallPasses += wallet.hallPasses;
     }
-    const events = buildMetricEventsSnapshot(this.metricEvents.values(), byDate);
+    const events = buildMetricEventsSnapshot(this.metricEvents.values(), byDate, now);
     const eventRetention = buildEventRetentionSnapshot(this.metricEvents.values(), now);
     return {
       store: this.store.describe(),
@@ -2238,6 +2551,7 @@ export class RubyHighService extends Service {
       },
       world: this.worldHealthSnapshot(now),
       photoPosts: this.photoPostSchedulerSnapshot(),
+      scheduledPosts: this.rotationSchedulerSnapshot(),
       curriculum: this.curriculumCoverageSnapshot(),
       daily: days,
     };
@@ -2354,6 +2668,179 @@ export class RubyHighService extends Service {
     if (this.photoPostSchedulerTimer) clearInterval(this.photoPostSchedulerTimer);
     this.photoPostSchedulerTimer = null;
     this.photoPostSchedulerIntervalMs = null;
+  }
+
+  startRotationScheduler(): void {
+    if (this.rotationSchedulerTimer || !this.rotationScheduler.getSnapshot().enabled) return;
+    this.rotationSchedulerTimer = setInterval(() => {
+      void this.runRotationSchedulerTick();
+    }, GENERAL_POST_SCHEDULER_INTERVAL_MS);
+    this.rotationSchedulerTimer.unref?.();
+    // Production scales to zero. An immediate eligibility check lets a cold
+    // start service an overdue daily post instead of requiring 15 minutes of
+    // continuous traffic before the first interval fires.
+    void this.runRotationSchedulerTick();
+  }
+
+  stopRotationScheduler(): void {
+    if (this.rotationSchedulerTimer) clearInterval(this.rotationSchedulerTimer);
+    this.rotationSchedulerTimer = null;
+  }
+
+  async runRotationSchedulerTick(
+    options: { force?: boolean; teacherId?: string } = {},
+  ): Promise<ScheduledPostResult | null> {
+    if (this.rotationSchedulerRunning) return null;
+    const xSocial = this.getXSocialService();
+    if (!xSocial) return null;
+
+    const teacher = options.teacherId
+      ? this.getConnectedTeacher(options.teacherId)
+      : this.getFirstConnectedTeacher();
+    if (!teacher) return null;
+
+    this.rotationSchedulerRunning = true;
+    const before = JSON.stringify(this.rotationScheduler.getState());
+    try {
+      const now = Date.now();
+      return await this.rotationScheduler.tick(
+        xSocial,
+        teacher,
+        this.getScheduledSchoolUpdateContext(now),
+        now,
+        { force: options.force },
+      );
+    } catch (err) {
+      log.error("rotation-scheduler.tick-failed", err);
+      return null;
+    } finally {
+      if (JSON.stringify(this.rotationScheduler.getState()) !== before) {
+        await this.persistScheduledPostSchedulerState();
+      }
+      this.rotationSchedulerRunning = false;
+    }
+  }
+
+  async runScheduledSchoolUpdateNow(teacherId = "ruby"): Promise<ScheduledPostResult | null> {
+    return this.runRotationSchedulerTick({ force: true, teacherId });
+  }
+
+  private getXSocialService(): XSocialService | null {
+    if (!this.runtime || typeof (this.runtime as any).getService !== "function") return null;
+    return (this.runtime as any).getService(XSocialService.serviceType) as XSocialService | null;
+  }
+
+  private getFirstConnectedTeacher(): TeacherCharacter | null {
+    const xSocial = this.getXSocialService();
+    if (!xSocial) return null;
+    const connected = xSocial.listConnected().filter((s) => s.connected && s.hasTweetWrite);
+    if (connected.length === 0) return null;
+    // Prefer Ruby, then first connected.
+    const rubyStatus = connected.find((s) => s.teacherId === "ruby");
+    const targetId = rubyStatus ? "ruby" : connected[0]!.teacherId;
+    return teacherById(targetId) ?? null;
+  }
+
+  private getConnectedTeacher(teacherId: string): TeacherCharacter | null {
+    const xSocial = this.getXSocialService();
+    if (!xSocial) return null;
+    const status = xSocial.getStatus(teacherId);
+    if (!status.connected || !status.hasTweetWrite) return null;
+    const teacher = teacherById(teacherId);
+    return teacher.id === teacherId ? teacher : null;
+  }
+
+  getScheduledSchoolUpdateContext(now = Date.now()): ScheduledSchoolUpdateContext {
+    const memories = this.getDailyMemories();
+    const world = this.getSchoolWorldSnapshot(30, now);
+    const recentCutoff = now - 48 * 60 * 60 * 1000;
+    const recentEvents = world.recentEvents.filter((event) => event.at >= recentCutoff);
+    const eventCounts: ScheduledSchoolUpdateContext["recentEvents"] = {
+      roomGoalProgress: 0,
+      relationshipMoments: 0,
+      futuresResolved: 0,
+      comicPagesUnlocked: 0,
+    };
+    for (const event of recentEvents) {
+      switch (event.kind) {
+        case "room.goal-progress": eventCounts.roomGoalProgress += 1; break;
+        case "relationship.ticked": eventCounts.relationshipMoments += 1; break;
+        case "mash.axis-resolved": eventCounts.futuresResolved += 1; break;
+        case "comic.page-unlocked": eventCounts.comicPagesUnlocked += 1; break;
+      }
+    }
+    let updatedSessionsLast24h = 0;
+    const dayAgo = now - 24 * 60 * 60 * 1000;
+    for (const state of this.sessions.values()) {
+      const updatedAt = Number(state.updatedAt ?? 0);
+      if (Number.isFinite(updatedAt) && updatedAt >= dayAgo && updatedAt <= now) {
+        updatedSessionsLast24h += 1;
+      }
+    }
+    const guestPack = weeklyAutoGuestPack(new Date(now));
+    const guestFaculty = guestPack ? guestFacultyForPack(guestPack) : null;
+    const guestCourse = guestPack && guestFaculty
+      ? coursesForPack(guestPack).find((course) => course.facultyId === guestFaculty.id) ?? null
+      : null;
+    const guestImageUrl = guestFaculty
+      ? teacherFullPortraitUrl(
+          guestFaculty.id,
+          guestFaculty.assetTeacherId,
+          guestFaculty.profileImageUrl,
+        )
+      : undefined;
+    return {
+      date: new Date(now).toISOString().slice(0, 10),
+      updatedSessionsLast24h,
+      activeStudents: world.activeStudents,
+      activeRooms: world.activeRooms.slice(0, 6).map((room) => ({
+        area: room.facultyId === LOUNGE_FACULTY.id ? "teacher-lounge" as const : "classroom" as const,
+        grade: room.grade,
+        activeStudents: room.activeStudents,
+        goalProgress: room.goal.progress,
+        goalTarget: room.goal.target,
+      })),
+      highlights: {
+        newStudents: memories.charactersCreated.length,
+        classesPassed: memories.classesPassed.length,
+        gradesAdvanced: memories.gradesAdvanced.length,
+        graduations: memories.graduations.length,
+      },
+      recentEvents: eventCounts,
+      ...(guestPack && guestFaculty
+        ? {
+            featuredGuest: {
+              weekKey: guestWeekKey(new Date(now)),
+              packId: guestPack.id,
+              facultyId: guestFaculty.id,
+              displayName: guestFaculty.displayName,
+              courseTitle: guestCourse?.title ?? guestPack.name,
+              bio: guestFaculty.bio.slice(0, 500),
+              ...(guestFaculty.xHandle
+                ? { xHandle: guestFaculty.xHandle.replace(/^@/, "").slice(0, 15) }
+                : {}),
+              ...(guestImageUrl && guestImageUrl.length <= 2_048
+                ? { imageUrl: guestImageUrl }
+                : {}),
+            },
+          }
+        : {}),
+    };
+  }
+
+  rotationSchedulerSnapshot(): GeneralSchedulerSnapshot {
+    return this.rotationScheduler.getSnapshot();
+  }
+
+  private persistScheduledPostSchedulerState(options: { surfaceErrors?: boolean } = {}): Promise<void> {
+    if (!this.store.saveServiceState) return Promise.resolve();
+    const record = scheduledPostSchedulerStateRecord(this.rotationScheduler.getState());
+    const save = this.store.saveServiceState(record).catch((err) => {
+      log.error("scheduled-post-scheduler.persist-failed", err);
+      if (options.surfaceErrors) throw err;
+    });
+    if (!options.surfaceErrors) this.trackBackgroundWrite(save);
+    return save;
   }
 
   async runPhotoPostSchedulerTick(): Promise<DailyPhotoPostResult | null> {
@@ -3202,6 +3689,11 @@ export class RubyHighService extends Service {
     return yearbookShareCardsForState(state);
   }
 
+  firstBellShareForSession(sessionId: string): FirstBellShareCard | null {
+    const state = this.getOrCreate(sessionId);
+    return firstBellShareCardForState(state);
+  }
+
   findYearbookShare(shareId: string, grade: Grade): YearbookShareCard | null {
     const clean = shareId.trim();
     if (!clean) return null;
@@ -3210,6 +3702,16 @@ export class RubyHighService extends Service {
         card.shareId === clean && card.grade === grade
       );
       if (hit) return hit;
+    }
+    return null;
+  }
+
+  findFirstBellShare(shareId: string): FirstBellShareCard | null {
+    const clean = shareId.trim();
+    if (!clean) return null;
+    for (const state of this.sessions.values()) {
+      const card = firstBellShareCardForState(state);
+      if (card?.shareId === clean) return card;
     }
     return null;
   }
@@ -3839,7 +4341,7 @@ export class RubyHighService extends Service {
       productId: input.productId.trim().slice(0, 96) || `card-pack-${packCount}`,
       packCount,
       cardCount,
-      status: "active",
+      status: input.status === "opened" ? "opened" : "active",
       issuedAt: at,
       updatedAt: at,
       ...(input.source ? { source: input.source } : {}),
@@ -4166,8 +4668,12 @@ export class RubyHighService extends Service {
   }
 
   async cosyWorldWalletCards(
-    currentOwnershipForCard: (card: RubyHighHallPassCard) => Promise<CosyWorldCardOwnership | null>,
-    currentOwnershipForPack?: (pack: RubyHighHallPassPack) => Promise<CosyWorldPackOwnership | null>,
+    currentOwnershipForCards: (
+      mintAddresses: readonly string[],
+    ) => Promise<ReadonlyMap<string, CosyWorldCardOwnership>>,
+    currentOwnershipForPacks?: (
+      assetAddresses: readonly string[],
+    ) => Promise<ReadonlyMap<string, CosyWorldPackOwnership>>,
   ): Promise<CosyWorldWalletCardsExport> {
     const byWallet = new Map<string, CosyWorldWalletCardExport>();
     const cards: RubyHighHallPassCard[] = [];
@@ -4199,12 +4705,11 @@ export class RubyHighService extends Service {
         packs.push(pack);
       }
     }
-    const ownerships = await mapWithConcurrency(
-      cards,
-      COSYWORLD_OWNERSHIP_LOOKUP_CONCURRENCY,
-      async (card) => ({ card, ownership: await currentOwnershipForCard(card) }),
-    );
-    for (const { card, ownership } of ownerships) {
+    const ownerships = cards.length > 0
+      ? await currentOwnershipForCards(cards.map((card) => card.mintAddress!))
+      : new Map<string, CosyWorldCardOwnership>();
+    for (const card of cards) {
+      const ownership = ownerships.get(card.mintAddress!);
       if (!ownership?.ownerWalletAddress) continue;
       const walletAddress = ownership.ownerWalletAddress.trim();
       const mintAddress = ownership.mintAddress.trim();
@@ -4250,13 +4755,10 @@ export class RubyHighService extends Service {
         transactionSource: card.source,
       });
     }
-    if (currentOwnershipForPack) {
-      const packOwnerships = await mapWithConcurrency(
-        packs,
-        COSYWORLD_OWNERSHIP_LOOKUP_CONCURRENCY,
-        async (pack) => ({ pack, ownership: await currentOwnershipForPack(pack) }),
-      );
-      for (const { pack, ownership } of packOwnerships) {
+    if (currentOwnershipForPacks && packs.length > 0) {
+      const packOwnerships = await currentOwnershipForPacks(packs.map((pack) => pack.assetAddress));
+      for (const pack of packs) {
+        const ownership = packOwnerships.get(pack.assetAddress);
         if (!ownership?.ownerWalletAddress) continue;
         const walletAddress = ownership.ownerWalletAddress.trim();
         const assetAddress = ownership.assetAddress.trim();
@@ -4305,6 +4807,42 @@ export class RubyHighService extends Service {
     return normalizeHallPassPacks(state.wallet.hallPassPacks);
   }
 
+  recordHallPassPackOnChainOpened(
+    sessionId: string,
+    assetAddress: string,
+    metadataUri?: string,
+  ): RubyHighHallPassPack | null {
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const packs = normalizeHallPassPacks(state.wallet.hallPassPacks);
+    const asset = assetAddress.trim();
+    const pack = packs.find((candidate) => candidate.assetAddress === asset);
+    if (!pack) return null;
+    const cleanMetadataUri = typeof metadataUri === "string" ? metadataUri.trim() : "";
+    let changed = false;
+    if (pack.status !== "opened") {
+      pack.status = "opened";
+      changed = true;
+    }
+    if (cleanMetadataUri && pack.metadataUri !== cleanMetadataUri) {
+      pack.metadataUri = cleanMetadataUri;
+      changed = true;
+    }
+    if (pack.ownershipMissCount || pack.ownershipLastMissAt) {
+      delete pack.ownershipMissCount;
+      delete pack.ownershipLastMissAt;
+      changed = true;
+    }
+    if (changed) {
+      const at = Date.now();
+      pack.updatedAt = at;
+      state.wallet.hallPassPacks = normalizeHallPassPacks(packs);
+      state.updatedAt = at;
+      void this.persistSession(sessionId);
+    }
+    return pack;
+  }
+
   reconcileHallPassPacksForOwner(
     sessionId: string,
     ownerWalletAddress: string,
@@ -4319,20 +4857,35 @@ export class RubyHighService extends Service {
     const removed: RubyHighHallPassPack[] = [];
     const restored: RubyHighHallPassPack[] = [];
     const at = Date.now();
+    let changed = false;
     for (const pack of packs) {
       if (pack.ownerWalletAddress !== owner || pack.status === "opened") continue;
       const isOwnedOnChain = owned.has(pack.assetAddress);
       if (isOwnedOnChain && pack.status === "void") {
         pack.status = "active";
         pack.updatedAt = at;
+        delete pack.ownershipMissCount;
+        delete pack.ownershipLastMissAt;
+        changed = true;
         restored.push(pack);
       } else if (!isOwnedOnChain && pack.status === "active") {
-        pack.status = "void";
+        const missCount = Math.max(0, Math.floor(Number(pack.ownershipMissCount ?? 0))) + 1;
+        pack.ownershipMissCount = missCount;
+        pack.ownershipLastMissAt = at;
         pack.updatedAt = at;
-        removed.push(pack);
+        changed = true;
+        if (missCount >= 3) {
+          pack.status = "void";
+          removed.push(pack);
+        }
+      } else if (isOwnedOnChain && (pack.ownershipMissCount || pack.ownershipLastMissAt)) {
+        delete pack.ownershipMissCount;
+        delete pack.ownershipLastMissAt;
+        pack.updatedAt = at;
+        changed = true;
       }
     }
-    if (removed.length > 0 || restored.length > 0) {
+    if (changed) {
       state.wallet.hallPassPacks = normalizeHallPassPacks(packs);
       state.updatedAt = at;
       void this.persistSession(sessionId);
@@ -4406,6 +4959,41 @@ export class RubyHighService extends Service {
     if (transactionMessageHash) card.pendingMintTransactionHash = transactionMessageHash;
     else delete card.pendingMintTransactionHash;
     card.pendingMintPreparedAt = at;
+    delete card.pendingMintSignature;
+    delete card.pendingMintSubmittedAt;
+    card.updatedAt = at;
+    state.wallet.hallPassCards = normalizeHallPassCards(cards);
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return card;
+  }
+
+  recordHallPassCardMintSubmission(sessionId: string, input: HallPassCardMintSubmissionInput): RubyHighHallPassCard {
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const cards = normalizeHallPassCards(state.wallet.hallPassCards);
+    const card = cards.find((candidate) => candidate.id === input.cardId);
+    if (!card) throw new Error("Card not found.");
+    if (card.status !== "active" || card.mintAddress || card.mintSignature) {
+      throw new Error("Only a pending card can record a mint submission.");
+    }
+    const ownerWalletAddress = input.ownerWalletAddress.trim();
+    const mintAddress = input.mintAddress.trim();
+    const metadataUri = input.metadataUri.trim();
+    const mintSignature = input.mintSignature.trim();
+    if (!ownerWalletAddress || !mintAddress || !metadataUri || !mintSignature) {
+      throw new Error("Card mint submission is incomplete.");
+    }
+    if (
+      card.pendingMintOwnerWalletAddress !== ownerWalletAddress ||
+      card.pendingMintAddress !== mintAddress ||
+      card.pendingMintMetadataUri !== metadataUri
+    ) {
+      throw new Error("Card mint submission does not match the prepared card.");
+    }
+    const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
+    card.pendingMintSignature = mintSignature;
+    card.pendingMintSubmittedAt = at;
     card.updatedAt = at;
     state.wallet.hallPassCards = normalizeHallPassCards(cards);
     state.updatedAt = Date.now();
@@ -4432,16 +5020,34 @@ export class RubyHighService extends Service {
     }
     if (card.status !== "active") throw new Error("Only active cards can be minted.");
     if (card.mintAddress || card.mintSignature) throw new Error("Card is already minted.");
+    const ownerWalletAddress = input.ownerWalletAddress.trim();
+    const mintAddress = input.mintAddress.trim();
+    const mintSignature = input.mintSignature.trim();
+    const metadataUri = input.metadataUri.trim();
+    if (!ownerWalletAddress || !mintAddress || !mintSignature || !metadataUri) {
+      throw new Error("Card mint record is incomplete.");
+    }
+    for (const [otherSessionId, otherState] of this.sessions) {
+      const duplicate = normalizeHallPassCards(otherState.wallet.hallPassCards)
+        .find((candidate) => candidate.mintAddress === mintAddress && (
+          otherSessionId !== sessionId || candidate.id !== card.id
+        ));
+      if (duplicate) throw new Error("Card NFT has already been recorded for another card.");
+    }
     const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
-    card.ownerWalletAddress = input.ownerWalletAddress.trim();
-    card.mintAddress = input.mintAddress.trim();
-    card.mintSignature = input.mintSignature.trim();
-    card.metadataUri = input.metadataUri.trim();
+    card.ownerWalletAddress = ownerWalletAddress;
+    card.mintAddress = mintAddress;
+    card.mintSignature = mintSignature;
+    card.metadataUri = metadataUri;
     delete card.pendingMintOwnerWalletAddress;
     delete card.pendingMintAddress;
     delete card.pendingMintMetadataUri;
     delete card.pendingMintTransactionHash;
     delete card.pendingMintPreparedAt;
+    delete card.pendingMintSignature;
+    delete card.pendingMintSubmittedAt;
+    card.onChainRevealPending = true;
+    delete card.onChainRevealAttemptedAt;
     card.revealedAt = at;
     card.updatedAt = at;
     state.wallet.hallPassCards = normalizeHallPassCards(cards);
@@ -4481,6 +5087,39 @@ export class RubyHighService extends Service {
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return { state, applied: true, transaction, card };
+  }
+
+  pendingHallPassCardReveals(sessionId: string, ownerWalletAddress?: string): RubyHighHallPassCard[] {
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const owner = typeof ownerWalletAddress === "string" ? ownerWalletAddress.trim() : "";
+    return normalizeHallPassCards(state.wallet.hallPassCards).filter((card) => (
+      card.status === "active" &&
+      !!card.mintAddress &&
+      !!card.mintSignature &&
+      card.onChainRevealPending === true &&
+      (!owner || card.ownerWalletAddress === owner)
+    ));
+  }
+
+  recordHallPassCardRevealAttempt(
+    sessionId: string,
+    cardId: string,
+    completed: boolean,
+    at = Date.now(),
+  ): RubyHighHallPassCard {
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const cards = normalizeHallPassCards(state.wallet.hallPassCards);
+    const card = cards.find((candidate) => candidate.id === cardId);
+    if (!card) throw new Error("Card not found.");
+    card.onChainRevealAttemptedAt = Math.max(1, Math.floor(at));
+    card.onChainRevealPending = !completed;
+    card.updatedAt = Math.max(card.updatedAt, card.onChainRevealAttemptedAt);
+    state.wallet.hallPassCards = normalizeHallPassCards(cards);
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return card;
   }
 
   grantMeritStars(sessionId: string, input: MeritStarMutationInput): MeritStarMutationResult {
@@ -4712,7 +5351,7 @@ export class RubyHighService extends Service {
     const mod = state.character?.stats[stat] ?? 0;
     const total = r.total + mod;
     const outcome = classifyTotal(total);
-    const correct = (state.current?.correct ?? "A") as Choice;
+    const correct = state.current ? correctChoiceForQuestion(state.current) ?? "A" : "A";
     const eliminated = pickEliminatedChoices(correct, outcome);
     const advantage: AdvantageRoll = {
       rolled: true,
@@ -4807,6 +5446,7 @@ export class RubyHighService extends Service {
       storedMetricEvents,
       storedSchoolEvents,
       storedPhotoPostSchedulerState,
+      storedScheduledPostSchedulerState,
       storedPublicWorldRoomState,
       storedPublicWorldRoomOutcomeState,
       storedPublicWorldTermState,
@@ -4823,6 +5463,7 @@ export class RubyHighService extends Service {
       this.store.loadMetricEvents?.() ?? Promise.resolve([]),
       this.store.loadSchoolEvents?.({ limit: SCHOOL_WORLD_EVENT_CACHE_LIMIT }) ?? Promise.resolve([]),
       this.store.loadServiceState?.(PHOTO_POST_SCHEDULER_STATE_ID) ?? Promise.resolve(null),
+      this.store.loadServiceState?.(SCHEDULED_POST_SCHEDULER_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_ROOMS_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_ROOM_OUTCOMES_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_TERMS_STATE_ID) ?? Promise.resolve(null),
@@ -4880,6 +5521,9 @@ export class RubyHighService extends Service {
     }
     this.pruneSchoolEventRecords();
     this.hydratePhotoPostSchedulerState(storedPhotoPostSchedulerState);
+    this.rotationScheduler = new PostRotationScheduler({
+      state: hydrateScheduledPostSchedulerState(storedScheduledPostSchedulerState),
+    });
     this.hydratePublicWorldRoomState(storedPublicWorldRoomState);
     this.hydratePublicWorldRoomOutcomeState(storedPublicWorldRoomOutcomeState);
     this.hydratePublicWorldTermState(storedPublicWorldTermState);
@@ -5775,29 +6419,29 @@ export class RubyHighService extends Service {
     return record;
   }
 
-  private rubyHomeroomDeckApplies(
+  private dailyClassTakeDeckApplies(
     state: QuizState,
     facultyId: string,
     requestedMode?: "class" | "practice",
   ): boolean {
-    return facultyId === RUBY_FACULTY.id
+    return CORE_DAILY_CLASS_FACULTY.has(facultyId)
       && !requestedMode
       && !!state.character
       && !!state.currentGrade
       && facultyId !== LOUNGE_FACULTY.id;
   }
 
-  private rubyHomeroomDeckRole(record: DailyClassRecord | null): DeckCardRole {
+  private dailyClassTakeDeckRole(record: DailyClassRecord | null): DeckCardRole {
     if (record?.status === "complete" || (record?.questionCount ?? 0) >= CLASS_QUESTIONS_PER_DAY) {
       return "practice";
     }
     const classCount = record?.questionCount ?? 0;
     const practiceCount = record?.practiceCount ?? 0;
     const socialCount = record?.socialCount ?? 0;
-    if (classCount >= 1 && socialCount < RUBY_HOMEROOM_SOCIAL_CARDS_PER_DAY) {
+    if (classCount >= CLASS_QUESTIONS_PER_DAY - DAILY_CLASS_TAKES_PER_DAY && socialCount < DAILY_CLASS_TAKES_PER_DAY) {
       return "social";
     }
-    const requiredPractice = RUBY_HOMEROOM_PRACTICE_BEFORE_CLASS[classCount] ?? Number.POSITIVE_INFINITY;
+    const requiredPractice = DAILY_CLASS_PRACTICE_BEFORE_CARD[classCount] ?? Number.POSITIVE_INFINITY;
     if (practiceCount < requiredPractice) return "practice";
     return "class";
   }
@@ -5814,8 +6458,8 @@ export class RubyHighService extends Service {
     if (!this.isGraduationFacultyForState(state, facultyId)) return "practice";
     const record = this.dailyClassRecord(state, facultyId);
     if (record?.status === "complete") return "practice";
-    if (this.rubyHomeroomDeckApplies(state, facultyId, requestedMode)) {
-      return this.rubyHomeroomDeckRole(record);
+    if (this.dailyClassTakeDeckApplies(state, facultyId, requestedMode)) {
+      return this.dailyClassTakeDeckRole(record);
     }
     return "class";
   }
@@ -5827,7 +6471,7 @@ export class RubyHighService extends Service {
     questionType: QuestionType = "multiple-choice",
   ): DeckCardRole {
     const cardRole = this.peekCardRoleForPose(state, facultyId, requestedMode, questionType);
-    if (!this.rubyHomeroomDeckApplies(state, facultyId, requestedMode)) return cardRole;
+    if (!this.dailyClassTakeDeckApplies(state, facultyId, requestedMode)) return cardRole;
     if (cardRole !== "practice" && cardRole !== "social") return cardRole;
     const now = Date.now();
     const record = this.ensureDailyClassRecord(state, facultyId, dailyKey(), now);
@@ -5940,11 +6584,12 @@ export class RubyHighService extends Service {
     facultyId: string,
     requestedMode?: "class" | "practice",
     cardRole?: DeckCardRole,
+    dailyTake = false,
   ): NonNullable<ActiveRound["classSession"]> {
     const ch = state.character;
     const grade = state.currentGrade;
     const date = dailyKey();
-    if (cardRole && cardRole !== "class") {
+    if (cardRole && cardRole !== "class" && !(cardRole === "social" && dailyTake)) {
       return { mode: "practice", facultyId, grade: grade ?? undefined, date };
     }
     if (
@@ -5960,6 +6605,9 @@ export class RubyHighService extends Service {
     if (record?.status === "complete") {
       return { mode: "practice", facultyId, grade, date };
     }
+    if (dailyTake && (record?.questionCount ?? 0) !== CLASS_QUESTIONS_PER_DAY - 1) {
+      return { mode: "practice", facultyId, grade, date };
+    }
     return {
       mode: "class",
       facultyId,
@@ -5968,6 +6616,21 @@ export class RubyHighService extends Service {
       index: (record?.questionCount ?? 0) + 1,
       total: CLASS_QUESTIONS_PER_DAY,
     };
+  }
+
+  private recordDailyClassStartedIfNeeded(state: QuizState, questionId: string): void {
+    const session = state.activeRound?.classSession;
+    if (session?.mode !== "class" || session.index !== 1 || !CORE_DAILY_CLASS_FACULTY.has(session.facultyId)) return;
+    this.recordClassFlowMetric("daily_class_started", state, {
+      faculty: session.facultyId,
+      grade: session.grade,
+      date: session.date,
+      step: "evidence_1",
+      status: "started",
+      metadata: {
+        questionId,
+      },
+    });
   }
 
   private recordDailyClassQuestion(
@@ -6043,10 +6706,23 @@ export class RubyHighService extends Service {
         });
       }
       this.unlockTeacherStoryPageForAClass(state, record, now);
+      if (CORE_DAILY_CLASS_FACULTY.has(session.facultyId)) {
+        this.recordClassFlowMetric("class_result_completed", state, {
+          faculty: session.facultyId,
+          grade: session.grade,
+          date: session.date,
+          step: "class_result",
+          status: "success",
+          metadata: {
+            letterGrade: record.letterGrade,
+            score: avg,
+          },
+        });
+      }
     }
     return {
       mode: "class",
-      cardRole: "class",
+      cardRole: round?.cardRole ?? "class",
       facultyId: session.facultyId,
       grade: session.grade,
       date: session.date,
@@ -6084,6 +6760,7 @@ export class RubyHighService extends Service {
     const correctAnswer = reveal.expectedAnswer
       ?? question.expectedAnswer
       ?? question.options?.[reveal.correct]
+      ?? correctAnswerForQuestion(question)
       ?? reveal.correct;
     const report: FirstBellReport = {
       reportId: `first-bell:${createHash("sha256").update(`${state.sessionId}:${question.id}:${now}`).digest("hex").slice(0, 16)}`,
@@ -6100,6 +6777,16 @@ export class RubyHighService extends Service {
       ...(reveal.scoreAward ? { score: reveal.scoreAward.points } : {}),
     };
     ch.firstBellReport = report;
+    this.recordShareArtifactCreated(state.sessionId, {
+      shareId: firstBellShareId({
+        sessionId: state.sessionId,
+        name: ch.name,
+        createdAt: ch.createdAt,
+        reportId: report.reportId,
+      }),
+      ...(state.currentGrade ? { grade: state.currentGrade } : {}),
+      kind: "first_bell_report",
+    });
     this.recordFunnelStep(state, "first_bell_report_awarded", {
       faculty: facultyId,
       grade: state.currentGrade ?? null,
@@ -6142,7 +6829,6 @@ export class RubyHighService extends Service {
       subject: card.subject,
       difficulty: card.difficulty,
       faculty: card.faculty,
-      correct: "A",
     };
     question.stat = statForQuestion(question);
     return question;
@@ -6163,8 +6849,7 @@ export class RubyHighService extends Service {
     return faculty?.questions.find((q) =>
       (q.sourceCardId === source.id || q.id === source.id) &&
       (q.type ?? "multiple-choice") === "multiple-choice" &&
-      !!q.options &&
-      !!q.correct
+      !!multipleChoiceDefinition(q)
     ) ?? null;
   }
 
@@ -6182,7 +6867,7 @@ export class RubyHighService extends Service {
   }
 
   private normalizeGeneratedMcQuestion(source: PackSourceCard, q: BankedQuestion): BankedQuestion {
-    if (!q.options || !q.correct) {
+    if (!multipleChoiceDefinition(q)) {
       throw new Error("Distractor generation did not return a playable multiple-choice question.");
     }
     return {
@@ -6592,11 +7277,12 @@ export class RubyHighService extends Service {
 
     // Determine first-correct across the whole field.
     const corrects: Array<{ id: string; at: number }> = [];
-    if (round.player.answeredAt != null && round.player.picked === q.correct) {
+    const correctChoice = correctChoiceForQuestion(q) ?? "A";
+    if (round.player.answeredAt != null && round.player.picked === correctChoice) {
       corrects.push({ id: "player", at: round.player.answeredAt });
     }
     for (const entry of round.npcs) {
-      if (entry.plannedPick === q.correct && entry.answeredAt != null) {
+      if (entry.plannedPick === correctChoice && entry.answeredAt != null) {
         corrects.push({ id: entry.studentId, at: entry.answeredAt });
       }
     }
@@ -6606,7 +7292,7 @@ export class RubyHighService extends Service {
     // Player scoring. Forfeits (timer expired with no pick) count toward
     // total but don't fake a picked letter in answer history.
     const picked = round.player.picked ?? null;
-    const rawCorrect = !forfeit && picked != null && picked === q.correct;
+    const rawCorrect = !forfeit && picked != null && picked === correctChoice;
     let affinitySave: { facultyId: string } | null = null;
     if (!rawCorrect && !forfeit && picked != null && state.character && state.currentGrade) {
       const affinity = state.character.classAffinity?.[state.currentGrade];
@@ -6644,8 +7330,9 @@ export class RubyHighService extends Service {
     if (picked != null) {
       const record: AnswerRecord = {
         questionId: q.id,
+        faculty: q.faculty ?? round.classSession?.facultyId ?? state.faculty,
         picked,
-        correct: (q.correct ?? "A") as Choice,
+        correct: correctChoice,
         wasCorrect,
         at: round.player.answeredAt ?? round.expiresAt,
         ...(isTypedQuestion ? { answerText, expectedAnswer: q.expectedAnswer ?? acceptedAnswers[0] } : {}),
@@ -6693,8 +7380,8 @@ export class RubyHighService extends Service {
     // Class Clown void: retroactively fix NPCs, history, and score.
     if (classClownVoid) {
       for (const entry of round.npcs) {
-        if (entry.plannedPick !== q.correct && entry.answeredAt != null) {
-          entry.plannedPick = q.correct ?? "A";
+        if (entry.plannedPick !== correctChoice && entry.answeredAt != null) {
+          entry.plannedPick = correctChoice;
           entry.outcome = "mixed";
           entry.rolledTotal = Math.max(0, entry.rolledTotal);
         }
@@ -6724,14 +7411,30 @@ export class RubyHighService extends Service {
       reviewAt,
       picked == null || forfeit ? null : playerRoll?.outcome ?? null,
     );
+    if (
+      classProgress.mode === "class"
+      && round.cardRole === "class"
+      && CORE_DAILY_CLASS_FACULTY.has(classProgress.facultyId)
+    ) {
+      this.recordClassFlowMetric("evidence_card_completed", state, {
+        faculty: classProgress.facultyId,
+        grade: classProgress.grade,
+        date: classProgress.date,
+        step: `evidence_${classProgress.questionCount ?? 0}`,
+        status: "success",
+        metadata: {
+          questionId: q.id,
+          wasCorrect,
+        },
+      });
+    }
 
     // Player progression. Card mastery updates above; class grades are derived
     // from completed daily classes. Practice updates card memory but does not
     // tick the daily-class counter or the graduation gate.
     const progress = this.applyPlayerProgress(state, wasCorrect, state.faculty, classProgress);
     if (progress.dailyTicked) {
-      const correctAns = (q.correct ?? "A") as Choice;
-      this.applyCohortDaily(state, correctAns, dailyKey());
+      this.applyCohortDaily(state, correctChoice, dailyKey());
     }
 
     const questionSnapshot = {
@@ -6745,7 +7448,7 @@ export class RubyHighService extends Service {
       questionId: q.id,
       ...questionSnapshot,
       picked: (picked ?? "A") as Choice, // UI-only; audit lives in history
-      correct: (q.correct ?? "A") as Choice,
+      correct: correctChoice,
       wasCorrect,
       forfeit,
       explanation: q.explanation ?? null,
@@ -7410,39 +8113,21 @@ export class RubyHighService extends Service {
   }
 
   /**
-   * Randomize A/B/C/D order every time a question is posed, so the correct
-   * slot is never a learnable tell. The stored bank order (and any author bias
-   * toward "B", or the LLM's habit of writing the right answer first) becomes
-   * irrelevant because the student sees a fresh permutation each view. Grading
-   * reads state.current.correct, which we remap here, so the shuffle stays
-   * self-consistent. The correct option is tracked by identity, not text, so it
-   * survives even if two options share wording. A new options object is built
-   * rather than mutating in place, so a question that still references the
-   * shared in-memory bank object is never corrupted.
+   * Build a fresh A/B/C/D board from the semantic answer definition.
    *
-   * Gated by RUBY_HIGH_SHUFFLE_CHOICES (default on; set to "0" under test for a
-   * deterministic stored order — see vitest.config.ts and choice-shuffle.test.ts).
+   * Authored cards never own a "correct letter." Every pose independently
+   * samples three decoys, shuffles all four values, and records the resulting
+   * slot in `correctChoice`. Grading reads only that posed mapping.
    */
-  private shuffleQuestionChoices(question: Question): void {
-    if (process.env.RUBY_HIGH_SHUFFLE_CHOICES === "0") return;
-    if (question.type !== "multiple-choice" || !question.options || !question.correct) return;
-    const items = CHOICES.map((slot) => ({
-      text: question.options![slot] ?? "",
-      isCorrect: slot === question.correct,
-    }));
-    for (let i = items.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [items[i], items[j]] = [items[j], items[i]];
-    }
-    const options = {} as Record<Choice, string>;
-    let correct: Choice = question.correct;
-    items.forEach((item, index) => {
-      const slot = CHOICES[index]!;
-      options[slot] = item.text;
-      if (item.isCorrect) correct = slot;
+  private materializeQuestionChoices(question: Question): void {
+    if ((question.type ?? "multiple-choice") !== "multiple-choice") return;
+    const materialized = materializeMultipleChoice(question, {
+      shuffle: process.env.RUBY_HIGH_SHUFFLE_CHOICES !== "0",
     });
-    question.options = options;
-    question.correct = correct;
+    question.correct = materialized.correct;
+    question.decoys = materialized.decoys;
+    question.options = materialized.options;
+    question.correctChoice = materialized.correctChoice;
   }
 
   pose(sessionId: string, input: PoseInput): QuizState {
@@ -7450,15 +8135,6 @@ export class RubyHighService extends Service {
     this.assertBoardMutationAllowed(state, "post");
     if (state.character?.pendingGraduation) {
       throw new Error("Graduation ceremony is ready — choose a level-up reward before starting another question.");
-    }
-    if (!CHOICES.includes(input.correct)) {
-      throw new Error(`'correct' must be one of ${CHOICES.join(", ")}`);
-    }
-    for (const c of CHOICES) {
-      const v = input.options[c];
-      if (typeof v !== "string" || v.trim().length === 0) {
-        throw new Error(`Option ${c} is missing or empty`);
-      }
     }
     const id = input.questionId ?? `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
     const facultyId = this.resolveQuestionFaculty(state, input.faculty);
@@ -7468,8 +8144,10 @@ export class RubyHighService extends Service {
       id,
       prompt: input.prompt.trim(),
       type: "multiple-choice",
-      options: { ...input.options },
       correct: input.correct,
+      ...(input.decoys ? { decoys: [...input.decoys] } : {}),
+      ...(input.options ? { options: { ...input.options } } : {}),
+      ...(input.correctChoice ? { correctChoice: input.correctChoice } : {}),
       explanation: input.explanation?.trim() || undefined,
       subject,
       stat: normalizeQuestionStat(input.stat) ?? undefined,
@@ -7478,7 +8156,7 @@ export class RubyHighService extends Service {
       rarity: input.rarity,
     };
     question.stat = statForQuestion(question);
-    this.shuffleQuestionChoices(question);
+    this.materializeQuestionChoices(question);
     state.current = question;
     state.subject = question.subject ?? state.subject;
     state.faculty = question.faculty ?? state.faculty;
@@ -7491,6 +8169,7 @@ export class RubyHighService extends Service {
     state.activeRound = this.openRound(state, question);
     state.activeRound.classSession = this.classSessionForPose(state, facultyId, input.mode);
     state.activeRound.cardRole = state.activeRound.classSession.mode === "class" ? "class" : "practice";
+    this.recordDailyClassStartedIfNeeded(state, question.id);
     this.transition(state, { kind: "pose-question" });
     state.updatedAt = Date.now();
     log.event("question.posed", {
@@ -7512,17 +8191,14 @@ export class RubyHighService extends Service {
       throw new Error("Graduation ceremony is ready — choose a level-up reward before starting another question.");
     }
     const type: QuestionType = q.type ?? "multiple-choice";
-    const question: Question = { ...q, type };
+    const question: Question = {
+      ...q,
+      type,
+      ...(q.decoys ? { decoys: [...q.decoys] } : {}),
+      ...(q.options ? { options: { ...q.options } } : {}),
+    };
     if (type === "multiple-choice") {
-      if (!question.options || !question.correct) {
-        throw new Error(`Question ${q.id} is missing multiple-choice options.`);
-      }
-      for (const c of CHOICES) {
-        const v = question.options[c];
-        if (typeof v !== "string" || v.trim().length === 0) {
-          throw new Error(`Question ${q.id} option ${c} is missing or empty.`);
-        }
-      }
+      this.materializeQuestionChoices(question);
     } else if (type === "typed-answer" || type === "image-occlusion") {
       const answers = question.acceptedAnswers?.filter((answer) => answer.trim().length > 0) ?? [];
       if (!question.expectedAnswer && answers.length === 0) {
@@ -7530,11 +8206,10 @@ export class RubyHighService extends Service {
       }
       question.acceptedAnswers = answers.length > 0 ? answers : [question.expectedAnswer ?? ""];
       question.expectedAnswer = question.expectedAnswer ?? question.acceptedAnswers[0]!;
-      question.correct = "A";
+      question.correctChoice = "A";
       question.canGenerateMc = q.canGenerateMc !== false;
     }
     question.stat = statForQuestion(question);
-    this.shuffleQuestionChoices(question);
     state.current = question;
     state.subject = question.subject ?? state.subject;
     state.faculty = question.faculty ?? state.faculty;
@@ -7543,6 +8218,7 @@ export class RubyHighService extends Service {
     state.activeRound = this.openRound(state, question);
     state.activeRound.classSession = this.classSessionForPose(state, question.faculty ?? state.faculty, mode, cardRole);
     state.activeRound.cardRole = state.activeRound.classSession.mode === "class" ? "class" : cardRole;
+    this.recordDailyClassStartedIfNeeded(state, question.id);
     this.transition(state, { kind: "pose-question" });
     state.updatedAt = Date.now();
     log.event("question.posed", {
@@ -7564,26 +8240,35 @@ export class RubyHighService extends Service {
     // Imported decks are private study material; custom "challenge" boards
     // should not silently rewrite a user's imported source deck. The original
     // Ruby High curriculum is the shared server-side bank we grow over time.
-    if (pack.id !== ORIGINAL_PACK_ID) return;
-    if (!question.options || !question.correct || !question.subject || !question.difficulty || !question.faculty) return;
+    // A rotating Guest Faculty course composes a derived pack id around that
+    // same base school, so core-faculty authored cards still belong in the
+    // original bank while guest cards remain isolated to their source pack.
+    const targetPackId =
+      pack.id === ORIGINAL_PACK_ID ||
+      pack.id.startsWith(`${ORIGINAL_PACK_ID}+guest:`)
+        ? ORIGINAL_PACK_ID
+        : null;
+    if (!targetPackId || question.faculty === GUEST_COURSE_ID) return;
+    const definition = multipleChoiceDefinition(question);
+    if (!definition || !question.subject || !question.difficulty || !question.faculty) return;
     const banked: BankedQuestion = {
       id: question.id,
       prompt: question.prompt,
       type: "multiple-choice",
-      options: question.options as Record<Choice, string>,
-      correct: question.correct,
+      correct: definition.correct,
+      decoys: definition.decoys,
       explanation: question.explanation,
       subject: question.subject,
       stat: question.stat,
       difficulty: question.difficulty,
       faculty: question.faculty,
     };
-    const updated = appendQuestionToPackBank(pack.id, question.faculty, banked);
+    const updated = appendQuestionToPackBank(targetPackId, question.faculty, banked);
     if (updated) {
       this.persistGlobalPack(updated);
       log.event("question.promoted-to-bank", {
         sessionId: state.sessionId,
-        packId: pack.id,
+        packId: targetPackId,
         faculty: question.faculty,
         questionId: question.id,
       });
@@ -7620,7 +8305,7 @@ export class RubyHighService extends Service {
             answeredAt: null,
           };
         }
-        const correctAnswer = question.correct ?? "A";
+        const correctAnswer = correctChoiceForQuestion(question) ?? "A";
         const questionStat = statForQuestion(question);
         let r = rollNpcAnswer(npc.stats, correctAnswer, questionStat);
         // Heart: pep talk — give one classmate per round a re-roll on a miss.
@@ -7674,11 +8359,15 @@ export class RubyHighService extends Service {
     const id = input.questionId ?? `qo_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
     const facultyId = this.resolveQuestionFaculty(state, input.faculty);
     const subject = this.normalizeQuestionSubject(state, facultyId, input.subject);
+    const assignedEssay = state.character?.essayPrompt?.trim();
+    const opinionPurpose = input.purpose
+      ?? (assignedEssay && input.prompt.trim() === assignedEssay ? "grade-essay" : undefined);
     const question: Question = {
       id,
       prompt: input.prompt.trim(),
       type: "opinion",
       rubric: input.rubric?.trim() || undefined,
+      opinionPurpose,
       subject,
       faculty: facultyId,
       rarity: input.rarity,
@@ -7687,10 +8376,13 @@ export class RubyHighService extends Service {
     state.subject = question.subject ?? state.subject;
     state.faculty = question.faculty ?? state.faculty;
     if (!state.askedQuestionIds.includes(id)) state.askedQuestionIds.push(id);
-    const cardRole = this.reserveCardRoleForPose(state, facultyId, input.mode, "opinion");
+    const isDailyTake = opinionPurpose === "daily-take";
+    const cardRole = isDailyTake
+      ? this.reserveCardRoleForPose(state, facultyId, input.mode, "opinion")
+      : "social";
     state.activeRound = this.openRound(state, question);
-    state.activeRound.classSession = this.classSessionForPose(state, facultyId, input.mode, cardRole);
-    state.activeRound.cardRole = state.activeRound.classSession.mode === "class" ? "class" : cardRole;
+    state.activeRound.classSession = this.classSessionForPose(state, facultyId, input.mode, cardRole, isDailyTake);
+    state.activeRound.cardRole = cardRole;
     this.transition(state, { kind: "pose-question" });
     state.updatedAt = Date.now();
     log.event("question.posed", {
@@ -7721,15 +8413,28 @@ export class RubyHighService extends Service {
     round.opinionResponses.push({ responder, text: bounded, submittedAt: now });
     if (responder === "player") {
       round.player.answeredAt = now;
+      if (state.current?.opinionPurpose === "daily-take" && round.classSession?.mode === "class") {
+        this.recordClassFlowMetric("take_card_submitted", state, {
+          faculty: round.classSession.facultyId,
+          grade: round.classSession.grade,
+          date: round.classSession.date,
+          step: "take",
+          status: "success",
+          metadata: {
+            questionId: round.questionId,
+            responseLength: bounded.length,
+          },
+        });
+      }
     } else {
       const npc = round.npcs.find((n) => n.studentId === responder);
       if (npc) npc.answeredAt = now;
     }
-    log.event("essay.submitted", {
+    log.event(state.current?.opinionPurpose === "daily-take" ? "take.submitted" : "essay.submitted", {
       sessionId, faculty: state.faculty, questionId: round.questionId,
       responder, length: bounded.length,
     });
-    if (responder === "player") {
+    if (responder === "player" && state.current?.opinionPurpose === "grade-essay") {
       this.recordFunnelStep(state, "first_essay_submitted", {
         faculty: state.faculty,
         questionId: round.questionId,
@@ -7777,6 +8482,7 @@ export class RubyHighService extends Service {
       const scoreMultiplier = scoreMultiplierForPass(state, passed, reviewAt);
       const record: AnswerRecord = {
         questionId: q.id,
+        faculty: q.faculty ?? round.classSession?.facultyId ?? state.faculty,
         picked: "A" as Choice, // sentinel — opinion answers don't have a letter
         correct: "A" as Choice,
         wasCorrect: passed,
@@ -7806,7 +8512,9 @@ export class RubyHighService extends Service {
             ...(typeof round.classSession.total === "number" ? { totalQuestions: round.classSession.total } : {}),
           }
         : undefined;
-      state.character && (state.character.essayCompleted = true);
+      if (state.character && q.opinionPurpose === "grade-essay") {
+        state.character.essayCompleted = true;
+      }
       this.appendEssayReport(state, {
         id: `essay_${q.id}_${reviewAt.toString(36)}`,
         questionId: q.id,
@@ -7846,7 +8554,11 @@ export class RubyHighService extends Service {
         correct: "A" as Choice,
         wasCorrect: passed,
         explanation: q.rubric ?? null,
-        encouragement: affinitySave ? "Class affinity kicked in — second chance counted." : passed ? "Nice essay." : "Take another swing at it tomorrow.",
+        encouragement: affinitySave
+          ? "Class affinity kicked in — second chance counted."
+          : q.opinionPurpose === "daily-take"
+            ? passed ? "Your take held up." : "Your evidence needs another pass."
+            : passed ? "Nice essay." : "Take another swing at it tomorrow.",
         scoreMultiplier,
         scoreAward,
         classProgress,
@@ -7886,7 +8598,7 @@ export class RubyHighService extends Service {
     round.resolvedAt = Date.now();
     this.transition(state, { kind: "resolve-round" });
     state.updatedAt = round.resolvedAt;
-    log.event("essay.graded", {
+    log.event(state.current?.opinionPurpose === "daily-take" ? "take.graded" : "essay.graded", {
       sessionId, faculty: state.faculty, questionId: round.questionId,
       playerScore: playerGrade?.score ?? null, playerPassed: passed,
       bestResponder, affinitySaved: !!affinitySave, gradeCount: grades.length,
@@ -7896,18 +8608,38 @@ export class RubyHighService extends Service {
     return state;
   }
 
-  private poseRubyHomeroomSocialCard(sessionId: string, state: QuizState, facultyId: string): QuizState {
+  private poseDailyClassTake(sessionId: string, state: QuizState, facultyId: string): QuizState {
     const date = dailyKey();
     const grade = state.currentGrade ?? DEFAULT_GRADE;
     const record = this.dailyClassRecord(state, facultyId, date);
     const socialIndex = (record?.socialCount ?? 0) + 1;
-    return this.poseOpinion(sessionId, {
+    const pool = DAILY_CLASS_TAKE_CARDS[facultyId] ?? DAILY_CLASS_TAKE_CARDS.ruby!;
+    let seed = 0;
+    const key = `${facultyId}:${grade}:${date}`;
+    for (let i = 0; i < key.length; i++) seed = ((seed << 5) - seed + key.charCodeAt(i)) | 0;
+    const take = pool[Math.abs(seed) % pool.length]!;
+    const next = this.poseOpinion(sessionId, {
       faculty: facultyId,
-      subject: "social",
-      questionId: `social_${facultyId}_${grade}_${date}_${socialIndex}`,
-      prompt: "When a classmate gives an answer confidently, what is one sign you should trust it, and one sign you should check it?",
-      rubric: "A strong response names one concrete trust signal and one concrete reason to verify, then explains the difference in the player's own words.",
+      subject: take.subject,
+      questionId: `take_${facultyId}_${grade}_${date}_${socialIndex}`,
+      prompt: take.prompt,
+      rubric: take.rubric,
+      purpose: "daily-take",
     });
+    const classSession = next.activeRound?.classSession;
+    if (classSession?.mode === "class") {
+      this.recordClassFlowMetric("take_card_presented", next, {
+        faculty: classSession.facultyId,
+        grade: classSession.grade,
+        date: classSession.date,
+        step: "take",
+        status: "success",
+        metadata: {
+          questionId: next.current?.id ?? "",
+        },
+      });
+    }
+    return next;
   }
 
   private scheduledPickPlanForState(state: QuizState, filter: PickAndPoseInput = {}): ScheduledPickPlan {
@@ -7944,7 +8676,7 @@ export class RubyHighService extends Service {
     this.assertBoardMutationAllowed(state, "post");
     const plan = this.scheduledPickPlanForState(state, filter);
     if (plan.cardRole === "social") {
-      return this.poseRubyHomeroomSocialCard(sessionId, state, plan.facultyId);
+      return this.poseDailyClassTake(sessionId, state, plan.facultyId);
     }
     if (!plan.question) {
       throw new Error(
@@ -8113,7 +8845,9 @@ export class RubyHighService extends Service {
     round.player.answeredAt = Date.now();
     log.event("answer.picked", {
       sessionId, faculty: state.faculty, questionId: q.id,
-      picked, correct: q.correct, wasCorrect: picked === q.correct,
+      picked,
+      correct: correctChoiceForQuestion(q),
+      wasCorrect: picked === correctChoiceForQuestion(q),
       rarity: q.rarity,
     });
     this.recordFunnelStep(state, "first_question_answered", {
@@ -8248,7 +8982,14 @@ export class RubyHighService extends Service {
 
     const classSession = round?.classSession;
     const cardRole = round?.cardRole;
-    const question: Question = { ...mc, type: "multiple-choice", canGenerateMc: false };
+    const question: Question = {
+      ...mc,
+      type: "multiple-choice",
+      canGenerateMc: false,
+      ...(mc.decoys ? { decoys: [...mc.decoys] } : {}),
+      ...(mc.options ? { options: { ...mc.options } } : {}),
+    };
+    this.materializeQuestionChoices(question);
     question.stat = statForQuestion(question);
     state.current = question;
     state.subject = question.subject ?? state.subject;
@@ -8344,7 +9085,17 @@ export class RubyHighService extends Service {
   /** Create the player's character sheet. Throws if one already exists. */
   createCharacter(
     sessionId: string,
-    input: { name: string; playbookId: string; stats: CharacterStats; arcAnswer: string; flavorQuote?: string; personality: string; portraitDataUrl?: string; mentorAccepted?: boolean },
+    input: {
+      name: string;
+      playbookId: string;
+      stats: CharacterStats;
+      arcAnswer: string;
+      flavorQuote?: string;
+      personality: string;
+      portraitDataUrl?: string;
+      mentorAccepted?: boolean;
+      creationMethod?: "custom" | "quick-roll" | "agent";
+    },
   ): QuizState {
     const state = this.getOrCreate(sessionId);
     if (state.character) throw new Error("Character already exists for this session.");
@@ -8393,19 +9144,48 @@ export class RubyHighService extends Service {
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     log.event("character.created", {
-      sessionId, characterName: name, playbookId: input.playbookId, mentorAccepted: !!inheritedFrom,
-    });
-    this.maybePostXMilestone({
-      kind: "character-created",
+      sessionId,
       characterName: name,
-      flavorQuote: flavorQuote ?? undefined,
-    }, state);
+      playbookId: input.playbookId,
+      mentorAccepted: !!inheritedFrom,
+      creationMethod: input.creationMethod ?? "custom",
+    });
+    if (input.creationMethod !== "quick-roll") {
+      this.maybePostXMilestone({
+        kind: "character-created",
+        characterName: name,
+        flavorQuote: flavorQuote ?? undefined,
+      }, state);
+    }
     this.recordFunnelStep(state, "first_character_created", {
       characterName: name,
       playbookId: input.playbookId,
       mentorAccepted: !!inheritedFrom,
+      creationMethod: input.creationMethod ?? "custom",
     });
     return state;
+  }
+
+  /**
+   * Create a complete deterministic student and put the first local class
+   * card on the board. Repeated requests never reroll or replace a character,
+   * and never post a second card while one is live.
+   */
+  quickRollIntoFirstBell(sessionId: string): QuizState {
+    let state = this.getOrCreate(sessionId);
+    if (!state.character) {
+      const student = quickRollStudentForSeed(sessionId);
+      state = this.createCharacter(sessionId, {
+        ...student,
+        creationMethod: "quick-roll",
+      });
+    }
+    if (state.current || state.activeRound) return state;
+    if (this.dailyClassRecord(state, state.faculty, dailyKey())?.status === "complete") return state;
+    return this.pickAndPose(sessionId, {
+      faculty: state.faculty,
+      mode: "class",
+    });
   }
 
   /** Update an autosaved character candidate while preserving live career
@@ -8504,7 +9284,9 @@ export class RubyHighService extends Service {
     state.character.yearbook = characterYearbookEntries(state.character);
     const entry = state.character.yearbook.find((y) => y.grade === grade);
     if (!entry) throw new Error("No yearbook entry for grade " + grade + ".");
-    entry.yearbookImageUrl = imageUrl;
+    const stored = normalizeStoredImageRef(imageUrl, "yearbookImageUrl");
+    if (!stored) throw new Error("yearbookImageUrl is required.");
+    entry.yearbookImageUrl = stored;
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
@@ -8749,6 +9531,55 @@ export class RubyHighService extends Service {
     return candidates.some((candidate) => this.isClassPhotoRevealTarget(candidate.sessionId));
   }
 
+  /** Background pre-generation: when 4+ portraits are pending, generate a
+   *  class photo composite and enqueue it as a pending class-photo reveal.
+   *  This way the next daily photo post can use it immediately instead of
+   *  generating on cold start. */
+  private async maybePreGenerateClassPhoto(
+    portraits: { sessionId: string; photo: PendingPhotoReveal }[],
+  ): Promise<void> {
+    const xSocial = this.getXSocialService();
+    if (!xSocial) return;
+
+    // Use Ruby as the teacher for class photo generation.
+    const teacher = teacherById("ruby");
+    if (!teacher) return;
+
+    // Already generated a class photo for this set? Simple dedup by portrait count.
+    const existingClassPhotos = new Set<string>();
+    for (const [, state] of this.sessions) {
+      const ch = state.character;
+      if (!ch) continue;
+      for (const p of characterArrayField(ch, "pendingPhotos")) {
+        if (p.kind === "class-photo") existingClassPhotos.add(p.imageUrl);
+      }
+    }
+    if (existingClassPhotos.size > 0 && existingClassPhotos.size >= Math.floor(portraits.length / 4)) {
+      return; // Already have enough class photos queued.
+    }
+
+    const studentImages = portraits.slice(0, 8).map(({ photo }) => ({
+      name: "", // names come from session context
+      imageUrl: photo.imageUrl,
+    }));
+
+    try {
+      const imageUrl = await xSocial.generateClassPhoto(teacher, studentImages);
+      if (imageUrl) {
+        // Enqueue the generated class photo for Ruby to post.
+        // Use the first portrait's session as the reveal target.
+        const targetSessionId = portraits[0]!.sessionId;
+        this.enqueuePhotoReveal(targetSessionId, "class-photo", imageUrl, "ruby");
+        log.event("class-photo.pre-generated", {
+          portraitCount: portraits.length,
+          imageUrl: imageUrl.slice(0, 80),
+        });
+      }
+    } catch (err) {
+      log.error("class-photo.pre-generation-failed", err);
+    }
+  }
+
   private isClassPhotoRevealTarget(sessionId: string): boolean {
     const state = this.sessions.get(sessionId);
     const ch = state?.character;
@@ -8837,6 +9668,15 @@ export class RubyHighService extends Service {
       }
     }
     if (allPhotos.length === 0) return null;
+
+    // Pre-generation: if we have 4+ pending portraits, generate a class photo
+    // in the background for a future daily post. This avoids the cold-start
+    // delay when an admin clicks "Post Class Photo".
+    const pendingPortraits = allPhotos.filter(({ photo }) => photo.kind === "portrait");
+    if (pendingPortraits.length >= 4) {
+      void this.maybePreGenerateClassPhoto(pendingPortraits);
+    }
+
     const targetPhotoId = typeof opts.photoId === "string" && opts.photoId ? opts.photoId : null;
 
     // Fallback: if this photo's teacher is not connected to X, auto-reveal it
@@ -9064,7 +9904,7 @@ export class RubyHighService extends Service {
 
     // Take top 3 per year, sorted: portraits first, then grade score.
     const results: RecentlyActiveStudent[] = [];
-    for (const [grade, students] of byGrade) {
+    for (const students of byGrade.values()) {
       students.sort((a, b) => {
         const aPortrait = a.portraitUrl ? 1 : 0;
         const bPortrait = b.portraitUrl ? 1 : 0;
@@ -9092,6 +9932,53 @@ export class RubyHighService extends Service {
         imageUrl: student.portraitUrl!,
         grade: student.grade,
       }));
+  }
+
+  getPublicRoomHumanStudentsForSession(sessionId: string, now = Date.now(), limit = 16): PublicRoomHumanStudent[] {
+    const viewer = this.getOrCreate(sessionId);
+    const viewerPublicId = publicWorldSessionId(viewer.sessionId);
+    if (!viewer.currentGrade) return [];
+
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+    const cappedLimit = Math.max(0, Math.min(24, Math.floor(Number(limit) || 0)));
+    const entries: PublicRoomHumanStudent[] = [];
+    for (const [, state] of this.sessions) {
+      const ch = state.character;
+      if (!ch) continue;
+      const publicId = publicWorldSessionId(state.sessionId);
+      if (!publicId || publicId === viewerPublicId) continue;
+      if (!state.currentGrade || !state.faculty) continue;
+      if (!characterAllowsPublicSharing(ch)) continue;
+      const { facultyId, lastActive } = this.lastClassroomActivityFor(ch, state);
+      if (now - lastActive > weekMs) continue;
+      const portraitUrl = customPublicPortraitUrlForCharacter(ch);
+      if (!portraitUrl) continue;
+      const classGrades: Record<string, string> = {};
+      for (const record of characterDailyClassRecords(ch)) {
+        if (record.status === "complete" && record.letterGrade) {
+          classGrades[record.facultyId] = record.letterGrade;
+        }
+      }
+      entries.push({
+        id: publicId,
+        name: publicWorldNameReview(ch.name).displayName,
+        playbookId: ch.playbookId,
+        grade: state.currentGrade,
+        facultyId,
+        portraitUrl,
+        stats: { ...ch.stats },
+        classGrades,
+        yearbookCount: characterArrayField(ch, "yearbook").length,
+        lastActive,
+      });
+    }
+    return entries
+      .sort((a, b) => b.lastActive - a.lastActive || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+      .slice(0, cappedLimit);
+  }
+
+  async refreshPublicWorldSessions(now = Date.now(), opts: { eventLimit?: number } = {}): Promise<void> {
+    await this.refreshWorldSessionsFromStore(now, opts);
   }
 
   async getFreshRecentlyActiveStudents(now = Date.now()): Promise<RecentlyActiveStudent[]> {
@@ -9580,30 +10467,29 @@ export class RubyHighService extends Service {
     return sessionIds;
   }
 
-  private publicSchoolWorldEntries(now = Date.now(), weekMs = 7 * 24 * 60 * 60 * 1000): Array<{ state: QuizState; ch: PlayerCharacter; lastActive: number }> {
-    const entries: Array<{ state: QuizState; ch: PlayerCharacter; lastActive: number }> = [];
+  private publicSchoolWorldEntries(now = Date.now(), weekMs = 7 * 24 * 60 * 60 * 1000): PublicSchoolWorldEntry[] {
+    const entries: PublicSchoolWorldEntry[] = [];
     for (const [, state] of this.sessions) {
       const ch = state.character;
       if (!ch || !state.currentGrade) continue;
       if (!characterAllowsPublicSharing(ch)) continue;
-      const lastActive = this.lastActivityFor(ch, state);
+      const { facultyId, lastActive } = this.lastClassroomActivityFor(ch, state);
       if (now - lastActive > weekMs) continue;
       const hasGrades = characterDailyClassRecords(ch).some((record) => record.status === "complete");
       if (!hasGrades) continue;
-      entries.push({ state, ch, lastActive });
+      entries.push({ state, ch, facultyId, lastActive });
     }
     return entries;
   }
 
-  private publicWorldPresenceFromEntry(entry: { state: QuizState; ch: PlayerCharacter; lastActive: number }): PublicWorldPresenceEntry {
-    const { state, ch, lastActive } = entry;
+  private publicWorldPresenceFromEntry(entry: PublicSchoolWorldEntry): PublicWorldPresenceEntry {
+    const { state, ch, facultyId, lastActive } = entry;
     const classGrades: Record<string, string> = {};
     for (const record of characterDailyClassRecords(ch)) {
       if (record.status === "complete" && record.letterGrade) {
         classGrades[record.facultyId] = record.letterGrade;
       }
     }
-    const facultyId = state.faculty;
     const faculty = facultyForSession(state).find((item) => item.id === facultyId);
     return {
       sessionId: state.sessionId,
@@ -9693,12 +10579,39 @@ export class RubyHighService extends Service {
     return sum / grades.length;
   }
 
-  private lastActivityFor(ch: PlayerCharacter, state: QuizState): number {
+  private lastClassroomActivityFor(ch: PlayerCharacter, state: QuizState): { facultyId: string; lastActive: number } {
     let latest = Number(ch.createdAt ?? 0);
     if (!Number.isFinite(latest) || latest < 0) latest = 0;
+    let facultyId = state.faculty;
+    let latestClassroomAt = -1;
+    const noteClassroomActivity = (rawAt: unknown, rawFaculty: unknown): void => {
+      if (rawAt == null) return;
+      const at = Number(rawAt);
+      if (Number.isFinite(at) && at > latest) latest = at;
+      const faculty = typeof rawFaculty === "string" ? rawFaculty.trim() : "";
+      if (!faculty || !Number.isFinite(at) || at < 0 || at < latestClassroomAt) return;
+      latestClassroomAt = at;
+      facultyId = resolveFacultyIdForSession(state, faculty) ?? faculty;
+    };
+
     for (const record of characterDailyClassRecords(ch)) {
       const t = Number(record.updatedAt ?? record.completedAt ?? 0);
-      if (Number.isFinite(t) && t > latest) latest = t;
+      noteClassroomActivity(t, record.facultyId);
+    }
+    // Card memory supplies room-aware timestamps for existing persisted
+    // sessions, including practice answers that do not update daily classes.
+    for (const memory of Object.values(state.cardMemory ?? {})) {
+      noteClassroomActivity(memory?.lastReviewedAt, memory?.courseId);
+    }
+    for (const answer of Array.isArray(state.history) ? state.history : []) {
+      noteClassroomActivity(answer?.at, answer?.faculty);
+    }
+    const playerAnsweredAt = state.activeRound?.player?.answeredAt;
+    if (playerAnsweredAt != null) {
+      noteClassroomActivity(
+        playerAnsweredAt,
+        state.activeRound?.classSession?.facultyId ?? state.current?.faculty,
+      );
     }
     for (const lu of characterArrayField(ch, "levelUps")) {
       const t = Number(lu.awardedAt ?? 0);
@@ -9706,9 +10619,9 @@ export class RubyHighService extends Service {
     }
     for (const event of Array.isArray(state.schoolEvents) ? state.schoolEvents : []) {
       const t = Number(event.at ?? 0);
-      if (Number.isFinite(t) && t > latest) latest = t;
+      noteClassroomActivity(t, event.faculty);
     }
-    return latest;
+    return { facultyId, lastActive: latest };
   }
 
   /** Reassign pending photos from one teacher to another. Used when a
@@ -9776,6 +10689,29 @@ export class RubyHighService extends Service {
   }
 
   private xMilestoneContextWithImage(ctx: XMilestoneContext, state: QuizState): XMilestoneContext {
+    if (ctx.kind === "class-passed" && ctx.teacherFacultyId) {
+      const ch = state.character;
+      const faculty = facultyByIdForSession(state, ctx.teacherFacultyId);
+      const course = courseForFacultyForSession(state, ctx.teacherFacultyId);
+      const studentImageUrl = ch?.portraitDataUrl || defaultPlayerPortraitUrl(ch?.playbookId);
+      const teacherImageUrl = teacherFullPortraitUrl(
+        ctx.teacherFacultyId,
+        faculty?.assetTeacherId,
+        faculty?.profileImageUrl,
+      ) || teacherPortraitUrl(
+        ctx.teacherFacultyId,
+        faculty?.assetTeacherId,
+        faculty?.profileImageUrl,
+      );
+      return {
+        ...ctx,
+        teacherName: faculty?.displayName || ctx.teacherName,
+        className: course?.title || faculty?.displayName || ctx.teacherName || "Class",
+        classSubjects: course?.subjects?.length ? course.subjects : faculty?.subjects ?? [],
+        studentImageUrl,
+        ...(teacherImageUrl ? { teacherImageUrl } : {}),
+      };
+    }
     if (ctx.imageUrl || ctx.portraitUrl || ctx.diplomaUrl) return ctx;
     const ch = state.character;
     return {
@@ -9884,6 +10820,47 @@ function yearbookShareId(parts: {
     .update(`${parts.sessionId}:${parts.source}:${parts.name}:${parts.createdAt}`)
     .digest("hex")
     .slice(0, 20);
+}
+
+function firstBellShareId(parts: {
+  sessionId: string;
+  name: string;
+  createdAt: number;
+  reportId: string;
+}): string {
+  return createHash("sha256")
+    .update(`${parts.sessionId}:first-bell:${parts.name}:${parts.createdAt}:${parts.reportId}`)
+    .digest("hex")
+    .slice(0, 20);
+}
+
+function firstBellShareCardForState(state: QuizState): FirstBellShareCard | null {
+  const ch = state.character;
+  const report = ch?.firstBellReport;
+  if (!ch || !report) return null;
+  const shareId = firstBellShareId({
+    sessionId: state.sessionId,
+    name: ch.name,
+    createdAt: ch.createdAt,
+    reportId: report.reportId,
+  });
+  return {
+    shareId,
+    awardedAt: report.awardedAt,
+    characterName: ch.name,
+    playbookId: ch.playbookId ?? null,
+    grade: report.grade ?? null,
+    facultyId: report.facultyId,
+    facultyName: report.facultyName,
+    prompt: report.prompt,
+    answerText: report.answerText,
+    ...(report.correctAnswerText ? { correctAnswerText: report.correctAnswerText } : {}),
+    wasCorrect: report.wasCorrect,
+    ...(report.encouragement ? { encouragement: report.encouragement } : {}),
+    ...(report.score != null ? { score: report.score } : {}),
+    stats: { ...ch.stats },
+    ...(ch.portraitDataUrl ? { portraitDataUrl: ch.portraitDataUrl } : {}),
+  };
 }
 
 function yearbookShareCardsForState(state: QuizState): YearbookShareCard[] {
@@ -10073,6 +11050,7 @@ function normalizeHallPassCard(raw: unknown): RubyHighHallPassCard | null {
     "pendingMintAddress",
     "pendingMintMetadataUri",
     "pendingMintTransactionHash",
+    "pendingMintSignature",
     "mintAddress",
     "mintSignature",
     "metadataUri",
@@ -10102,6 +11080,13 @@ function normalizeHallPassCard(raw: unknown): RubyHighHallPassCard | null {
   if (Number.isFinite(revealedAt) && revealedAt > 0) entry.revealedAt = revealedAt;
   const pendingMintPreparedAt = Math.floor(Number(card.pendingMintPreparedAt ?? 0));
   if (Number.isFinite(pendingMintPreparedAt) && pendingMintPreparedAt > 0) entry.pendingMintPreparedAt = pendingMintPreparedAt;
+  const pendingMintSubmittedAt = Math.floor(Number(card.pendingMintSubmittedAt ?? 0));
+  if (Number.isFinite(pendingMintSubmittedAt) && pendingMintSubmittedAt > 0) entry.pendingMintSubmittedAt = pendingMintSubmittedAt;
+  if (card.onChainRevealPending === true) entry.onChainRevealPending = true;
+  const onChainRevealAttemptedAt = Math.floor(Number(card.onChainRevealAttemptedAt ?? 0));
+  if (Number.isFinite(onChainRevealAttemptedAt) && onChainRevealAttemptedAt > 0) {
+    entry.onChainRevealAttemptedAt = onChainRevealAttemptedAt;
+  }
   const burnedAt = Math.floor(Number(card.burnedAt ?? 0));
   if (Number.isFinite(burnedAt) && burnedAt > 0) entry.burnedAt = burnedAt;
   if (
@@ -10239,6 +11224,12 @@ function normalizeHallPassPack(raw: unknown): RubyHighHallPassPack | null {
   if (Number.isFinite(revealSlot) && revealSlot >= 0) entry.revealSlot = revealSlot;
   const openedAt = Math.floor(Number(pack.openedAt ?? 0));
   if (Number.isFinite(openedAt) && openedAt > 0) entry.openedAt = openedAt;
+  const ownershipMissCount = Math.floor(Number(pack.ownershipMissCount ?? 0));
+  if (Number.isFinite(ownershipMissCount) && ownershipMissCount > 0) entry.ownershipMissCount = ownershipMissCount;
+  const ownershipLastMissAt = Math.floor(Number(pack.ownershipLastMissAt ?? 0));
+  if (Number.isFinite(ownershipLastMissAt) && ownershipLastMissAt > 0) {
+    entry.ownershipLastMissAt = ownershipLastMissAt;
+  }
   return entry;
 }
 
@@ -11874,6 +12865,7 @@ function buildRubyHighDailyBuckets(now: number, count: number): {
 function buildMetricEventsSnapshot(
   events: Iterable<StoredMetricEventRecord>,
   byDate: Map<string, RubyHighAnalyticsDay>,
+  now: number,
 ): RubyHighMetricEventsSnapshot {
   const orderedEvents = Array.from(events).sort((a, b) => a.occurredAt - b.occurredAt);
   const byName: Record<StoredMetricEventName, number> = {
@@ -11889,11 +12881,30 @@ function buildMetricEventsSnapshot(
     guest_spotlight_seen: 0,
     guest_spotlight_started: 0,
     guest_pack_override_set: 0,
+    daily_class_started: 0,
+    evidence_card_completed: 0,
+    take_card_presented: 0,
+    take_card_started: 0,
+    take_card_submitted: 0,
+    teacher_response_viewed: 0,
+    room_reaction_viewed: 0,
+    class_result_completed: 0,
+    class_result_viewed: 0,
+    class_record_saved: 0,
     commerce: 0,
     llm_usage: 0,
     error: 0,
     balance_sample: 0,
   };
+  const byClientSurface: Record<MetricClientSurface, number> = {
+    viewer: 0,
+    agent: 0,
+    smoke: 0,
+    api: 0,
+    unknown: 0,
+  };
+  let evidence1Completed = 0;
+  let evidence2Completed = 0;
   const appOpenSessions = new Set<string>();
   const appOpenVisitors = new Set<string>();
   const resumeSessions = new Set<string>();
@@ -11929,6 +12940,8 @@ function buildMetricEventsSnapshot(
     sharesInitiated: 0,
     linkVisits: 0,
     uniqueReferredVisitors: 0,
+    shareClickThroughRate: null as number | null,
+    uniqueShareClickThroughRate: null as number | null,
   };
   const guestSpotlight = {
     seen: 0,
@@ -11962,6 +12975,9 @@ function buildMetricEventsSnapshot(
   for (const event of orderedEvents) {
     total += 1;
     byName[event.name] += 1;
+    byClientSurface[isMetricClientSurface(event.clientSurface) ? event.clientSurface : "unknown"] += 1;
+    if (event.name === "evidence_card_completed" && event.step === "evidence_1") evidence1Completed += 1;
+    if (event.name === "evidence_card_completed" && event.step === "evidence_2") evidence2Completed += 1;
     const day = byDate.get(event.day);
     if (event.name === "visitor_seen") {
       if (event.visitorHash) visitorHashes.add(event.visitorHash);
@@ -12057,6 +13073,12 @@ function buildMetricEventsSnapshot(
   first10m.appOpenSessions = firstAppOpenBySession.size;
   yearbook.uniqueVisitors = yearbookVisitors.size;
   referral.uniqueReferredVisitors = referredVisitors.size;
+  referral.shareClickThroughRate = referral.sharesInitiated > 0
+    ? referral.linkVisits / referral.sharesInitiated
+    : null;
+  referral.uniqueShareClickThroughRate = referral.sharesInitiated > 0
+    ? referral.uniqueReferredVisitors / referral.sharesInitiated
+    : null;
   const conversionFunnel = {
     totalVisitors: visitorHashes.size,
     charactersCreated: funnel.firstCharacterCreated,
@@ -12064,6 +13086,12 @@ function buildMetricEventsSnapshot(
     visitorToCharacterRate: visitorHashes.size > 0 ? funnel.firstCharacterCreated / visitorHashes.size : null,
     characterToPayerRate: funnel.firstCharacterCreated > 0 ? payingSessions.size / funnel.firstCharacterCreated : null,
     visitorToPayerRate: visitorHashes.size > 0 ? payingSessions.size / visitorHashes.size : null,
+  };
+  const trustStartMs = activationMetricsTrustStart();
+  const activationFunnel = {
+    trustStart: new Date(trustStartMs).toISOString(),
+    raw: buildActivationFunnelCohort(orderedEvents, trustStartMs, now, "raw"),
+    humanViewer: buildActivationFunnelCohort(orderedEvents, trustStartMs, now, "human-viewer"),
   };
   return {
     total,
@@ -12087,6 +13115,22 @@ function buildMetricEventsSnapshot(
     yearbook,
     referral,
     guestSpotlight,
+    byClientSurface,
+    activationFunnel,
+    classRitual: {
+      dailyClassStarted: byName.daily_class_started,
+      evidenceCardCompleted: byName.evidence_card_completed,
+      evidence1Completed,
+      evidence2Completed,
+      takeCardPresented: byName.take_card_presented,
+      takeCardStarted: byName.take_card_started,
+      takeCardSubmitted: byName.take_card_submitted,
+      teacherResponseViewed: byName.teacher_response_viewed,
+      roomReactionViewed: byName.room_reaction_viewed,
+      classResultCompleted: byName.class_result_completed,
+      classResultViewed: byName.class_result_viewed,
+      classRecordSaved: byName.class_record_saved,
+    },
     balance,
     commerce: {
       events: commerce.events,
@@ -12100,6 +13144,109 @@ function buildMetricEventsSnapshot(
     conversionFunnel,
     llm,
     errors,
+  };
+}
+
+const ACTIVATION_FUNNEL_STEPS: ReadonlyArray<{
+  key: string;
+  label: string;
+  matches: (event: StoredMetricEventRecord) => boolean;
+}> = [
+  { key: "app_open", label: "App open", matches: (event) => event.name === "app_open" },
+  {
+    key: "character_created",
+    label: "Character created",
+    matches: (event) => event.name === "funnel_step" && event.step === "first_character_created",
+  },
+  {
+    key: "daily_class_started",
+    label: "Daily class started",
+    matches: (event) => event.name === "daily_class_started",
+  },
+  {
+    key: "first_answer",
+    label: "First answer",
+    matches: (event) => event.name === "funnel_step" && event.step === "first_question_answered",
+  },
+  {
+    key: "evidence_1_completed",
+    label: "Evidence 1 completed",
+    matches: (event) => event.name === "evidence_card_completed" && event.step === "evidence_1",
+  },
+  {
+    key: "evidence_2_completed",
+    label: "Evidence 2 completed",
+    matches: (event) => event.name === "evidence_card_completed" && event.step === "evidence_2",
+  },
+  { key: "take_presented", label: "Take presented", matches: (event) => event.name === "take_card_presented" },
+  { key: "take_started", label: "Take started", matches: (event) => event.name === "take_card_started" },
+  { key: "take_submitted", label: "Take submitted", matches: (event) => event.name === "take_card_submitted" },
+  { key: "result_completed", label: "Result completed", matches: (event) => event.name === "class_result_completed" },
+  { key: "result_viewed", label: "Result viewed", matches: (event) => event.name === "class_result_viewed" },
+];
+
+function activationMetricsTrustStart(): number {
+  const configured = Date.parse(String(process.env.RUBY_HIGH_METRICS_TRUST_START ?? ""));
+  return Number.isFinite(configured) ? configured : Date.UTC(2026, 6, 26);
+}
+
+function buildActivationFunnelCohort(
+  events: StoredMetricEventRecord[],
+  trustStartMs: number,
+  now: number,
+  cohort: ActivationFunnelCohortSnapshot["cohort"],
+): ActivationFunnelCohortSnapshot {
+  const inWindow = events.filter((event) => event.occurredAt >= trustStartMs && event.occurredAt <= now);
+  const eligibleSessions = new Set<string>();
+  for (const event of inWindow) {
+    if (event.name !== "app_open" || !event.sessionId) continue;
+    if (
+      cohort === "human-viewer"
+      && (event.clientSurface !== "viewer" || !event.visitorHash)
+    ) {
+      continue;
+    }
+    eligibleSessions.add(event.sessionId);
+  }
+  const eventsBySession = new Map<string, StoredMetricEventRecord[]>();
+  for (const event of inWindow) {
+    if (!event.sessionId || !eligibleSessions.has(event.sessionId)) continue;
+    const current = eventsBySession.get(event.sessionId) ?? [];
+    current.push(event);
+    eventsBySession.set(event.sessionId, current);
+  }
+  const counts = ACTIVATION_FUNNEL_STEPS.map(() => 0);
+  for (const sessionEvents of eventsBySession.values()) {
+    let cursor = 0;
+    for (let stepIndex = 0; stepIndex < ACTIVATION_FUNNEL_STEPS.length; stepIndex += 1) {
+      const definition = ACTIVATION_FUNNEL_STEPS[stepIndex]!;
+      const foundAt = sessionEvents.findIndex((event, index) => index >= cursor && definition.matches(event));
+      if (foundAt < 0) break;
+      counts[stepIndex] = (counts[stepIndex] ?? 0) + 1;
+      cursor = foundAt + 1;
+    }
+  }
+  const denominator = eligibleSessions.size;
+  const steps = ACTIVATION_FUNNEL_STEPS.map((definition, index): ActivationFunnelStepSnapshot => {
+    const uniqueSessions = counts[index] ?? 0;
+    const previousStepSessions = index === 0 ? denominator : counts[index - 1] ?? 0;
+    return {
+      key: definition.key,
+      label: definition.label,
+      uniqueSessions,
+      denominator,
+      rateFromOpen: denominator > 0 ? uniqueSessions / denominator : null,
+      previousStepSessions,
+      rateFromPrevious: previousStepSessions > 0 ? uniqueSessions / previousStepSessions : null,
+    };
+  });
+  return {
+    cohort,
+    windowStart: new Date(trustStartMs).toISOString(),
+    windowEnd: new Date(now).toISOString(),
+    sampleSize: denominator,
+    eligibleSessions: denominator,
+    steps,
   };
 }
 
@@ -12253,6 +13400,53 @@ function isoDate(timestamp: number): string {
 function normalizeMetricTimestamp(value: unknown): number {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : Date.now();
+}
+
+function classFlowMetricKey(
+  faculty: unknown,
+  grade: unknown,
+  date: unknown,
+): string {
+  const cleanFaculty = String(faculty ?? "unknown").trim().slice(0, 80) || "unknown";
+  const cleanGrade = String(grade ?? "unknown").trim().slice(0, 12) || "unknown";
+  const cleanDate = /^\d{4}-\d{2}-\d{2}$/.test(String(date ?? ""))
+    ? String(date)
+    : isoDate(Date.now());
+  return `${cleanDate}:${cleanGrade}:${cleanFaculty}`;
+}
+
+function isMetricClientSurface(value: unknown): value is MetricClientSurface {
+  return value === "viewer"
+    || value === "agent"
+    || value === "smoke"
+    || value === "api"
+    || value === "unknown";
+}
+
+function inferMetricClientSurface(
+  input: MetricEventInput,
+  existingEvents: Iterable<StoredMetricEventRecord>,
+): MetricClientSurface {
+  if (isMetricClientSurface(input.clientSurface)) return input.clientSurface;
+  const sessionId = String(input.sessionId ?? "").toLowerCase();
+  const source = String(input.source ?? "").toLowerCase();
+  if (sessionId.startsWith("rh:agent-player:") || sessionId.startsWith("rh:agent:")) return "agent";
+  if (sessionId.includes("smoke") || sessionId.includes("synthetic")) return "smoke";
+  if (source === "agent") return "agent";
+  if (source === "viewer" || source === "browser") return "viewer";
+  if (source === "smoke" || source === "synthetic" || source === "browser-smoke" || source === "script" || source === "test") {
+    return "smoke";
+  }
+  if (source === "api" || source === "plugin" || source === "mcp" || source === "a2a") return "api";
+  if (input.sessionId) {
+    let latest: StoredMetricEventRecord | null = null;
+    for (const event of existingEvents) {
+      if (event.sessionId !== input.sessionId || !isMetricClientSurface(event.clientSurface)) continue;
+      if (!latest || event.occurredAt > latest.occurredAt) latest = event;
+    }
+    if (latest?.clientSurface) return latest.clientSurface;
+  }
+  return "unknown";
 }
 
 function metricEventId(name: StoredMetricEventName, occurredAt: number): string {

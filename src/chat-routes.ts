@@ -72,6 +72,7 @@ import { STUDENTS, type StudentCharacter } from "./characters/students.js";
 import { teacherById } from "./characters/teachers.js";
 import { PLAYBOOKS } from "./characters/playbooks.js";
 import { statForQuestion } from "./question-stats.js";
+import { correctChoiceForQuestion } from "./question-choices.js";
 import { roll2d6, classifyTotal, type RoundOutcome } from "./types.js";
 import {
   hostedEntitlementStatus,
@@ -82,6 +83,7 @@ import {
   resolveOpenRouterImageCredential,
   resolveTextLlmCredential,
 } from "./openrouter-generation-access.js";
+import { RUBY_HIGH_PHOTO_PROMPT_VERSION } from "./services/school-photo-scenes.js";
 
 function readNonNegativeMs(value: string | undefined, fallback: number): number {
   if (value == null || value.trim() === "") return fallback;
@@ -598,7 +600,10 @@ function buildResolvedAnswerBriefing(args: {
   const subject = cleanText(c?.subject) ?? q?.subject ?? reveal?.questionSubject;
   const difficulty = cleanText(c?.difficulty) ?? q?.difficulty ?? reveal?.questionDifficulty;
   const picked = cleanText(c?.picked)?.toUpperCase() ?? reveal?.picked;
-  const correct = cleanText(c?.correct)?.toUpperCase() ?? reveal?.correct ?? q?.correct ?? "?";
+  const correct = cleanText(c?.correct)?.toUpperCase()
+    ?? reveal?.correct
+    ?? (q ? correctChoiceForQuestion(q) : null)
+    ?? "?";
   const forfeit = c?.forfeit === true || reveal?.forfeit === true;
   const wasCorrect = typeof c?.wasCorrect === "boolean"
     ? c.wasCorrect
@@ -1398,6 +1403,7 @@ export interface ChatRouteContext {
  *  shared NAT and a script-from-the-same-IP get separate buckets. */
 const CHAT_LIMITER = new TokenBucket(60, 1);
 const PORTRAIT_LIMITER = new TokenBucket(8, 1 / 30); // image gen: 8 burst, ~1 every 30s
+const AUTH_LIMITER = new TokenBucket(30, 0.5); // auth/session creation: 30 burst, ~1 every 2s
 const CHAT_EVENT_TURN_TTL_MS = 2 * 60 * 60 * 1000;
 const CHAT_EVENT_TURN_MAX_KEYS = 5_000;
 const CHAT_EVENT_TURN_SEQ = new Map<string, { seq: number; lastSeen: number }>();
@@ -1407,6 +1413,7 @@ const limiterGcTimer = setInterval(() => {
   const now = Date.now();
   CHAT_LIMITER.gc(now);
   PORTRAIT_LIMITER.gc(now);
+  AUTH_LIMITER.gc(now);
   gcChatEventTurnSeq(now);
 }, 60 * 60 * 1000);
 if (typeof limiterGcTimer === "object" && limiterGcTimer && "unref" in limiterGcTimer) {
@@ -1416,6 +1423,13 @@ if (typeof limiterGcTimer === "object" && limiterGcTimer && "unref" in limiterGc
 function rateLimitKey(ctx: ChatRouteContext, sessionToken: string | null): string {
   const ip = ctx.clientIp || "no-ip";
   return `${ip}:${sessionToken ?? "anon"}`;
+}
+
+function takeAuthToken(ctx: ChatRouteContext): boolean {
+  const key = `${ctx.clientIp || "no-ip"}:${ctx.pathname}`;
+  if (AUTH_LIMITER.take(key)) return true;
+  reject429(ctx, AUTH_LIMITER.retryAfterSeconds(key));
+  return false;
 }
 
 function chatEventTurnGuard(sessionId: string, faculty: string, rawSeq: unknown): () => boolean {
@@ -1958,6 +1972,15 @@ function redirect(res: unknown, location: string): void {
   r.end();
 }
 
+function setAuthHtmlSecurityHeaders(res: NodeLikeResponse): void {
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
+  );
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+}
+
 function safeAuthRedirect(raw: string | null | undefined): string {
   if (!raw) return DEFAULT_AUTH_REDIRECT;
   const trimmed = raw.trim();
@@ -2037,6 +2060,7 @@ function writeAuthCallbackHtml(
 </html>`;
   const r = res as NodeLikeResponse;
   r.statusCode = 200;
+  setAuthHtmlSecurityHeaders(r);
   r.setHeader("Content-Type", "text/html; charset=utf-8");
   r.setHeader("Cache-Control", "no-store");
   r.end(html);
@@ -2073,6 +2097,7 @@ function writeAuthDeclinedHtml(res: unknown, redirectTo: string): void {
 </html>`;
   const r = res as NodeLikeResponse;
   r.statusCode = 200;
+  setAuthHtmlSecurityHeaders(r);
   r.setHeader("Content-Type", "text/html; charset=utf-8");
   r.setHeader("Cache-Control", "no-store");
   r.end(html);
@@ -2162,6 +2187,18 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
 
   const buildCallback = defaultCallbackBuilder(ctx);
   const secure = ctx.isSecure ?? false;
+
+  if (
+    (
+      ctx.pathname === `${AUTH_PREFIX}/start` ||
+      ctx.pathname === `${AUTH_PREFIX}/guest` ||
+      ctx.pathname === `${AUTH_PREFIX}/privy` ||
+      ctx.pathname === `${AUTH_PREFIX}/callback`
+    ) &&
+    !takeAuthToken(ctx)
+  ) {
+    return true;
+  }
 
   // ── auth ──────────────────────────────────────────────────────────────────
   if (ctx.method === "GET" && ctx.pathname === `${AUTH_PREFIX}/start`) {
@@ -3533,7 +3570,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         send("delta", { text: chunk });
         await new Promise((r) => setTimeout(r, 80));
       }
-      // Finalize.
+      // Finalize. A daily take closes the three-card class; the separate
+      // grade essay remains an independent graduation gate.
+      const completedDailyTake = state.current.opinionPurpose === "daily-take"
+        && state.activeRound?.classSession?.mode === "class";
+      const completedQuestionId = state.current.id;
       ruby.recordGrades(sessionId, grades, bestResponder);
       if (offlinePlayerRoll) {
         // recordGrades doesn't know about the offline dice; attach the
@@ -3545,10 +3586,23 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         }
       }
       await ruby.flushSession(sessionId);
+      if (completedDailyTake) {
+        ruby.recordMetricEvent("class_record_saved", {
+          sessionId,
+          source: "gameplay",
+          feature: "daily_class_ritual",
+          step: "class_record",
+          status: "success",
+          metadata: { questionId: completedQuestionId, faculty: facultyId },
+        });
+      }
       send("opinion-graded", {
         grades,
         bestResponder,
         responses,
+        questionId: completedQuestionId,
+        opinionPurpose: state.current.opinionPurpose,
+        faculty: facultyId,
       });
       send("done", { finishReason: "stop" });
       // Log the grading event for the next teacher turn's synopsis. The
@@ -3841,6 +3895,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           teacherImageUrl: scene.teacher.imageUrl,
           studentId: scene.student.id,
           studentImageUrl: scene.student.imageUrl,
+          promptVersion: RUBY_HIGH_PHOTO_PROMPT_VERSION,
         },
       });
     } catch (err) {
@@ -3870,7 +3925,14 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const dataUrl = await renderGraduationPhoto({
         apiKey,
         gradeLabel: GRADE_LABELS[scene.grade] ?? `Grade ${scene.grade}`,
-        player: { name: scene.characterName, imageUrl: scene.characterImageUrl },
+        player: {
+          name: scene.characterName,
+          imageUrl: scene.characterImageUrl,
+          personality: state.character?.personality,
+          playbookName: state.character?.playbookId,
+          flavorQuote: state.character?.flavorQuote,
+          arcAnswer: state.character?.arcAnswer,
+        },
         teacher: scene.teacher,
         classmate: scene.student,
       });
@@ -4089,6 +4151,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           name: yearbookEntry.name || ch.name,
           grade,
           playbookId: yearbookEntry.playbookId || ch.playbookId,
+          promptVersion: RUBY_HIGH_PHOTO_PROMPT_VERSION,
         },
       });
     } catch (err) {
@@ -4134,10 +4197,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const classmateImageUrl = classmateName
       ? assetBase + "students/" + classmateName.toLowerCase() + "-full.png"
       : null;
-    const locationImageUrl = assetBase + "assets/ruby-classroom.png";
     let url: string;
     try {
-      url = await renderYearbookCard({
+      const dataUrl = await renderYearbookCard({
         apiKey,
         card: {
           characterName: yearbookEntry.name || ch.name,
@@ -4149,6 +4211,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           ...(classmateImageUrl ? { classmateImageUrl, classmateName: classmateName! } : {}),
         },
       });
+      url = await maybeUploadPortrait(dataUrl, "yearbook-card");
       ruby.setYearbookImage(sessionId, grade, url);
     } catch (err) {
       await refundHostedImageCharge({

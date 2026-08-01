@@ -5,6 +5,7 @@ import { RubyHighService } from "./services/ruby-high-service.js";
 import { FacultyService } from "./services/faculty-service.js";
 import { AuthService } from "./services/auth-service.js";
 import { ChatService } from "./services/chat-service.js";
+import { AgentAccessService } from "./services/agent-access-service.js";
 import { poseQuestionAction } from "./actions/pose-question.js";
 import { pickQuestionAction } from "./actions/pick-question.js";
 import { gradeAnswerAction } from "./actions/grade-answer.js";
@@ -50,7 +51,15 @@ export const rubyHighApp: RubyHighAppModule = {
   name: "@cenetex/app-ruby-high",
   description:
     "Ruby High educational app. Ruby hosts the school; specialist faculty teach their domains with persistence, AI key login, and per-teacher chat with tool-driven blackboard control.",
-  services: [FacultyService, BoundRubyHighService, AuthService, BoundChatService, XSocialService, TelegramService],
+  services: [
+    FacultyService,
+    BoundRubyHighService,
+    AuthService,
+    BoundChatService,
+    AgentAccessService,
+    XSocialService,
+    TelegramService,
+  ],
   actions: [
     poseQuestionAction,
     pickQuestionAction,
@@ -97,6 +106,16 @@ export { DynamoStateStore, type DynamoStateStoreOptions } from "./services/dynam
 export { createStateStore, type CreateStateStoreOptions } from "./services/state-store-factory.js";
 export { AuthService } from "./services/auth-service.js";
 export { ChatService } from "./services/chat-service.js";
+export {
+  AgentAccessService,
+  AGENT_ACCESS_STATE_ID,
+  AGENT_SCOPES,
+  AGENT_VIEWER_COOKIE,
+  type AgentAutonomyConfig,
+  type AgentCredential,
+  type AgentDeviceAuthorization,
+  type AgentScope,
+} from "./services/agent-access-service.js";
 export { XSocialService } from "./services/x-social-service.js";
 export { TelegramService } from "./services/telegram-service.js";
 export { TEACHERS, teacherById, listTeachers } from "./characters/teachers.js";

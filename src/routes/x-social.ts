@@ -7,6 +7,7 @@ import type {
 } from "../services/ruby-high-service.js";
 import type { RouteContext } from "./context.js";
 import { X_SOCIAL_CONNECT_PATH, X_SOCIAL_CALLBACK_PATH, X_SOCIAL_PREFIX } from "./constants.js";
+import { constantTimeSecretEqual } from "../services/secret-comparison.js";
 
 const TELEGRAM_TOKEN_PLACEHOLDER = "(already set)";
 
@@ -15,8 +16,8 @@ function requireAdminAuth(ctx: RouteContext): boolean {
   if (!token) return false;
   const auth = ctx.authorizationHeader;
   if (typeof auth !== "string") return false;
-  if (auth === `Bearer ${token}` || auth === token) return true;
-  return false;
+  const match = auth.trim().match(/^Bearer\s+(.+)$/i);
+  return constantTimeSecretEqual(match?.[1]?.trim() ?? auth.trim(), token);
 }
 
 function sendRedirect(res: unknown, url: string, status = 302): void {
@@ -52,6 +53,11 @@ type RubySocialSnapshotService = {
   hasClassPhotoRevealTarget?: (candidates: readonly ClassPhotoCandidate[]) => boolean;
   enqueueClassPhotoReveal?: (teacherFacultyId: string, imageUrl: string, candidates: readonly ClassPhotoCandidate[]) => string | null;
   maybePostDailyPhoto?: (opts?: { photoId?: string }) => Promise<DailyPhotoPostResult | null> | DailyPhotoPostResult | null;
+  runScheduledSchoolUpdateNow?: (teacherId?: string) => Promise<{
+    tweetId: string;
+    teacherId: string;
+    contextFingerprint: string;
+  } | null>;
 };
 
 function rubySocialService(xSocial: XSocialService): RubySocialSnapshotService | null {
@@ -132,6 +138,9 @@ export async function handleXSocialRoutes(
       const html = `<!doctype html><html><head><title>Connected</title><style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#1a1a2e;color:#eee;text-align:center;}h1{color:#4ade80;}p{color:#94a3b8;}</style></head><body><div><h1>Connected to X</h1><p>The teacher account is now linked. You can close this window.</p></div></body></html>`;
       const r = ctx.res as { setHeader?: (n: string, v: string) => void; writeHead?: (s: number, h: Record<string, string>) => void; end?: (b?: string) => void };
       if (r.setHeader) {
+        r.setHeader("Content-Security-Policy", "default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; style-src 'unsafe-inline'");
+        r.setHeader("Referrer-Policy", "no-referrer");
+        r.setHeader("X-Content-Type-Options", "nosniff");
         r.setHeader("Content-Type", "text/html; charset=utf-8");
         r.writeHead?.(200, { "Content-Type": "text/html; charset=utf-8" });
         r.end?.(html);
@@ -225,6 +234,32 @@ export async function handleXSocialRoutes(
     const rsvc = rubySocialService(xSocial);
     const snapshot = await freshSchoolSnapshot(rsvc) ?? { topByYear: {}, photoPool: [], classPhotoHistory: [], dailyMemories: {} };
     ctx.json(ctx.res, snapshot);
+    return true;
+  }
+
+  // POST /x/post-scheduled/:teacherId — force one generated school update (admin only)
+  if (ctx.method === "POST" && pathname.startsWith(`${X_SOCIAL_PREFIX}/post-scheduled/`)) {
+    if (!requireAdminAuth(ctx)) { ctx.error(ctx.res, "Admin authentication required.", 401); return true; }
+    const teacherId = pathname.slice(`${X_SOCIAL_PREFIX}/post-scheduled/`.length);
+    if (!teacherId) { ctx.error(ctx.res, "Teacher ID is required.", 400); return true; }
+    const rsvc = rubySocialService(xSocial);
+    if (!rsvc?.runScheduledSchoolUpdateNow) {
+      ctx.error(ctx.res, "Ruby High scheduled posting service is unavailable.", 503);
+      return true;
+    }
+    try {
+      const result = await rsvc.runScheduledSchoolUpdateNow(teacherId);
+      if (!result) {
+        ctx.json(ctx.res, {
+          ok: false,
+          error: "Scheduled update failed, has no meaningful activity, or another post is already running.",
+        }, 409);
+        return true;
+      }
+      ctx.json(ctx.res, { ok: true, forced: true, ...result });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : "Scheduled update failed", 500);
+    }
     return true;
   }
 

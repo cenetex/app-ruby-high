@@ -27,7 +27,7 @@ export interface AuthRecord {
 
 export interface AuthAnalyticsSnapshot {
   users: number;
-  activeSessions: number;
+  unexpiredAuthSessions: number;
   pendingAuth: number;
   providers: Record<AuthUserRecord["provider"], number>;
   createdLast24h: number;
@@ -222,7 +222,7 @@ export class AuthService extends Service {
     }
     return {
       users: users.length,
-      activeSessions: this.sessions.size,
+      unexpiredAuthSessions: this.sessions.size,
       pendingAuth: this.pending.size,
       providers,
       createdLast24h,

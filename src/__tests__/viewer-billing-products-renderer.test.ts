@@ -78,7 +78,7 @@ function hallPassPaymentView(overrides?: Partial<BillingHallPassPaymentChoiceVie
 function cardPackPaymentView(overrides?: Partial<BillingCardPackPaymentChoiceView>): BillingCardPackPaymentChoiceView {
   return {
     titleText: "Buy Ruby High Pack",
-    metaText: "Solana payment: 100 RUBY · +1 Pack",
+    metaText: "Solana payment: 0.01 SOL · +1 Pack",
     buttonText: "Buy Pack",
     buttonDisabled: false,
     buttonTitle: "Pay with Solana wallet.",
@@ -194,7 +194,7 @@ describe("billing products renderer", () => {
     }) as unknown as FakeElement;
     expect(textTree(pack)).toEqual([
       "Buy Ruby High Pack",
-      "Solana payment: 100 RUBY · +1 Pack",
+      "Solana payment: 0.01 SOL · +1 Pack",
       "Buy Pack",
       "Solana pack checkout is incomplete. Try again later.",
     ]);

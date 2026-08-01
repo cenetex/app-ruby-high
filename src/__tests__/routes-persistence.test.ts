@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleAppRoutes, type RouteContext } from "../routes.js";
 import { getActivePack, registerPack, resetActivePack, setActivePack } from "../content/registry.js";
 import { AuthService } from "../services/auth-service.js";
+import { AgentAccessService } from "../services/agent-access-service.js";
 import { FacultyService } from "../services/faculty-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import type {
@@ -74,11 +75,17 @@ class MemorySessionStore implements StateStoreLike {
   describe(): string { return "memory-test-store"; }
 }
 
-function runtimeFor(ruby: RubyHighService, faculty?: FacultyService, auth?: AuthService | null) {
+function runtimeFor(
+  ruby: RubyHighService,
+  faculty?: FacultyService,
+  auth?: AuthService | null,
+  agentAccess?: AgentAccessService | null,
+) {
   return {
     agentId: "test-agent",
     getService(type: string) {
       if (type === AuthService.serviceType) return auth ?? null;
+      if (type === AgentAccessService.serviceType) return agentAccess ?? null;
       if (type === RubyHighService.serviceType) return ruby;
       if (type === FacultyService.serviceType) return faculty;
       return null;
@@ -104,6 +111,7 @@ function makeCommandCtx(
     contentTypeHeader?: string | string[] | null;
     originHeader?: string | string[] | null;
     callbackOrigin?: string;
+    agentAccess?: AgentAccessService | null;
   } = {},
 ): {
   ctx: RouteContext;
@@ -124,7 +132,7 @@ function makeCommandCtx(
     method: "POST",
     pathname: "/api/apps/ruby-high/session/test-session/command",
     url: new URL("https://ruby-high.test/api/apps/ruby-high/session/test-session/command"),
-    runtime: runtimeFor(ruby, faculty, auth),
+    runtime: runtimeFor(ruby, faculty, auth, options.agentAccess),
     res,
     cookieHeader: cookieHeader ?? null,
     apiKeyHeader,
@@ -322,6 +330,60 @@ describe("command route persistence and scheduler misses", () => {
     }
   });
 
+  it("keeps browser commands on the launched agent viewer session", async () => {
+    await getActivePack();
+    const store = new MemorySessionStore();
+    const ruby = new RubyHighService({} as never, store);
+    const auth = await AuthService.start({} as never, store);
+    const agentRuntime = {
+      agentId: "agent-viewer-route-test",
+      character: { name: "ElizaOS Agent" },
+      getService: () => null,
+      getSetting: (key: string) =>
+        key === "RUBY_HIGH_AGENT_TOKEN_SECRET"
+          ? "agent-viewer-route-secret"
+          : null,
+    };
+    const agentAccess = new AgentAccessService(agentRuntime as never, store);
+    await agentAccess.hydrate();
+    try {
+      const issued = await agentAccess.issueDeviceCode({
+        agentName: "ElizaOS Agent",
+        scopes: ["school:read", "student:play"],
+      });
+      const credential = await agentAccess.approveDeviceCode(
+        issued.userCode,
+        "rh:user:owner",
+      );
+      const launchCode = await agentAccess.createLaunch(credential.id);
+      const launched = await agentAccess.consumeLaunch(launchCode);
+      const cookie = agentAccess.buildViewerCookie(
+        launched.viewerToken,
+        false,
+      );
+      ruby.getOrCreate(credential.stateKey).hasSeenIntro = false;
+
+      const harness = makeCommandCtx(
+        ruby,
+        { type: "mark-intro-seen" },
+        undefined,
+        null,
+        auth,
+        cookie,
+        { agentAccess },
+      );
+
+      expect(await handleAppRoutes(harness.ctx)).toBe(true);
+      expect(harness.response?.status).toBe(200);
+      expect(ruby.getOrCreate(credential.stateKey).hasSeenIntro).toBe(true);
+      expect(auth.sessionCount()).toBe(0);
+      expect(harness.getHeader("set-cookie")).toBeUndefined();
+    } finally {
+      await agentAccess.stop();
+      await auth.stop();
+    }
+  });
+
   it("updates an autosaved character candidate without resetting career state", async () => {
     await getActivePack();
     const store = new MemorySessionStore();
@@ -484,8 +546,8 @@ describe("command route persistence and scheduler misses", () => {
       };
       await runCommand(firstCookie, { type: "pick", faculty: "ruby" });
       await runCommand(secondCookie, { type: "pick", faculty: "ruby" });
-      await runCommand(firstCookie, { type: "answer", picked: firstState.current!.correct });
-      await runCommand(secondCookie, { type: "answer", picked: secondState.current!.correct });
+      await runCommand(firstCookie, { type: "answer", picked: firstState.current!.correctChoice });
+      await runCommand(secondCookie, { type: "answer", picked: secondState.current!.correctChoice });
 
       const world = ruby.getSchoolWorldSnapshot(10, now);
       expect(world.activeRooms[0]).toMatchObject({
@@ -904,7 +966,9 @@ describe("command route persistence and scheduler misses", () => {
   });
 
   it("offline pick reports no scheduled Ruby card when the direct class bank is complete", async () => {
-    setActivePack(rubyHomeroomSocialPack());
+    const pack = rubyHomeroomSocialPack();
+    pack.faculty[0]!.questions = pack.faculty[0]!.questions.slice(0, 2);
+    setActivePack(pack);
     const faculty = await FacultyService.start({} as never);
     const ruby = new RubyHighService({} as never, new MemorySessionStore());
     await ruby["hydrate"]();
@@ -918,16 +982,24 @@ describe("command route persistence and scheduler misses", () => {
       arcAnswer: "I want the transcript to look impossible.",
       personality: "intense but kind",
     });
+    ruby.selectGrade(sid, "9");
 
     const pickedIds = new Set<string>();
     for (let i = 0; i < 3; i += 1) {
       const posed = ruby.pickAndPose(sid, { faculty: "ruby" });
-      expect(posed.current?.id).toMatch(/^route-test-ruby-q[1-3]$/);
-      pickedIds.add(posed.current!.id);
-      ruby.submitAnswer(sid, "A");
+      if (posed.current?.type === "opinion") {
+        expect(posed.current.opinionPurpose).toBe("daily-take");
+        ruby.recordOpinion(sid, "player", "I would verify the claim against concrete evidence.");
+        ruby.recordGrades(sid, [{ responder: "player", score: 3, comment: "Too general." }], "player");
+      } else {
+        expect(posed.current?.id).toMatch(/^route-test-ruby-q[1-2]$/);
+        const pick = pickedIds.size === 0 ? "B" : "A";
+        pickedIds.add(posed.current!.id);
+        ruby.submitAnswer(sid, pick);
+      }
       ruby.clearBoard(sid);
     }
-    expect(pickedIds).toEqual(new Set(["route-test-ruby-q1", "route-test-ruby-q2", "route-test-ruby-q3"]));
+    expect(pickedIds).toEqual(new Set(["route-test-ruby-q1", "route-test-ruby-q2"]));
     const progress = ruby.courseProgress(sid, "ruby");
     expect(progress.ready).toBe(0);
     expect(progress.canPick).toBe(false);

@@ -15,14 +15,16 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TEACHERS } from "../../characters/teachers.js";
 import {
-  CHOICES,
   DIFFICULTIES,
   GRADES,
   type BankedQuestion,
-  type Choice,
   type Difficulty,
   type Grade,
 } from "../../types.js";
+import {
+  multipleChoiceDefinition,
+  validateMultipleChoiceDefinition,
+} from "../../question-choices.js";
 import { classifyQuestionStat, normalizeQuestionStat } from "../../question-stats.js";
 import type { ContentPack, PackCourse, PackFaculty, PackRoom, PackSourceCard } from "../types.js";
 
@@ -214,16 +216,25 @@ function parseBank(raw: string, facultyId: string, fileName: string): BankedQues
     const r = q as Record<string, unknown>;
     if (typeof r.id !== "string") throw new Error(`${fileName} questions[${i}].id missing`);
     if (typeof r.prompt !== "string") throw new Error(`${fileName} questions[${i}].prompt missing`);
-    const correct = r.correct as string;
-    if (!CHOICES.includes(correct as never)) {
-      throw new Error(`${fileName} questions[${i}].correct must be A/B/C/D`);
-    }
-    const opts = r.options as Record<string, unknown> | undefined;
-    if (!opts) throw new Error(`${fileName} questions[${i}].options missing`);
-    for (const c of CHOICES) {
-      if (typeof opts[c] !== "string" || (opts[c] as string).trim().length === 0) {
-        throw new Error(`${fileName} questions[${i}].options.${c} missing or empty`);
-      }
+    const legacyOptions = r.options && typeof r.options === "object"
+      ? r.options as Record<string, unknown>
+      : undefined;
+    const candidate = {
+      correct: typeof r.correct === "string" ? r.correct : undefined,
+      decoys: Array.isArray(r.decoys) ? r.decoys.filter((value): value is string => typeof value === "string") : undefined,
+      options: legacyOptions
+        ? {
+            A: String(legacyOptions.A ?? ""),
+            B: String(legacyOptions.B ?? ""),
+            C: String(legacyOptions.C ?? ""),
+            D: String(legacyOptions.D ?? ""),
+          }
+        : undefined,
+    };
+    const definition = multipleChoiceDefinition(candidate);
+    const definitionErrors = validateMultipleChoiceDefinition(candidate);
+    if (!definition || definitionErrors.length > 0) {
+      throw new Error(`${fileName} questions[${i}] invalid MCQ definition: ${definitionErrors.join(", ") || "correct/decoys missing"}`);
     }
     if (typeof r.subject !== "string") throw new Error(`${fileName} questions[${i}].subject missing`);
     const difficulty = r.difficulty as string;
@@ -233,20 +244,18 @@ function parseBank(raw: string, facultyId: string, fileName: string): BankedQues
     const minGrade = typeof r.minGrade === "string" && GRADES.includes(r.minGrade as Grade)
       ? r.minGrade as Grade
       : undefined;
-    const options = { A: opts.A as string, B: opts.B as string, C: opts.C as string, D: opts.D as string };
-    const typedCorrect = correct as Choice;
     return {
       id: r.id,
       prompt: r.prompt,
-      options,
-      correct: typedCorrect,
+      correct: definition.correct,
+      decoys: definition.decoys,
       explanation: typeof r.explanation === "string" ? r.explanation : undefined,
       subject: r.subject,
       stat: normalizeQuestionStat(r.stat) ?? classifyQuestionStat({
         prompt: r.prompt,
         subject: r.subject,
         explanation: typeof r.explanation === "string" ? r.explanation : undefined,
-        correctAnswer: options[typedCorrect],
+        correctAnswer: definition.correct,
       }),
       difficulty: difficulty as Difficulty,
       ...(minGrade ? { minGrade } : {}),

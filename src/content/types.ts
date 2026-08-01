@@ -41,6 +41,18 @@ export interface ContentPack {
   /** Channel rail definitions. Should match faculty IDs (one room per
    *  teaching faculty + one lounge entry per pack). */
   rooms: PackRoom[];
+  /** Optional editorial provenance for a hand-curated curriculum. This is
+   *  public metadata only; it must never contain credentials or private
+   *  author notes. */
+  curriculum?: PackCurriculumMetadata;
+}
+
+export interface PackCurriculumMetadata {
+  framework?: string;
+  reviewedAt: string;
+  guidingQuestion?: string;
+  modules: string[];
+  sources: string[];
 }
 
 export interface PackCourse {
@@ -69,6 +81,9 @@ export interface PackFaculty {
   assetTeacherId?: string;
   /** Optional external profile image URL for custom or published teachers. */
   profileImageUrl?: string;
+  /** Optional public X identity for weekly guest-teacher welcome and
+   *  source-grounded insight posts. Store the handle only, without @. */
+  xHandle?: string;
   /** Optional card stats for custom pack teachers. */
   stats?: CharacterStats;
   // ── metadata ──────────────────────────────────────────────────────────

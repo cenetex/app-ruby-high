@@ -26,6 +26,7 @@
 import type { BankedQuestion } from "../types.js";
 import type { ContentPack, PackCourse, PackFaculty, PackRoom } from "./types.js";
 import { getRubyHighOriginal } from "./packs/ruby-high-original.js";
+import { getElizaOsSystemsLab } from "./packs/elizaos-systems-lab.js";
 
 /** Stable id of the built-in pack. */
 export const ORIGINAL_PACK_ID = "ruby-high-original";
@@ -77,9 +78,14 @@ function evictExcess(ownerSessionId: string): void {
 /** Returns the global active pack. Cached after first call. */
 export function getActivePack(): Promise<ContentPack> {
   if (!active) {
-    active = getRubyHighOriginal().then((p) => {
+    active = Promise.all([getRubyHighOriginal(), getElizaOsSystemsLab()]).then(([p, elizaCourse]) => {
       // Built-in: owner=null, pinned forever.
       packs.set(p.id, { pack: p, ownerSessionId: null, touchedAt: Date.now() });
+      packs.set(elizaCourse.id, {
+        pack: elizaCourse,
+        ownerSessionId: null,
+        touchedAt: Date.now(),
+      });
       loadedPack = p;
       return p;
     });
@@ -306,6 +312,12 @@ export function weeklyAutoGuestPack(date = new Date()): ContentPack | null {
   const candidates = publicCreatorPacks().filter((pack) => guestFacultyForPack(pack) !== null);
   if (candidates.length === 0) return null;
   const key = guestWeekKey(date);
+  const featuredPackId = process.env.RUBY_HIGH_FEATURED_GUEST_PACK_ID?.trim();
+  const featuredWeekKey = process.env.RUBY_HIGH_FEATURED_GUEST_WEEK_KEY?.trim();
+  if (featuredPackId && (!featuredWeekKey || featuredWeekKey === key)) {
+    const featured = candidates.find((pack) => pack.id === featuredPackId);
+    if (featured) return featured;
+  }
   return candidates[hashString(key) % candidates.length] ?? null;
 }
 
@@ -362,7 +374,7 @@ function composeGuestPack(base: ContentPack, guestPack: ContentPack): ContentPac
       ...baseCourses.filter((c) => c.id !== GUEST_COURSE_ID && c.facultyId !== GUEST_COURSE_ID),
       {
         id: GUEST_COURSE_ID,
-        title: "Guest Faculty",
+        title: sourceCourse?.title ?? guestPack.name,
         facultyId: GUEST_COURSE_ID,
         roomId: GUEST_ROOM_ID,
         teacherTemplateId: sourceCourse?.teacherTemplateId ?? sourceFaculty.assetTeacherId,

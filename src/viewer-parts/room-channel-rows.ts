@@ -1,4 +1,4 @@
-import type { RoomChannelRowView } from "./client-pure.js";
+import type { RoomChannelRowView, RoomChannelStudentView } from "./client-pure.js";
 
 export interface RoomChannelFacultyView {
   id?: string;
@@ -10,7 +10,7 @@ export interface RoomChannelRowsControllerDeps {
   document: Pick<Document, "createElement">;
   teacherSmallAvatarUrl(faculty: RoomChannelFacultyView): string;
   teacherInitial(faculty: RoomChannelFacultyView): string;
-  buildStudentFaceChip(studentId: string, className: string): HTMLElement;
+  buildStudentFaceChip(student: RoomChannelStudentView, className: string): HTMLElement;
   openTeacherProfile(facultyId: string): void;
   setFaculty(facultyId: string): void;
 }
@@ -24,15 +24,20 @@ export function createRoomChannelRowsController(deps: RoomChannelRowsControllerD
     return roster.find((faculty) => faculty && faculty.id === roomView.facultyId) || null;
   }
 
-  function appendTeacherThumb(row: HTMLElement, faculty: RoomChannelFacultyView): void {
-    const thumb = deps.document.createElement("span");
-    thumb.className = "teacher-thumb";
-    thumb.title = "Open " + (faculty.displayName || faculty.id || "teacher") + "'s card";
-    thumb.style.cursor = "pointer";
-    thumb.addEventListener("click", (event) => {
-      event.stopPropagation();
+  function buildTeacherProfileButton(faculty: RoomChannelFacultyView): HTMLButtonElement {
+    const button = deps.document.createElement("button") as HTMLButtonElement;
+    const teacherName = faculty.displayName || faculty.id || "teacher";
+    button.type = "button";
+    button.className = "teacher-profile-button";
+    button.title = "Open " + teacherName + "'s card";
+    button.setAttribute("aria-label", button.title);
+    button.addEventListener("click", () => {
       if (faculty.id) deps.openTeacherProfile(faculty.id);
     });
+
+    const thumb = deps.document.createElement("span");
+    thumb.className = "teacher-thumb";
+    thumb.setAttribute("aria-hidden", "true");
     const thumbUrl = deps.teacherSmallAvatarUrl(faculty);
     if (thumbUrl) {
       const img = deps.document.createElement("img");
@@ -48,7 +53,8 @@ export function createRoomChannelRowsController(deps: RoomChannelRowsControllerD
       thumb.style.background = faculty.accent || "#444";
       thumb.textContent = deps.teacherInitial(faculty);
     }
-    row.appendChild(thumb);
+    button.appendChild(thumb);
+    return button;
   }
 
   function appendCompletionMeter(parent: HTMLElement, roomView: RoomChannelRowView): void {
@@ -90,7 +96,7 @@ export function createRoomChannelRowsController(deps: RoomChannelRowsControllerD
     students.title = "Students here: " + studentNames;
     students.setAttribute("aria-label", students.title);
     roomView.students.forEach((student) => {
-      students.appendChild(deps.buildStudentFaceChip(student.id, "room-student-chip"));
+      students.appendChild(deps.buildStudentFaceChip(student, "room-student-chip"));
     });
     row.appendChild(students);
   }
@@ -98,16 +104,22 @@ export function createRoomChannelRowsController(deps: RoomChannelRowsControllerD
   function appendRows(parent: HTMLElement, roomViews: RoomChannelRowView[], roster: RoomChannelFacultyView[]): void {
     roomViews.forEach((roomView) => {
       const faculty = facultyFor(roomView, roster);
-      const row = deps.document.createElement("button");
-      row.className = "channel-row room-row" + (roomView.isActive ? " is-active" : "");
-      row.dataset.faculty = roomView.facultyId;
-      if (faculty) appendTeacherThumb(row, faculty);
-      appendRoomMeta(row, roomView);
-      appendStudentStack(row, roomView);
-      row.addEventListener("click", () => {
+      const group = deps.document.createElement("div");
+      group.className = "channel-row room-row-group" + (roomView.isActive ? " is-active" : "");
+      group.dataset.faculty = roomView.facultyId;
+      if (faculty) group.appendChild(buildTeacherProfileButton(faculty));
+
+      const roomButton = deps.document.createElement("button") as HTMLButtonElement;
+      roomButton.type = "button";
+      roomButton.className = "room-row-button";
+      roomButton.setAttribute("aria-label", "Open " + roomView.channelName + " classroom");
+      appendRoomMeta(roomButton, roomView);
+      roomButton.addEventListener("click", () => {
         if (faculty) deps.setFaculty(roomView.facultyId);
       });
-      parent.appendChild(row);
+      group.appendChild(roomButton);
+      appendStudentStack(group, roomView);
+      parent.appendChild(group);
     });
   }
 

@@ -68,7 +68,7 @@ function useStatPack(ruby: RubyHighService, sid: string, packId: string, stat: s
 function pickAndAnswer(ruby: RubyHighService, sid: string, faculty: string, pickCorrect = true) {
   const posed = ruby.pickAndPose(sid, { faculty });
   if (!posed.current) throw new Error("No question posed");
-  const correct = posed.current.correct!;
+  const correct = posed.current.correctChoice!;
   const pick = pickCorrect ? correct : (correct === "A" ? "B" : "A");
   ruby.submitAnswer(sid, pick as any);
   return ruby.getOrCreate(sid).lastReveal;

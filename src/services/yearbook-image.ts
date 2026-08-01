@@ -1,5 +1,9 @@
 import { openRouterJson } from "./openrouter-client.js";
 import { log } from "./logger.js";
+import { publicBaseUrl } from "./generated-portrait-assets.js";
+import {
+  rubyHighPhotoSceneForGrade,
+} from "./school-photo-scenes.js";
 
 const YEARBOOK_MODEL = process.env.RUBY_HIGH_PORTRAIT_MODEL ?? "google/gemini-3.1-flash-image-preview";
 const YEARBOOK_MAX_TOKENS = Number(process.env.RUBY_HIGH_PORTRAIT_MAX_TOKENS ?? 4000);
@@ -24,6 +28,13 @@ export interface YearbookCardInput {
   classmateName?: string;
 }
 
+function imageReferenceUrl(rawUrl: string): string {
+  const url = rawUrl.trim();
+  if (!url) return url;
+  if (/^https?:\/\//i.test(url) || url.startsWith("data:image/")) return url;
+  return new URL(url, publicBaseUrl() + "/").toString();
+}
+
 export async function renderYearbookCard(args: {
   apiKey: string;
   card: YearbookCardInput;
@@ -32,32 +43,55 @@ export async function renderYearbookCard(args: {
 
   const contentParts: Array<Record<string, unknown>> = [];
 
+  const references: Array<{ label: string; url: string }> = [];
   if (card.portraitDataUrl) {
-    contentParts.push({ type: "image_url", image_url: { url: card.portraitDataUrl } });
+    references.push({ label: `${card.characterName} - graduating student`, url: card.portraitDataUrl });
   }
   if (card.classmateImageUrl) {
-    contentParts.push({ type: "image_url", image_url: { url: card.classmateImageUrl } });
+    references.push({ label: `${card.classmateName ?? "Classmate"} - classmate`, url: card.classmateImageUrl });
   }
   if (card.teacherImageUrl) {
-    contentParts.push({ type: "image_url", image_url: { url: card.teacherImageUrl } });
+    references.push({ label: `${card.teacherName ?? "Teacher"} - teacher`, url: card.teacherImageUrl });
   }
+  references.forEach((ref, index) => {
+    contentParts.push({
+      type: "text",
+      text: `REFERENCE IMAGE ${index + 1}: ${ref.label}. Use this exact character identity for that person.`,
+    });
+    contentParts.push({ type: "image_url", image_url: { url: imageReferenceUrl(ref.url) } });
+  });
 
   const cast = [
     card.characterName,
     card.classmateName,
     card.teacherName,
   ].filter(Boolean);
+  const scene = rubyHighPhotoSceneForGrade(card.grade, [
+    card.grade,
+    card.characterName,
+    card.classmateName,
+    card.teacherName,
+  ].filter(Boolean).join(":"));
 
   const promptText = [
-    `Arrange these ${cast.length} characters into a CLASSROOM SCENE at Ruby High.`,
+    `Arrange these ${cast.length} characters into a dynamic Ruby High campus yearbook scene.`,
     cast.length === 3
-      ? `${card.characterName} (the student in the center), ${card.classmateName} (another student), and ${card.teacherName} (the teacher).`
+      ? `${card.characterName} (graduating student), ${card.classmateName} (classmate), and ${card.teacherName} (teacher).`
       : `Characters: ${cast.join(", ")}.`,
     card.grade ? `Grade level: ${card.grade}.` : "",
+    references.length > 0
+      ? `IDENTITY LOCK: Use the provided reference image${references.length === 1 ? "" : "s"} as canonical character sheets. Preserve each person's hair shape and color, outfit, silhouette, face, skin tone, proportions, role, and art style. Adapt pose and expression only. Do not substitute generic anime students or redesign the cast.`
+      : "",
     "",
-    "STYLE: JRPG-style classroom scene — a single wide horizontal image. The teacher stands near a chalkboard or desk, two students are at their desks or standing nearby. Warm afternoon classroom lighting through windows. Chalk dust in the air. Books and papers on desks. Each character keeps their original appearance, outfit, and art style from their reference image. Bold black outlines. Vibrant flat colors with subtle cel shading. Everyone visible, no one cut off. The composition feels like a freeze-frame from a school anime — a moment that matters.",
+    `LOCATION: ${scene.roomName}. ${scene.setting}.`,
+    `ACTION: ${scene.action}`,
+    `CAMERA: ${scene.camera}.`,
+    `ROOM DETAILS: ${scene.props}.`,
     "",
-    "OUTPUT: a single wide image (16:9). The classroom fills the frame. No text, no names, no labels, no captions, no yearbook page layout. Just the three characters in the room.",
+    "STYLE: JRPG-style school-life scene - a single wide horizontal image. The cast should be at different depths and angles, interacting with the room and each other in distinct fun poses. Each character keeps their original appearance, outfit, and art style from their reference image. Bold black outlines. Vibrant flat colors with subtle cel shading. Everyone visible, no one cut off. The composition feels like a freeze-frame from a school anime - a moment that matters.",
+    "",
+    "AVOID: plain homeroom, formal classroom photo-day backdrop, centered lineup, teacher-behind-students arrangement, stiff front-facing pose, chalkboard-centered composition, everyone standing still with arms at their sides, character redesigns, outfit swaps, age changes, extra people, missing cast members.",
+    "OUTPUT: a single wide image (16:9). The school location fills the frame. No text, no names, no labels, no captions, no yearbook page layout. Just the characters in the scene.",
     "No visible text. No watermarks.",
   ].filter(Boolean).join("\n");
 

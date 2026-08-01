@@ -78,6 +78,12 @@ describe("viewer classmate arc pure helpers", () => {
         { id: "hidden", name: "Hidden Kid" },
       ],
       ["noor", "lyra", "mika"],
+      [{
+        id: "world:session:abc123abc123abcd",
+        name: "Sloan",
+        facultyId: "ruby",
+        portraitUrl: "/api/apps/ruby-high/assets/portrait/sloan.png",
+      }],
     );
 
     expect(views).toEqual([
@@ -91,6 +97,13 @@ describe("viewer classmate arc pure helpers", () => {
         students: [
           { id: "noor", name: "Noor" },
           { id: "lyra", name: "Lyra" },
+          {
+            id: "world:session:abc123abc123abcd",
+            name: "Sloan",
+            facultyId: "ruby",
+            portraitUrl: "/api/apps/ruby-high/assets/portrait/sloan.png",
+            kind: "human",
+          },
         ],
       },
       {

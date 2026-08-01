@@ -29,8 +29,13 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   </aside>
 
   <!-- channels rail -->
-  <aside class="channels-rail" id="channels-rail">
+  <aside class="channels-rail" id="channels-rail" aria-label="School navigation">
     <div class="channels-header">
+      <button class="channels-close" id="channels-close" type="button" aria-label="Close navigation">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <path d="M6 6l12 12"/><path d="M18 6L6 18"/>
+        </svg>
+      </button>
       <img class="school-logo" src="${logoSrc}" alt="Ruby High" />
       <div class="school-context">
         <div class="grade-name" id="grade-title">Ruby High</div>
@@ -38,11 +43,13 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     </div>
     <div class="channels-list" id="channels-list"></div>
     <div class="channels-footer">
-      <div class="you-avatar" id="you-avatar">${escapeHtml((opts.agentName || "U").slice(0, 1).toUpperCase())}</div>
-      <div class="you-meta">
-        <span class="you-name" id="you-name">${safeAgent}</span>
-        <span class="you-state" id="you-state">checking…</span>
-      </div>
+      <button class="you-profile" id="you-profile" type="button" aria-label="Open student card">
+        <span class="you-avatar" id="you-avatar">${escapeHtml((opts.agentName || "U").slice(0, 1).toUpperCase())}</span>
+        <span class="you-meta">
+          <span class="you-name" id="you-name">${safeAgent}</span>
+          <span class="you-state" id="you-state">checking…</span>
+        </span>
+      </button>
       <!-- Legacy footer action placeholder. Account now owns AI controls. -->
       <button class="footer-action" id="footer-action" type="button" hidden></button>
       <button class="footer-action account-action" id="privy-action" type="button" hidden>Account</button>
@@ -57,8 +64,8 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   <!-- workspace -->
   <main class="workspace" id="workspace">
     <header class="top-bar">
-      <button class="hamburger" id="hamburger" type="button" aria-label="Toggle channels">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+      <button class="hamburger" id="hamburger" type="button" aria-label="Open navigation" aria-controls="channels-rail" aria-expanded="false">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
           <path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>
         </svg>
       </button>
@@ -73,12 +80,6 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="arc-sep">·</span>
         <span class="arc-xp" id="arc-xp" title="Subjects cleared with a C or better this year">✅ —</span>
       </div>
-      <button class="hall-pass-btn" id="hall-pass-btn" type="button" title="Account" aria-label="Open account">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="8" r="4"/>
-          <path d="M6 21v-2a6 6 0 0 1 12 0v2"/>
-        </svg>
-      </button>
     </header>
 
     <section class="lounge-stage" id="lounge-stage">
@@ -99,11 +100,13 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         </div>
         <button class="blackboard-empty-action" id="blackboard-empty-action" type="button" hidden>Create Character</button>
         <div class="onboarding-actions" id="onboarding-actions" hidden>
-          <button class="blackboard-empty-action" id="onboarding-create-btn" type="button">Roll a student</button>
+          <button class="blackboard-empty-action" id="onboarding-create-btn" type="button">Quick roll a student</button>
+          <button class="blackboard-empty-action onboarding-alt" id="onboarding-customize-btn" type="button">Customize</button>
           <button class="blackboard-empty-action onboarding-alt" id="onboarding-books-btn" type="button">Browse books</button>
         </div>
       </div>
 
+      <ol class="daily-class-progress" id="daily-class-progress" aria-label="Today's class progress" hidden></ol>
       <div class="blackboard-meta" id="blackboard-meta" hidden></div>
       <div class="board-frame-host" id="board-frame-host" hidden>
         <div class="board-frame">
@@ -127,8 +130,13 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         </div>
       </div>
       <div class="typed-answer-host" id="typed-answer-host" hidden>
+        <div class="take-starters" id="take-starters" hidden>
+          <button type="button" data-starter="I think ">I think…</button>
+          <button type="button" data-starter="The strongest evidence is ">The evidence…</button>
+          <button type="button" data-starter="A different way to see it is ">Another view…</button>
+        </div>
         <form class="typed-answer-form" id="typed-answer-form">
-          <input class="typed-answer-input" id="typed-answer-input" type="text" autocomplete="off" placeholder="Type the answer" />
+          <input class="typed-answer-input" id="typed-answer-input" type="text" autocomplete="off" maxlength="320" placeholder="Type the answer" />
           <button class="typed-submit-btn" id="typed-submit-btn" type="submit">Check</button>
           <button class="typed-mc-btn" id="generate-mc-btn" type="button">MC</button>
         </form>
@@ -141,15 +149,16 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       </div>
     </section>
 
-    <section class="leaderboard-panel" id="leaderboard-panel" hidden>
+    <section class="leaderboard-panel" id="leaderboard-panel" aria-labelledby="leaderboard-title" hidden>
       <div class="leaderboard-header">
         <div class="leaderboard-header-icon">🏆</div>
         <div class="leaderboard-header-text">
-          <h2 class="leaderboard-title">Honor Roll</h2>
+          <h2 class="leaderboard-title" id="leaderboard-title">Honor Roll</h2>
           <p class="leaderboard-sub">Top students by year — updated live.</p>
         </div>
+        <button class="leaderboard-back" id="leaderboard-back" type="button">Back to class</button>
       </div>
-      <div class="leaderboard-body" id="leaderboard-body">
+      <div class="leaderboard-body" id="leaderboard-body" aria-live="polite">
         <div class="leaderboard-loading">Loading…</div>
       </div>
     </section>
@@ -161,7 +170,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <form class="composer-form" id="chat-form" hidden aria-hidden="true">
         <textarea id="chat-input" rows="1" placeholder="Message — the teacher and class can hear you" disabled></textarea>
         <button type="submit" class="send-btn" id="chat-send" disabled aria-label="Send">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M5 12l14-7-7 14-2-5-5-2z"/>
           </svg>
         </button>
@@ -208,9 +217,9 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   </div>
 </div>
 
-<div class="sheet-overlay is-mandatory" id="signin-overlay" aria-hidden="true">
+<div class="sheet-overlay is-mandatory" id="signin-overlay" role="dialog" aria-modal="true" aria-labelledby="signin-title" aria-hidden="true">
   <div class="sheet-card signin-card">
-    <h2>Welcome to Ruby High</h2>
+    <h2 id="signin-title">Welcome to Ruby High</h2>
     <p class="sub">Play free, spend Stars on chat, and use Hall Passes for images, slots, and cards.</p>
     <div class="sheet-actions" style="justify-content: center;">
       <button id="signin-guest" class="primary-link" type="button">Continue without AI</button>
@@ -222,11 +231,11 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 </div>
 
   <!-- Account overlay -->
-  <div class="sheet-overlay" id="privy-overlay">
+  <div class="sheet-overlay" id="privy-overlay" role="dialog" aria-modal="true" aria-labelledby="account-title" aria-hidden="true">
     <button class="sheet-close" id="privy-close" type="button" aria-label="Close">×</button>
   <div class="sheet-card privy-card account-card">
     <div class="account-header-row">
-      <h2>Account</h2>
+      <h2 id="account-title">Account</h2>
       <div class="account-identity-inline">
         <div class="wallet-panel" id="privy-wallet">Guest session</div>
         <div class="sheet-actions">
@@ -348,13 +357,13 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <!-- Character sheet overlay (creation + profile view). The X-button in
      the corner is the universal close affordance now — per-card "Close"
      buttons are gone. Click anywhere outside .sheet-card also closes. -->
-<div class="sheet-overlay" id="sheet-overlay">
+<div class="sheet-overlay" id="sheet-overlay" role="dialog" aria-modal="true" aria-label="Student card" aria-hidden="true">
   <button class="sheet-close" id="sheet-close" type="button" aria-label="Close">×</button>
   <div class="sheet-card" id="sheet-card"></div>
 </div>
 
 <!-- Billing overlay -->
-<div class="sheet-overlay" id="billing-overlay">
+<div class="sheet-overlay" id="billing-overlay" role="dialog" aria-modal="true" aria-labelledby="billing-title" aria-hidden="true">
   <button class="sheet-close" id="billing-close" type="button" aria-label="Close">×</button>
   <div class="sheet-card billing-card">
     <h2 id="billing-title">Buy Hall Passes</h2>
@@ -367,10 +376,10 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 </div>
 
 <!-- Bug report overlay -->
-<div class="sheet-overlay" id="bug-report-overlay">
+<div class="sheet-overlay" id="bug-report-overlay" role="dialog" aria-modal="true" aria-labelledby="bug-report-title" aria-hidden="true">
   <button class="sheet-close" id="bug-report-close" type="button" aria-label="Close">×</button>
   <form class="sheet-card is-bug-report-sheet" id="bug-report-form">
-    <h2>Report a bug</h2>
+    <h2 id="bug-report-title">Report a bug</h2>
     <p class="sub">Send the current Ruby High context to the private issue tracker.</p>
     <div class="field">
       <label for="bug-report-text">What broke?</label>
@@ -386,9 +395,9 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 </div>
 
 <!-- Pack editor overlay -->
-<div class="sheet-overlay" id="pack-overlay">
+<div class="sheet-overlay" id="pack-overlay" role="dialog" aria-modal="true" aria-labelledby="pack-title" aria-hidden="true">
   <div class="sheet-card" id="pack-card">
-    <h2>Guest Faculty</h2>
+    <h2 id="pack-title">Guest Faculty</h2>
     <p class="sub">Pick this week's guest teacher automatically, or set your own from creator packs.</p>
     <div class="pack-library-actions">
       <button type="button" class="pack-action" id="pack-auto-btn">Auto Guest</button>
@@ -418,7 +427,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   </div>
 </div>
 
-<div class="sheet-overlay" id="pack-edit-overlay">
+<div class="sheet-overlay" id="pack-edit-overlay" role="dialog" aria-modal="true" aria-labelledby="pack-edit-title" aria-hidden="true">
   <div class="sheet-card pack-edit-card" id="pack-edit-card">
     <h2 id="pack-edit-title">Edit pack</h2>
     <p class="sub" id="pack-edit-subtitle">Draft content pack.</p>

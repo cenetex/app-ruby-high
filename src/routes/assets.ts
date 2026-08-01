@@ -99,7 +99,6 @@ const DEFAULT_ASSET_CACHE_CONTROL = "public, max-age=86400, stale-while-revalida
 const VERSIONED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
 const ASSET_FILES: Record<string, { file: string; mime: string; source?: "assets" | "dist"; cacheControl?: string; versionedCacheControl?: string }> = {
-  "privy-client.js": { file: "viewer-privy-client.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-cache", versionedCacheControl: VERSIONED_ASSET_CACHE_CONTROL },
   "privy-client.global.js": { file: "viewer-privy-client.global.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-cache", versionedCacheControl: VERSIONED_ASSET_CACHE_CONTROL },
   "logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
   "ruby-high-logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
@@ -139,6 +138,12 @@ const ASSET_FILES: Record<string, { file: string; mime: string; source?: "assets
   "teachers/professor-edward-face-sticker.png": { file: "teachers/professor-edward-face-sticker.png", mime: "image/png" },
   "teachers/professor-edward-full.png": { file: "teachers/professor-edward-full.png", mime: "image/png" },
   "teachers/professor-edward-full-sticker.png": { file: "teachers/professor-edward-full-sticker.png", mime: "image/png" },
+  "teachers/eliza.png": { file: "teachers/eliza.png", mime: "image/png" },
+  "teachers/eliza-sticker.png": { file: "teachers/eliza-sticker.png", mime: "image/png" },
+  "teachers/eliza-face.png": { file: "teachers/eliza-face.png", mime: "image/png" },
+  "teachers/eliza-face-sticker.png": { file: "teachers/eliza-face-sticker.png", mime: "image/png" },
+  "teachers/eliza-full.png": { file: "teachers/eliza-full.png", mime: "image/png" },
+  "teachers/eliza-full-sticker.png": { file: "teachers/eliza-full-sticker.png", mime: "image/png" },
   "students/lyra-face.png":  { file: "students/lyra-face.png",  mime: "image/png" },
   "students/lyra-full.png":  { file: "students/lyra-full.png",  mime: "image/png" },
   "students/sami-face.png":  { file: "students/sami-face.png",  mime: "image/png" },
@@ -179,6 +184,7 @@ export function sendHtmlResponse(
   res: unknown,
   html: string,
   acceptEncoding?: string | string[] | null,
+  additionalCsp = "",
 ): void {
   const response = res as {
     end: (body?: string | Buffer) => void;
@@ -193,12 +199,13 @@ export function sendHtmlResponse(
   response.setHeader("Vary", "Accept-Encoding");
   response.removeHeader?.("X-Frame-Options");
   const existingCsp = response.getHeader?.("Content-Security-Policy");
-  const normalized =
+  const existing =
     typeof existingCsp === "string"
       ? existingCsp.trim()
       : Array.isArray(existingCsp)
         ? existingCsp.join("; ").trim()
         : "";
+  const normalized = [existing, additionalCsp.trim()].filter(Boolean).join("; ");
   response.setHeader("Content-Security-Policy", mergeViewerCsp(normalized, html));
   if (headerIncludes(acceptEncoding, "gzip")) {
     response.setHeader("Content-Encoding", "gzip");
@@ -446,7 +453,6 @@ function isNetworkOnly(url) {
     || url.pathname.startsWith(APP_BASE + "chat/")
     || url.pathname.startsWith(APP_BASE + "packs/")
     || url.pathname.startsWith(APP_BASE + "session/")
-    || url.pathname === ASSET_PREFIX + "privy-client.js"
     || url.pathname === ASSET_PREFIX + "privy-client.global.js";
 }
 

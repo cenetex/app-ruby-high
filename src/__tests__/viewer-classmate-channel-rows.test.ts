@@ -24,6 +24,10 @@ class FakeElement {
   style = new FakeStyle();
   parentNode: FakeElement | null = null;
   onerror: (() => void) | null = null;
+  onload: (() => void) | null = null;
+  complete = false;
+  naturalWidth = 0;
+  naturalHeight = 0;
 
   constructor(readonly tagName: string) {}
 
@@ -158,5 +162,56 @@ describe("classmate channel rows renderer", () => {
 
     expect(parent.children[2]!.children[0]!.children[0]!.textContent).toBe("Alumni");
     expect(parent.children[2]!.children[1]!.attributes["aria-label"]).toBe("Mika, Graduated");
+  });
+
+  it("renders human channel rows with their custom portrait and opens their profile action", () => {
+    const parent = new FakeElement("div");
+    const openStudentProfile = vi.fn();
+    const renderer = createClassmateChannelRowsRenderer({
+      document: createDocument(),
+      faceUrl(studentId) {
+        return "/students/" + studentId + "-face.png";
+      },
+      openStudentProfile,
+    });
+
+    renderer.appendSection(parent as unknown as HTMLElement, [{
+      key: "public-room-humans",
+      label: "This channel",
+      rows: [{
+        npc: { kind: "human", id: "world:session:abc123abc123abcd", name: "Sloan" },
+        student: { kind: "human", id: "world:session:abc123abc123abcd", name: "Sloan" },
+        studentId: "world:session:abc123abc123abcd",
+        kind: "human",
+        name: "Sloan",
+        color: "#36c2cc",
+        gradeTitle: "Sophomore",
+        ariaLabel: "Sloan, Sophomore, in this channel",
+        subtitle: "Sophomore · in channel",
+        progress: null,
+        progressLabel: "",
+        social: null,
+        portraitUrl: "/api/apps/ruby-high/assets/portrait/sloan.png",
+      }],
+    }]);
+
+    expect(textTree(parent)).toEqual(["Students", "This channel", "1", "Sloan", "Sophomore · in channel"]);
+    const row = parent.children[1]!.children[1]!;
+    expect(row.tagName).toBe("button");
+    expect(row.className).toBe("channel-row student-row human-student-row");
+    expect(row.attributes["aria-label"]).toBe("Sloan, Sophomore, in this channel");
+    const thumb = row.children[0]!;
+    const img = thumb.children[0]!;
+    expect(thumb.className).toBe("teacher-thumb student-thumb is-custom-portrait");
+    expect(img.src).toBe("/api/apps/ruby-high/assets/portrait/sloan.png");
+    img.naturalWidth = 768;
+    img.naturalHeight = 1376;
+    img.onload?.();
+    expect(thumb.className).toBe("teacher-thumb student-thumb is-custom-portrait is-tall-portrait");
+    row.click();
+    expect(openStudentProfile).toHaveBeenCalledWith(
+      { kind: "human", id: "world:session:abc123abc123abcd", name: "Sloan" },
+      { kind: "human", id: "world:session:abc123abc123abcd", name: "Sloan" },
+    );
   });
 });

@@ -20,7 +20,10 @@ ruby2/models/
 
 # Local-only: keep your OpenRouter key out of the repo.
 .env
-.env.local
+.env.*
+!.env.example
+.ruby-high-*.json
+x-tokens.json
 
 # Claude Code internal state
 .claude/

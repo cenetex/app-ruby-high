@@ -16,7 +16,11 @@ const GRADE_DIFFICULTY_WEIGHTS = {
 };
 const DIFFICULTY_ACCURACY = { easy: 0.82, medium: 0.68, hard: 0.54 };
 const QUESTIONS_PER_CLASS = 3;
+const EVIDENCE_CARDS_PER_CLASS = 2;
+const TAKE_PASS_ACCURACY = 0.72;
 const PASS_THRESHOLD = 2;
+const REQUIRED_ROOMS = { 9: 1, 10: 2, 11: 3, 12: 3 };
+const REQUIRED_CONSECUTIVE_PASSES = { 9: 1, 10: 1, 11: 2, 12: 3 };
 const DEFAULT_SEED = 20260519;
 
 function parseArgs(argv) {
@@ -85,45 +89,71 @@ function simulateSession(rng) {
   let classesPassed = 0;
   let npcWins = 0;
   let npcRaces = 0;
+  let takesPassed = 0;
+  let takesSubmitted = 0;
 
   for (const grade of GRADES) {
     const seen = {};
     let gradeClasses = 0;
-    let gradePasses = 0;
-    while (gradePasses < 3 && gradeClasses < 12) {
-      gradeClasses += 1;
-      classesTaken += 1;
-      let classCorrect = 0;
-      for (let i = 0; i < QUESTIONS_PER_CLASS; i += 1) {
-        const difficulty = nextDifficulty(rng, grade, seen);
-        seen[difficulty] = (seen[difficulty] ?? 0) + 1;
-        const repeated = seen[difficulty] > 6;
-        if (repeated) repeatedAnswers += 1;
-        const useAdvantage = i === 1 && rng() < 0.45;
-        const correct = simulateAnswer(rng, difficulty, useAdvantage);
-        if (useAdvantage) {
-          advantageTotal += 1;
-          if (correct) advantageCorrect += 1;
+    let gradePassedClasses = 0;
+    const requiredRooms = REQUIRED_ROOMS[grade];
+    const requiredConsecutivePasses = REQUIRED_CONSECUTIVE_PASSES[grade];
+    for (let roomIndex = 0; roomIndex < requiredRooms; roomIndex += 1) {
+      let passStreak = 0;
+      let roomClasses = 0;
+      while (passStreak < requiredConsecutivePasses && roomClasses < 60) {
+        roomClasses += 1;
+        gradeClasses += 1;
+        classesTaken += 1;
+        let classCorrect = 0;
+        for (let i = 0; i < EVIDENCE_CARDS_PER_CLASS; i += 1) {
+          const difficulty = nextDifficulty(rng, grade, seen);
+          const seenKey = `${roomIndex}:${difficulty}`;
+          seen[seenKey] = (seen[seenKey] ?? 0) + 1;
+          const repeated = seen[seenKey] > 6;
+          if (repeated) repeatedAnswers += 1;
+          const useAdvantage = i === 1 && rng() < 0.45;
+          const correct = simulateAnswer(rng, difficulty, useAdvantage);
+          if (useAdvantage) {
+            advantageTotal += 1;
+            if (correct) advantageCorrect += 1;
+          }
+          if (correct) {
+            correctAnswers += 1;
+            classCorrect += 1;
+          }
+          totalAnswers += 1;
+          const npcCorrect = rng() < (difficulty === "hard" ? 0.48 : difficulty === "medium" ? 0.61 : 0.74);
+          npcRaces += 1;
+          if (npcCorrect && !correct) npcWins += 1;
         }
-        if (correct) {
+
+        const takePassed = rng() < TAKE_PASS_ACCURACY;
+        takesSubmitted += 1;
+        if (takePassed) {
+          takesPassed += 1;
           correctAnswers += 1;
           classCorrect += 1;
         }
         totalAnswers += 1;
-        const npcCorrect = rng() < (difficulty === "hard" ? 0.48 : difficulty === "medium" ? 0.61 : 0.74);
-        npcRaces += 1;
-        if (npcCorrect && !correct) npcWins += 1;
-      }
-      if (classCorrect >= PASS_THRESHOLD) {
-        classesPassed += 1;
-        gradePasses += 1;
+
+        const classPassed = classCorrect >= PASS_THRESHOLD;
+        if (classPassed) {
+          classesPassed += 1;
+          gradePassedClasses += 1;
+          passStreak += 1;
+        } else {
+          passStreak = 0;
+        }
       }
     }
     gradeReports.push({
       grade,
       label: GRADE_LABELS[grade],
       classesTaken: gradeClasses,
-      passRate: gradeClasses > 0 ? gradePasses / gradeClasses : null,
+      passRate: gradeClasses > 0 ? gradePassedClasses / gradeClasses : null,
+      requiredRooms,
+      requiredConsecutivePasses,
       difficultyWeights: GRADE_DIFFICULTY_WEIGHTS[grade],
     });
   }
@@ -138,6 +168,8 @@ function simulateSession(rng) {
     classesPassed,
     npcWins,
     npcRaces,
+    takesPassed,
+    takesSubmitted,
     gradeReports,
   };
 }
@@ -158,6 +190,8 @@ const aggregate = {
   classesPassed: 0,
   npcWins: 0,
   npcRaces: 0,
+  takesPassed: 0,
+  takesSubmitted: 0,
   gradeCompletionClasses: Object.fromEntries(GRADES.map((g) => [g, []])),
 };
 
@@ -173,6 +207,8 @@ for (let i = 0; i < opts.sessions; i += 1) {
     "classesPassed",
     "npcWins",
     "npcRaces",
+    "takesPassed",
+    "takesSubmitted",
   ]) {
     aggregate[key] += session[key];
   }
@@ -182,8 +218,13 @@ for (let i = 0; i < opts.sessions; i += 1) {
 }
 
 const mean = (values) => values.length ? values.reduce((s, v) => s + v, 0) / values.length : null;
+const percentile = (values, p) => {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * p) - 1))];
+};
 const output = {
-  schemaVersion: "ruby-high-balance-report.v1",
+  schemaVersion: "ruby-high-balance-report.v2",
   generatedAt: new Date().toISOString(),
   seed: opts.seed,
   sessions: opts.sessions,
@@ -193,20 +234,29 @@ const output = {
     accuracyWhenUsed: rate(aggregate.advantageCorrect, aggregate.advantageTotal),
   },
   dailyClassPassRate: rate(aggregate.classesPassed, aggregate.classesTaken),
+  takePassRate: rate(aggregate.takesPassed, aggregate.takesSubmitted),
   gradeCompletionTime: Object.fromEntries(GRADES.map((grade) => [
     grade,
     {
       label: GRADE_LABELS[grade],
+      requiredRooms: REQUIRED_ROOMS[grade],
+      requiredConsecutivePasses: REQUIRED_CONSECUTIVE_PASSES[grade],
       averageClasses: mean(aggregate.gradeCompletionClasses[grade]) == null
         ? null
         : Number(mean(aggregate.gradeCompletionClasses[grade]).toFixed(2)),
+      averageQuestions: mean(aggregate.gradeCompletionClasses[grade]) == null
+        ? null
+        : Number((mean(aggregate.gradeCompletionClasses[grade]) * QUESTIONS_PER_CLASS).toFixed(2)),
+      medianClasses: percentile(aggregate.gradeCompletionClasses[grade], 0.5),
+      p90Classes: percentile(aggregate.gradeCompletionClasses[grade], 0.9),
     },
   ])),
   npcRaceWinRate: rate(aggregate.npcWins, aggregate.npcRaces),
   questionRepeatRate: rate(aggregate.repeatedAnswers, aggregate.totalAnswers),
   conservativeTuningNotes: [
     "Treat this as a deterministic smoke model, not production truth.",
-    "Tune advantage caps, pass thresholds, and difficulty distribution only when this report and observed v4 metrics point the same way.",
+    "The model follows the live room-count and consecutive-pass gates, with two evidence cards plus one graded take per class.",
+    "Tune take grading, advantage caps, pass thresholds, and difficulty distribution only when this report and observed ritual metrics point the same way.",
   ],
 };
 

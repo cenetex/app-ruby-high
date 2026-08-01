@@ -22,7 +22,6 @@ describe("billingProductsPanelView", () => {
   it("describes Solana card-pack checkout and burn rate", () => {
     expect(billingProductsPanelView("card-packs", {}, { configured: true }, {
       hallPassesPerBurnedCard: 7,
-      hasRubyToken: true,
     })).toEqual({
       titleText: "Buy Card Packs",
       subtitleText: "Card packs are Solana collectibles. Open a pack to create five face-down Ruby High cards.",
@@ -37,19 +36,15 @@ describe("billingProductsPanelView", () => {
     });
   });
 
-  it("keeps card-pack configuration failures distinct from missing token configuration", () => {
-    expect(billingProductsPanelView("card-packs", {}, { configured: false }, {
-      hasRubyToken: true,
-    })).toMatchObject({
+  it("reports card-pack configuration failures", () => {
+    expect(billingProductsPanelView("card-packs", {}, { configured: false })).toMatchObject({
       checkoutStatusText: "Card pack checkout is not configured on this server.",
       checkoutStatusError: true,
     });
 
-    expect(billingProductsPanelView("card-packs", {}, { configured: true }, {
-      hasRubyToken: false,
-    })).toMatchObject({
-      checkoutStatusText: "Solana pack checkout is missing token configuration.",
-      checkoutStatusError: true,
+    expect(billingProductsPanelView("card-packs", {}, { configured: true })).toMatchObject({
+      checkoutStatusText: "",
+      checkoutStatusError: false,
     });
   });
 });

@@ -16,6 +16,8 @@ import type { ContentPack, PackSourceCard } from "../content/types.js";
 import { APP_ROUTE_PREFIX, X_SOCIAL_PREFIX } from "./constants.js";
 import type { RouteContext } from "./context.js";
 import type { BankedQuestion, Grade } from "../types.js";
+import { multipleChoiceDefinition } from "../question-choices.js";
+import { constantTimeSecretEqual } from "../services/secret-comparison.js";
 
 export const ADMIN_PATH = `${APP_ROUTE_PREFIX}/admin`;
 export const ADMIN_METRICS_PATH = `${APP_ROUTE_PREFIX}/admin/metrics`;
@@ -23,8 +25,8 @@ export const ADMIN_METRICS_SCHEMA_PATH = `${APP_ROUTE_PREFIX}/admin/metrics/sche
 export const ADMIN_OVERVIEW_PATH = `${APP_ROUTE_PREFIX}/admin/overview`;
 export const ADMIN_CURRICULUM_REPLENISHMENT_PATH = `${APP_ROUTE_PREFIX}/admin/curriculum/replenishment`;
 export const ADMIN_WORLD_MODERATION_PATH = `${APP_ROUTE_PREFIX}/admin/world/moderation`;
-export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v5";
-const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-06-15";
+export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v6";
+const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-07-26";
 const ADMIN_METRICS_DEFAULT_TRUST_START = ADMIN_METRICS_SCHEMA_PUBLISHED_AT;
 const BUILT_IN_GENERATOR_FACULTY_IDS = new Set(["ruby", "sally-science", "professor-edward"]);
 const BUILT_IN_QUESTION_FILES: Record<string, string> = {
@@ -284,7 +286,8 @@ function configuredToken(): string | null {
 
 function authorized(ctx: RouteContext, token: string): boolean {
   const auth = firstHeader(ctx.authorizationHeader).trim();
-  return auth === token || auth === `Bearer ${token}`;
+  const match = auth.match(/^Bearer\s+(.+)$/i);
+  return constantTimeSecretEqual(match?.[1]?.trim() ?? auth, token);
 }
 
 function requireAdminAuth(ctx: RouteContext): string | null {
@@ -741,7 +744,7 @@ async function generateAdminCurriculumDraftQuestionsWithLlm(
             `Grade brief: ${step.gradeBrief ?? "none"}`,
             `Primary source packets: ${adminCurriculumSourcePacketPrompt(step)}`,
             `Source cards: ${sourceCards.slice(0, 8).map((card) => `[${card.id} ${card.subject}/${card.difficulty}] ${card.front} => ${card.back}`).join(" | ") || "none"}`,
-            "Each question must include: id, type='multiple-choice', prompt, options A-D, correct='A'|'B'|'C'|'D', explanation, subject, difficulty, minGrade, faculty, stat.",
+            "Each question must include: id, type='multiple-choice', prompt, correct answer text, decoys (array of at least 3 plausible wrong answers), explanation, subject, difficulty, minGrade, faculty, stat.",
             "Use faculty as the draft faculty id. Use stat one of head, heart, hustle, honor.",
           ].join("\n"),
         },
@@ -775,19 +778,29 @@ function normalizeAdminCurriculumLlmQuestion(
 ): BankedQuestion | null {
   if (!entry || typeof entry !== "object") return null;
   const record = entry as Record<string, unknown>;
-  const options = record.options && typeof record.options === "object" ? record.options as Record<string, unknown> : {};
+  const options = record.options && typeof record.options === "object" ? record.options as Record<string, unknown> : null;
+  const definition = multipleChoiceDefinition({
+    correct: typeof record.correct === "string" ? record.correct : undefined,
+    decoys: Array.isArray(record.decoys)
+      ? record.decoys.filter((value): value is string => typeof value === "string")
+      : undefined,
+    options: options
+      ? {
+          A: String(options.A ?? ""),
+          B: String(options.B ?? ""),
+          C: String(options.C ?? ""),
+          D: String(options.D ?? ""),
+        }
+      : undefined,
+  });
+  if (!definition) return null;
   const id = String(record.id || `draft-${slugForAdminId(`${step.facultyId}-${step.grade}-llm-${index + 1}`)}`).trim();
   const question: BankedQuestion = {
     id: slugForAdminId(id).startsWith("draft-") ? slugForAdminId(id) : `draft-${slugForAdminId(id)}`,
     type: "multiple-choice",
     prompt: String(record.prompt || "").trim(),
-    options: {
-      A: String(options.A || "").trim(),
-      B: String(options.B || "").trim(),
-      C: String(options.C || "").trim(),
-      D: String(options.D || "").trim(),
-    },
-    correct: ["A", "B", "C", "D"].includes(String(record.correct)) ? String(record.correct) as BankedQuestion["correct"] : "A",
+    correct: definition.correct,
+    decoys: definition.decoys,
     explanation: String(record.explanation || "").trim(),
     subject: slugForAdminId(String(record.subject || step.focusSubjects[0] || step.weakSubjects[0] || "teacher-research")).slice(0, 48) || "teacher-research",
     difficulty: step.targetDifficulty as BankedQuestion["difficulty"],
@@ -908,12 +921,13 @@ function buildAdminCurriculumCandidateQuestions(
   const count = adminCurriculumCandidateCount(step, sourceCards);
   return topics.slice(0, count).map((topic, index): BankedQuestion => {
     const n = index + 1;
+    const answers = adminCurriculumCandidateOptions(step, topic);
     return {
       id: `draft-${slugForAdminId(`${step.facultyId}-${step.grade}-${topic.label}-${n}`)}`,
       type: "multiple-choice",
       prompt: adminCurriculumCandidatePrompt(step, topic),
-      options: adminCurriculumCandidateOptions(step, topic),
-      correct: "A",
+      correct: answers.A,
+      decoys: [answers.B, answers.C, answers.D],
       explanation: adminCurriculumCandidateExplanation(step, topic),
       subject: topic.subject,
       difficulty: step.targetDifficulty as BankedQuestion["difficulty"],
@@ -1004,7 +1018,7 @@ function adminCurriculumCandidatePrompt(
 function adminCurriculumCandidateOptions(
   step: AdminCurriculumReplenishmentStep,
   topic: { label: string; sourcePrompt?: string },
-): BankedQuestion["options"] {
+): NonNullable<BankedQuestion["options"]> {
   if (step.facultyId === "sally-science") {
     return {
       A: `Use a concrete ${topic.label} scenario with variables, evidence, and one tested misconception`,
@@ -1143,6 +1157,7 @@ function adminCurriculumReviewFingerprint(
       prompt: question.prompt,
       options: question.options,
       correct: question.correct,
+      decoys: question.decoys,
       expectedAnswer: question.expectedAnswer,
       acceptedAnswers: question.acceptedAnswers,
       explanation: question.explanation,
@@ -1374,7 +1389,7 @@ function buildAdminMetricsQuality(metrics: {
       recommendedUse: "Use as a last-seen snapshot, not a durable daily sign-in event count.",
     },
     {
-      field: "auth.activeSessions",
+      field: "auth.unexpiredAuthSessions",
       severity: "warning",
       issue: "Counts unexpired cookie sessions, not currently active users.",
       recommendedUse: "Use for cookie/session inventory, not real-time concurrency.",
@@ -1501,7 +1516,7 @@ function buildAdminMetricsSchema(): {
         caveat: "The timestamp is mutable and throttled for returning guest cookies.",
       },
       {
-        path: "auth.activeSessions",
+        path: "auth.unexpiredAuthSessions",
         label: "Unexpired cookie sessions",
         source: "AuthSessionRecord store",
         semantics: "Cookie sessions not expired by the 30-day TTL.",
@@ -1618,6 +1633,14 @@ function buildAdminMetricsSchema(): {
         caveat: "Retry and last-attempt state is in memory; queue size comes from saved game state.",
       },
       {
+        path: "ruby.scheduledPosts",
+        label: "Scheduled school updates",
+        source: "RubyHighService aggregate world context and durable scheduled-post service state",
+        semantics: "Whether the aggregate LLM-to-X text-and-composed-photo job is enabled, its daily/retry cadence, last attempt/post, posting teacher, context fingerprint, and latest skip reason.",
+        reliability: "authoritative",
+        caveat: "Fly scale-to-zero means overdue work runs on the next service cold start rather than at an exact wall-clock minute.",
+      },
+      {
         path: "ruby.essayReports",
         label: "Essay reports",
         source: "QuizState.essayReports",
@@ -1657,12 +1680,35 @@ function buildAdminMetricsSchema(): {
         caveat: "Dedupe is per Ruby High session id.",
       },
       {
+        path: "ruby.events.activationFunnel",
+        label: "Trustworthy activation funnel",
+        source: "StoredMetricEventRecord app_open, funnel_step, and daily class ritual events",
+        semantics: "Ordered, session-deduped activation steps with explicit open denominators, previous-step rates, window, and sample sizes.",
+        reliability: "authoritative",
+        caveat: "humanViewer includes only visitor-backed viewer app opens after trustStart; raw includes agent, smoke, API, and unknown surfaces.",
+      },
+      {
+        path: "ruby.events.byClientSurface",
+        label: "Metric events by client surface",
+        source: "StoredMetricEventRecord.clientSurface",
+        semantics: "Bounded viewer, agent, smoke, api, and unknown classification applied when each event is recorded.",
+        reliability: "authoritative",
+      },
+      {
         path: "ruby.funnel.first10m",
         label: "First 10 minute funnel",
         source: "StoredMetricEventRecord app_open plus funnel_step",
         semantics: "Counts first activation milestones reached within ten minutes of a session's first durable app_open.",
         reliability: "authoritative",
         caveat: "Requires app_open to fire before the funnel step.",
+      },
+      {
+        path: "ruby.events.referral",
+        label: "Share loop",
+        source: "StoredMetricEventRecord share_artifact_created, share_initiated, and share_link_visited",
+        semantics: "Shareable artifact creation, outbound share starts, inbound link visits, unique referred visitors, and click-through rates.",
+        reliability: "authoritative",
+        caveat: "Link visits are recorded when a referred visitor reaches the viewer with a ref parameter; visits to static share pages alone are not counted.",
       },
       {
         path: "ruby.guestSpotlight",
@@ -1953,7 +1999,7 @@ function compactMetricsForOverview(metrics: AdminMetricsSnapshot): Record<string
       newVisitorsLast24h: metrics.auth.newVisitors,
       returningVisitorsLast24h: metrics.auth.returningVisitors,
       identityCaveat: "Auth identity records are not deduped people. Use visitor metrics for public-web traffic when localStorage persists.",
-      activeSessions: metrics.auth.activeSessions,
+      unexpiredAuthSessions: metrics.auth.unexpiredAuthSessions,
       pendingAuth: metrics.auth.pendingAuth,
       newIdentityRecordsLast24h: metrics.auth.createdLast24h,
       seenIdentityRecordsLast24h: metrics.auth.signedInLast24h,
@@ -2455,7 +2501,7 @@ export function renderAdminDashboardHtml(): string {
   <script>
     const xSocialPrefix = ${JSON.stringify(X_SOCIAL_PREFIX)};
     async function saveTelegramConfig() {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       tgSave.disabled = true;
       tgSave.textContent = "Saving…";
@@ -2478,7 +2524,7 @@ export function renderAdminDashboardHtml(): string {
     };
 
 async function postTelegramSnapshot() {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       tgPost.disabled = true;
       tgPost.textContent = "Posting…";
@@ -2521,7 +2567,7 @@ async function postTelegramSnapshot() {
     let latestMetrics = null;
     let latestReplenishment = null;
 
-    tokenEl.value = localStorage.getItem(tokenKey) || "";
+    tokenEl.value = sessionStorage.getItem(tokenKey) || "";
     if (tokenEl.value) refresh();
 
     formEl.addEventListener("submit", (event) => {
@@ -2529,7 +2575,7 @@ async function postTelegramSnapshot() {
       refresh();
     });
     clearEl.addEventListener("click", () => {
-      localStorage.removeItem(tokenKey);
+      sessionStorage.removeItem(tokenKey);
       tokenEl.value = "";
       latestMetrics = null;
       latestReplenishment = null;
@@ -2596,7 +2642,7 @@ async function postTelegramSnapshot() {
         if (!response.ok) {
           throw new Error(data.error || "Metrics request failed.");
         }
-        localStorage.setItem(tokenKey, token);
+        sessionStorage.setItem(tokenKey, token);
         latestMetrics = data;
         latestReplenishment = await loadReplenishment(token);
         render(data);
@@ -2812,6 +2858,11 @@ async function postTelegramSnapshot() {
       const auth = data.auth || {};
       const ruby = data.ruby || {};
       const events = ruby.events || {};
+      const referral = events.referral || {};
+      const humanActivation = events.activationFunnel && events.activationFunnel.humanViewer || {};
+      const humanActivationSteps = Array.isArray(humanActivation.steps) ? humanActivation.steps : [];
+      const humanCharacterStep = humanActivationSteps.find(function(step) { return step && step.key === "character_created"; }) || {};
+      const humanResultStep = humanActivationSteps.find(function(step) { return step && step.key === "result_viewed"; }) || {};
       const ops = data.ops || {};
       const logs = data.logs || {};
       status("Updated " + time(data.generatedAt) + " - build " + (logs.build || "unknown") + " - " + (data.schemaVersion || "legacy schema"), "");
@@ -2820,7 +2871,7 @@ async function postTelegramSnapshot() {
       renderOverview(localOverview(data), "local");
       authGrid.innerHTML = [
         metric("Identity records", n(auth.users), n(auth.createdLast24h) + " new records - not unique people"),
-        metric("Sessions", n(auth.activeSessions), n(auth.pendingAuth) + " pending auth"),
+        metric("Unexpired auth sessions", n(auth.unexpiredAuthSessions), n(auth.pendingAuth) + " pending auth"),
         metric("Identity D1", pct(auth.d1Retention && auth.d1Retention.rate), n(auth.d1Retention && auth.d1Retention.returnedUsers) + " / " + n(auth.d1Retention && auth.d1Retention.eligibleUsers) + " cookie-bound"),
         metric("Providers", n(auth.providers && auth.providers.guest) + " / " + n(auth.providers && auth.providers.openrouter) + " / " + n(auth.providers && auth.providers.privy), "guest / BYOK OpenRouter / Privy"),
       ].join("");
@@ -2828,10 +2879,12 @@ async function postTelegramSnapshot() {
         metric("Saved sessions", n(ruby.sessions), n(ruby.updatedLast24h) + " updated in 24h"),
         metric("Character D1 / D7", pct(ruby.characterD1Retention && ruby.characterD1Retention.rate) + " / " + pct(ruby.retention && ruby.retention.characterD7 && ruby.retention.characterD7.rate), n(ruby.characterD1Retention && ruby.characterD1Retention.returnedSessions) + " / " + n(ruby.characterD1Retention && ruby.characterD1Retention.eligibleSessions)),
         metric("App opens", n(events.appOpen && events.appOpen.total), n(events.sessionResume && events.sessionResume.total) + " resumes"),
+        metric("Human activation", n(humanActivation.eligibleSessions) + " opens", pct(humanCharacterStep.rateFromOpen) + " character · " + pct(humanResultStep.rateFromOpen) + " result viewed"),
         metric("Characters", n(ruby.characters), n(ruby.graduatedCharacters) + " graduated - " + n(ruby.completedGrades) + " grades sealed"),
         metric("Questions", n(ruby.questions && ruby.questions.total), n(ruby.questions && ruby.questions.correct) + " correct - " + pct(ruby.questions && ruby.questions.accuracy) + " accuracy"),
         metric("Curriculum", n(ruby.curriculum && ruby.curriculum.lowPools && ruby.curriculum.lowPools.length), n(ruby.curriculum && ruby.curriculum.rows && ruby.curriculum.rows.length) + " grade/teacher pools"),
         metric("Active rounds", n(ruby.activeRounds), n(ruby.essayReports) + " essay reports"),
+        metric("Share CTR", pct(referral.uniqueShareClickThroughRate), n(referral.uniqueReferredVisitors) + " unique - " + n(referral.linkVisits) + " visits / " + n(referral.sharesInitiated) + " shares"),
         metric("Photo posts", photoPostMetricValue(ruby.photoPosts), photoPostMetricSub(ruby.photoPosts)),
       ].join("");
       const commerce = events.commerce || {};
@@ -3255,7 +3308,7 @@ async function postTelegramSnapshot() {
     }
 
     async function refreshXSocial() {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) {
         connectedTeachers = [];
         renderSocialTeacherSelect();
@@ -3282,7 +3335,7 @@ async function postTelegramSnapshot() {
     }
 
     async function connectX(teacherId) {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       try {
         const res = await fetch(xSocialPrefix + "/connect/" + teacherId, {
@@ -3295,7 +3348,7 @@ async function postTelegramSnapshot() {
     }
 
     async function disconnectX(teacherId) {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       try {
         await fetch(xSocialPrefix + "/disconnect/" + teacherId, {
@@ -3311,7 +3364,7 @@ async function postTelegramSnapshot() {
     const studentsPanel = document.getElementById("students-panel");
 
     async function refreshStudents() {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) { studentsPanel.innerHTML = '<div class="empty">Unlock to see students.</div>'; return; }
       try {
         const res = await fetch(xSocialPrefix + "/students", {
@@ -3346,7 +3399,7 @@ async function postTelegramSnapshot() {
     }
 
     async function postReportCard(sessionId, btn) {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       btn.disabled = true;
       const origText = btn.textContent;
@@ -3375,7 +3428,7 @@ async function postTelegramSnapshot() {
     }
 
     async function postClassPhoto(btn) {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       btn.disabled = true;
       const origText = btn.textContent;
@@ -3415,7 +3468,7 @@ async function postTelegramSnapshot() {
 
     // Find chat ID from recent updates
     async function refreshTelegram() {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       try {
         const res = await fetch(xSocialPrefix + "/telegram", {
@@ -3433,7 +3486,7 @@ async function postTelegramSnapshot() {
     
     
     async function showClassPhotoHistory() {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       const panel = document.getElementById("students-panel");
       panel.innerHTML = '<div class="empty">Loading class photos…</div>';
@@ -3460,7 +3513,7 @@ async function postTelegramSnapshot() {
     refreshTelegram();
     refreshStudents();
     async function postX(teacherId, btn) {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       btn.disabled = true;
       const origText = btn.textContent;

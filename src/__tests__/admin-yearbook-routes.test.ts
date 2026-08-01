@@ -69,7 +69,11 @@ function route(opts: {
     flushHeaders() {
       // no-op for route tests
     },
-    end(body?: string) {
+    end(body?: string | Buffer) {
+      if (Buffer.isBuffer(body)) {
+        response = { status: (res as { statusCode?: number }).statusCode ?? 200, body, headers };
+        return;
+      }
       const current = response?.body ?? "";
       response = { status: (res as { statusCode?: number }).statusCode ?? 200, body: `${current}${body ?? ""}`, headers };
     },
@@ -590,7 +594,7 @@ describe("school world route", () => {
     expect(response.body.world.activeRooms).toEqual([
       expect.objectContaining({
         grade: "10",
-        facultyId: "sally-science",
+        facultyId: "ruby",
         activeStudents: 1,
         students: [expect.objectContaining({ name: "World Noor" })],
       }),
@@ -1478,6 +1482,7 @@ describe("admin metrics route", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers["content-type"]).toContain("text/html");
+    expect(response.headers["content-security-policy"]).toContain("frame-ancestors 'none'");
     expect(response.body).toContain("Ruby High Admin");
     expect(response.body).toContain("/api/apps/ruby-high/admin/metrics");
     expect(response.body).toContain("/api/apps/ruby-high/admin/metrics/schema");
@@ -1514,7 +1519,8 @@ describe("admin metrics route", () => {
     expect(response.body).toContain("worldStreamMetricValue");
     expect(response.body).toContain("Identity records");
     expect(response.body).toContain("guest / BYOK OpenRouter / Privy");
-    expect(response.body).toContain("localStorage");
+    expect(response.body).toContain("sessionStorage");
+    expect(response.body).not.toContain("localStorage.getItem(tokenKey)");
     expect(response.body).not.toContain("admin-test-token");
     expect(response.body).not.toContain("\"auth\":");
     const script = String(response.body).match(/<script>([\s\S]*)<\/script>/)?.[1] ?? "";
@@ -1781,11 +1787,11 @@ describe("admin metrics route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       ok: true,
-      schemaVersion: "ruby-high-admin-metrics.v5",
+      schemaVersion: "ruby-high-admin-metrics.v6",
       schemaPath: "/api/apps/ruby-high/admin/metrics/schema",
       auth: {
         users: 1,
-        activeSessions: 1,
+        unexpiredAuthSessions: 1,
         providers: { guest: 1 },
       },
       ruby: {
@@ -1934,7 +1940,7 @@ describe("admin metrics route", () => {
         courseId: "ruby",
         questionId,
         phase: "learning",
-        dueAt: Date.UTC(2026, 6, 1),
+        dueAt: Date.UTC(2036, 0, 1),
         stability: 1,
         difficulty: 0.5,
         consecutiveCorrect: 1,
@@ -2055,12 +2061,14 @@ describe("admin metrics route", () => {
     expect(persistedDrafts[0]!.teachers[0]!.questions).toHaveLength(6);
     expect(persistedDrafts[0]!.teachers[0]!.questions[0]).toMatchObject({
       type: "multiple-choice",
-      correct: "A",
+      correct: "Turn agent-culture into a small classroom scenario with one clear operational judgment",
+      decoys: expect.any(Array),
       faculty: expect.stringMatching(/^draft-/),
       minGrade: "10",
       difficulty: "easy",
       explanation: expect.stringContaining("Ruby Research Corpus"),
     });
+    expect(persistedDrafts[0]!.teachers[0]!.questions[0]!.decoys).toHaveLength(3);
     expect(ruby.publicWorldTeacherAgendas().find((agenda) => agenda.grade === "10" && agenda.facultyId === "ruby")).toMatchObject({
       draftId: persistedDrafts[0]!.id,
       draftStatus: "review-draft-created",
@@ -2485,7 +2493,7 @@ describe("admin metrics route", () => {
         courseId: "ruby",
         questionId,
         phase: "learning",
-        dueAt: Date.UTC(2026, 6, 1),
+        dueAt: Date.UTC(2036, 0, 1),
         stability: 1,
         difficulty: 0.5,
         consecutiveCorrect: 1,
@@ -2605,7 +2613,7 @@ describe("admin metrics route", () => {
         courseId: "ruby",
         questionId,
         phase: "learning",
-        dueAt: Date.UTC(2026, 6, 1),
+        dueAt: Date.UTC(2036, 0, 1),
         stability: 1,
         difficulty: 0.5,
         consecutiveCorrect: 1,
@@ -2840,10 +2848,10 @@ describe("admin metrics route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       ok: true,
-      schemaVersion: "ruby-high-admin-metrics.v5",
+      schemaVersion: "ruby-high-admin-metrics.v6",
       endpoint: "/api/apps/ruby-high/admin/metrics",
       bucketTimezone: "UTC",
-      trustStart: "2026-06-15",
+      trustStart: "2026-07-26",
     });
     expect(response.body.fields).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -2889,6 +2897,10 @@ describe("admin metrics route", () => {
       expect.objectContaining({
         path: "ruby.photoPosts",
         reliability: "proxy",
+      }),
+      expect.objectContaining({
+        path: "ruby.scheduledPosts",
+        reliability: "authoritative",
       }),
       expect.objectContaining({
         path: "ops.publicReadLimiter",
@@ -2983,6 +2995,42 @@ describe("admin metrics route", () => {
     const persistedEvents = await store.loadMetricEvents();
     expect(persistedEvents.map((event) => event.name)).toEqual(["app_open"]);
     expect(persistedEvents[0]?.visitorHash).toBeUndefined();
+  });
+
+  it("accepts viewer class-ritual visibility events as durable metrics", async () => {
+    const { token } = await auth.createGuestSession();
+    const cookieHeader = `rh_session=${token}`;
+
+    for (const type of ["teacher_response_viewed", "room_reaction_viewed"] as const) {
+      const response = await appRoute({
+        method: "POST",
+        path: "/api/apps/ruby-high/metrics/event",
+        cookieHeader,
+        visitorHeader: "rhv_class_ritual_visitor",
+        body: { type, questionId: "take-ruby-9", faculty: "ruby" },
+      });
+      expect(response.status).toBe(200);
+    }
+
+    const events = await store.loadMetricEvents();
+    expect(events.filter((event) => event.feature === "daily_class_ritual")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "teacher_response_viewed",
+          source: "viewer",
+          metadata: expect.objectContaining({ questionId: "take-ruby-9", faculty: "ruby" }),
+        }),
+        expect.objectContaining({
+          name: "room_reaction_viewed",
+          source: "viewer",
+          metadata: expect.objectContaining({ questionId: "take-ruby-9", faculty: "ruby" }),
+        }),
+      ]),
+    );
+    expect(ruby.analyticsSnapshot().events.classRitual).toMatchObject({
+      teacherResponseViewed: 1,
+      roomReactionViewed: 1,
+    });
   });
 
   it("accepts Privy wallet auth diagnostics as durable error metrics", async () => {
@@ -3295,7 +3343,7 @@ describe("admin metrics route", () => {
     expect(headers.Authorization).toBe("Bearer or-test-key");
     const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body));
     const prompt = body.messages[1].content as string;
-    expect(prompt).toContain("ruby-high-admin-metrics.v5");
+    expect(prompt).toContain("ruby-high-admin-metrics.v6");
     expect(prompt).toContain("identityRecords");
     expect(prompt).toContain("not deduped people");
     expect(prompt).toContain("characterD1Retention");
@@ -3326,7 +3374,7 @@ describe("yearbook share route", () => {
     });
   });
 
-  it("renders SVG cards and keeps PNG explicitly unsupported until configured", async () => {
+  it("renders SVG cards and falls back to SVG when no raster is configured", async () => {
     const sessionId = await createSession();
     attachYearbookEntry(sessionId);
     const share = ruby.yearbookSharesForSession(sessionId)[0]!;
@@ -3343,6 +3391,44 @@ describe("yearbook share route", () => {
       path: `/api/apps/ruby-high/yearbook/${share.shareId}/9?format=png`,
     });
     expect(response.status).toBe(200);
+  });
+
+  it("serves inline yearbook image bytes without redirecting through a data URL", async () => {
+    const sessionId = await createSession();
+    attachYearbookEntry(sessionId);
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    ruby.setYearbookImage(sessionId, "9", `data:image/png;base64,${png.toString("base64")}`);
+    const share = ruby.yearbookSharesForSession(sessionId)[0]!;
+
+    const response = await appRoute({
+      path: `/api/apps/ruby-high/yearbook/${share.shareId}/9?format=png`,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toBe("image/png");
+    expect(response.headers["content-length"]).toBe(String(png.length));
+    expect(response.headers.location).toBeUndefined();
+    expect(Buffer.isBuffer(response.body)).toBe(true);
+    expect((response.body as Buffer).equals(png)).toBe(true);
+  });
+
+  it("redirects public yearbook images only to bounded asset URLs", async () => {
+    const sessionId = await createSession();
+    attachYearbookEntry(sessionId);
+    ruby.setYearbookImage(sessionId, "9", "https://cdn.example/ruby-high/yearbook-card.png");
+    const share = ruby.yearbookSharesForSession(sessionId)[0]!;
+
+    const response = await appRoute({
+      path: `/api/apps/ruby-high/yearbook/${share.shareId}/9?format=png`,
+    });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.location).toBe("https://cdn.example/ruby-high/yearbook-card.png");
+    expect(() => ruby.setYearbookImage(
+      sessionId,
+      "9",
+      `data:image/png;base64,${"A".repeat(280_001)}`,
+    )).toThrow(/yearbookImageUrl too large/);
   });
 
   it("rejects malformed share ids without throwing", async () => {

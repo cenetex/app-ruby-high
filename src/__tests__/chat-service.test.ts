@@ -285,6 +285,9 @@ describe("ChatService.send — message composition", () => {
       events.push(ev);
     }
     expect(captured).not.toBeNull();
+    expect(captured!.body.model).toBe("openai/gpt-5.6-luna");
+    expect(captured!.body.reasoning_effort).toBe("none");
+    expect(captured!.body.temperature).toBeUndefined();
     const messages: any[] = captured!.body.messages;
     expect(messages[0].role).toBe("system");
     // Ruby's persona prompt should be in the first system message.
@@ -411,7 +414,7 @@ describe("ChatService.send — message composition", () => {
     registerPack(pack, sid);
     ruby.setActivePackForSession(sid, pack.id);
     const state = ruby.pickAndPose(sid, { faculty: "sally-science" });
-    ruby.submitAnswer(sid, state.current!.correct === "A" ? "B" : "A");
+    ruby.submitAnswer(sid, state.current!.correctChoice === "A" ? "B" : "A");
 
     for await (const _ of chat.send({
       apiKey: "sk-test",

@@ -105,7 +105,7 @@ describe("RubyHighService.rollAdvantage", () => {
     const { ruby } = await makeServices();
     const sid = "test:resolved";
     ruby.pickAndPose(sid, { faculty: "ruby" });
-    const correct = ruby.getOrCreate(sid).current!.correct! as Choice;
+    const correct = ruby.getOrCreate(sid).current!.correctChoice! as Choice;
     ruby.submitAnswer(sid, correct);
     // Round is now resolved.
     const { result } = ruby.rollAdvantage(sid);
@@ -130,7 +130,7 @@ describe("RubyHighService.rollAdvantage", () => {
     expect(result!.eliminated).toHaveLength(expectedCount);
 
     // Correct answer is never eliminated.
-    const correct = ruby.getOrCreate(sid).current!.correct;
+    const correct = ruby.getOrCreate(sid).current!.correctChoice;
     expect(result!.eliminated).not.toContain(correct);
   });
 
@@ -147,7 +147,7 @@ describe("RubyHighService.rollAdvantage", () => {
     const { ruby } = await makeServices();
     const sid = "test:after-answer";
     ruby.pickAndPose(sid, { faculty: "ruby" });
-    const correct = ruby.getOrCreate(sid).current!.correct! as Choice;
+    const correct = ruby.getOrCreate(sid).current!.correctChoice! as Choice;
     ruby.submitAnswer(sid, correct);
     // Round resolved (single player → resolveRound runs immediately).
     const { result } = ruby.rollAdvantage(sid);
@@ -161,7 +161,7 @@ describe("RubyHighService.rollAdvantage", () => {
     // that eliminates a known wrong answer. This avoids depending on rng.
     ruby.pickAndPose(sid, { faculty: "ruby" });
     const state = ruby.getOrCreate(sid);
-    const correct = state.current!.correct! as Choice;
+    const correct = state.current!.correctChoice! as Choice;
     const wrong: Choice = (CHOICES.find((c) => c !== correct) as Choice)!;
     state.activeRound!.advantage = {
       rolled: true,

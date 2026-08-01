@@ -100,7 +100,7 @@ describe("RubyHighService phase machine", () => {
     const sid = "test:revealed";
     ruby.selectGrade(sid, "11"); // → in-room (1)
     ruby.pickAndPose(sid, { faculty: "ruby" }); // → asking (2)
-    const correct = ruby.getOrCreate(sid).current!.correct! as Choice;
+    const correct = ruby.getOrCreate(sid).current!.correctChoice! as Choice;
     const after = ruby.submitAnswer(sid, correct); // → revealed (3)
     expect(after.phase).toBe("revealed");
     expect(after.phaseToken).toBe(3);
@@ -113,7 +113,7 @@ describe("RubyHighService phase machine", () => {
     const sid = "test:clear";
     ruby.selectGrade(sid, "11"); // 1
     ruby.pickAndPose(sid, { faculty: "ruby" }); // 2
-    const correct = ruby.getOrCreate(sid).current!.correct! as Choice;
+    const correct = ruby.getOrCreate(sid).current!.correctChoice! as Choice;
     ruby.submitAnswer(sid, correct); // 3 → revealed
     const after = ruby.clearBoard(sid); // 4 → in-room
     expect(after.phase).toBe("in-room");
@@ -187,7 +187,7 @@ describe("RubyHighService phase machine", () => {
     tokens.push(ruby.getOrCreate(sid).phaseToken); // 0
     tokens.push(ruby.selectGrade(sid, "11").phaseToken); // 1
     tokens.push(ruby.pickAndPose(sid, { faculty: "ruby" }).phaseToken); // 2
-    const correct = ruby.getOrCreate(sid).current!.correct! as Choice;
+    const correct = ruby.getOrCreate(sid).current!.correctChoice! as Choice;
     tokens.push(ruby.submitAnswer(sid, correct).phaseToken); // 3
     tokens.push(ruby.clearBoard(sid).phaseToken); // 4
     tokens.push(ruby.setFaculty(sid, "sally-science").phaseToken); // 5

@@ -15,6 +15,7 @@ import {
   facultyByIdForSession,
   facultyForSession,
   getActivePack,
+  getPackByIdForSession,
   ORIGINAL_PACK_ID,
   packForSession,
   resolveFacultyIdForSession,
@@ -25,6 +26,7 @@ import {
   setActivePack,
 } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
+import { ELIZAOS_SYSTEMS_LAB_PACK_ID } from "../content/packs/elizaos-systems-lab.js";
 import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 
 // The pack abstraction's contract: swapping the active pack swaps the
@@ -63,12 +65,9 @@ describe("ContentPack registry", () => {
       for (const q of f.questions) {
         expect(q.id).toBeTruthy();
         expect(q.prompt).toBeTruthy();
-        expect(["A", "B", "C", "D"]).toContain(q.correct);
-        const options = q.options!;
-        expect(options.A).toBeTruthy();
-        expect(options.B).toBeTruthy();
-        expect(options.C).toBeTruthy();
-        expect(options.D).toBeTruthy();
+        expect(q.correct).toBeTruthy();
+        expect(q.decoys?.length).toBeGreaterThanOrEqual(3);
+        expect(new Set([q.correct, ...(q.decoys ?? [])]).size).toBeGreaterThanOrEqual(4);
         expect(["head", "heart", "hustle", "honor"]).toContain(q.stat);
       }
     }
@@ -229,23 +228,28 @@ describe("per-session pack helpers — abstraction in place", () => {
     expect(pack.id).toBe(ORIGINAL_PACK_ID);
   });
 
-  it("packForSession resolves a session's pack — falls back to global on null/unknown id", async () => {
+  it("packForSession resolves session state with the automatic Eliza guest course", async () => {
     await getActivePack();
     expect(packForSession(null).id).toBe(ORIGINAL_PACK_ID);
-    expect(packForSession({ activePackId: null }).id).toBe(ORIGINAL_PACK_ID);
-    // Unknown pack ids fall back to global — never throw, never strand a session.
-    expect(packForSession({ activePackId: "test:gone" }).id).toBe(ORIGINAL_PACK_ID);
+    expect(packForSession({ activePackId: null }).id)
+      .toContain(`${ORIGINAL_PACK_ID}+guest`);
+    // Unknown explicit pack ids fall back to the global school — never throw
+    // or strand a session.
+    expect(packForSession({ activePackId: "test:gone" }).id)
+      .toBe(ORIGINAL_PACK_ID);
+    expect(getPackByIdForSession(ELIZAOS_SYSTEMS_LAB_PACK_ID, null)?.id)
+      .toBe(ELIZAOS_SYSTEMS_LAB_PACK_ID);
   });
 
   it("the *ForSession sync helpers all read through packForSession", async () => {
     await getActivePack();
     const session = { activePackId: null };
     expect(facultyForSession(session).map((f) => f.id).sort()).toEqual(
-      ["professor-edward", "ruby", "sally-science"],
+      ["guest", "professor-edward", "ruby", "sally-science"],
     );
     expect(facultyByIdForSession(session, "ruby")?.id).toBe("ruby");
     expect(coursesForSession(session).map((c) => c.teacherTemplateId).sort()).toEqual(
-      ["professor-edward", "ruby", "sally-science"],
+      ["eliza", "professor-edward", "ruby", "sally-science"],
     );
     expect(resolveFacultyIdForSession(session, "sally-science")).toBe("sally-science");
     expect(facultyByIdForSession(session, "no-such")).toBeNull();
@@ -265,7 +269,7 @@ describe("per-session pack helpers — abstraction in place", () => {
     await ruby["hydrate"]();
     const state = ruby.getOrCreate("session:fresh");
     expect(state.activePackId).toBeNull();
-    expect(packForSession(state).id).toBe(ORIGINAL_PACK_ID);
+    expect(packForSession(state).id).toContain(`${ORIGINAL_PACK_ID}+guest`);
     await ruby.flush();
   });
 

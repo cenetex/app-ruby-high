@@ -1,7 +1,7 @@
 import { Service, type IAgentRuntime } from "../runtime.js";
 import { teacherById, type TeacherCharacter } from "../characters/teachers.js";
 import { STUDENTS, type StudentCharacter } from "../characters/students.js";
-import type { CharacterStats, Choice, Difficulty, NpcStudentState, QuizState } from "../types.js";
+import type { CharacterStats, Difficulty, NpcStudentState, QuizState } from "../types.js";
 import { GRADE_LABELS, npcsInRoom, type TeachingRoomId } from "../types.js";
 import { facultyByIdForSession, resolveFacultyIdForSession, roomForFacultyForSession } from "../content/registry.js";
 import { RubyHighService, type QuestionBankStatus } from "./ruby-high-service.js";
@@ -813,15 +813,25 @@ export class ChatService extends Service {
     try {
       switch (call.function.name) {
         case "pose_question": {
+          const decoys = Array.isArray(args.decoys)
+            ? args.decoys.map((value) => String(value).trim()).filter(Boolean)
+            : undefined;
+          const legacyOptions = args.options as Record<string, unknown> | undefined;
+          const rawCorrect = String(args.correct ?? "").trim();
           const state = ruby.pose(agentSessionId, {
             prompt: String(args.prompt ?? ""),
-            options: {
-              A: String((args.options as Record<string, unknown> | undefined)?.A ?? ""),
-              B: String((args.options as Record<string, unknown> | undefined)?.B ?? ""),
-              C: String((args.options as Record<string, unknown> | undefined)?.C ?? ""),
-              D: String((args.options as Record<string, unknown> | undefined)?.D ?? ""),
-            },
-            correct: String(args.correct ?? "").toUpperCase() as Choice,
+            correct: legacyOptions && /^[a-d]$/i.test(rawCorrect)
+              ? rawCorrect.toUpperCase()
+              : rawCorrect,
+            ...(decoys ? { decoys } : {}),
+            ...(legacyOptions ? {
+              options: {
+                A: String(legacyOptions.A ?? ""),
+                B: String(legacyOptions.B ?? ""),
+                C: String(legacyOptions.C ?? ""),
+                D: String(legacyOptions.D ?? ""),
+              },
+            } : {}),
             explanation: args.explanation ? String(args.explanation) : undefined,
             subject: args.subject ? String(args.subject) : undefined,
             stat: args.stat ? String(args.stat) as keyof CharacterStats : undefined,
@@ -1963,20 +1973,19 @@ function buildToolDefs(opts: { includePickFromBank?: boolean; includePoseOpinion
       function: {
         name: "pose_question",
         description:
-          "Author a brand new multiple-choice question on the chalkboard (free-form, not from the bank). Use this only when no banked question fits.",
+          "Author a brand new multiple-choice question on the chalkboard (free-form, not from the bank). Give the correct answer text and plausible decoys; Ruby High places them randomly.",
         parameters: {
           type: "object",
-          required: ["prompt", "options", "correct"],
+          required: ["prompt", "correct", "decoys"],
           properties: {
             prompt: { type: "string" },
-            options: {
-              type: "object",
-              required: ["A", "B", "C", "D"],
-              properties: {
-                A: { type: "string" }, B: { type: "string" }, C: { type: "string" }, D: { type: "string" },
-              },
+            correct: { type: "string", description: "The correct answer text." },
+            decoys: {
+              type: "array",
+              minItems: 3,
+              items: { type: "string" },
+              description: "Plausible wrong answers. Three are sampled per pose.",
             },
-            correct: { type: "string", enum: ["A", "B", "C", "D"] },
             explanation: { type: "string" },
             subject: { type: "string" },
             stat: {

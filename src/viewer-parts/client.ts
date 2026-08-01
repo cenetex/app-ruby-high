@@ -24,22 +24,6 @@ export function runViewerClient(bootstrap) {
         .catch(() => {});
     });
   }
-  // iOS Safari ignores user-scalable=no in the viewport meta (Apple removed
-  // it for accessibility, and maximum-scale=1 also gets ignored on some
-  // versions). Cancel the gesture* events explicitly to keep pinch-zoom
-  // from happening on the app surface — when the viewport is wider than
-  // the layout expects, zoom-in makes the overflow worse, not better.
-  // Pan and tap still work; only the pinch-zoom gesture is suppressed.
-  document.addEventListener("gesturestart", (e) => { e.preventDefault(); }, { passive: false });
-  document.addEventListener("gesturechange", (e) => { e.preventDefault(); }, { passive: false });
-  document.addEventListener("gestureend", (e) => { e.preventDefault(); }, { passive: false });
-  // Block double-tap zoom on iOS without disabling double-click in JS.
-  document.addEventListener("dblclick", (e) => {
-    const el = e.target;
-    if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT")) return;
-    e.preventDefault();
-  }, { passive: false });
-
   const sessionUrl = apiBase + "/session/" + encodeURIComponent(sessionId);
   const commandUrl = sessionUrl + "/command";
   const metricsEventUrl = apiBase + "/metrics/event";
@@ -116,7 +100,10 @@ export function runViewerClient(bootstrap) {
     const cur = t && t.current;
     const offlineClassroom = !!(authed && !teacherChatEnabled() && t && t.character && t.faculty !== LOUNGE_ID);
     if (round && !round.resolved && cur) return offlineClassroom ? "Continue" : chatActionLabel(t);
-    if (cur && (currentRevealMatches(t) || t.status === "revealed")) return "Continue";
+    if (cur && (currentRevealMatches(t) || t.status === "revealed")) {
+      const progressView = dailyClassProgressView(t);
+      return progressView.visible ? progressView.continuationLabel : "Continue";
+    }
     const postClass = postClassState(t);
     if (postClass.report && guestSignupRequired(t)) return "Sign up";
     if (postClass.socialReady) return "Reflect";
@@ -132,14 +119,18 @@ export function runViewerClient(bootstrap) {
     const t = lastTelemetry;
     const round = t && t.active_round;
     const cur = t && t.current;
+    const live = !!(round && !round.resolved && cur);
     const ceremonyReady = !!(t && t.graduation_ready && !cur);
     const inFreeformRound = !!(
-      round && !round.resolved && cur
+      live
       && (t.is_opinion || cur.type === "typed-answer" || cur.type === "image-occlusion")
     );
-    els.nextBtn.hidden = !available || inFreeformRound || ceremonyReady;
+    // Offline multiple-choice rounds already have one clear action: answer
+    // the board. A second full-width "Continue" button only opens an AI hint
+    // dead end, so keep it out of the hierarchy until the reveal is ready.
+    const offlineLiveRound = live && !teacherChatEnabled();
+    els.nextBtn.hidden = !available || inFreeformRound || ceremonyReady || offlineLiveRound;
     els.nextBtn.textContent = nextQuestionButtonLabel(t);
-    const live = !!(round && !round.resolved && cur);
     const postClass = postClassState(t);
     els.nextBtn.title = live
       ? (teacherChatEnabled() ? chatCostTitle(t, "Ask for a hint.") : "Answer the board to continue")
@@ -294,6 +285,8 @@ export function runViewerClient(bootstrap) {
   const ANNOUNCEMENTS_LAST_KEY = "ruby-high:announcements-last-date";
   const ANNOUNCEMENTS_LOGO_URL = apiBase + "/assets/logo.png?v=baby-blue-20260504";
   let announcementsOverlay = null;
+  let announcementsPreviousFocus = null;
+  let announcementsBackgroundLocked = false;
   let morningAnnouncementsShown = false;
 
   const WELCOME_HALL_PASS_ART_URL = apiBase + "/assets/welcome-hall-passes.png";
@@ -453,24 +446,26 @@ export function runViewerClient(bootstrap) {
   const $ = (id) => document.getElementById(id);
   const els = {
     shell: $("shell"),
+    workspace: $("workspace"),
     serversRail: $("servers-rail"),
     channelsRail: $("channels-rail"),
     homeBtn: $("home-btn"),
     gradeTitle: $("grade-title"),
     channelsList: $("channels-list"),
+    youProfile: $("you-profile"),
     youAvatar: $("you-avatar"),
     youName: $("you-name"),
     youState: $("you-state"),
     footerAction: $("footer-action"),
     privyAction: $("privy-action"),
     hamburger: $("hamburger"),
+    channelsClose: $("channels-close"),
     channelTitle: $("channel-title"),
     channelSub: $("channel-sub"),
     arcIndicator: $("arc-indicator"),
     arcYear: $("arc-year"),
     arcStreak: $("arc-streak"),
     arcXp: $("arc-xp"),
-    hallPassBtn: $("hall-pass-btn"),
     stream: $("stream"),
     blackboardPanel: $("blackboard-panel"),
     loungeStage: $("lounge-stage"),
@@ -491,6 +486,7 @@ export function runViewerClient(bootstrap) {
     bugReportSubmit: $("bug-report-submit"),
     bugReportStatus: $("bug-report-status"),
     blackboardMeta: $("blackboard-meta"),
+    dailyClassProgress: $("daily-class-progress"),
     boardFrameHost: $("board-frame-host"),
     boardPrompt: $("board-prompt"),
     boardReveal: $("board-reveal"),
@@ -501,6 +497,8 @@ export function runViewerClient(bootstrap) {
     typedAnswerInput: $("typed-answer-input"),
     typedSubmitBtn: $("typed-submit-btn"),
     generateMcBtn: $("generate-mc-btn"),
+    takeStarters: $("take-starters"),
+    takeStarterButtons: Array.from(document.querySelectorAll("#take-starters [data-starter]")),
     advantageBar: $("advantage-bar"),
     advantageBtn: $("advantage-btn"),
     advantageResult: $("advantage-result"),
@@ -564,8 +562,152 @@ export function runViewerClient(bootstrap) {
     appConfirmCancel: $("app-confirm-cancel"),
     leaderboardPanel: $("leaderboard-panel"),
     leaderboardBody: $("leaderboard-body"),
+    leaderboardBack: $("leaderboard-back"),
     appConfirmOk: $("app-confirm-ok"),
   };
+
+  let viewerModalBackgroundDepth = 0;
+  function focusWithoutScroll(target) {
+    if (!target || typeof target.focus !== "function") return;
+    try { target.focus({ preventScroll: true }); } catch (_err) { try { target.focus(); } catch (_focusErr) {} }
+  }
+
+  function modalFocusableElements(overlay) {
+    if (!overlay) return [];
+    return Array.from(overlay.querySelectorAll(
+      "button:not(:disabled), [href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex='-1'])",
+    )).filter((element) => {
+      if (element.hidden || element.getAttribute("aria-hidden") === "true") return false;
+      if (element.closest("[hidden], [aria-hidden='true']")) return false;
+      return element.getClientRects().length > 0;
+    });
+  }
+
+  function trapModalFocus(event, overlay) {
+    if (!event || event.key !== "Tab") return;
+    const focusable = modalFocusableElements(overlay);
+    if (focusable.length === 0) {
+      event.preventDefault();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      focusWithoutScroll(last);
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      focusWithoutScroll(first);
+    } else if (!overlay.contains(document.activeElement)) {
+      event.preventDefault();
+      focusWithoutScroll(event.shiftKey ? last : first);
+    }
+  }
+
+  function lockViewerModalBackground() {
+    viewerModalBackgroundDepth += 1;
+    if (viewerModalBackgroundDepth !== 1 || !els.shell) return;
+    els.shell.setAttribute("inert", "");
+    els.shell.setAttribute("aria-hidden", "true");
+  }
+
+  function unlockViewerModalBackground() {
+    viewerModalBackgroundDepth = Math.max(0, viewerModalBackgroundDepth - 1);
+    if (viewerModalBackgroundDepth !== 0 || !els.shell) return;
+    els.shell.removeAttribute("inert");
+    els.shell.removeAttribute("aria-hidden");
+  }
+
+  function restoreModalFocus(previousFocus, fallbackFocus) {
+    const focusableSelector = "button:not(:disabled), [href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex='-1'])";
+    const isUsable = (target) => !!(
+      target
+      && target.isConnected
+      && typeof target.matches === "function"
+      && target.matches(focusableSelector)
+      && !target.hidden
+      && !target.closest("[hidden], [inert], [aria-hidden='true']")
+      && target.getClientRects().length > 0
+    );
+    const previousUsable = isUsable(previousFocus);
+    const fallbackUsable = isUsable(fallbackFocus);
+    focusWithoutScroll(previousUsable ? previousFocus : fallbackUsable ? fallbackFocus : null);
+  }
+
+  const viewerModalStates = new WeakMap();
+  const viewerModalStack = [];
+  function openViewerModal(overlay, options) {
+    if (!overlay) return;
+    const opts = options || {};
+    let state = viewerModalStates.get(overlay);
+    if (!state) {
+      state = { open: false, previousFocus: null, fallbackFocus: null, onRequestClose: null, dismissible: true, onKeyDown: null };
+      viewerModalStates.set(overlay, state);
+    }
+    state.fallbackFocus = opts.fallbackFocus || state.fallbackFocus;
+    state.onRequestClose = typeof opts.onRequestClose === "function" ? opts.onRequestClose : state.onRequestClose;
+    state.dismissible = opts.dismissible !== false;
+    if (!state.open) {
+      const previousModal = viewerModalStack[viewerModalStack.length - 1];
+      if (previousModal && previousModal !== overlay) {
+        previousModal.setAttribute("inert", "");
+        previousModal.setAttribute("aria-hidden", "true");
+      }
+      state.previousFocus = document.activeElement && typeof document.activeElement.focus === "function"
+        ? document.activeElement
+        : null;
+      state.open = true;
+      viewerModalStack.push(overlay);
+      lockViewerModalBackground();
+      state.onKeyDown = (event) => {
+        if (event.key === "Escape" && state.dismissible) {
+          event.preventDefault();
+          if (state.onRequestClose) state.onRequestClose();
+          return;
+        }
+        trapModalFocus(event, overlay);
+      };
+      overlay.addEventListener("keydown", state.onKeyDown);
+    }
+    overlay.hidden = false;
+    overlay.classList.add("is-open");
+    if (viewerModalStack[viewerModalStack.length - 1] === overlay) {
+      overlay.removeAttribute("inert");
+      overlay.setAttribute("aria-hidden", "false");
+    }
+    const requestedFocus = typeof opts.initialFocus === "function" ? opts.initialFocus() : opts.initialFocus;
+    setTimeout(() => {
+      if (!state.open || viewerModalStack[viewerModalStack.length - 1] !== overlay) return;
+      const focusTarget = requestedFocus || modalFocusableElements(overlay)[0];
+      focusWithoutScroll(focusTarget);
+    }, 0);
+  }
+
+  function closeViewerModal(overlay, fallbackFocus) {
+    if (!overlay) return;
+    const state = viewerModalStates.get(overlay);
+    const stackIndex = viewerModalStack.indexOf(overlay);
+    const wasTopModal = stackIndex === viewerModalStack.length - 1;
+    if (stackIndex >= 0) viewerModalStack.splice(stackIndex, 1);
+    overlay.classList.remove("is-open");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.removeAttribute("inert");
+    overlay.hidden = true;
+    if (!state || !state.open) return;
+    state.open = false;
+    if (state.onKeyDown) overlay.removeEventListener("keydown", state.onKeyDown);
+    state.onKeyDown = null;
+    unlockViewerModalBackground();
+    if (wasTopModal) {
+      const nextModal = viewerModalStack[viewerModalStack.length - 1];
+      if (nextModal) {
+        nextModal.removeAttribute("inert");
+        nextModal.setAttribute("aria-hidden", "false");
+      }
+      restoreModalFocus(state.previousFocus, fallbackFocus || state.fallbackFocus);
+    }
+    state.previousFocus = null;
+  }
 
   let activeConfirmDialog = null;
   function confirmInApp(options) {
@@ -582,10 +724,6 @@ export function runViewerClient(bootstrap) {
     const confirmText = options && options.confirmText ? options.confirmText : "Continue";
     const cancelText = options && options.cancelText ? options.cancelText : "Cancel";
     const tone = options && options.tone ? options.tone : "";
-    const previousFocus = document.activeElement && typeof document.activeElement.focus === "function"
-      ? document.activeElement
-      : null;
-
     if (els.appConfirmKicker) els.appConfirmKicker.textContent = kicker;
     if (els.appConfirmTitle) els.appConfirmTitle.textContent = title;
     if (els.appConfirmCopy) els.appConfirmCopy.textContent = copy;
@@ -596,23 +734,15 @@ export function runViewerClient(bootstrap) {
     okBtn.textContent = confirmText;
     cancelBtn.textContent = cancelText;
     overlay.classList.toggle("is-danger", tone === "danger");
-    overlay.hidden = false;
-    overlay.setAttribute("aria-hidden", "false");
-    overlay.classList.add("is-open");
 
     return new Promise((resolve) => {
       function cleanup(result) {
-        overlay.classList.remove("is-open", "is-danger");
-        overlay.setAttribute("aria-hidden", "true");
-        overlay.hidden = true;
+        closeViewerModal(overlay);
+        overlay.classList.remove("is-danger");
         overlay.removeEventListener("click", onOverlayClick);
-        overlay.removeEventListener("keydown", onKeyDown);
         okBtn.removeEventListener("click", onConfirm);
         cancelBtn.removeEventListener("click", onCancel);
         activeConfirmDialog = null;
-        if (previousFocus && previousFocus.isConnected) {
-          try { previousFocus.focus({ preventScroll: true }); } catch (_err) { try { previousFocus.focus(); } catch (_focusErr) {} }
-        }
         resolve(result);
       }
       function onConfirm() { cleanup(true); }
@@ -620,32 +750,15 @@ export function runViewerClient(bootstrap) {
       function onOverlayClick(event) {
         if (event.target === overlay) cleanup(false);
       }
-      function onKeyDown(event) {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          cleanup(false);
-          return;
-        }
-        if (event.key !== "Tab") return;
-        const focusable = Array.from(overlay.querySelectorAll("button:not(:disabled), [href], input, textarea, select, [tabindex]:not([tabindex='-1'])"));
-        if (focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      }
       activeConfirmDialog = { resolve: cleanup };
       overlay.addEventListener("click", onOverlayClick);
-      overlay.addEventListener("keydown", onKeyDown);
       okBtn.addEventListener("click", onConfirm);
       cancelBtn.addEventListener("click", onCancel);
       const focusTarget = options && options.focus === "confirm" ? okBtn : cancelBtn;
-      setTimeout(() => { try { focusTarget.focus({ preventScroll: true }); } catch (_err) { focusTarget.focus(); } }, 0);
+      openViewerModal(overlay, {
+        onRequestClose: onCancel,
+        initialFocus: focusTarget,
+      });
     });
   }
 
@@ -898,10 +1011,14 @@ export function runViewerClient(bootstrap) {
   let opinionGradeFired = false; // grading has been triggered for current round
   let typedSubmitting = false;
   let generatingMc = false;
+  let takeStartedQuestionId = null;
+  const viewedClassReportKeys = new Set();
   const renderedOpinionIds = new Set(); // responder ids whose text we've appended to chat
   const gradedResponderIds = new Set(); // responders whose grade-tag we've stamped on
   let sheetOverlayOpen = false;
   let returnToAccountAfterSheet = false;
+  const chatHistoryHumanStudentsByFaculty = new Map();
+  let roomHumanHistorySig = "";
 
   // Track scroll-to-bottom intent: only auto-scroll if user is near bottom.
   // The player's display name in chat + race UI. Falls back to "You" only
@@ -1128,10 +1245,15 @@ export function runViewerClient(bootstrap) {
     renderedHistorySig = null;
     lastSocialSummaryId = null;
   }
-  function showClassSurface() {
+  function showClassSurface(force) {
+    // Session polling repaints the blackboard every few seconds. Honor Roll
+    // is an explicit view choice, so background paints must not silently
+    // kick the player back to class. Direct navigation actions pass force.
+    if (leaderboardViewOpen && !force) return;
     leaderboardViewOpen = false;
     els.leaderboardPanel.hidden = true;
     els.blackboardPanel.hidden = false;
+    els.loungeStage.hidden = false;
     els.stream.hidden = false;
     els.composerZone.hidden = false;
   }
@@ -1200,7 +1322,13 @@ export function runViewerClient(bootstrap) {
   }
 
   function postViewerMetricEvent(type, payload) {
-    const body = Object.assign({ type: type }, payload || {});
+    const lowerSessionId = String(sessionId || "").toLowerCase();
+    const clientSurface = role === "agent"
+      ? "agent"
+      : lowerSessionId.indexOf("smoke") !== -1 || lowerSessionId.indexOf("synthetic") !== -1
+        ? "smoke"
+        : "viewer";
+    const body = Object.assign({ type: type, clientSurface: clientSurface }, payload || {});
     apiFetch(metricsEventUrl, {
       method: "POST",
       credentials: "same-origin",
@@ -1271,7 +1399,7 @@ export function runViewerClient(bootstrap) {
       return !!privyState.configured;
     },
     canPackCheckout(solana) {
-      return !!(solana && solana.configured && currentRubyTokenMintFromSolana(solana));
+      return !!(solana && solana.configured);
     },
     onSelectProduct: selectBillingProduct,
     onStartCheckout: startCheckout,
@@ -1411,9 +1539,7 @@ export function runViewerClient(bootstrap) {
     document,
     statLabel,
     scoreAwardLabel,
-    mashTickLabel,
     mashTickStory,
-    studentNameById,
     studentColorById,
   });
   const reportCardRenderer = createReportCardRenderer({
@@ -1638,6 +1764,34 @@ export function runViewerClient(bootstrap) {
       els.boardReveal.textContent = "";
     }
   }
+  function renderDailyClassProgress(t) {
+    if (!els.dailyClassProgress) return;
+    const view = dailyClassProgressView(t);
+    els.dailyClassProgress.hidden = !view.visible;
+    els.dailyClassProgress.replaceChildren();
+    if (!view.visible) return;
+    for (const step of view.steps) {
+      const item = document.createElement("li");
+      item.className = "is-" + step.state;
+      const marker = document.createElement("span");
+      marker.className = "daily-class-progress-mark";
+      marker.setAttribute("aria-hidden", "true");
+      marker.textContent = step.state === "complete" ? "✓" : "";
+      const label = document.createElement("span");
+      label.className = "daily-class-progress-label";
+      label.textContent = step.label;
+      const status = document.createElement("span");
+      status.className = "visually-hidden";
+      status.textContent = step.state === "complete"
+        ? ", complete"
+        : step.state === "current"
+          ? ", current"
+          : ", not started";
+      item.append(marker, label, status);
+      if (step.state === "current") item.setAttribute("aria-current", "step");
+      els.dailyClassProgress.appendChild(item);
+    }
+  }
   function ensureBlackboardEmptyExtras() {
     let extras = els.blackboardEmpty.querySelector(".blackboard-empty-extras");
     if (!extras) {
@@ -1724,6 +1878,11 @@ export function runViewerClient(bootstrap) {
     if (!report) {
       showBlackboardEmpty(true);
       return;
+    }
+    const reportKey = classReportKey(lastTelemetry);
+    if (reportKey && !viewedClassReportKeys.has(reportKey)) {
+      viewedClassReportKeys.add(reportKey);
+      postViewerMetricEvent("class_result_viewed", {});
     }
     showClassSurface();
     els.blackboardPanel.classList.remove("is-empty", "is-long-prompt", "is-essay-prompt");
@@ -1898,11 +2057,8 @@ export function runViewerClient(bootstrap) {
   function friendlySolanaActionError(err, unchanged) {
     const message = err && err.message ? String(err.message) : String(err || "error");
     if (/user rejected|rejected|canceled|cancelled/i.test(message)) return "Wallet request canceled.";
-    if (/Need\s+[\d,.]+\s+RUBY|needs?\s+[\d,.]+\s+RUBY|not enough\s+RUBY/i.test(message)) {
-      return message.replace(/^Card pack checkout\s*·\s*/i, "") + " Add funds in the connected Solana wallet, then try again.";
-    }
     if (/needs more SOL|insufficient funds|insufficient lamports|Attempt to debit|0x1\b|needs at least|balance is .*needs/i.test(message)) {
-      return "This mint needs more SOL for Solana rent and fees. Your card was not changed.";
+      return "This checkout needs more SOL for the pack payment, rent, and network fees. Nothing was charged.";
     }
     if (/403|forbidden|Helius|RPC rejected/i.test(message)) {
       return "Ruby High's Solana RPC rejected the request. We need to refresh the RPC key; your NFT was not changed.";
@@ -2094,14 +2250,9 @@ export function runViewerClient(bootstrap) {
     els.billingStatus.classList.toggle("is-invalid", !!invalid);
   }
 
-  // formatTokenDisplayAmount, cardPackTokenSymbol, cardPackDebitLabel,
+  // formatSolDisplayAmount, cardPackDebitLabel,
   // cardPackCreditLabel, cardPackPaymentDeltaLabel, cardPackProductMeta,
-  // formatMoney, formatTokenAmount are in client-pure.ts.
-  function currentRubyTokenMintFromSolana(solana) {
-    if (!solana || typeof solana !== "object") return "";
-    const mint = typeof solana.mint === "string" ? solana.mint.trim() : "";
-    return mint || "";
-  }
+  // and formatMoney are in client-pure.ts.
 
   function cardPackCheckoutState() {
     const solana = billingProductsCache && billingProductsCache.solana && typeof billingProductsCache.solana === "object"
@@ -2109,8 +2260,6 @@ export function runViewerClient(bootstrap) {
       : null;
     if (!solana) return { loaded: false, ready: true, reason: "" };
     if (!solana.configured) return { loaded: true, ready: false, reason: "Solana pack checkout is not configured on this server." };
-    const mint = currentRubyTokenMintFromSolana(solana);
-    if (!mint) return { loaded: true, ready: false, reason: "Solana pack checkout is missing token configuration." };
     return { loaded: true, ready: true, reason: "" };
   }
 
@@ -2743,7 +2892,6 @@ export function runViewerClient(bootstrap) {
     const solana = payload && payload.solana && typeof payload.solana === "object" ? payload.solana : null;
     const panelView = billingProductsPanelView(mode, payload, solana, {
       hallPassesPerBurnedCard,
-      hasRubyToken: !!currentRubyTokenMintFromSolana(solana),
     });
     if (els.billingTitle) els.billingTitle.textContent = panelView.titleText;
     if (els.billingSub) els.billingSub.textContent = panelView.subtitleText;
@@ -2910,8 +3058,10 @@ export function runViewerClient(bootstrap) {
     billingMode = opts && opts.mode === "card-packs" ? "card-packs" : "hall-passes";
     selectedBillingProductId = null;
     syncBillingWallet(lastTelemetry);
-    els.billingOverlay.classList.add("is-open");
-    els.billingOverlay.setAttribute("aria-hidden", "false");
+    openViewerModal(els.billingOverlay, {
+      onRequestClose: closeBilling,
+      initialFocus: els.billingClose,
+    });
     if (billingProductsCache) renderBillingProducts(billingProductsCache);
     if (billingMode === "hall-passes") void claimWelcomeHallPassesFromBilling();
     void loadBillingProducts();
@@ -2919,8 +3069,7 @@ export function runViewerClient(bootstrap) {
 
   function closeBilling() {
     if (!els.billingOverlay || billingBusy) return;
-    els.billingOverlay.classList.remove("is-open");
-    els.billingOverlay.setAttribute("aria-hidden", "true");
+    closeViewerModal(els.billingOverlay);
   }
 
   async function startCheckout(productId) {
@@ -2987,7 +3136,6 @@ export function runViewerClient(bootstrap) {
         credit: cardPackCreditLabel(product),
         pack: cardPackProductLabel(product) + " · " + formatWholeNumber(product.cardCount || HALL_PASS_CARDS_PER_PACK) + " cards",
         recipient: data.recipient,
-        mint: data.mint,
         reference: data.reference,
         prompt: "Your wallet should show a Solana pack payment and Ruby High pack creation. The network fee is paid by this wallet.",
         copy: "Ruby High will ask your wallet to confirm one Solana pack purchase and create one authorized pack. This should not ask for broad approvals.",
@@ -3017,16 +3165,17 @@ export function runViewerClient(bootstrap) {
     }
   }
 
-  async function ensureSolanaWalletForBilling() {
+  async function ensureSolanaWalletForBilling(opts) {
     if (connectedSolanaWalletAddress()) return true;
-    if (!privyConfig) throw new Error("Card pack checkout is not configured.");
+    const actionLabel = opts && opts.actionLabel ? String(opts.actionLabel) : "card pack checkout";
+    if (!privyConfig) throw new Error(actionLabel + " is not configured.");
     if (!privyState.authenticated) {
-      setBillingStatus("Opening sign-in for card pack checkout...", false);
+      setBillingStatus("Opening sign-in for " + actionLabel + "...", false);
       const loginSnapshot = await startPrivyLogin({ source: "billing" });
       if (!loginSnapshot && !privyState.authenticated) return false;
     }
     if (connectedSolanaWalletAddress()) return true;
-    setBillingStatus("Opening wallet connection for card pack checkout...", false);
+    setBillingStatus("Opening wallet connection for " + actionLabel + "...", false);
     const approved = await confirmWalletTransactionPreview({
       title: "Connect Solana wallet?",
       action: "Connect wallet",
@@ -3075,8 +3224,8 @@ export function runViewerClient(bootstrap) {
         ...((quote && quote.product) || {}),
         packCount: data.packCount || (quote && quote.product && quote.product.packCount),
         cardCount: data.cardCount || (quote && quote.product && quote.product.cardCount),
-        tokenAmount: data.tokenAmount || (quote && quote.product && quote.product.tokenAmount),
-        tokenSymbol: data.tokenSymbol || (quote && quote.product && quote.product.tokenSymbol) || (quote && quote.symbol),
+        solAmount: data.solAmount || (quote && quote.product && quote.product.solAmount),
+        symbol: data.symbol || (quote && quote.product && quote.product.symbol) || (quote && quote.symbol) || "SOL",
       };
       setBillingStatus(
         (data.applied ? packText + " minted · " : packText + " already minted · ") + cardPackPaymentDeltaLabel(paidProduct, quote),
@@ -3567,7 +3716,9 @@ export function runViewerClient(bootstrap) {
       const cls = document.createElement("span");
       cls.className = "pill class-mode";
       cls.textContent = cardRole === "social"
-        ? "REFLECTION"
+        ? ar.classSession.mode === "class"
+          ? "GRADED TAKE " + (ar.classSession.index || "?") + "/" + (ar.classSession.total || 3)
+          : "REFLECTION"
         : ar.classSession.mode === "class"
         ? "GRADED " + (ar.classSession.index || "?") + "/" + (ar.classSession.total || 3)
         : "PRACTICE";
@@ -3607,10 +3758,16 @@ export function runViewerClient(bootstrap) {
       || !isFreeformAnswer
       || !!(round && round.resolved)
       || (isOpinion ? (serverPlayerOpinionRecorded || localOpinionSubmitted) : playerLocked);
-    els.typedAnswerInput.placeholder = isOpinion ? "Type your response" : "Type the answer";
+    const isDailyTake = !!(isOpinion && question.opinionPurpose === "daily-take");
+    els.typedAnswerInput.placeholder = isDailyTake
+      ? "Write one sentence with your take"
+      : isOpinion
+        ? "Type your response"
+        : "Type the answer";
     els.typedSubmitBtn.textContent = isOpinion ? "Send" : "Check";
     els.typedAnswerInput.disabled = typedDisabled;
     els.typedSubmitBtn.disabled = typedDisabled;
+    if (els.takeStarters) els.takeStarters.hidden = !isDailyTake || typedDisabled;
     els.generateMcBtn.hidden = !(isTypedAnswer && question.canGenerateMc);
     els.generateMcBtn.disabled = role === "agent" || playerLocked || !!(round && round.resolved) || generatingMc || !aiEnabled;
     els.generateMcBtn.title = aiEnabled
@@ -3829,13 +3986,6 @@ export function runViewerClient(bootstrap) {
     return s ? s.color : "#888";
   }
 
-  function mashTickLabel(event) {
-    const name = studentNameById(event.studentId);
-    if (event.reason === "pep-talk") return name + " steady";
-    const delta = Number(event.delta || 0);
-    const sign = delta > 0 ? "+" + delta : String(delta);
-    return "Social " + sign + " " + name;
-  }
   // Story-style version of a relationship tick. Used in the Social card
   // recent-activity list so the player sees what happened, not "+1/-2"
   // numerics that are meaningless out of context.
@@ -3878,6 +4028,10 @@ export function runViewerClient(bootstrap) {
     const wrap = revealFeedbackRenderer.buildSocialSummary(events);
     if (!wrap) return;
     els.stream.appendChild(wrap);
+    postViewerMetricEvent("room_reaction_viewed", {
+      questionId: reveal.questionId,
+      faculty: t && t.faculty,
+    });
     scrollIfPinned();
   }
 
@@ -3908,6 +4062,7 @@ export function runViewerClient(bootstrap) {
     const roster = Array.isArray(t && t.npc_roster) ? t.npc_roster : [];
     const cohort = Array.isArray(t && t.npc_cohort) ? t.npc_cohort : [];
     const cells = t && t.character && t.character.mashCard && t.character.mashCard.cells;
+    const humans = publicRoomStudentsForRail(t);
     const rosterSig = roster.map((n) => n.id + ":" + (n.currentRoom || "")).join(",");
     const cohortSig = cohort.map((n) =>
       n.id + ":" + n.grade + ":" + (n.graduated ? "1" : "0") + ":" + ((n.streak && n.streak.count) || 0)
@@ -3916,7 +4071,14 @@ export function runViewerClient(bootstrap) {
       const cell = cells && cells[s.id];
       return s.id + ":" + (cell ? [cell.affinity || 0, cell.circled ? 1 : 0, cell.scratched ? 1 : 0].join("/") : "");
     }).join(",");
-    return rosterSig + "::" + cohortSig + "::" + socialSig + "::hidden=" + (hiddenNpcStudentId() || "");
+    const humanSig = humans.map((student) => [
+      student && student.id,
+      student && student.name,
+      student && student.grade,
+      student && student.facultyId,
+      student && student.portraitUrl,
+    ].join(":")).join(",");
+    return rosterSig + "::" + cohortSig + "::" + socialSig + "::humans=" + humanSig + "::hidden=" + (hiddenNpcStudentId() || "");
   }
   function studentCohortKey(entry) {
     if (entry.arc && entry.arc.graduated) return "graduated";
@@ -3941,6 +4103,139 @@ export function runViewerClient(bootstrap) {
   function studentArcProgressLabel(progress) {
     return classmateArcProgressLabel(progress);
   }
+  function playbookAccent(playbookId) {
+    const playbooks = Array.isArray(lastTelemetry && lastTelemetry.playbooks) ? lastTelemetry.playbooks : [];
+    const hit = playbooks.find((p) => p && p.id === playbookId);
+    return (hit && hit.accent) || "#4a6fa5";
+  }
+  function playbookLabel(playbookId) {
+    const playbooks = Array.isArray(lastTelemetry && lastTelemetry.playbooks) ? lastTelemetry.playbooks : [];
+    const hit = playbooks.find((p) => p && p.id === playbookId);
+    return (hit && (hit.shortName || hit.name)) || "Student";
+  }
+  function humanRoomName(facultyId) {
+    const fid = String(facultyId || "");
+    const roster = Array.isArray(lastTelemetry && lastTelemetry.faculty_roster) ? lastTelemetry.faculty_roster : [];
+    const fac = roster.find((f) => f && f.id === fid);
+    return channelNameFor(fac || { id: fid });
+  }
+  function isDefaultStudentAvatarUrl(value) {
+    return /\/assets\/students\/[^/?#]+-(?:face|full)\.png(?:[?#].*)?$/i.test(String(value || ""));
+  }
+  function customChatHumanPortraitUrl(raw) {
+    const portraitUrl = String(raw || "").trim();
+    if (!portraitUrl || portraitUrl.length > 2048 || /[\r\n]/.test(portraitUrl)) return "";
+    if (portraitUrl.startsWith("//") || /^data:/i.test(portraitUrl)) return "";
+    if (!(portraitUrl.startsWith("/") || /^https?:\/\//i.test(portraitUrl))) return "";
+    if (isDefaultStudentAvatarUrl(portraitUrl)) return "";
+    return portraitUrl;
+  }
+  function chatHumanStudentKey(name, portraitUrl) {
+    return String(name || "Student").trim().toLowerCase() + "|" + String(portraitUrl || "").trim();
+  }
+  function rememberChatHistoryHumanStudent(facultyId, message) {
+    if (!message || message.role !== "user" || message.isSelf) return false;
+    const faculty = String(facultyId || message.faculty || "").trim();
+    if (!faculty) return false;
+    const portraitUrl = customChatHumanPortraitUrl(message.avatarUrl);
+    if (!portraitUrl) return false;
+    const name = String(message.authorName || "Student").trim() || "Student";
+    if (name === "You") return false;
+    const lastActive = Number.isFinite(Number(message.at)) ? Math.floor(Number(message.at)) : Date.now();
+    const key = chatHumanStudentKey(name, portraitUrl);
+    const idSlug = key.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 72) || "student";
+    const entry = {
+      key,
+      id: "chat-human:" + idSlug,
+      name,
+      playbookId: "",
+      grade: "",
+      facultyId: faculty,
+      portraitUrl,
+      stats: {},
+      classGrades: {},
+      yearbookCount: 0,
+      lastActive,
+    };
+    const rows = chatHistoryHumanStudentsByFaculty.get(faculty) || [];
+    const existingIndex = rows.findIndex((row) => row && row.key === key);
+    if (existingIndex >= 0) {
+      const current = rows[existingIndex];
+      if (current && current.lastActive >= lastActive) return false;
+      rows[existingIndex] = { ...current, ...entry };
+    } else {
+      rows.push(entry);
+    }
+    rows.sort((a, b) => Number(b.lastActive || 0) - Number(a.lastActive || 0) || String(a.name).localeCompare(String(b.name)));
+    chatHistoryHumanStudentsByFaculty.set(faculty, rows.slice(0, 8));
+    return true;
+  }
+  function rememberChatHistoryHumanStudents(facultyId, messages) {
+    let changed = false;
+    (Array.isArray(messages) ? messages : []).forEach((message) => {
+      if (rememberChatHistoryHumanStudent(facultyId, message)) changed = true;
+    });
+    return changed;
+  }
+  function publicRoomStudentsForRail(t) {
+    const out = [];
+    const seenIds = new Set();
+    const seenPeople = new Set();
+    const seenNames = new Set();
+    const seenPortraits = new Set();
+    const add = (student) => {
+      if (!student || typeof student !== "object") return;
+      const portraitUrl = String(student.portraitUrl || "").trim();
+      const facultyId = String(student.facultyId || "").trim();
+      if (!portraitUrl || !facultyId) return;
+      const name = String(student.name || "Student").trim() || "Student";
+      const id = String(student.id || ("human:" + chatHumanStudentKey(name, portraitUrl))).trim();
+      const personKey = chatHumanStudentKey(name, portraitUrl);
+      const nameKey = name.toLowerCase();
+      const portraitKey = portraitUrl.toLowerCase();
+      if (seenIds.has(id) || seenPeople.has(personKey) || (nameKey !== "student" && seenNames.has(nameKey)) || seenPortraits.has(portraitKey)) return;
+      seenIds.add(id);
+      seenPeople.add(personKey);
+      if (nameKey !== "student") seenNames.add(nameKey);
+      seenPortraits.add(portraitKey);
+      out.push({ ...student, id, name, facultyId, portraitUrl });
+    };
+    (Array.isArray(t && t.public_room_students) ? t.public_room_students : []).forEach(add);
+    chatHistoryHumanStudentsByFaculty.forEach((rows) => {
+      (Array.isArray(rows) ? rows : []).forEach(add);
+    });
+    return out;
+  }
+  function publicRoomHumanRows(t, grade) {
+    const activeFaculty = String((t && t.faculty) || "");
+    const rows = publicRoomStudentsForRail(t).filter((student) => !activeFaculty || student.facultyId === activeFaculty);
+    return rows
+      .map((student) => {
+        const portraitUrl = String((student && student.portraitUrl) || "").trim();
+        if (!portraitUrl) return null;
+        const name = String((student && student.name) || "Student").trim() || "Student";
+        const rowGrade = String((student && student.grade) || grade || "");
+        const gradeTitle = GRADE_LABELS[rowGrade] || (rowGrade ? "Grade " + rowGrade : "Student");
+        const id = String((student && student.id) || ("human:" + name));
+        return {
+          npc: { ...student, kind: "human", currentRoom: student && student.facultyId },
+          student: { ...student, kind: "human", color: playbookAccent(student && student.playbookId) },
+          studentId: id,
+          kind: "human",
+          name,
+          color: playbookAccent(student && student.playbookId),
+          gradeTitle,
+          ariaLabel: name + ", " + gradeTitle + ", in this channel",
+          subtitle: gradeTitle + " · in channel",
+          progress: null,
+          progressLabel: "",
+          social: null,
+          portraitUrl,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  }
   function roomCompletionProgress(fac) {
     return roomCompletionProgressView(fac);
   }
@@ -3950,20 +4245,58 @@ export function runViewerClient(bootstrap) {
   function studentFaceUrl(studentId) {
     return apiBase + "/assets/students/" + encodeURIComponent(studentId) + "-face.png";
   }
-  function buildStudentFaceChip(studentId, className) {
+  function applyRoomStudentChipPortraitClass(chip, img) {
+    if (!chip || !img) return;
+    const update = () => {
+      const width = Number(img.naturalWidth || 0);
+      const height = Number(img.naturalHeight || 0);
+      chip.classList.remove("is-tall-portrait", "is-square-portrait", "is-wide-portrait");
+      if (!width || !height) return;
+      const ratio = width / height;
+      if (ratio < 0.82) chip.classList.add("is-tall-portrait");
+      else if (ratio > 1.18) chip.classList.add("is-wide-portrait");
+      else chip.classList.add("is-square-portrait");
+    };
+    img.onload = () => update();
+    if (img.complete) update();
+  }
+  function buildStudentFaceChip(student, className) {
+    const record = student && typeof student === "object" ? student : { id: student };
+    const studentId = String((record && record.id) || "");
+    const name = String((record && record.name) || "").trim();
+    const portraitUrl = String((record && record.portraitUrl) || "").trim();
     const s = STUDENTS.find((x) => x.id === studentId);
     const chip = document.createElement("span");
     chip.className = className || "student-face-chip";
     chip.style.setProperty("--student-accent", s ? s.color : "#888");
-    chip.title = s ? s.name : studentId;
+    chip.title = name || (s ? s.name : studentId);
     chip.setAttribute("aria-label", chip.title);
+    if (portraitUrl) chip.classList.add("is-custom-portrait");
+    if (record && record.kind === "human") {
+      chip.classList.add("is-clickable");
+      chip.setAttribute("role", "button");
+      chip.setAttribute("tabindex", "0");
+      const openHuman = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openHumanStudentProfile(record);
+      };
+      chip.addEventListener("click", openHuman);
+      chip.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        openHuman(event);
+      });
+    }
     const img = document.createElement("img");
-    img.src = studentFaceUrl(studentId);
+    img.src = portraitUrl || studentFaceUrl(studentId);
     img.alt = "";
     img.onerror = () => {
       chip.classList.add("is-fallback");
-      chip.textContent = s ? s.name.slice(0, 1) : "?";
+      chip.classList.remove("is-custom-portrait", "is-tall-portrait", "is-square-portrait", "is-wide-portrait");
+      const fallbackName = name || (s ? s.name : "");
+      chip.textContent = fallbackName.slice(0, 1).toUpperCase() || "?";
     };
+    if (portraitUrl) applyRoomStudentChipPortraitClass(chip, img);
     chip.appendChild(img);
     return chip;
   }
@@ -4032,13 +4365,17 @@ export function runViewerClient(bootstrap) {
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(entry);
     });
-    return Array.from(groups.entries())
+    const npcGroups = Array.from(groups.entries())
       .sort((a, b) => studentCohortSortValue(a[0]) - studentCohortSortValue(b[0]))
       .map(([key, entries]) => ({
         key,
         label: studentCohortLabel(key),
         rows: entries,
       }));
+    const humanRows = publicRoomHumanRows(t, grade);
+    return humanRows.length
+      ? [{ key: "public-room-humans", label: "This channel", rows: humanRows }, ...npcGroups]
+      : npcGroups;
   }
   function rebuildChannelsRail() {
     const t = lastTelemetry || {};
@@ -4079,7 +4416,8 @@ export function runViewerClient(bootstrap) {
     }
     const cohort = t.room_cohort || {};
     const visibleStudentIds = STUDENTS.filter((s) => shouldShowStudentId(s.id)).map((s) => s.id);
-    const roomViews = roomChannelRowViews(t.rooms || [], roster, cohort, t.faculty, STUDENTS, visibleStudentIds);
+    const railHumanStudents = publicRoomStudentsForRail(t);
+    const roomViews = roomChannelRowViews(t.rooms || [], roster, cohort, t.faculty, STUDENTS, visibleStudentIds, railHumanStudents);
     roomChannelRowsController.appendRows(els.channelsList, roomViews, roster);
 
     // The Teachers' Lounge and class roster stay out of the first-session
@@ -4109,20 +4447,21 @@ export function runViewerClient(bootstrap) {
       els.channelsList.appendChild(row);
     }
 
-    // Students — group the cohort by the year they are actually living in,
-    // then use the row body for room/arc/social-card state instead of
-    // repeating the same grade chip six times.
     if (!unlocked) return;
-    classmateChannelRowsRenderer.appendSection(els.channelsList, classmateChannelGroups(t, grade));
 
-    // Honor Roll — school-wide leaderboard.
+    // Honor Roll belongs with the primary destinations, above the longer
+    // student roster. Placing it after every classmate pushed it below the
+    // visible rail at common desktop heights and made the feature look absent.
     const honorTitle = document.createElement("div");
     honorTitle.className = "channel-section-title";
     honorTitle.textContent = "Honor Roll";
     els.channelsList.appendChild(honorTitle);
     const honorRow = document.createElement("button");
+    honorRow.id = "honor-roll-button";
     honorRow.className = "channel-row";
     honorRow.type = "button";
+    honorRow.setAttribute("aria-label", "View Honor Roll");
+    honorRow.setAttribute("aria-controls", "leaderboard-panel");
     const honorThumb = document.createElement("span");
     honorThumb.className = "teacher-thumb";
     honorThumb.style.background = "#222";
@@ -4140,6 +4479,11 @@ export function runViewerClient(bootstrap) {
     honorRow.appendChild(honorMeta);
     honorRow.addEventListener("click", () => showLeaderboard());
     els.channelsList.appendChild(honorRow);
+
+    // Students — group the cohort by the year they are actually living in,
+    // then use the row body for room/arc/social-card state instead of
+    // repeating the same grade chip six times.
+    classmateChannelRowsRenderer.appendSection(els.channelsList, classmateChannelGroups(t, grade));
 
   }
   function channelNameFor(f) {
@@ -4173,6 +4517,7 @@ export function runViewerClient(bootstrap) {
     return "Class is in session. Your teacher is ready when you are.";
   }
   async function setFaculty(facultyId) {
+    showClassSurface(true);
     const prev = lastTelemetry && lastTelemetry.faculty;
     if (facultyId === prev) { closeRails(); return; }
     const data = await command({ type: "set-faculty", faculty: facultyId });
@@ -4193,6 +4538,7 @@ export function runViewerClient(bootstrap) {
     closeRails();
   }
   async function enterLounge() {
+    showClassSurface(true);
     const prev = lastTelemetry && lastTelemetry.faculty;
     if (prev === LOUNGE_ID) { closeRails(); return; }
     const data = await command({ type: "set-faculty", faculty: LOUNGE_ID });
@@ -4208,6 +4554,7 @@ export function runViewerClient(bootstrap) {
       }
     }
     closeRails();
+  }
 
   async function showLeaderboard() {
     closeRails();
@@ -4217,6 +4564,7 @@ export function runViewerClient(bootstrap) {
     els.stream.hidden = true;
     els.leaderboardPanel.hidden = false;
     els.leaderboardBody.innerHTML = '<div class="leaderboard-loading">Loading…</div>';
+    focusWithoutScroll(els.leaderboardBack);
     try {
       const r = await apiFetch(apiBase + "/cohort");
       if (!r.ok) throw new Error("leaderboard " + r.status);
@@ -4237,7 +4585,6 @@ export function runViewerClient(bootstrap) {
     leaderboardPanelRenderer.render(data, playbooks);
   }
 
-  }
   async function startPostClassPractice(postClass) {
     if (!postClass || !postClass.report) return false;
     if (guestSignupRequired(lastTelemetry)) {
@@ -4343,7 +4690,15 @@ export function runViewerClient(bootstrap) {
           return;
         }
         if (phase === "revealed") {
+          const continueClass = !!(
+            lastTelemetry
+            && lastTelemetry.lastReveal
+            && lastTelemetry.lastReveal.classProgress
+            && lastTelemetry.lastReveal.classProgress.mode === "class"
+            && !currentRevealCompletedClass(lastTelemetry)
+          );
           await command({ type: "clear" });
+          if (continueClass) await command({ type: "pick" });
           lockedFor = null;
           return;
         }
@@ -4375,13 +4730,15 @@ export function runViewerClient(bootstrap) {
         return;
       }
       if (phase === "revealed") {
-        if (currentRevealCompletedClass(lastTelemetry)) {
-          await command({ type: "clear" });
-          lockedFor = null;
-          await runPlayerChatTurn("report");
-          return;
-        }
+        const continueClass = !!(
+          lastTelemetry
+          && lastTelemetry.lastReveal
+          && lastTelemetry.lastReveal.classProgress
+          && lastTelemetry.lastReveal.classProgress.mode === "class"
+          && !currentRevealCompletedClass(lastTelemetry)
+        );
         await command({ type: "clear" });
+        if (continueClass) await command({ type: "pick" });
         lockedFor = null;
         return;
       }
@@ -4639,7 +4996,9 @@ export function runViewerClient(bootstrap) {
     const todayFaculty = t && t.faculty_roster && Array.isArray(t.faculty_roster)
       ? t.faculty_roster.find(function(f) { return f.id === t.faculty; })
       : null;
-    const facultyName = todayFaculty ? (todayFaculty.name || "Ruby") : "Ruby";
+    const facultyName = todayFaculty
+      ? (todayFaculty.displayName || todayFaculty.shortName || todayFaculty.name || "Ruby")
+      : "Ruby";
     const grade = t && t.current_grade;
     const gradeLabel = grade ? ("Grade " + grade) : "";
 
@@ -4682,7 +5041,13 @@ export function runViewerClient(bootstrap) {
       }).join("");
     }
 
+    announcementsPreviousFocus = document.activeElement && typeof document.activeElement.focus === "function"
+      ? document.activeElement
+      : null;
     overlay.hidden = false;
+    focusWithoutScroll(document.getElementById("announcements-dismiss"));
+    lockViewerModalBackground();
+    announcementsBackgroundLocked = true;
   }
 
   function dismissAnnouncements() {
@@ -4690,26 +5055,34 @@ export function runViewerClient(bootstrap) {
     if (announcementsOverlay) {
       announcementsOverlay.hidden = true;
     }
+    if (announcementsBackgroundLocked) {
+      unlockViewerModalBackground();
+      announcementsBackgroundLocked = false;
+    }
+    const fallback = document.getElementById("onboarding-create-btn") || els.nextBtn;
+    restoreModalFocus(announcementsPreviousFocus, fallback);
+    announcementsPreviousFocus = null;
+    if (lastTelemetry) syncFirstBellReportModal(lastTelemetry);
   }
 
 
   // ── onboarding / first-visit intro ──────────────────────────────────────
-  let onboardingShown = false;
-  function showOnboarding() {
-    if (onboardingShown) return;
-    onboardingShown = true;
+  function syncOnboardingActions(t) {
     const actions = document.getElementById("onboarding-actions");
-    if (actions) actions.hidden = false;
-    // Hide the create-character fallback button — the onboarding
-    // "Roll a student" button replaces it.
+    const visible = !!authed && !(t && t.character);
+    if (actions) actions.hidden = !visible;
+    // The richer first-run actions replace the legacy fallback button.
     const emptyAction = document.getElementById("blackboard-empty-action");
-    if (emptyAction) emptyAction.hidden = true;
+    if (emptyAction && visible) emptyAction.hidden = true;
   }
 
   function render(s) {
     if (!s || !s.telemetry) return;
     const t = s.telemetry;
+    const gainedCharacter = !lastTelemetry?.character && !!t.character;
     lastTelemetry = t;
+    if (gainedCharacter && els.stream.children.length > 0) clearStream();
+    syncOnboardingActions(t);
     syncAiStateFromTelemetry(t);
     syncBillingWallet(t);
     renderAccountPage();
@@ -4718,6 +5091,7 @@ export function runViewerClient(bootstrap) {
     if (teacherChatEnabled() && t.faculty && (!renderedHistorySig || !renderedHistorySig.startsWith(t.faculty + ":"))) {
       loadHistory(t.faculty);
     }
+    loadRoomHumanHistories(t);
     applyViewMode(deriveViewMode(t));
     // Morning announcements — shown once per day on first visit.
     // Fires after the first telemetry tick, before class content renders.
@@ -4727,16 +5101,10 @@ export function runViewerClient(bootstrap) {
       firstRunCreationOpened = true;
       // If a class is already live, jump straight to character creation
       // so the teacher isn't hidden behind an intro screen.
-      if (t.current || t.active_round || (t.daily && t.daily.available)) {
+      if (t.current || t.active_round) {
         setTimeout(() => openCharacterCreation(), 0);
-      } else {
-        showOnboarding();
       }
     }
-    // Keep top-bar chrome focused on class progress. Economy and collection
-    // systems live under Account.
-    if (els.hallPassBtn) els.hallPassBtn.hidden = false;
-
     setAccent(t.facultyAccent);
     rebuildServersRail();
     rebuildChannelsRail();
@@ -4817,6 +5185,7 @@ export function runViewerClient(bootstrap) {
     renderArcIndicator(t);
 
     // Render blackboard panel (single, in-place updates).
+    renderDailyClassProgress(t);
     renderBlackboard(t.current || null, fac || null, t.current_grade);
     renderRaceStrip(t);
     renderAdvantageBar(t);
@@ -4883,12 +5252,14 @@ export function runViewerClient(bootstrap) {
 
     if (!t.character) {
       if (els.youName) els.youName.textContent = "Create character";
+      if (els.youProfile) els.youProfile.setAttribute("aria-label", "Create student");
       if (els.youAvatar) {
         els.youAvatar.innerHTML = "";
         els.youAvatar.textContent = "+";
       }
     }
     if (t.character) {
+      if (els.youProfile) els.youProfile.setAttribute("aria-label", "Open " + t.character.name + "'s student card");
       const youName = els.youName;
       if (youName && youName.textContent !== t.character.name) youName.textContent = t.character.name;
       const youAvatar = els.youAvatar;
@@ -5184,7 +5555,10 @@ export function runViewerClient(bootstrap) {
     const fac = (t && t.faculty_roster || []).find((f) => f.id === facultyId);
     if (!fac) return;
     sheetOverlayOpen = true;
-    sheetEl.classList.add("is-open");
+    openViewerModal(sheetEl, {
+      onRequestClose: closeSheet,
+      initialFocus: () => sheetCloseBtn,
+    });
     renderCardDeck([
       buildTeacherProfileCard(fac),
       buildTeacherCareerCard(fac),
@@ -5192,9 +5566,63 @@ export function runViewerClient(bootstrap) {
   }
 
   // ── student profile card ─────────────────────────────────────────────────
-  function openStudentProfile(npc, s) {
+  function openHumanStudentProfile(human) {
+    if (!human || typeof human !== "object") return;
     sheetOverlayOpen = true;
-    sheetEl.classList.add("is-open");
+    openViewerModal(sheetEl, {
+      onRequestClose: closeSheet,
+      initialFocus: () => sheetCloseBtn,
+    });
+    const name = String(human.name || "Student").trim() || "Student";
+    const gradeKey = String(human.grade || "");
+    const gradeTitle = GRADE_LABELS[gradeKey] || (gradeKey ? "Grade " + gradeKey : "Student");
+    const facultyId = String(human.facultyId || human.currentRoom || "");
+    const roomName = humanRoomName(facultyId);
+    const portraitUrl = String(human.portraitUrl || "").trim();
+    const accent = playbookAccent(human.playbookId);
+    const playbook = playbookLabel(human.playbookId);
+    const stats = human.stats && typeof human.stats === "object" ? human.stats : {};
+    const classGrades = human.classGrades && typeof human.classGrades === "object" && !Array.isArray(human.classGrades)
+      ? human.classGrades
+      : {};
+    const completedClasses = Object.keys(classGrades).length;
+    const yearbookCount = Math.max(0, Math.floor(Number(human.yearbookCount || 0)));
+    const subtitle = gradeTitle + (roomName ? " · #" + roomName : "");
+    renderCardDeck([
+      buildCharacterCard({
+        role: "student",
+        name,
+        subtitle,
+        portraitUrl,
+        accent,
+        stats,
+        quote: playbook + " at Ruby High.",
+        footer: { title: "Current room", content: roomName ? "#" + roomName : "Ruby High" },
+      }),
+      buildProfileCareerCard({
+        badgeLabel: "student",
+        name: "Student Page",
+        subtitle: playbook,
+        metrics: [
+          { label: "room", value: roomName ? "#" + roomName : "Ruby High", detail: "current channel", met: !!roomName },
+          { label: "year", value: gradeTitle, detail: "current year", met: !!gradeKey },
+          { label: "classes", value: String(completedClasses), detail: "completed", met: completedClasses > 0 },
+          { label: "yearbook", value: String(yearbookCount), detail: "entries", met: yearbookCount > 0 },
+        ],
+      }),
+    ]);
+  }
+
+  function openStudentProfile(npc, s) {
+    if ((npc && npc.kind === "human") || (s && s.kind === "human")) {
+      openHumanStudentProfile(npc && npc.kind === "human" ? npc : s);
+      return;
+    }
+    sheetOverlayOpen = true;
+    openViewerModal(sheetEl, {
+      onRequestClose: closeSheet,
+      initialFocus: () => sheetCloseBtn,
+    });
     // Pull this NPC's parallel-arc state from the cohort. That's the
     // rivalry surface — what year they're on, what their daily-class count looks
     // like, whether they've already graduated past you.
@@ -5253,14 +5681,17 @@ export function runViewerClient(bootstrap) {
   function openSheet(options) {
     if (options && options.returnToAccount) returnToAccountAfterSheet = true;
     sheetOverlayOpen = true;
-    sheetEl.classList.add("is-open");
+    openViewerModal(sheetEl, {
+      onRequestClose: closeSheet,
+      initialFocus: () => sheetCloseBtn,
+    });
     renderSheet();
   }
   function closeSheet() {
     const shouldReturnToAccount = returnToAccountAfterSheet;
     returnToAccountAfterSheet = false;
     sheetOverlayOpen = false;
-    sheetEl.classList.remove("is-open");
+    closeViewerModal(sheetEl, els.nextBtn || els.youProfile);
     if (shouldReturnToAccount && authed) {
       setTimeout(() => { void openPrivyAccount(); }, 0);
     }
@@ -5854,15 +6285,21 @@ export function runViewerClient(bootstrap) {
     list.appendChild(row);
   }
 
-  function closeFirstBellReportModal(overlay, onKeyDown) {
-    if (onKeyDown) document.removeEventListener("keydown", onKeyDown);
-    if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  function closeFirstBellReportModal(overlay, onKeyDown, previousFocus) {
+    if (!overlay || !overlay.parentNode) return;
+    if (onKeyDown) overlay.removeEventListener("keydown", onKeyDown);
+    overlay.parentNode.removeChild(overlay);
+    unlockViewerModalBackground();
+    restoreModalFocus(previousFocus, els.nextBtn);
     firstBellReportModalOpen = false;
   }
 
-  function showFirstBellReport(report, character) {
+  function showFirstBellReport(report, character, share) {
     if (!report || firstBellReportModalOpen) return;
     firstBellReportModalOpen = true;
+    const previousFocus = document.activeElement && typeof document.activeElement.focus === "function"
+      ? document.activeElement
+      : null;
 
     const overlay = document.createElement("div");
     overlay.className = "first-bell-overlay";
@@ -5934,18 +6371,32 @@ export function runViewerClient(bootstrap) {
     secondary.type = "button";
     secondary.className = "secondary";
     secondary.textContent = "Open student card";
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "secondary";
+    copy.textContent = "Copy link";
+    copy.title = "Copy First Bell report link";
     const primary = document.createElement("button");
     primary.type = "button";
     primary.className = "primary";
     primary.textContent = "Continue";
-    actions.append(secondary, primary);
+    actions.append(secondary);
+    const shareId = share && share.shareId ? String(share.shareId) : "";
+    const shareUrl = share && share.url ? absoluteViewerUrl(share.url) : "";
+    if (shareId && shareUrl) actions.appendChild(copy);
+    actions.appendChild(primary);
 
     let onKeyDown = null;
-    const close = () => closeFirstBellReportModal(overlay, onKeyDown);
+    const close = () => closeFirstBellReportModal(overlay, onKeyDown, previousFocus);
     onKeyDown = (event) => {
-      if (event.key === "Escape") close();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+        return;
+      }
+      trapModalFocus(event, overlay);
     };
-    document.addEventListener("keydown", onKeyDown);
+    overlay.addEventListener("keydown", onKeyDown);
     overlay.addEventListener("click", (event) => {
       if (event.target === overlay) close();
     });
@@ -5954,18 +6405,42 @@ export function runViewerClient(bootstrap) {
       close();
       openSheet();
     });
+    copy.addEventListener("click", async () => {
+      const original = copy.textContent || "Copy link";
+      try {
+        await copyTextToClipboard(shareUrl);
+        const payload = {
+          shareId: shareId,
+          destination: "copy",
+          kind: "first_bell_report",
+          ...(share && share.grade ? { grade: String(share.grade) } : {}),
+        };
+        postViewerMetricEvent("share_initiated", payload);
+        copy.textContent = "Copied";
+      } catch (_err) {
+        copy.textContent = "Failed";
+      } finally {
+        setTimeout(() => { copy.textContent = original; }, 1200);
+      }
+    });
 
     card.append(hero, body, actions);
     overlay.appendChild(card);
     document.body.appendChild(overlay);
-    card.focus({ preventScroll: true });
+    focusWithoutScroll(primary);
+    lockViewerModalBackground();
   }
 
   function syncFirstBellReportModal(t) {
     const report = t && t.first_bell_report;
-    if (!report || firstBellReportModalOpen || hasSeenFirstBellReport(report)) return;
+    if (
+      !report
+      || firstBellReportModalOpen
+      || (announcementsOverlay && !announcementsOverlay.hidden)
+      || hasSeenFirstBellReport(report)
+    ) return;
     markFirstBellReportSeen(report);
-    showFirstBellReport(report, t.character);
+    showFirstBellReport(report, t.character, t.first_bell_share);
   }
 
   function showComicReader(collection, unlock, options) {
@@ -6193,11 +6668,6 @@ export function runViewerClient(bootstrap) {
     // is gone in this PR.
     const inFlight = { all: false, name: false, personality: false, arcAnswer: false, flavorQuote: false, stats: false, playbook: false, portrait: false, saving: false };
     let aiPortraitDataUrl = null; // when set, replaces the default at save-time
-    let characterPersisted = false;
-    let autosaveQueue = Promise.resolve(false);
-    let queuedAutosaves = 0;
-    let autosaveVersion = 0;
-    let savedAutosaveVersion = 0;
     const OFFLINE_NAMES = ["Iris", "Nova", "Vee", "Mara", "Jules", "Theo", "Rin", "Cass", "Ari", "Nico", "Sol", "Mina"];
     const OFFLINE_VOICES = [
       "Quietly intense, observant, and allergic to obvious answers.",
@@ -6298,20 +6768,16 @@ export function runViewerClient(bootstrap) {
           ? "Reroll student"
           : "Roll a student";
       saveBtn.hidden = !rolled;
-      saveBtn.disabled = !rolled || inFlight.all || inFlight.saving || !latestVisibleCharacterSaved();
+      saveBtn.disabled = !rolled || inFlight.all || inFlight.saving;
       [nameRow, playbookRow, statsRow, personalityRow, quoteRow].forEach(({ reroll }) => {
         const k = reroll.dataset.key;
-        reroll.disabled = !rolled || inFlight.all || !!inFlight[k];
+        reroll.disabled = !rolled || inFlight.all || inFlight.saving || !!inFlight[k];
       });
       const portraitHallPassNeeded = hostedPortraitHallPassNeeded();
       const portraitReason = portraitGenerationStatusReason();
       portraitBtn.hidden = !portraitGenerationVisible();
-      portraitBtn.disabled = !rolled || inFlight.portrait || (!!portraitReason && !portraitHallPassNeeded);
+      portraitBtn.disabled = !rolled || inFlight.portrait || inFlight.saving || (!!portraitReason && !portraitHallPassNeeded);
       portraitBtn.title = portraitReason || "";
-    }
-
-    function latestVisibleCharacterSaved() {
-      return characterPersisted && savedAutosaveVersion >= autosaveVersion;
     }
 
     function portraitGenerationVisible() {
@@ -6368,7 +6834,6 @@ export function runViewerClient(bootstrap) {
       }
       applyDisabled();
       setStatus(isFullRoll ? "Rolling…" : "Rerolling " + components.join(", ") + "…");
-      let shouldAutosave = false;
       try {
         // If the player reroll-cycles the playbook OR the name AFTER
         // generating an AI portrait, the AI image no longer matches —
@@ -6382,7 +6847,6 @@ export function runViewerClient(bootstrap) {
           renderRolled(rolled);
           revealForm();
           setStatus("Offline mode — AI chat and custom portrait are disabled until you enable AI.");
-          shouldAutosave = true;
           return;
         }
         const body = isFullRoll
@@ -6394,7 +6858,6 @@ export function runViewerClient(bootstrap) {
         // First roll lands → swap from loading-state to form.
         revealForm();
         setStatus("");
-        shouldAutosave = true;
       } catch (err) {
         revealForm();
         setStatus(err && err.message ? err.message : "Roll failed — try again.", true);
@@ -6404,8 +6867,7 @@ export function runViewerClient(bootstrap) {
         } else {
           for (const c of components) inFlight[c] = false;
         }
-        if (shouldAutosave) void scheduleCharacterAutosave();
-        else applyDisabled();
+        applyDisabled();
       }
     }
 
@@ -6483,7 +6945,6 @@ export function runViewerClient(bootstrap) {
         if (typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements, data.characterSlots);
         portraitBtn.textContent = "✨ Try again";
         portraitStatus.textContent = "AI portrait ready.";
-        void scheduleCharacterAutosave();
       } catch (err) {
         portraitStatus.textContent = err && err.message ? err.message : "Couldn't generate — keeping the default.";
         portraitStatus.classList.add("is-invalid");
@@ -6494,7 +6955,7 @@ export function runViewerClient(bootstrap) {
       }
     });
 
-    function currentCharacterAutosaveSnapshot() {
+    function currentCharacterSnapshot() {
       if (!rolled) return null;
       const portraitUrl = aiPortraitDataUrl || defaultPortraitFor(rolled.playbookId);
       return {
@@ -6508,68 +6969,30 @@ export function runViewerClient(bootstrap) {
       };
     }
 
-    async function persistCharacterSnapshot(snapshot, version) {
-      const commandType = characterPersisted ? "update-character" : "create-character";
-      setStatus(characterPersisted ? "Saving changes..." : "Saving...");
-      try {
-        const data = await command({
-          type: commandType,
-          ...snapshot,
-        });
-        if (data && data.session) {
-          characterPersisted = true;
-          savedAutosaveVersion = Math.max(savedAutosaveVersion, version);
-          if (version === autosaveVersion) setStatus("Saved.");
-          return true;
-        }
-        if (version === autosaveVersion) setStatus("Autosave failed - try again.", true);
-        return false;
-      } catch (err) {
-        if (version === autosaveVersion) setStatus(err && err.message ? err.message : "Autosave failed - try again.", true);
-        return false;
-      }
-    }
-
-    function scheduleCharacterAutosave() {
-      const snapshot = currentCharacterAutosaveSnapshot();
-      if (!snapshot) return autosaveQueue;
-      const version = ++autosaveVersion;
-      queuedAutosaves += 1;
+    async function beginClassFromCharacter() {
+      if (!rolled || inFlight.all || inFlight.saving) return;
+      const snapshot = currentCharacterSnapshot();
+      if (!snapshot) return;
       inFlight.saving = true;
       applyDisabled();
-      autosaveQueue = autosaveQueue
-        .catch(() => false)
-        .then(async () => {
-          try {
-            return await persistCharacterSnapshot(snapshot, version);
-          } finally {
-            queuedAutosaves = Math.max(0, queuedAutosaves - 1);
-            inFlight.saving = queuedAutosaves > 0;
-            applyDisabled();
-          }
-        });
-      return autosaveQueue;
-    }
-
-    async function beginClassFromCharacter() {
-      if (!rolled || inFlight.all) return;
-      let saved = false;
+      setStatus("Enrolling...");
       try {
-        saved = await autosaveQueue;
-      } catch {
-        saved = false;
+        const data = await command({
+          type: "create-character",
+          ...snapshot,
+        });
+        if (!data || !data.session) {
+          setStatus("Could not start Freshman year — try again.", true);
+          return;
+        }
+        closeSheet();
+        setTimeout(() => {
+          if (lastTelemetry && shouldAutoStartClass(lastTelemetry)) void pickNext();
+        }, 0);
+      } finally {
+        inFlight.saving = false;
+        if (sheetOverlayOpen) applyDisabled();
       }
-      if (!saved || !latestVisibleCharacterSaved()) {
-        saved = await scheduleCharacterAutosave();
-      }
-      if (!saved || !latestVisibleCharacterSaved()) {
-        setStatus("Autosave failed - try again.", true);
-        return;
-      }
-      closeSheet();
-      setTimeout(() => {
-        if (lastTelemetry && shouldAutoStartClass(lastTelemetry)) void pickNext();
-      }, 0);
     }
 
     saveBtn.addEventListener("click", () => { void beginClassFromCharacter(); });
@@ -6905,7 +7328,7 @@ export function runViewerClient(bootstrap) {
       packStatusEl.classList.remove("is-invalid");
       return;
     }
-    packEl.classList.remove("is-open");
+    closeViewerModal(packEl);
     packStatusEl.textContent = "";
     packStatusEl.classList.remove("is-invalid");
     resetPackImportProgress();
@@ -6929,7 +7352,10 @@ export function runViewerClient(bootstrap) {
       courseGenerationStatusEl.classList.remove("is-invalid");
     }
     resetCourseGenerationProgress();
-    packEditEl.classList.add("is-open");
+    openViewerModal(packEditEl, {
+      onRequestClose: closePackEditor,
+      initialFocus: packEditCloseBtn,
+    });
     renderPackEditor();
   }
   function closePackEditor() {
@@ -6940,7 +7366,7 @@ export function runViewerClient(bootstrap) {
     const shouldRefreshLibrary = currentDraft && !isLocalDraftPack(currentDraft);
     clearTimeout(packAutosaveTimer);
     clearTimeout(teacherAutosaveTimer);
-    packEditEl.classList.remove("is-open");
+    closeViewerModal(packEditEl);
     currentDraft = null;
     selectedPackTeacherId = null;
     packTeacherCreateMode = false;
@@ -9048,7 +9474,7 @@ export function runViewerClient(bootstrap) {
       if (fromBilling) reportStatus("Account connected. Continue with card pack checkout.", false);
       return snapshot;
     } catch (err) {
-      if (!fromBilling && els.privyOverlay) els.privyOverlay.classList.add("is-open");
+      if (!fromBilling) showPrivyAccountModal();
       reportStatus(friendlyPrivyAccountError(err, "Privy sign-in failed"), true);
       return null;
     } finally {
@@ -9081,12 +9507,18 @@ export function runViewerClient(bootstrap) {
       setPrivyBusy(false);
     }
   }
+  function showPrivyAccountModal() {
+    openViewerModal(els.privyOverlay, {
+      onRequestClose: closePrivyAccount,
+      initialFocus: () => els.accountTabs.find((tab) => tab.classList.contains("is-active")) || els.privyClose,
+      fallbackFocus: els.privyAction,
+    });
+  }
   async function openPrivyAccount() {
     setPrivyStatus("Checking account...", false);
     try {
       await initializePrivyFromStoredSession();
-      if (els.privyOverlay) els.privyOverlay.classList.add("is-open");
-      els.privyOverlay?.setAttribute("aria-hidden", "false");
+      showPrivyAccountModal();
       setPrivyStatus(privyState.authenticated
         ? knownSolanaOwnerWalletAddress()
           ? "Account connected."
@@ -9096,15 +9528,13 @@ export function runViewerClient(bootstrap) {
       if (els.accountWorkspace) els.accountWorkspace.scrollTop = 0;
       void syncWalletPackNftsFromAccount({ force: true });
     } catch (err) {
-      if (els.privyOverlay) els.privyOverlay.classList.add("is-open");
-      els.privyOverlay?.setAttribute("aria-hidden", "false");
+      showPrivyAccountModal();
       setPrivyStatus(friendlyPrivyAccountError(err, "Privy error"), true);
     }
   }
   function closePrivyAccount() {
     if (!els.privyOverlay) return;
-    els.privyOverlay.classList.remove("is-open");
-    els.privyOverlay.setAttribute("aria-hidden", "true");
+    closeViewerModal(els.privyOverlay, els.privyAction);
     setPrivyStatus("", false);
   }
   function setPrivyBusy(busy) {
@@ -9207,13 +9637,14 @@ export function runViewerClient(bootstrap) {
     // Browser-owned AI is optional. The overlay is now only a fallback if the app
     // cannot establish even a guest Ruby High session.
     if (authed === false) {
-      signinEl.classList.add("is-open");
-      signinEl.setAttribute("aria-hidden", "false");
+      openViewerModal(signinEl, {
+        dismissible: false,
+        initialFocus: els.signinGuest,
+      });
       setSigninStatus("Local session unavailable. Retry, or use an AI key.", true);
       if (sheetOverlayOpen) closeSheet();
     } else {
-      signinEl.classList.remove("is-open");
-      signinEl.setAttribute("aria-hidden", "true");
+      closeViewerModal(signinEl);
       setSigninStatus("", false);
     }
     if (teacherChatEnabled() && lastTelemetry) loadHistory(lastTelemetry.faculty);
@@ -9281,7 +9712,6 @@ export function runViewerClient(bootstrap) {
     if (authed === null) {
       els.chatForm.hidden = true;
       if (els.nextBtn) els.nextBtn.hidden = true;
-      if (els.hallPassBtn) els.hallPassBtn.hidden = true;
       els.checking.hidden = false;
       els.youState.textContent = "checking…";
       els.footerAction.hidden = true;
@@ -9300,7 +9730,6 @@ export function runViewerClient(bootstrap) {
         els.privyAction.textContent = "Account";
         els.privyAction.hidden = false;
       }
-      if (els.hallPassBtn) els.hallPassBtn.hidden = false;
       els.chatForm.hidden = true;
       setChatComposerDisabled(true);
     } else {
@@ -9309,7 +9738,6 @@ export function runViewerClient(bootstrap) {
       els.youState.textContent = "signed out";
       els.footerAction.hidden = true;
       if (els.privyAction) els.privyAction.hidden = true;
-      if (els.hallPassBtn) els.hallPassBtn.hidden = false;
       els.chatForm.hidden = true;
       setChatComposerDisabled(true);
       if (els.nextBtn) els.nextBtn.hidden = true;
@@ -9341,9 +9769,45 @@ export function runViewerClient(bootstrap) {
     localAiEnabled = false;
     hostedAiActive = false;
     lastAuthState = null;
+    lastRosterSig = null;
+    roomHumanHistorySig = "";
+    chatHistoryHumanStudentsByFaculty.clear();
     await deriveAuth();
     applyAuthUI();
     if (teacherChatEnabled() && lastTelemetry) loadHistory(lastTelemetry.faculty);
+  }
+  function roomHumanHistoryFacultyIds(t) {
+    const ids = [];
+    const seen = new Set();
+    (Array.isArray(t && t.rooms) ? t.rooms : []).forEach((room) => {
+      const facultyId = String((room && (room.teacherId || room.facultyId)) || "").trim();
+      if (!facultyId || facultyId === LOUNGE_ID || seen.has(facultyId)) return;
+      seen.add(facultyId);
+      ids.push(facultyId);
+    });
+    return ids;
+  }
+  async function loadRoomHumanHistories(t) {
+    if (!teacherChatEnabled() || !t) return;
+    const faculties = roomHumanHistoryFacultyIds(t);
+    if (!faculties.length) return;
+    const sig = faculties.join("|");
+    if (sig === roomHumanHistorySig) return;
+    roomHumanHistorySig = sig;
+    let changed = false;
+    await Promise.all(faculties.map(async (facultyId) => {
+      try {
+        const r = await apiFetch("/api/apps/ruby-high/chat/history?faculty=" + encodeURIComponent(facultyId));
+        const data = await r.json();
+        if (rememberChatHistoryHumanStudents(facultyId, data && data.history)) changed = true;
+      } catch (_err) {
+        // Best-effort only; server presence still renders the room.
+      }
+    }));
+    if (changed) {
+      lastRosterSig = null;
+      rebuildChannelsRail();
+    }
   }
   async function loadHistory(facultyId) {
     if (!teacherChatEnabled() || !facultyId) return;
@@ -9367,6 +9831,7 @@ export function runViewerClient(bootstrap) {
       const sig = chatHistorySignature(facultyId, summary ? [{ role: "system", content: summary }, ...msgs] : msgs);
       if (sig === renderedHistorySig) return;
       renderedHistorySig = sig;
+      const rememberedRoomHumans = rememberChatHistoryHumanStudents(facultyId, msgs);
       els.stream.innerHTML = "";
       const fac = (lastTelemetry && lastTelemetry.faculty_roster || []).find((f) => f.id === facultyId);
       const teacherName = fac ? fac.displayName : facultyId;
@@ -9395,6 +9860,10 @@ export function runViewerClient(bootstrap) {
       syncPlayerMessageHeaders();
       scrollIfPinned(true);
       applyAuthUI();
+      if (rememberedRoomHumans) {
+        lastRosterSig = null;
+        rebuildChannelsRail();
+      }
     } catch (err) { /* ignore */ }
   }
   // Shared SSE consumer — used for /chat (user-initiated) and /chat/event
@@ -9526,6 +9995,12 @@ export function runViewerClient(bootstrap) {
           studentStreamMsgEl = null;
           streamMsgEl = null;
         } else if (event === "waiting" || event === "opinion-graded") {
+          if (event === "opinion-graded" && parsed && parsed.opinionPurpose === "daily-take") {
+            postViewerMetricEvent("teacher_response_viewed", {
+              questionId: parsed.questionId,
+              faculty: parsed.faculty,
+            });
+          }
           refreshSessionAfterStreamEvent();
           streamMsgEl = null;
         } else if (event === "done" || event === "end") {
@@ -9671,9 +10146,31 @@ export function runViewerClient(bootstrap) {
   }
 
   // ── rails toggling ────────────────────────────────────────────────────────
-  function openRails() { els.shell.classList.add("is-rails-open"); }
-  function closeRails() { els.shell.classList.remove("is-rails-open"); }
-  function toggleRails() { els.shell.classList.toggle("is-rails-open"); }
+  const desktopRailsQuery = window.matchMedia("(min-width: 1100px)");
+  function syncRailsAccessibility(open) {
+    const overlaysWorkspace = open && !desktopRailsQuery.matches;
+    els.workspace.toggleAttribute("inert", overlaysWorkspace);
+    if (overlaysWorkspace) els.workspace.setAttribute("aria-hidden", "true");
+    else els.workspace.removeAttribute("aria-hidden");
+  }
+  function setRailsOpen(open) {
+    els.shell.classList.toggle("is-rails-open", open);
+    els.hamburger.setAttribute("aria-expanded", String(open));
+    els.hamburger.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
+    syncRailsAccessibility(open);
+  }
+  function openRails() {
+    setRailsOpen(true);
+    if (window.matchMedia("(max-width: 1099px)").matches) focusWithoutScroll(els.channelsClose);
+  }
+  function closeRails(restoreFocus) {
+    setRailsOpen(false);
+    if (restoreFocus) focusWithoutScroll(els.hamburger);
+  }
+  function toggleRails() {
+    if (els.shell.classList.contains("is-rails-open")) closeRails(true);
+    else openRails();
+  }
 
   // ── opinion-mode helpers ────────────────────────────────────────────────
   // The player's opinion submission is just a regular chat message routed to
@@ -9762,10 +10259,34 @@ export function runViewerClient(bootstrap) {
     btn.addEventListener("click", () => pickAnswer(btn.dataset.pick, btn));
   });
   els.typedAnswerForm.addEventListener("submit", submitTypedAnswer);
+  function recordTakeStarted() {
+    const question = lastTelemetry && lastTelemetry.current;
+    if (!question || question.opinionPurpose !== "daily-take" || takeStartedQuestionId === question.id) return;
+    takeStartedQuestionId = question.id;
+    postViewerMetricEvent("take_card_started", { questionId: question.id });
+  }
+  els.typedAnswerInput.addEventListener("focus", recordTakeStarted);
+  els.typedAnswerInput.addEventListener("input", recordTakeStarted);
+  els.takeStarterButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      if (els.typedAnswerInput.disabled) return;
+      const starter = button.dataset.starter || "";
+      if (!els.typedAnswerInput.value.trim()) els.typedAnswerInput.value = starter;
+      recordTakeStarted();
+      els.typedAnswerInput.focus();
+      els.typedAnswerInput.setSelectionRange(els.typedAnswerInput.value.length, els.typedAnswerInput.value.length);
+    });
+  });
   els.generateMcBtn.addEventListener("click", generateMultipleChoice);
   els.nextBtn.addEventListener("click", pickNext);
   els.hamburger.addEventListener("click", toggleRails);
-  els.scrim.addEventListener("click", closeRails);
+  if (els.leaderboardBack) els.leaderboardBack.addEventListener("click", () => {
+    showClassSurface(true);
+    const honorRollButton = document.getElementById("honor-roll-button");
+    focusWithoutScroll(desktopRailsQuery.matches ? honorRollButton : els.hamburger);
+  });
+  els.scrim.addEventListener("click", () => closeRails(true));
+  if (els.channelsClose) els.channelsClose.addEventListener("click", () => closeRails(true));
   els.homeBtn.addEventListener("click", openRails);
   els.footerAction.addEventListener("click", () => {
     if (!authed) return;
@@ -9839,13 +10360,15 @@ export function runViewerClient(bootstrap) {
   function openBugReport() {
     if (!els.bugReportOverlay) return;
     setBugReportStatus("", false);
-    els.bugReportOverlay.classList.add("is-open");
-    setTimeout(() => { if (els.bugReportText) els.bugReportText.focus(); }, 0);
+    openViewerModal(els.bugReportOverlay, {
+      onRequestClose: closeBugReport,
+      initialFocus: els.bugReportText,
+    });
   }
   function closeBugReport() {
     if (!els.bugReportOverlay) return;
     if (els.bugReportOverlay.classList.contains("is-busy")) return;
-    els.bugReportOverlay.classList.remove("is-open");
+    closeViewerModal(els.bugReportOverlay, els.reportBugLink);
     setBugReportBusy(false);
     setBugReportStatus("", false);
   }
@@ -9883,13 +10406,19 @@ export function runViewerClient(bootstrap) {
   if (els.bugReportOverlay) els.bugReportOverlay.addEventListener("click", (e) => {
     if (e.target === els.bugReportOverlay) closeBugReport();
   });
-  if (els.hallPassBtn) els.hallPassBtn.addEventListener("click", () => {
-    setAccountPane("account");
-    void openPrivyAccount();
-  });
   if (Array.isArray(els.accountTabs)) {
     els.accountTabs.forEach((tab) => {
       tab.addEventListener("click", () => setAccountPane(tab.getAttribute("data-account-tab")));
+      tab.addEventListener("keydown", (event) => {
+        const currentIndex = els.accountTabs.indexOf(tab);
+        const targetIndex = accountPaneKeyTarget(event.key, currentIndex, els.accountTabs.length);
+        if (targetIndex == null) return;
+        event.preventDefault();
+        const target = els.accountTabs[targetIndex];
+        if (!target) return;
+        setAccountPane(target.getAttribute("data-account-tab"));
+        focusWithoutScroll(target);
+      });
     });
   }
   if (els.accountBuyPasses) els.accountBuyPasses.addEventListener("click", () => openBilling({ mode: "hall-passes" }));
@@ -9941,16 +10470,24 @@ export function runViewerClient(bootstrap) {
   });
   if (els.privySignout) els.privySignout.addEventListener("click", signOutPrivy);
 
-  // Click your name/avatar to open the character sheet.
-  const youCardBlock = document.querySelector(".channels-footer .you-meta");
   // ── onboarding button handlers ──────────────────────────────────────────
   // ── morning announcements dismiss ───────────────────────────────────────
   const announcementsDismiss = document.getElementById("announcements-dismiss");
   if (announcementsDismiss) announcementsDismiss.addEventListener("click", dismissAnnouncements);
   // Allow Escape key to dismiss
   document.addEventListener("keydown", function(ev) {
-    if (ev.key === "Escape" && announcementsOverlay && !announcementsOverlay.hidden) {
-      dismissAnnouncements();
+    if (announcementsOverlay && !announcementsOverlay.hidden) {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        dismissAnnouncements();
+        return;
+      }
+      trapModalFocus(ev, announcementsOverlay);
+      return;
+    }
+    if (ev.key === "Escape" && window.matchMedia("(max-width: 1099px)").matches && els.shell.classList.contains("is-rails-open")) {
+      ev.preventDefault();
+      closeRails(true);
     }
   });
   // Click outside panel to dismiss
@@ -9960,18 +10497,19 @@ export function runViewerClient(bootstrap) {
   });
 
   const onboardingCreateBtn = document.getElementById("onboarding-create-btn");
+  const onboardingCustomizeBtn = document.getElementById("onboarding-customize-btn");
   const onboardingBooksBtn = document.getElementById("onboarding-books-btn");
-  if (onboardingCreateBtn) onboardingCreateBtn.addEventListener("click", () => {
-    onboardingCreateBtn.disabled = true;
-    openCharacterCreation();
-  });
+  // Quick Roll still supplies the first candidate immediately, but it lands
+  // in the creation sheet before enrollment. That keeps the fast first-run
+  // path while preserving whole-student rerolls, field rerolls, and the AI
+  // portrait affordance until the player explicitly starts Freshman year.
+  if (onboardingCreateBtn) onboardingCreateBtn.addEventListener("click", openCharacterCreation);
+  if (onboardingCustomizeBtn) onboardingCustomizeBtn.addEventListener("click", openCharacterCreation);
   if (onboardingBooksBtn) onboardingBooksBtn.addEventListener("click", () => {
     window.open("https://ratimics.gumroad.com", "_blank", "noopener,noreferrer");
   });
 
-  if (youCardBlock) youCardBlock.addEventListener("click", () => { if (authed) openSheet(); });
-  const youAvatarEl = document.querySelector(".channels-footer .you-avatar");
-  if (youAvatarEl) youAvatarEl.addEventListener("click", () => { if (authed) openSheet(); });
+  if (els.youProfile) els.youProfile.addEventListener("click", () => { if (authed) openSheet(); });
   els.chatForm.addEventListener("submit", (e) => { e.preventDefault(); sendChatMessage(els.chatInput.value); });
   els.chatInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChatMessage(els.chatInput.value); }
@@ -9982,11 +10520,12 @@ export function runViewerClient(bootstrap) {
   });
 
   // First boot: open rails on desktop only.
-  if (window.matchMedia("(min-width: 1100px)").matches) {
-    els.shell.classList.add("is-rails-open");
+  if (desktopRailsQuery.matches) {
+    setRailsOpen(true);
   } else if (window.matchMedia("(min-width: 720px)").matches) {
     // Tablet: servers rail visible, channels closed.
   }
+  desktopRailsQuery.addEventListener("change", (event) => setRailsOpen(event.matches));
 
   applyAuthUI();
   consumeBillingReturnFlag();

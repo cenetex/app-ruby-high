@@ -290,6 +290,8 @@ describe("auth callback redirect sanitization", () => {
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(200);
+    expect(res.getHeader("content-security-policy")).toEqual(expect.stringContaining("frame-ancestors 'none'"));
+    expect(res.getHeader("referrer-policy")).toBe("no-referrer");
     expect(res.body).toContain('window.location.replace("/api/apps/ruby-high/viewer")');
     expect(res.body).toContain('localStorage.getItem("rh_openrouter_persist")');
     expect(res.body).toContain("sessionStorage");
@@ -2102,8 +2104,13 @@ describe("chat event context", () => {
     ruby.selectGrade(sessionId, "10");
     for (let i = 0; i < 3; i += 1) {
       const posed = ruby.pickAndPose(sessionId, { faculty: "sally-science" });
-      const wrong = posed.current!.correct === "A" ? "B" : "A";
-      ruby.submitAnswer(sessionId, wrong as "A" | "B" | "C" | "D");
+      if (posed.current?.type === "opinion") {
+        ruby.recordOpinion(sessionId, "player", "I need stronger evidence before I can defend the claim.");
+        ruby.recordGrades(sessionId, [{ responder: "player", score: 3, comment: "Too general." }], "player");
+      } else {
+        const wrong = posed.current!.correctChoice === "A" ? "B" : "A";
+        ruby.submitAnswer(sessionId, wrong as "A" | "B" | "C" | "D");
+      }
       ruby.clearBoard(sessionId);
     }
 
@@ -2424,7 +2431,8 @@ describe("chat event context", () => {
   });
 
   it("includes the active guest teacher in lounge enter turns", async () => {
-    registerPublicPack(fakePublicGuestPack(), 1_000);
+    const guestPack = fakePublicGuestPack();
+    registerPublicPack(guestPack, 1_000);
     const token = "route-lounge-guest-token";
     auth.injectSessionForTest(token, {
       userId: "route-lounge-guest-user",
@@ -2432,6 +2440,10 @@ describe("chat event context", () => {
       expiresAt: Date.now() + 60_000,
       label: "Route Lounge Guest",
     });
+    ruby.setGuestPackOverrideForSession(
+      "rh:user:route-lounge-guest-user",
+      guestPack.id,
+    );
     const calls: any[] = [];
     (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
       const [input, init] = args;
@@ -2602,8 +2614,13 @@ describe("chat event context", () => {
 
     for (let i = 0; i < 3; i += 1) {
       const posed = ruby.pickAndPose(sessionId, { faculty: "sally-science" });
-      const wrong = posed.current!.correct === "A" ? "B" : "A";
-      ruby.submitAnswer(sessionId, wrong as "A" | "B" | "C" | "D");
+      if (posed.current?.type === "opinion") {
+        ruby.recordOpinion(sessionId, "player", "I need stronger evidence before I can defend the claim.");
+        ruby.recordGrades(sessionId, [{ responder: "player", score: 3, comment: "Too general." }], "player");
+      } else {
+        const wrong = posed.current!.correctChoice === "A" ? "B" : "A";
+        ruby.submitAnswer(sessionId, wrong as "A" | "B" | "C" | "D");
+      }
       ruby.clearBoard(sessionId);
     }
     expect(ruby.courseProgress(sessionId, "sally-science").today.status).toBe("complete");
@@ -2723,7 +2740,7 @@ describe("chat event context", () => {
     grantChatStars(sessionId);
     ruby.pickAndPose(sessionId, { faculty: "ruby" });
     const questionId = ruby.getOrCreate(sessionId).current!.id;
-    const correct = ruby.getOrCreate(sessionId).current!.correct as "A" | "B" | "C" | "D";
+    const correct = ruby.getOrCreate(sessionId).current!.correctChoice as "A" | "B" | "C" | "D";
     ruby.submitAnswer(sessionId, correct);
 
     (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {

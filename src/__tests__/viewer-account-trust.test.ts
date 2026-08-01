@@ -10,7 +10,7 @@ describe("account trust panel view", () => {
     const view = accountTrustPanelView({
       solana: {
         recipient: "TreasuryWallet111111111111111111111111111111",
-        mint: "RubyMint2222222222222222222222222222222222222",
+        symbol: "SOL",
       },
       nfts: {
         collectionAddress: "CardCollection3333333333333333333333333333",
@@ -38,9 +38,9 @@ describe("account trust panel view", () => {
         href: "https://solscan.io/account/TreasuryWallet111111111111111111111111111111",
       },
       {
-        label: "Pack payment token",
-        value: "RubyMi...2222",
-        href: "https://solscan.io/account/RubyMint2222222222222222222222222222222222222",
+        label: "Pack payment",
+        value: "Native SOL",
+        href: "",
       },
       {
         label: "Pack collection",
@@ -64,7 +64,7 @@ describe("account trust panel view", () => {
       { label: "Current build", value: "dev", href: "" },
       { label: "Connected wallet", value: "Not connected", href: "" },
       { label: "Treasury", value: "Shown before wallet payment", href: "" },
-      { label: "Pack payment token", value: "Shown before wallet payment", href: "" },
+      { label: "Pack payment", value: "Native SOL", href: "" },
       { label: "Pack collection", value: "Loading configuration", href: "" },
       { label: "Card collection", value: "Loading configuration", href: "" },
     ]);

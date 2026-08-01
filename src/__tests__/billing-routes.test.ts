@@ -36,14 +36,11 @@ const ORIGINAL_ENV = {
   RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE: process.env.RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE,
   RUBY_HIGH_PRIVY_APP_ID: process.env.RUBY_HIGH_PRIVY_APP_ID,
   RUBY_HIGH_SOLANA_RPC_URL: process.env.RUBY_HIGH_SOLANA_RPC_URL,
-  RUBY_HIGH_SOLANA_MEMECOIN_MINT: process.env.RUBY_HIGH_SOLANA_MEMECOIN_MINT,
   RUBY_HIGH_SOLANA_TREASURY_OWNER: process.env.RUBY_HIGH_SOLANA_TREASURY_OWNER,
-  RUBY_HIGH_SOLANA_MEMECOIN_SYMBOL: process.env.RUBY_HIGH_SOLANA_MEMECOIN_SYMBOL,
-  RUBY_HIGH_SOLANA_MEMECOIN_DECIMALS: process.env.RUBY_HIGH_SOLANA_MEMECOIN_DECIMALS,
-  RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS: process.env.RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS,
-  RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS: process.env.RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS,
-  RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS: process.env.RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS,
-  RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS: process.env.RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS,
+  RUBY_HIGH_SOLANA_PACK_1_SOL: process.env.RUBY_HIGH_SOLANA_PACK_1_SOL,
+  RUBY_HIGH_SOLANA_PACK_3_SOL: process.env.RUBY_HIGH_SOLANA_PACK_3_SOL,
+  RUBY_HIGH_SOLANA_PACK_5_SOL: process.env.RUBY_HIGH_SOLANA_PACK_5_SOL,
+  RUBY_HIGH_SOLANA_PACK_10_SOL: process.env.RUBY_HIGH_SOLANA_PACK_10_SOL,
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
   RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS,
   RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS,
@@ -55,8 +52,6 @@ let restoreCorePackPurchaseBuilder: (() => void) | null = null;
 let restoreHallPassBurnVerifier: (() => void) | null = null;
 const TEST_SOLANA_OWNER = "B6r1xnyXsH5b2BTpQEYNtXuQQTdPbJAkFiv9Krh9eCKP";
 const TEST_PACK_ASSET = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
-const TEST_SOURCE_TOKEN_ACCOUNT = "FNhC7aog7542La3isBvGF5fd1myzahUwAyUWfoNNHhYV";
-const TEST_DESTINATION_TOKEN_ACCOUNT = "3brqp4DSMX92bCRhSDYNowFr1zGbcR7DVA5jMdUKiwyh";
 
 function restoreEnv(): void {
   for (const [key, value] of Object.entries(ORIGINAL_ENV)) {
@@ -134,8 +129,6 @@ function stubCorePackPurchaseBuilderForTest(opts: {
       ownerWalletAddress: input.ownerWalletAddress,
       ...(opts.assetAddress ? { assetAddress: opts.assetAddress } : {}),
       ...(opts.metadataUri ? { metadataUri: opts.metadataUri } : {}),
-      sourceTokenAccountAddress: TEST_SOURCE_TOKEN_ACCOUNT,
-      destinationTokenAccountAddress: TEST_DESTINATION_TOKEN_ACCOUNT,
       transactionBase64: "AQID",
       transactionEncoding: "base64",
       chain: "solana:mainnet",
@@ -147,7 +140,6 @@ function stubCorePackPurchaseBuilderForTest(opts: {
 function signedCheckoutTransactionForTest(input: {
   ownerWalletAddress: string;
   recipient: string;
-  mint: string;
   reference: string;
 }): string {
   const owner = new PublicKey(input.ownerWalletAddress);
@@ -160,7 +152,6 @@ function signedCheckoutTransactionForTest(input: {
     keys: [
       { pubkey: owner, isSigner: true, isWritable: true },
       { pubkey: new PublicKey(input.recipient), isSigner: false, isWritable: true },
-      { pubkey: new PublicKey(input.mint), isSigner: false, isWritable: false },
       { pubkey: new PublicKey(input.reference), isSigner: false, isWritable: false },
     ],
     data: Buffer.alloc(0),
@@ -180,14 +171,11 @@ beforeEach(async () => {
   delete process.env.RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE;
   delete process.env.RUBY_HIGH_PRIVY_APP_ID;
   delete process.env.RUBY_HIGH_SOLANA_RPC_URL;
-  delete process.env.RUBY_HIGH_SOLANA_MEMECOIN_MINT;
   delete process.env.RUBY_HIGH_SOLANA_TREASURY_OWNER;
-  delete process.env.RUBY_HIGH_SOLANA_MEMECOIN_SYMBOL;
-  delete process.env.RUBY_HIGH_SOLANA_MEMECOIN_DECIMALS;
-  delete process.env.RUBY_HIGH_SOLANA_HALL_PASS_5_TOKENS;
-  delete process.env.RUBY_HIGH_SOLANA_HALL_PASS_20_TOKENS;
-  delete process.env.RUBY_HIGH_SOLANA_HALL_PASS_50_TOKENS;
-  delete process.env.RUBY_HIGH_SOLANA_HALL_PASS_100_TOKENS;
+  delete process.env.RUBY_HIGH_SOLANA_PACK_1_SOL;
+  delete process.env.RUBY_HIGH_SOLANA_PACK_3_SOL;
+  delete process.env.RUBY_HIGH_SOLANA_PACK_5_SOL;
+  delete process.env.RUBY_HIGH_SOLANA_PACK_10_SOL;
   process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY = JSON.stringify(new Array(64).fill(1));
   process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS = "B6r1xnyXsH5b2BTpQEYNtXuQQTdPbJAkFiv9Krh9eCKP";
   process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
@@ -247,22 +235,21 @@ describe("billing products", () => {
     ]);
     expect(lastResponse?.body.solana).toMatchObject({
       configured: true,
-      mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
       recipient: "AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j",
-      symbol: "RUBY",
-      decimals: 6,
+      symbol: "SOL",
     });
-    expect(lastResponse?.body.solana.products.map((p: any) => [p.packCount, p.cardCount, p.hallPasses, p.tokenAmount])).toEqual([
-      [1, 5, 5, "1000000"],
-      [3, 15, 15, "2800000"],
-      [5, 25, 25, "4500000"],
-      [10, 50, 50, "8500000"],
+    expect(lastResponse?.body.solana.products.map((p: any) => [p.packCount, p.cardCount, p.hallPasses, p.solAmount, p.priceLamports])).toEqual([
+      [1, 5, 5, "0.01", "10000000"],
+      [3, 15, 15, "0.028", "28000000"],
+      [5, 25, 25, "0.045", "45000000"],
+      [10, 50, 50, "0.085", "85000000"],
     ]);
     expect(lastResponse?.body.imageCosts).toEqual({ portrait: 1, diploma: 3 });
     expect(lastResponse?.body.courseSlotCost).toBe(3);
     expect(lastResponse?.body.questionGenerationCost).toBe(1);
     expect(lastResponse?.body.moreQuestionsCount).toBe(6);
     expect(lastResponse?.body.cardBurn).toEqual({ hallPassesPerCard: 5 });
+    expect(lastResponse?.body.rubyMigration).toBeUndefined();
     expect(lastResponse?.body.hostedAiAccess).toBeUndefined();
     expect(lastResponse?.body.entitlements).toMatchObject({
       hallPasses: 0,
@@ -676,7 +663,26 @@ describe("Solana Hall Pass billing", () => {
     expect(lastResponse?.body.error).toContain("buyer wallet");
   });
 
-  it("quotes every pack at 100,000 $RUBY with a session payment reference", async () => {
+  it("returns a wallet-funding error when the buyer does not have enough SOL", async () => {
+    restoreCorePackPurchaseBuilder = setCorePackPurchaseTransactionBuilderForTest(async () => {
+      throw new Error("Transaction simulation failed: insufficient funds for fee");
+    });
+    signInUser("solana-quote-missing-token");
+
+    await handleBillingRoutes(makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/billing/solana/quote",
+      cookie: "rh_session=solana-quote-missing-token",
+      body: { productId: "card-pack-1", ownerWalletAddress: TEST_SOLANA_OWNER },
+    }), deps());
+
+    expect(lastResponse).toEqual({
+      status: 402,
+      body: { error: "Transaction simulation failed: insufficient funds for fee" },
+    });
+  });
+
+  it("quotes packs in native SOL with a session payment reference", async () => {
     const stateKey = signInUser("solana-quote");
     stubCorePackPurchaseBuilderForTest({
       expected: {
@@ -698,25 +704,24 @@ describe("Solana Hall Pass billing", () => {
     expect(lastResponse?.body).toMatchObject({
       ok: true,
       recipient: "AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j",
-      mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
-      symbol: "RUBY",
-      decimals: 6,
+      symbol: "SOL",
       rpcHost: "api.mainnet-beta.solana.com",
       product: {
         id: "card-pack-5",
         packCount: 5,
         cardCount: 25,
         hallPasses: 25,
-        tokenAmount: "4500000",
-        tokenAmountBaseUnits: "4500000000000",
-        tokenSymbol: "RUBY",
+        solAmount: "0.045",
+        priceLamports: "45000000",
+        symbol: "SOL",
       },
       ownerWalletAddress: TEST_SOLANA_OWNER,
     });
     expect(lastResponse?.body.reference).toEqual(expect.any(String));
     expect(lastResponse?.body.reference).toMatch(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
     expect(lastResponse?.body.solanaPayUrl).toContain("solana:AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j?");
-    expect(lastResponse?.body.solanaPayUrl).toContain("spl-token=ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump");
+    expect(lastResponse?.body.solanaPayUrl).toContain("amount=0.045");
+    expect(lastResponse?.body.solanaPayUrl).not.toContain("spl-token=");
     expect(lastResponse?.body.solanaPayUrl).toContain(`reference=${lastResponse?.body.reference}`);
     expect(lastResponse?.body.transactionBase64).toBe("AQID");
     expect(lastResponse?.body.assetAddress).toBeUndefined();
@@ -748,7 +753,7 @@ describe("Solana Hall Pass billing", () => {
     expect(lastResponse?.body.rpcUrl).toBeUndefined();
   });
 
-  it("prepares a wallet-only token payment when a Solana wallet is supplied", async () => {
+  it("prepares a wallet-only SOL payment when a Solana wallet is supplied", async () => {
     const ownerWalletAddress = "B6r1xnyXsH5b2BTpQEYNtXuQQTdPbJAkFiv9Krh9eCKP";
     restoreCorePackPurchaseBuilder = setCorePackPurchaseTransactionBuilderForTest(async (input) => {
       expect(input).toMatchObject({
@@ -756,18 +761,13 @@ describe("Solana Hall Pass billing", () => {
         packCount: 1,
         cardCount: 5,
         ownerWalletAddress,
-        tokenMint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
-        tokenRecipient: "AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j",
-        tokenAmount: "1000000",
-        tokenAmountBaseUnits: "1000000000000",
-        tokenDecimals: 6,
-        tokenSymbol: "RUBY",
+        solRecipient: "AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j",
+        solAmount: "0.01",
+        priceLamports: "10000000",
       });
       expect(input.paymentReference).toMatch(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
       return {
         ownerWalletAddress,
-        sourceTokenAccountAddress: "FNhC7aog7542La3isBvGF5fd1myzahUwAyUWfoNNHhYV",
-        destinationTokenAccountAddress: "3brqp4DSMX92bCRhSDYNowFr1zGbcR7DVA5jMdUKiwyh",
         transactionBase64: "AQID",
         transactionEncoding: "base64",
         chain: "solana:mainnet",
@@ -808,7 +808,6 @@ describe("Solana Hall Pass billing", () => {
     const signedTransactionBase64 = signedCheckoutTransactionForTest({
       ownerWalletAddress: TEST_SOLANA_OWNER,
       recipient: "AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j",
-      mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
       reference,
     });
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
@@ -919,26 +918,17 @@ describe("Solana Hall Pass billing", () => {
         blockTime: 1_775_000_111,
         meta: {
           err: null,
-          preTokenBalances: [
-            {
-              accountIndex: 3,
-              mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
-              owner: "AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j",
-              uiTokenAmount: { amount: "0", decimals: 6 },
-            },
-          ],
-          postTokenBalances: [
-            {
-              accountIndex: 3,
-              mint: "ABHQGzXNoRbJ1sjUsCJ2TmTAo1uMx4EUpV1qYiSVpump",
-              owner: "AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j",
-              uiTokenAmount: { amount: "2800000000000", decimals: 6 },
-            },
-          ],
+          preBalances: [1_000_000_000, 10_000_000_000, 0, 0],
+          postBalances: [970_000_000, 10_028_000_000, 0, 0],
         },
         transaction: {
           signatures: [signature],
-          message: { accountKeys: [{ pubkey: reference }, { pubkey: packAssetAddress }] },
+          message: { accountKeys: [
+            { pubkey: ownerWalletAddress },
+            { pubkey: "AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j" },
+            { pubkey: reference },
+            { pubkey: packAssetAddress },
+          ] },
         },
       },
     }), {
@@ -977,11 +967,11 @@ describe("Solana Hall Pass billing", () => {
         catalogHash: expect.any(String),
         commitment: expect.any(String),
         entropySource: "ruby-high-server-commit-v1",
-        tokenAmount: "2800000",
-        tokenSymbol: "RUBY",
+        solAmount: "0.028",
+        symbol: "SOL",
       },
     });
-    expect(ruby.walletTransaction(stateKey, `solana:spl-token-transfer:${signature}`)).toMatchObject({
+    expect(ruby.walletTransaction(stateKey, `solana:sol-transfer:${signature}`)).toMatchObject({
       source: "solana",
       metadata: {
         packAssetAddress,
@@ -993,6 +983,10 @@ describe("Solana Hall Pass billing", () => {
         commitment: expect.any(String),
         entropySource: "ruby-high-server-commit-v1",
         solanaReference: reference,
+        solanaAmountSol: "0.028",
+        solanaRequiredLamports: "28000000",
+        solanaReceivedLamports: "28000000",
+        solanaSymbol: "SOL",
       },
     });
 
@@ -1025,8 +1019,8 @@ describe("Solana Hall Pass billing", () => {
       result: {
         meta: {
           err: null,
-          preTokenBalances: [],
-          postTokenBalances: [],
+          preBalances: [],
+          postBalances: [],
         },
         transaction: {
           signatures: [signature],

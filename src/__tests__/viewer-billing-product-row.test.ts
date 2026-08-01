@@ -34,18 +34,18 @@ describe("billingProductRowView", () => {
     });
   });
 
-  it("renders card-pack products with token payment metadata", () => {
+  it("renders card-pack products with native SOL payment metadata", () => {
     expect(billingProductRowView("card-packs", {
       packCount: 2,
       cardCount: 10,
-      tokenAmount: 5000,
-      tokenSymbol: "RUBY",
+      solAmount: 0.05,
+      symbol: "SOL",
     }, {
-      symbol: "RUBY",
-      tokenAmount: 2500,
+      symbol: "SOL",
+      solAmount: 0.025,
     })).toEqual({
       titleText: "2 Packs",
-      metaText: "Solana payment: 5,000 RUBY · +2 Packs · 10 cards",
+      metaText: "Solana payment: 0.05 SOL · +2 Packs · 10 cards",
       buttonText: "Choose",
       buttonDisabled: false,
       selected: false,

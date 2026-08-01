@@ -1,5 +1,6 @@
 import type { IAgentRuntime } from "../runtime.js";
 import { AuthService } from "./auth-service.js";
+import { AgentAccessService } from "./agent-access-service.js";
 
 export const ANONYMOUS_SESSION_ID = "rh:anonymous";
 
@@ -29,6 +30,12 @@ export function getSessionId(
   cookieHeader?: string | null,
   options: { allowAgentFallback?: boolean } = {},
 ): string {
+  const agentAccess = tryGetService<AgentAccessService>(
+    runtime,
+    AgentAccessService.serviceType,
+  );
+  const agentViewerStateKey = agentAccess?.stateKeyForViewerCookie(cookieHeader);
+  if (agentViewerStateKey) return agentViewerStateKey;
   const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
   const hasCookieHeader = typeof cookieHeader === "string" && cookieHeader.trim().length > 0;
   if (auth && (hasCookieHeader || !options.allowAgentFallback)) return auth.stateKeyForCookie(cookieHeader);

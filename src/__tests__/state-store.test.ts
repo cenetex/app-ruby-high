@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -87,6 +87,13 @@ describe("StateStore", () => {
     expect(loaded.size).toBe(2);
     expect(loaded.get("a")?.sessionId).toBe("a");
     expect(loaded.get("b")?.sessionId).toBe("b");
+  });
+
+  it("creates durable state with owner-only filesystem permissions", async () => {
+    const store = new StateStore(storePath);
+    await store.save([blankState("private")]);
+
+    expect((await stat(storePath)).mode & 0o777).toBe(0o600);
   });
 
   it("round-trips auth users and sessions without storing provider ids or keys", async () => {

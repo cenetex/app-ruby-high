@@ -19,12 +19,10 @@ import {
 } from "@metaplex-foundation/umi";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import { toWeb3JsInstruction, toWeb3JsKeypair } from "@metaplex-foundation/umi-web3js-adapters";
-import { address as kitAddress } from "@solana/kit";
-import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import {
   PublicKey as Web3PublicKey,
+  SystemProgram as Web3SystemProgram,
   Transaction as Web3Transaction,
-  TransactionInstruction as Web3TransactionInstruction,
 } from "@solana/web3.js";
 import { isPreflightUnsupportedError } from "./solana-errors.js";
 import {
@@ -39,6 +37,7 @@ import {
 } from "./hall-pass-card-catalog.js";
 import { nftImageUri } from "./nft-arweave-assets.js";
 import { durableNftMetadataUri, publicNftMetadataStorageStatus } from "./nft-metadata-storage.js";
+import { fetchCurrentCoreAssets } from "./solana-core-ownership.js";
 
 export const CORE_PACK_NFT_PREFIX = "/api/apps/ruby-high/nft";
 
@@ -53,8 +52,6 @@ const PACK_COLLECTION_NAME = `${FIRST_BELL_SET_NAME} Packs`;
 const PACK_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack.png?v=pack-nft-v2";
 const PACK_OPENED_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack-opened.png?v=opened-v2";
 const PACK_PROMO_IMAGE_ASSET_PATH = "/api/apps/ruby-high/assets/nft/ruby-high-pack-promo.png?v=collection-v1";
-const ASSOCIATED_TOKEN_PROGRAM_ADDRESS = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
-const SYSTEM_PROGRAM_ADDRESS = "11111111111111111111111111111111";
 
 export interface CorePackNftStatus {
   configured: boolean;
@@ -114,13 +111,9 @@ export interface CorePackPurchaseTransactionInput {
   cardCount: number;
   ownerWalletAddress: string;
   paymentReference: string;
-  tokenMint: string;
-  tokenRecipient: string;
-  tokenAmount: string;
-  tokenAmountBaseUnits: string;
-  tokenDecimals: number;
-  tokenSymbol: string;
-  sourceTokenAccountAddress?: string;
+  solRecipient: string;
+  solAmount: string;
+  priceLamports: string;
   latestBlockhash?: { blockhash: string; lastValidBlockHeight: number };
 }
 
@@ -129,8 +122,6 @@ export interface CorePackPurchaseTransactionResult {
   assetAddress?: string;
   metadataUri?: string;
   serial?: number;
-  sourceTokenAccountAddress: string;
-  destinationTokenAccountAddress: string;
   transactionBase64: string;
   transactionEncoding: "base64";
   chain: "solana:mainnet";
@@ -162,12 +153,14 @@ export interface OwnedCorePackNft {
   metadataUri: string;
   serial: number;
   name: string;
+  opened: boolean;
 }
 
 export interface CorePackNftOwnership {
   assetAddress: string;
   ownerWalletAddress: string;
   metadataUri: string;
+  opened: boolean | null;
 }
 
 interface CorePackInfo {
@@ -175,7 +168,10 @@ interface CorePackInfo {
   packCount: number;
   cardCount: number;
   serial: number;
+  opened: boolean | null;
 }
+
+type ResolvedCorePackInfo = CorePackInfo & { opened: boolean };
 
 type CorePackNftMinter = (input: CorePackNftMintInput) => Promise<CorePackNftMintResult>;
 type CorePackNftOpenedUpdater = (input: CorePackNftOpenedUpdateInput) => Promise<CorePackNftOpenedUpdateResult>;
@@ -645,29 +641,13 @@ export async function buildCorePackPurchaseTransaction(
   if (packPurchaseTransactionBuilderOverride) return packPurchaseTransactionBuilderOverride(input);
   const config = readCoreMintConfig();
   const ownerWalletAddress = cleanSolanaAddress(input.ownerWalletAddress, "Owner Solana wallet");
-  const tokenMint = cleanSolanaAddress(input.tokenMint, "Solana token mint");
-  const tokenRecipient = cleanSolanaAddress(input.tokenRecipient, "Solana token recipient");
+  const solRecipient = cleanSolanaAddress(input.solRecipient, "Solana payment recipient");
   const paymentReference = cleanSolanaAddress(input.paymentReference, "Solana payment reference");
-  const tokenDecimals = readTokenDecimals(input.tokenDecimals);
-  const tokenAmountBaseUnits = readBaseUnits(input.tokenAmountBaseUnits);
+  const priceLamports = readBaseUnits(input.priceLamports);
+  if (priceLamports > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("Solana payment amount is too large.");
   const packCount = Math.max(1, Math.floor(Number(input.packCount || 1)));
   const requestedCardCount = Math.max(1, Math.floor(Number(input.cardCount || packCount * CORE_PACK_CARDS_PER_PACK)));
   const cardCount = Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK);
-  const source = input.sourceTokenAccountAddress && isBase58ishAddress(input.sourceTokenAccountAddress)
-    ? { tokenAccountAddress: input.sourceTokenAccountAddress.trim(), balanceBaseUnits: tokenAmountBaseUnits }
-    : await findOwnerTokenAccountForPayment({
-      rpcUrl: config.rpcUrl,
-      ownerWalletAddress,
-      tokenMint,
-      requiredBaseUnits: tokenAmountBaseUnits,
-      tokenAmount: input.tokenAmount,
-      tokenSymbol: input.tokenSymbol,
-    });
-  const [destinationTokenAccountAddress] = await findAssociatedTokenPda({
-    owner: kitAddress(tokenRecipient),
-    tokenProgram: TOKEN_PROGRAM_ADDRESS,
-    mint: kitAddress(tokenMint),
-  });
   const latestBlockhash = input.latestBlockhash ?? await fetchLatestBlockhash(config.rpcUrl);
   const umi = createUmi(config.rpcUrl).use(mplCore());
   const authorityKeypair = umi.eddsa.createKeypairFromSecretKey(config.authoritySecret);
@@ -703,21 +683,17 @@ export async function buildCorePackPurchaseTransaction(
     feePayer: new Web3PublicKey(ownerWalletAddress),
     recentBlockhash: latestBlockhash.blockhash,
   });
-  transaction.add(web3CreateAssociatedTokenAccountIdempotentInstruction({
-    payer: ownerWalletAddress,
-    ata: destinationTokenAccountAddress,
-    owner: tokenRecipient,
-    mint: tokenMint,
-  }));
-  transaction.add(web3TransferCheckedInstruction({
-    source: source.tokenAccountAddress,
-    mint: tokenMint,
-    destination: destinationTokenAccountAddress,
-    authority: ownerWalletAddress,
-    amount: tokenAmountBaseUnits,
-    decimals: tokenDecimals,
-    reference: paymentReference,
-  }));
+  const paymentInstruction = Web3SystemProgram.transfer({
+    fromPubkey: new Web3PublicKey(ownerWalletAddress),
+    toPubkey: new Web3PublicKey(solRecipient),
+    lamports: Number(priceLamports),
+  });
+  paymentInstruction.keys.push({
+    pubkey: new Web3PublicKey(paymentReference),
+    isSigner: false,
+    isWritable: false,
+  });
+  transaction.add(paymentInstruction);
   for (const instruction of packCreate.getInstructions()) {
     transaction.add(toWeb3JsInstruction(instruction));
   }
@@ -733,8 +709,6 @@ export async function buildCorePackPurchaseTransaction(
     assetAddress: String(asset.publicKey),
     metadataUri,
     serial: Number(serial),
-    sourceTokenAccountAddress: source.tokenAccountAddress,
-    destinationTokenAccountAddress,
     transactionBase64,
     transactionEncoding: "base64",
     chain: "solana:mainnet",
@@ -823,15 +797,62 @@ export async function fetchCorePackCurrentOwnershipOrNull(assetAddress: string):
     const asset = await fetchAssetV1(umi, publicKey(cleanAssetAddress), { commitment: "confirmed" });
     if (coreAssetCollectionAddress(asset.updateAuthority) !== config.collectionAddress) return null;
     const ownerWalletAddress = String(asset.owner ?? "").trim();
-    if (!ownerWalletAddress) return null;
+    const metadataUri = typeof asset.uri === "string" ? asset.uri.trim() : "";
+    const info = metadataUri
+      ? await corePackInfoFromMetadataOrJson(metadataUri, asset.name, (asset as { attributes?: unknown }).attributes)
+      : null;
+    if (!ownerWalletAddress || !metadataUri) return null;
     return {
       assetAddress: cleanAssetAddress,
       ownerWalletAddress,
-      metadataUri: typeof asset.uri === "string" ? asset.uri.trim() : "",
+      metadataUri,
+      opened: info?.opened ?? null,
     };
   } catch {
     return null;
   }
+}
+
+export async function fetchCorePacksCurrentOwnershipOrNull(
+  assetAddresses: readonly string[],
+): Promise<Map<string, CorePackNftOwnership>> {
+  const addresses = assetAddresses
+    .map((address) => address.trim())
+    .filter((address, index, values) => !!address && values.indexOf(address) === index);
+  if (addresses.length === 0) return new Map();
+  if (packCurrentOwnershipFetcherOverride) {
+    const byAddress = new Map<string, CorePackNftOwnership>();
+    for (const address of addresses) {
+      const ownership = await fetchCorePackCurrentOwnershipOrNull(address);
+      if (ownership) byAddress.set(address, ownership);
+    }
+    return byAddress;
+  }
+
+  const config = readCoreSyncConfig();
+  const assets = await fetchCurrentCoreAssets(addresses, config.rpcUrl, "core_pack");
+  const byAddress = new Map<string, CorePackNftOwnership>();
+  for (const address of addresses) {
+    const asset = assets.get(address);
+    if (!asset || coreAssetCollectionAddress(asset) !== config.collectionAddress) continue;
+    const ownerWalletAddress = String(asset.owner ?? "").trim();
+    const metadataUri = typeof asset.uri === "string" ? asset.uri.trim() : "";
+    const info = metadataUri
+      ? await corePackInfoFromMetadataOrJson(
+        metadataUri,
+        typeof asset.name === "string" ? asset.name : undefined,
+        (asset as { attributes?: unknown }).attributes,
+      )
+      : null;
+    if (!ownerWalletAddress || !metadataUri) continue;
+    byAddress.set(address, {
+      assetAddress: address,
+      ownerWalletAddress,
+      metadataUri,
+      opened: info?.opened ?? null,
+    });
+  }
+  return byAddress;
 }
 
 async function fetchOwnedCorePackNftsViaGpa(
@@ -1062,6 +1083,7 @@ function corePackInfoFromMetadataUri(metadataUri: string, name?: string): CorePa
     packCount,
     cardCount,
     serial: Number.isFinite(serial) ? serial : 1,
+    opened: url.searchParams.get("opened") === "1" || url.searchParams.get("state") === "opened",
   };
 }
 
@@ -1078,8 +1100,15 @@ function corePackInfoFromMetadata(
   name?: string,
   attributes?: unknown,
 ): CorePackInfo | null {
+  const stateValue = metadataAttributeValue(attributes, "State");
+  const attributeOpened = corePackOpenedState(stateValue);
   const uriInfo = corePackInfoFromMetadataUri(metadataUri, name);
-  if (uriInfo) return uriInfo;
+  if (uriInfo) {
+    return {
+      ...uriInfo,
+      opened: attributeOpened ?? uriInfo.opened,
+    };
+  }
   const productValue = metadataAttributeValue(attributes, "Product");
   const packsValue = metadataAttributeValue(attributes, "Packs");
   const cardsValue = metadataAttributeValue(attributes, "Cards Inside")
@@ -1105,6 +1134,7 @@ function corePackInfoFromMetadata(
     packCount,
     cardCount: Math.max(requestedCardCount, packCount * CORE_PACK_CARDS_PER_PACK),
     serial,
+    opened: corePackOpenedState(stateValue),
   };
 }
 
@@ -1112,16 +1142,25 @@ async function corePackInfoFromMetadataOrJson(
   metadataUri: string,
   name?: string,
   attributes?: unknown,
-): Promise<CorePackInfo | null> {
+): Promise<ResolvedCorePackInfo | null> {
   const inline = corePackInfoFromMetadata(metadataUri, name, attributes);
-  if (inline) return inline;
+  if (inline?.opened != null) return inline as ResolvedCorePackInfo;
   const json = await fetchMetadataJson(metadataUri);
   if (!json) return null;
-  return corePackInfoFromMetadata(
+  const fromJson = corePackInfoFromMetadata(
     metadataUri,
     typeof json.name === "string" ? json.name : name,
     json.attributes,
   );
+  if (fromJson?.opened == null) return null;
+  return fromJson as ResolvedCorePackInfo;
+}
+
+function corePackOpenedState(value: string | null): boolean | null {
+  const state = (value ?? "").trim().toLowerCase();
+  if (state === "opened" || state === "open" || state === "redeemed") return true;
+  if (state === "sealed" || state === "unopened" || state === "active") return false;
+  return null;
 }
 
 function metadataAttributeValue(attributes: unknown, label: string): string | null {
@@ -1250,117 +1289,12 @@ async function simulateSolanaTransactionForSigning(
   }
 }
 
-function web3CreateAssociatedTokenAccountIdempotentInstruction(input: {
-  payer: string;
-  ata: string;
-  owner: string;
-  mint: string;
-}): Web3TransactionInstruction {
-  return new Web3TransactionInstruction({
-    programId: new Web3PublicKey(ASSOCIATED_TOKEN_PROGRAM_ADDRESS),
-    keys: [
-      { pubkey: new Web3PublicKey(input.payer), isSigner: true, isWritable: true },
-      { pubkey: new Web3PublicKey(input.ata), isSigner: false, isWritable: true },
-      { pubkey: new Web3PublicKey(input.owner), isSigner: false, isWritable: false },
-      { pubkey: new Web3PublicKey(input.mint), isSigner: false, isWritable: false },
-      { pubkey: new Web3PublicKey(SYSTEM_PROGRAM_ADDRESS), isSigner: false, isWritable: false },
-      { pubkey: new Web3PublicKey(String(TOKEN_PROGRAM_ADDRESS)), isSigner: false, isWritable: false },
-    ],
-    data: Buffer.from([1]),
-  });
-}
-
-function web3TransferCheckedInstruction(input: {
-  source: string;
-  mint: string;
-  destination: string;
-  authority: string;
-  amount: bigint;
-  decimals: number;
-  reference: string;
-}): Web3TransactionInstruction {
-  return new Web3TransactionInstruction({
-    programId: new Web3PublicKey(String(TOKEN_PROGRAM_ADDRESS)),
-    keys: [
-      { pubkey: new Web3PublicKey(input.source), isSigner: false, isWritable: true },
-      { pubkey: new Web3PublicKey(input.mint), isSigner: false, isWritable: false },
-      { pubkey: new Web3PublicKey(input.destination), isSigner: false, isWritable: true },
-      { pubkey: new Web3PublicKey(input.authority), isSigner: true, isWritable: false },
-      { pubkey: new Web3PublicKey(input.reference), isSigner: false, isWritable: false },
-    ],
-    data: Buffer.from(transferCheckedData(input.amount, input.decimals)),
-  });
-}
-
-function transferCheckedData(amount: bigint, decimals: number): Uint8Array {
-  const data = new Uint8Array(10);
-  data[0] = 12;
-  const view = new DataView(data.buffer);
-  view.setBigUint64(1, amount, true);
-  data[9] = decimals;
-  return data;
-}
-
-async function findOwnerTokenAccountForPayment(input: {
-  rpcUrl: string;
-  ownerWalletAddress: string;
-  tokenMint: string;
-  requiredBaseUnits: bigint;
-  tokenAmount: string;
-  tokenSymbol: string;
-}): Promise<{ tokenAccountAddress: string; balanceBaseUnits: bigint }> {
-  const response = await fetch(input.rpcUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: "ruby-high-pack-payment-accounts",
-      method: "getTokenAccountsByOwner",
-      params: [
-        input.ownerWalletAddress,
-        { mint: input.tokenMint },
-        { encoding: "jsonParsed", commitment: "confirmed" },
-      ],
-    }),
-  });
-  if (!response.ok) throw new Error(`Solana RPC failed with ${response.status}.`);
-  const payload = await response.json().catch(() => ({})) as {
-    error?: { message?: string; code?: number };
-    result?: { value?: Array<{ pubkey?: string; account?: { data?: { parsed?: { info?: { tokenAmount?: { amount?: string } } } } } }> };
-  };
-  if (payload.error) throw new Error(payload.error.message || `Solana RPC error ${payload.error.code ?? ""}`.trim());
-  let best: { tokenAccountAddress: string; balanceBaseUnits: bigint } | null = null;
-  for (const account of payload.result?.value ?? []) {
-    const tokenAccountAddress = typeof account.pubkey === "string" ? account.pubkey.trim() : "";
-    const amount = account.account?.data?.parsed?.info?.tokenAmount?.amount;
-    if (!tokenAccountAddress || typeof amount !== "string" || !/^\d+$/.test(amount)) continue;
-    const balanceBaseUnits = BigInt(amount);
-    if (balanceBaseUnits < input.requiredBaseUnits) continue;
-    if (!best || balanceBaseUnits > best.balanceBaseUnits) {
-      best = { tokenAccountAddress, balanceBaseUnits };
-    }
-  }
-  if (!best) {
-    const amount = input.tokenAmount.trim() || input.requiredBaseUnits.toString();
-    throw new Error(`Need ${amount} ${input.tokenSymbol || DEFAULT_SYMBOL} in this Solana wallet before minting a pack.`);
-  }
-  return best;
-}
-
 function readBaseUnits(value: string): bigint {
   const raw = value.trim();
   if (!/^\d+$/.test(raw)) throw new Error("Solana payment amount is missing.");
   const amount = BigInt(raw);
   if (amount <= 0n) throw new Error("Solana payment amount must be positive.");
   return amount;
-}
-
-function readTokenDecimals(value: number): number {
-  const decimals = Math.floor(Number(value));
-  if (!Number.isFinite(decimals) || decimals < 0 || decimals > 18) {
-    throw new Error("Solana token decimals are invalid.");
-  }
-  return decimals;
 }
 
 function sleep(ms: number): Promise<void> {

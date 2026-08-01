@@ -222,9 +222,19 @@ export interface Question {
   /** Defaults to "multiple-choice". Opinion questions skip A/B/C/D and ask
    *  for a written response, graded by the teacher LLM. */
   type?: QuestionType;
-  /** Multiple-choice fields — required when type === "multiple-choice". */
+  /**
+   * Authored multiple-choice definition. `correct` is the answer text, never
+   * an A/B/C/D slot. `decoys` may contain more than three candidates; each
+   * pose samples three of them.
+   */
+  correct?: string;
+  decoys?: string[];
+  /**
+   * Posed-board multiple-choice fields. These are derived afresh whenever a
+   * card is posed and must not be persisted back into the authored bank.
+   */
   options?: Record<Choice, string>;
-  correct?: Choice;
+  correctChoice?: Choice;
   /** Typed-answer / image-occlusion fields. expectedAnswer is intentionally
    *  omitted from public telemetry until reveal. */
   expectedAnswer?: string;
@@ -235,6 +245,9 @@ export interface Question {
   /** Opinion fields — describes what a strong response looks like, fed to
    *  both the responding LLMs and the grading teacher. */
   rubric?: string;
+  /** Why an opinion card was posed. Daily takes close a class; grade essays
+   *  satisfy the separate graduation essay gate. */
+  opinionPurpose?: "daily-take" | "grade-essay";
   /** Shared. */
   explanation?: string;
   subject?: string;
@@ -264,6 +277,9 @@ export interface QuestionBank {
 
 export interface AnswerRecord {
   questionId: string;
+  /** Classroom where this answer was submitted. Optional for persisted
+   *  records written before room-aware public presence was introduced. */
+  faculty?: string;
   picked: Choice;
   correct: Choice;
   wasCorrect: boolean;
@@ -564,9 +580,13 @@ export interface RubyHighHallPassCard {
   pendingMintMetadataUri?: string;
   pendingMintTransactionHash?: string;
   pendingMintPreparedAt?: number;
+  pendingMintSignature?: string;
+  pendingMintSubmittedAt?: number;
   mintAddress?: string;
   mintSignature?: string;
   metadataUri?: string;
+  onChainRevealPending?: boolean;
+  onChainRevealAttemptedAt?: number;
   artSheet?: "students" | "teachers" | "specials" | "items" | "locations";
   artPosition?: string;
   burnSignature?: string;
@@ -601,6 +621,8 @@ export interface RubyHighHallPassPack {
   openTransactionId?: string;
   openedAt?: number;
   openSignature?: string;
+  ownershipMissCount?: number;
+  ownershipLastMissAt?: number;
 }
 
 export interface RubyHighWalletTransaction {

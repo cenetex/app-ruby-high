@@ -30,26 +30,25 @@ Tradeoff accepted: one Volume = one machine, one region (`iad`), single point of
 
 ---
 
-## Status
+## Status (updated 2026-07-12)
 
-### ✅ Done (this branch — additive, touches nothing in prod)
-- `src/services/sqlite-state-store.ts` — `SqliteStateStore implements StateStoreLike`, single `kv` table, key-for-key mirror of the Dynamo single-table schema, WAL mode, TTL, `node:sqlite` (zero native deps). Roundtrip test: `src/__tests__/sqlite-state-store.test.ts` (6 passing).
-- `state-store-factory.ts` — new `RUBY_HIGH_STORE_BACKEND=sqlite` backend (requires `RUBY_HIGH_STATE_PATH`).
-- `Dockerfile` — bumped to `node:24-slim` (makes `node:sqlite` first-class; no `--experimental-sqlite` flag).
+### ✅ Complete
+- Production uses `SqliteStateStore` on the `/data` Fly Volume; `fly.toml` sets `RUBY_HIGH_STORE_BACKEND=sqlite` and mounts `ruby_high_data`.
+- `scripts/migrate-dynamo-to-sqlite.mjs` ships in the image and has migration coverage.
+- X OAuth tokens use `JsonXTokenStore` on the Volume when the backend is SQLite; the database-file path handling is fixed.
+- Node 24, periodic SQLite expiry purging, and the lazy SQLite import are in place.
 
-### ⬜ Remaining — tasks for the implementer (Codex)
-Each task below is self-contained with a concrete diff/skeleton and acceptance criteria. Do them in order. Tasks 1–3 are code (safe, additive, no prod impact); 4–6 are the operational cutover.
-
-1. Tigris for portraits — `character-generation.ts` endpoint swap.
-2. X token store off Dynamo — `x-social-service.ts` `JsonXTokenStore` path fix (⚠️ path-conflict gotcha below).
-3. Data migration script — `scripts/migrate-dynamo-to-sqlite.mjs`.
-4. `fly.toml`: Volume mount + env flip + Litestream.
-5. Cutover (🔒 gated on backup + row-count verify).
-6. Delete AWS.
+### ⬜ Remaining
+1. Move the configured `ruby-high-portraits` S3 bucket to Tigris or another non-AWS S3-compatible provider.
+2. Verify the current backup/restore path operationally.
+3. Decide when the manual App Runner/Dynamo rollback path can be deleted, then remove its runtime backend, workflow, IAM policy, and AWS dependencies.
+4. Decommission the remaining AWS resources only after portrait migration and a verified backup.
 
 ---
 
-## Cutover runbook
+## Historical cutover runbook
+
+The state cutover below has already happened. Keep these steps for recovery and audit context; do not rerun them against production without a fresh backup and row-count plan.
 
 ### Step 1 — Tigris for portraits  (code)
 **File:** `src/services/character-generation.ts`, `getPortraitS3Client()` (~line 49).

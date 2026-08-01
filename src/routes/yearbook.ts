@@ -38,6 +38,33 @@ function setTextResponse(ctx: RouteContext, status: number, contentType: string,
   res.end?.(body);
 }
 
+function dataImage(value: string): { contentType: string; body: Buffer } | null {
+  const match = /^data:(image\/(?:png|jpeg|webp));base64,([a-z0-9+/=\r\n]+)$/i.exec(value.trim());
+  if (!match) return null;
+  const body = Buffer.from(match[2]!, "base64");
+  if (body.length === 0) return null;
+  return { contentType: match[1]!.toLowerCase(), body };
+}
+
+function setImageResponse(
+  ctx: RouteContext,
+  status: number,
+  contentType: string,
+  body: Buffer,
+  cacheControl: string,
+): void {
+  const res = ctx.res as {
+    statusCode?: number;
+    setHeader?: (name: string, value: string) => void;
+    end?: (body?: string | Buffer) => void;
+  };
+  res.statusCode = status;
+  res.setHeader?.("Content-Type", contentType);
+  res.setHeader?.("Content-Length", String(body.length));
+  res.setHeader?.("Cache-Control", cacheControl);
+  res.end?.(ctx.method === "HEAD" ? "" : body);
+}
+
 function absoluteUrl(ctx: RouteContext, path: string): string {
   if (ctx.callbackUrlBuilder) return ctx.callbackUrlBuilder(path);
   return new URL(path, ctx.url?.origin ?? "http://127.0.0.1:3000").toString();
@@ -178,6 +205,15 @@ export async function handleYearbookRoutes(ctx: RouteContext, ruby: RubyHighServ
   }
   if (format === "png") {
     if (card.yearbookImageUrl) {
+      const inlineImage = dataImage(card.yearbookImageUrl);
+      if (inlineImage) {
+        setImageResponse(ctx, 200, inlineImage.contentType, inlineImage.body, "public, max-age=86400");
+        return true;
+      }
+      if (!/^https?:\/\//i.test(card.yearbookImageUrl) && !card.yearbookImageUrl.startsWith("/api/apps/ruby-high/assets/")) {
+        setTextResponse(ctx, 200, "image/svg+xml; charset=utf-8", renderSvg(card));
+        return true;
+      }
       const res = ctx.res as { statusCode?: number; setHeader?: (name: string, value: string) => void; end?: (body?: string) => void };
       res.statusCode = 302;
       res.setHeader?.("Location", card.yearbookImageUrl);

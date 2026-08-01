@@ -15,6 +15,8 @@ import {
   fetchAssetV1,
   fetchCollectionV1,
   mplCore,
+  update as coreUpdate,
+  updatePlugin as coreUpdatePlugin,
 } from "@metaplex-foundation/mpl-core";
 import {
   createNoopSigner as createUmiNoopSigner,
@@ -57,6 +59,7 @@ import {
 } from "./hall-pass-reveal-provenance.js";
 import { nftImageUri } from "./nft-arweave-assets.js";
 import { durableNftMetadataUri, publicNftMetadataStorageStatus } from "./nft-metadata-storage.js";
+import { fetchCurrentCoreAssets } from "./solana-core-ownership.js";
 
 type LatestBlockhash = { blockhash: string; lastValidBlockHeight?: number | bigint };
 
@@ -192,6 +195,7 @@ type HallPassNftMintVerifier = (input: {
   mintSignature: string;
   metadataUri: string;
 }) => Promise<HallPassCardMintVerification>;
+type HallPassNftRevealUpdater = (card: RubyHighHallPassCard) => Promise<void>;
 type HallPassNftBurnTransactionBuilder = (
   card: RubyHighHallPassCard,
   ownerWalletAddress: string,
@@ -207,6 +211,7 @@ let minterOverride: HallPassNftMinter | null = null;
 let mintTransactionBuilderOverride: HallPassNftMintTransactionBuilder | null = null;
 let mintSubmitterOverride: HallPassNftMintSubmitter | null = null;
 let mintVerifierOverride: HallPassNftMintVerifier | null = null;
+let revealUpdaterOverride: HallPassNftRevealUpdater | null = null;
 let burnTransactionBuilderOverride: HallPassNftBurnTransactionBuilder | null = null;
 let burnVerifierOverride: HallPassNftBurnVerifier | null = null;
 let cardOwnershipFetcherOverride: HallPassCardOwnershipFetcher | null = null;
@@ -243,6 +248,14 @@ export function setHallPassNftMintVerifierForTest(verifier: HallPassNftMintVerif
   mintVerifierOverride = verifier;
   return () => {
     mintVerifierOverride = previous;
+  };
+}
+
+export function setHallPassNftRevealUpdaterForTest(updater: HallPassNftRevealUpdater | null): () => void {
+  const previous = revealUpdaterOverride;
+  revealUpdaterOverride = updater;
+  return () => {
+    revealUpdaterOverride = previous;
   };
 }
 
@@ -438,28 +451,10 @@ function hallPassRevealedNftMetadataUri(card: RubyHighHallPassCard, env: NodeJS.
 }
 
 async function hallPassNftMetadataUriForMint(card: RubyHighHallPassCard): Promise<string> {
-  const fallbackUri = hallPassNftMetadataUri(card);
-  const generatedMetadata = generatedHallPassCardMetadataForRoute({
-    card,
-  });
-  if (generatedMetadata) {
-    return durableNftMetadataUri({
-      fallbackUri,
-      metadata: generatedMetadata,
-      assetKey: `api/apps/ruby-high/nft/metadata/hall-pass/card/${encodeURIComponent(card.id)}.json`,
-    });
-  }
-  const metadata = hallPassNftMetadataForRoute({
-    characterId: card.characterId,
-    serial: String(card.serial),
-    ...revealProvenanceFromCard(card),
-  });
-  if (!metadata) return fallbackUri;
-  return durableNftMetadataUri({
-    fallbackUri,
-    metadata,
-    assetKey: `api/apps/ruby-high/nft/metadata/hall-pass/${encodeURIComponent(card.characterId)}/${encodeURIComponent(String(card.serial))}.json`,
-  });
+  // Keep the on-chain URI identity-neutral until the mint is confirmed and
+  // recorded. This route serves card-back metadata before confirmation and
+  // switches to the revealed card only after the verified mint succeeds.
+  return legacyHallPassNftMetadataUri(card);
 }
 
 export function hallPassCollectionMetadataForRoute(args: {
@@ -551,6 +546,31 @@ export function coreCardAssetPluginsForMint(args: {
     {
       type: "Attributes" as const,
       attributeList,
+    },
+  ];
+}
+
+function sealedCoreCardAssetPluginsForMint(args: {
+  authorityAddress: string;
+  card: Pick<RubyHighHallPassCard, "serial"> & Partial<RubyHighHallPassCard>;
+}) {
+  const generatedKind = normalizedGeneratedNftKind(args.card.nftProfileKind);
+  return [
+    {
+      type: "VerifiedCreators" as const,
+      signatures: [{ address: publicKey(args.authorityAddress), verified: true }],
+    },
+    {
+      type: "Attributes" as const,
+      attributeList: [
+        { key: "School", value: "Ruby High" },
+        { key: "Collection", value: generatedKind ? GENERATED_COLLECTION_NAME : CARD_COLLECTION_NAME },
+        { key: "Set", value: generatedKind ? GENERATED_COLLECTION_SERIES : CARD_COLLECTION_SERIES },
+        { key: "Set Code", value: args.card.setCode || (generatedKind ? "GEN2" : FIRST_BELL_SET_CODE) },
+        { key: "NFT Type", value: generatedKind ? "Generated Profile Card" : "Card" },
+        { key: "State", value: "Face Down" },
+        { key: "Serial", value: normalizeSerial(String(args.card.serial || "1")) },
+      ],
     },
   ];
 }
@@ -825,9 +845,9 @@ async function compileHallPassCardMintTransaction(
     authority: umi.identity,
     payer: ownerSigner,
     owner,
-    name: hallPassCardOnChainNameForMint(card),
+    name: hallPassCardSealedOnChainName(card),
     uri: metadataUri,
-    plugins: coreCardAssetPluginsForMint({
+    plugins: sealedCoreCardAssetPluginsForMint({
       authorityAddress: String(umi.identity.publicKey),
       card,
     }),
@@ -895,6 +915,45 @@ export async function verifyHallPassCardMint(input: {
   };
 }
 
+export async function revealHallPassCardNft(card: RubyHighHallPassCard): Promise<void> {
+  if (revealUpdaterOverride) return revealUpdaterOverride(card);
+  if (mintVerifierOverride) return;
+  const config = readMintConfig();
+  const mintAddress = cleanSolanaAddress(card.mintAddress || "", "Card asset");
+  const metadataUri = card.metadataUri?.trim();
+  if (!metadataUri) throw new Error("Card metadata URI is required.");
+  const umi = createUmi(config.rpcUrl).use(mplCore());
+  const authorityKeypair = umi.eddsa.createKeypairFromSecretKey(config.authoritySecret);
+  umi.use(keypairIdentity(authorityKeypair, true));
+  const [asset, collection] = await Promise.all([
+    fetchAssetV1(umi, publicKey(mintAddress), { commitment: "confirmed" }),
+    fetchCollectionV1(umi, publicKey(config.collectionAddress)),
+  ]);
+  const plugins = coreCardAssetPluginsForMint({
+    authorityAddress: String(umi.identity.publicKey),
+    card,
+  });
+  const attributes = plugins.find((plugin) => plugin.type === "Attributes");
+  let builder = coreUpdate(umi, {
+    asset,
+    collection,
+    authority: umi.identity,
+    payer: umi.payer,
+    name: hallPassCardOnChainNameForMint(card),
+    uri: metadataUri,
+  });
+  if (attributes) {
+    builder = builder.add(coreUpdatePlugin(umi, {
+      asset: asset.publicKey,
+      collection: collection.publicKey,
+      authority: umi.identity,
+      payer: umi.payer,
+      plugin: attributes,
+    }));
+  }
+  await sendAndConfirmCoreTransaction(umi, builder);
+}
+
 export async function submitSignedHallPassCardMintTransaction(
   signedTransactionBase64: string,
   requiredAccounts: string[] = [],
@@ -904,16 +963,21 @@ export async function submitSignedHallPassCardMintTransaction(
     mintAddress: string;
     metadataUri?: string;
     transactionMessageHash?: string;
+    beforeBroadcast?: (mintSignature: string) => Promise<void>;
   },
 ): Promise<string> {
   const clean = signedTransactionBase64.trim();
   if (!clean) throw new Error("Signed card mint transaction is missing.");
-  if (mintSubmitterOverride) return mintSubmitterOverride(clean);
+  if (mintSubmitterOverride) {
+    await prepared?.beforeBroadcast?.(hallPassCardMintSignatureFromSignedTransaction(clean));
+    return mintSubmitterOverride(clean);
+  }
   requireSignedTransactionAccounts(clean, requiredAccounts);
   const config = readMintConfig();
   const transactionBase64 = prepared
     ? await completeHallPassCardMintTransactionWithServerSigners(clean, prepared, config)
     : clean;
+  await prepared?.beforeBroadcast?.(hallPassCardMintSignatureFromSignedTransaction(transactionBase64));
   const signature = await sendBase64TransactionWithPreflightFallback(
     createSolanaRpc(config.rpcUrl),
     transactionBase64,
@@ -1042,6 +1106,20 @@ function hashSignedTransactionMessage(transactionBase64: string, label: string):
   } catch {
     throw new Error(`${label} is invalid.`);
   }
+}
+
+export function hallPassCardMintSignatureFromSignedTransaction(transactionBase64: string): string {
+  const bytes = decodeBase64TransactionBytes(transactionBase64, "Signed card mint transaction");
+  let signature: Uint8Array | null = null;
+  try {
+    signature = VersionedTransaction.deserialize(bytes).signatures[0] ?? null;
+  } catch {
+    signature = Transaction.from(bytes).signatures[0]?.signature ?? null;
+  }
+  if (!signature || signature.length !== 64 || !signature.some((byte) => byte !== 0)) {
+    throw new Error("Signed card mint transaction is missing its transaction signature.");
+  }
+  return base58Encode(signature);
 }
 
 function signedTransactionHasSignatureForAddress(transactionBase64: string, signerAddress: string): boolean {
@@ -1420,6 +1498,52 @@ export async function fetchHallPassCardCurrentOwnershipOrNull(mintAddress: strin
   }
 }
 
+async function mapOwnershipOverrideWithConcurrency(
+  addresses: readonly string[],
+  concurrency: number,
+): Promise<Map<string, HallPassCardCurrentOwnership>> {
+  const byAddress = new Map<string, HallPassCardCurrentOwnership>();
+  let nextIndex = 0;
+  const workerCount = Math.max(1, Math.min(Math.floor(concurrency), addresses.length));
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < addresses.length) {
+      const address = addresses[nextIndex++]!;
+      const ownership = await fetchHallPassCardCurrentOwnershipOrNull(address);
+      if (ownership) byAddress.set(address, ownership);
+    }
+  }));
+  return byAddress;
+}
+
+export async function fetchHallPassCardsCurrentOwnershipOrNull(
+  mintAddresses: readonly string[],
+): Promise<Map<string, HallPassCardCurrentOwnership>> {
+  const addresses = mintAddresses
+    .map((address) => address.trim())
+    .filter((address, index, values) => !!address && values.indexOf(address) === index);
+  if (addresses.length === 0) return new Map();
+  if (cardOwnershipFetcherOverride) return mapOwnershipOverrideWithConcurrency(addresses, 8);
+
+  const config = readMintConfig();
+  const assets = await fetchCurrentCoreAssets(addresses, config.rpcUrl, "hall_pass_card");
+  const byAddress = new Map<string, HallPassCardCurrentOwnership>();
+  for (const address of addresses) {
+    const asset = assets.get(address);
+    if (!asset) continue;
+    const collectionAddress = String(coreAssetCollectionAddress(asset) ?? "").trim();
+    if (collectionAddress !== config.collectionAddress) continue;
+    const ownerWalletAddress = String(asset.owner ?? "").trim();
+    if (!ownerWalletAddress) continue;
+    byAddress.set(address, {
+      mintAddress: address,
+      ownerWalletAddress: cleanSolanaAddress(ownerWalletAddress, "Card NFT owner"),
+      collectionAddress,
+      ...(typeof asset.uri === "string" && asset.uri.trim() ? { metadataUri: asset.uri.trim() } : {}),
+    });
+  }
+  return byAddress;
+}
+
 export async function assertHallPassMintAuthorityCapacity(cardCount: number): Promise<void> {
   const normalized = Math.max(0, Math.floor(Number(cardCount || 0)));
   if (normalized <= 0) return;
@@ -1650,6 +1774,10 @@ function generatedNftImageMimeType(imageUrl: string): string {
   if (lower.endsWith(".webp")) return "image/webp";
   if (lower.endsWith(".gif")) return "image/gif";
   return "image/png";
+}
+
+function hallPassCardSealedOnChainName(card: Pick<RubyHighHallPassCard, "serial">): string {
+  return `Ruby High Mystery Card #${normalizeSerial(String(card.serial || "1"))}`.slice(0, 32);
 }
 
 export function hallPassCardOnChainNameForMint(card: Pick<RubyHighHallPassCard, "characterName" | "serial">): string {

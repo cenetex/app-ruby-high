@@ -7,6 +7,7 @@ import ts from "typescript";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const currentCardDir = join(root, "assets", "nft", "cards");
 const grokSourceDir = join(root, "assets", "nft", "grok-sources");
+const grokSourceManifest = JSON.parse(await readFile(join(grokSourceDir, "manifest.json"), "utf8"));
 const outputDir = join(root, "assets", "nft", "market-cards");
 const catalogSource = await readFile(join(root, "src", "services", "hall-pass-card-catalog.ts"), "utf8");
 const catalogJs = ts.transpileModule(catalogSource, {
@@ -102,6 +103,11 @@ async function isReadable(path) {
 }
 
 async function generatedSourceFor(id) {
+  const selected = grokSourceManifest[id];
+  if (typeof selected === "string" && /^[A-Za-z0-9._-]+$/.test(selected)) {
+    const selectedPath = join(grokSourceDir, selected);
+    if (await isReadable(selectedPath)) return selectedPath;
+  }
   for (const ext of ["jpg", "jpeg", "png", "webp"]) {
     const candidate = join(grokSourceDir, `${id}.${ext}`);
     if (await isReadable(candidate)) return candidate;

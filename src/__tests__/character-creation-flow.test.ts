@@ -50,38 +50,50 @@ describe("character creation flow", () => {
       expect(CLIENT_SOURCE).not.toContain("Lock this student in to start today");
     });
 
-    it("renderSheetCreation scope uses autosave commands without the old accept button", () => {
+    it("renderSheetCreation persists only from the explicit start action", () => {
       const creationFn = CLIENT_SOURCE.slice(
         CLIENT_SOURCE.indexOf("function renderSheetCreation"),
       );
       expect(creationFn).toContain('"create-character"');
-      expect(creationFn).toContain('"update-character"');
       // No separate acceptBtn event listener in this scope.
       expect(creationFn).not.toContain("acceptBtn");
       expect(creationFn).toContain("saveBtn");
+      expect(creationFn).not.toContain("scheduleCharacterAutosave");
+      expect(creationFn).not.toContain("autosaveQueue");
     });
   });
 
-  describe("autosave after initial roll", () => {
-    it("schedules autosave from rollComponents without inlining command details", () => {
+  describe("explicit enrollment after preview", () => {
+    it("keeps Quick Roll inside the customizable creation sheet", () => {
+      const quickRollHandler = CLIENT_SOURCE.slice(
+        CLIENT_SOURCE.indexOf('const onboardingCreateBtn = document.getElementById("onboarding-create-btn")'),
+        CLIENT_SOURCE.indexOf("if (onboardingCustomizeBtn)", CLIENT_SOURCE.indexOf('const onboardingCreateBtn = document.getElementById("onboarding-create-btn")')),
+      );
+
+      expect(quickRollHandler).toContain('addEventListener("click", openCharacterCreation)');
+      expect(quickRollHandler).not.toContain('type: "quick-roll-student"');
+    });
+
+    it("keeps rollComponents local until the player starts Freshman year", () => {
       const rollFn = CLIENT_SOURCE.slice(
         CLIENT_SOURCE.indexOf("async function rollComponents"),
         CLIENT_SOURCE.indexOf("// Wire per-row reroll buttons."),
       );
       expect(rollFn).toContain("renderRolled(rolled)");
       expect(rollFn).toContain("revealForm()");
-      expect(rollFn).toContain("scheduleCharacterAutosave()");
+      expect(rollFn).not.toContain("scheduleCharacterAutosave()");
       expect(rollFn).not.toContain('type: "create-character"');
       expect(rollFn).not.toContain('type: "update-character"');
     });
 
-    it("initial roll logic and autosave are present in the rendered viewer script", () => {
+    it("initial roll and explicit enrollment are present in the rendered viewer script", () => {
       const script = renderedViewerScript();
       expectScriptToContain(script, '"create-character"');
-      expectScriptToContain(script, '"update-character"');
       // The initial rollComponents() call should still exist.
       expectScriptToContain(script, "rollComponents()");
       expectScriptToContain(script, "Start Freshman Year");
+      expectScriptToContain(script, 'setStatus("Enrolling...")');
+      expectScriptNotToContain(script, "scheduleCharacterAutosave");
       expectScriptNotToContain(script, "Save Character");
     });
 
@@ -96,6 +108,7 @@ describe("character creation flow", () => {
       );
 
       expect(autoStartFn).toContain("creationSheetOpen()");
+      expect(beginFn).toContain('type: "create-character"');
       expect(beginFn).toContain("void pickNext()");
     });
 
@@ -143,7 +156,6 @@ describe("character creation flow", () => {
       const script = renderedViewerScript();
 
       expectScriptToContain(script, '"create-character"');
-      expectScriptToContain(script, '"update-character"');
       expectScriptToContain(script, "Start Freshman Year");
       expectScriptNotToContain(script, "Save Character");
       // The old saving-character status text from the accept handler is gone.
