@@ -1,20 +1,27 @@
 import { expect, test } from "@playwright/test";
 import { closeBlockingSheetIfVisible, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
 
-test("quick-rolls a first student directly into First Bell", async ({ page }) => {
+test("enrolls a first student through the creation sheet into First Bell", async ({ page }) => {
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);
 
   await expect(page.getByRole("button", { name: "Lock it in" })).toHaveCount(0);
 
+  const sheet = page.locator("#sheet-overlay");
   const rollAStudent = page.getByRole("button", { name: "Quick roll a student" });
-  if (await rollAStudent.isVisible().catch(() => false)) {
+  if (!(await sheet.evaluate((element) => element.classList.contains("is-open")))) {
+    await expect(rollAStudent).toBeVisible();
     await expect(rollAStudent).toBeEnabled();
     await rollAStudent.click();
   }
 
+  await expect(sheet).toHaveClass(/is-open/);
+  const startFreshmanYear = page.getByRole("button", { name: "Start Freshman Year" });
+  await expect(startFreshmanYear).toBeEnabled();
+  await startFreshmanYear.click();
+
   await expect(page.getByRole("button", { name: "Lock it in" })).toHaveCount(0);
-  await expect(page.locator("#sheet-overlay")).not.toHaveClass(/is-open/);
+  await expect(sheet).not.toHaveClass(/is-open/);
   await expect(page.locator("#daily-class-progress")).toContainText("Evidence 1");
   await expect(page.locator("#daily-class-progress")).toContainText("Your Take");
   await expect(page.locator("#daily-class-progress")).toContainText("Result");

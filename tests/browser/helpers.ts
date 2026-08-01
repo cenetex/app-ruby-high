@@ -94,8 +94,8 @@ export async function dismissAnnouncements(page: Page) {
 
 /**
  * Trigger character creation by clicking whichever affordance is visible.
- * Quick Roll now creates and persists a complete student and poses First Bell
- * directly; the legacy/custom flow still commits through the sheet.
+ * Quick Roll and Customize both stage a complete student in the creation
+ * sheet; enrollment commits when the player starts Freshman Year.
  */
 export async function createCharacter(page: Page) {
   const rollAStudent = page.getByRole("button", { name: /quick roll student|roll a student/i });
