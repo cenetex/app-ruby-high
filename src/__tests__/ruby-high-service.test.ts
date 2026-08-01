@@ -2888,6 +2888,7 @@ describe("RubyHighService Phase 1", () => {
   it("uses term level two to start a four-student Term Rally with a visible Rally Spark reward", async () => {
     const { ruby } = await makeServices();
     const start = Date.UTC(2026, 5, 12, 12);
+    usePublicWorldFixtureTime(start + 7 * 24 * 60 * 60 * 1000 + 60_000);
     const sessions = ["test:term-rally-a", "test:term-rally-b", "test:term-rally-c", "test:term-rally-d"].map((sid, index) => {
       const state = attachTestCharacter(ruby, sid);
       state.sessionId = sid;

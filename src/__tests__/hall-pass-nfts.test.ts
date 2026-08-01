@@ -19,6 +19,7 @@ import {
   assertHallPassMintAuthorityCapacity,
   buildHallPassCardMintTransaction,
   hallPassCardCollectionForMint,
+  hallPassNftMetadataUri,
   hallPassCardOnChainNameForMint,
   setHallPassNftAuthorityBalanceForTest,
   submitSignedHallPassCardMintTransaction,
@@ -30,6 +31,8 @@ const ORIGINAL_ENV = {
   RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY: process.env.RUBY_HIGH_SOLANA_NFT_AUTHORITY_SECRET_KEY,
   RUBY_HIGH_SOLANA_NFT_RPC_URL: process.env.RUBY_HIGH_SOLANA_NFT_RPC_URL,
   RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS: process.env.RUBY_HIGH_SOLANA_CORE_CARD_COLLECTION_ADDRESS,
+  RUBY_HIGH_PUBLIC_BASE: process.env.RUBY_HIGH_PUBLIC_BASE,
+  RUBY_HIGH_PUBLIC_BASE_URL: process.env.RUBY_HIGH_PUBLIC_BASE_URL,
   RUBY_HIGH_NFT_METADATA_STORAGE: process.env.RUBY_HIGH_NFT_METADATA_STORAGE,
 };
 
@@ -48,6 +51,16 @@ afterEach(() => {
 });
 
 describe("verifyHallPassCardBurn", () => {
+  it("uses the canonical configured public origin for card metadata", () => {
+    process.env.RUBY_HIGH_PUBLIC_BASE = "https://staging.ruby-high.example";
+    process.env.RUBY_HIGH_PUBLIC_BASE_URL = "https://legacy.ruby-high.example";
+
+    expect(hallPassNftMetadataUri({
+      characterId: "ruby",
+      serial: 123456,
+    } as any)).toMatch(/^https:\/\/staging\.ruby-high\.example\//);
+  });
+
   it("uses branded, market-friendly on-chain card names within wallet limits", () => {
     expect(hallPassCardOnChainNameForMint({ characterName: "Mika", serial: 823842 } as any)).toBe("Mika Ruby High Card #823842");
     expect(hallPassCardOnChainNameForMint({ characterName: "Library Card", serial: 254854 } as any)).toBe("Ruby High: Library Card #254854");

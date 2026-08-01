@@ -64,8 +64,10 @@ interface BillingDeps {
 
 interface StripeCheckoutSession {
   id?: string;
+  object?: string;
   url?: string;
   payment_status?: string;
+  payment_intent?: string | { id?: string };
   client_reference_id?: string;
   amount_total?: number;
   currency?: string;
@@ -74,8 +76,9 @@ interface StripeCheckoutSession {
 
 interface StripeEvent {
   id?: string;
+  created?: number;
   type?: string;
-  data?: { object?: StripeCheckoutSession };
+  data?: { object?: StripeCheckoutSession | Record<string, unknown> };
 }
 
 interface RevenueCatWebhookEvent {
@@ -111,6 +114,7 @@ interface SolanaBillingConfig {
   recipient: string;
   symbol: "SOL";
   products: SolanaBillingProduct[];
+  reason?: string;
 }
 
 interface SolanaParsedTransaction {
@@ -136,6 +140,7 @@ interface SolanaRpcResponse<T> {
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 const STRIPE_SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
+const STRIPE_BILLING_TERMS_VERSION = "ruby-high-stripe-terms-v1";
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 const DEFAULT_SOLANA_TREASURY_OWNER = "AtPVyHp52LqHy1rnMu5fUx9eWpDMrr2DnC3C3mdFc54j";
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -293,6 +298,12 @@ function solanaAmountForProduct(product: BillingProduct): { display: string; lam
 
 function solanaBillingConfig(): SolanaBillingConfig {
   const recipient = solanaTreasuryOwner();
+  const invalidExplicitPrices = Object.values(SOLANA_PACK_PRICE_ENVS)
+    .filter((envName) => {
+      const value = envTrim(envName);
+      return !value || !parseDecimalToBaseUnits(value, 9);
+    });
+  const productionPricingInvalid = process.env.NODE_ENV === "production" && invalidExplicitPrices.length > 0;
   const products = solanaPackProducts().flatMap((product): SolanaBillingProduct[] => {
     const price = solanaAmountForProduct(product);
     if (!price) return [];
@@ -309,11 +320,14 @@ function solanaBillingConfig(): SolanaBillingConfig {
     }];
   });
   return {
-    configured: isBase58Address(recipient) && products.length > 0,
+    configured: isBase58Address(recipient) && products.length === Object.keys(SOLANA_PACK_PRICE_ENVS).length && !productionPricingInvalid,
     rpcUrl: solanaRpcUrl(),
     recipient,
     symbol: "SOL",
     products,
+    ...(productionPricingInvalid
+      ? { reason: `Set valid explicit production prices: ${invalidExplicitPrices.join(", ")}.` }
+      : {}),
   };
 }
 
@@ -688,18 +702,33 @@ function validateStripeCheckoutHallPasses(session: StripeCheckoutSession, metada
   );
   if (!product) throw new Error("Stripe checkout session references an unknown Hall Pass product.");
   const metadataHallPasses = integerField(metadata.hall_passes ?? metadata.card_count);
-  if (metadataHallPasses !== product.hallPasses) {
+  const versionedTerms = metadata.billing_terms_version === STRIPE_BILLING_TERMS_VERSION;
+  if (!metadataHallPasses || metadataHallPasses <= 0 || (!versionedTerms && metadataHallPasses !== product.hallPasses)) {
     throw new Error("Stripe checkout session Hall Pass metadata does not match its product.");
   }
+  const quotedUnitAmount = versionedTerms
+    ? integerField(metadata.hall_pass_unit_amount)
+    : product.unitAmount;
+  const quotedCurrency = versionedTerms
+    ? (metadata.hall_pass_currency ?? "").trim().toLowerCase()
+    : product.currency;
+  if (!quotedUnitAmount || quotedUnitAmount <= 0 || !/^[a-z]{3}$/.test(quotedCurrency)) {
+    throw new Error("Stripe checkout session is missing immutable billing terms.");
+  }
   const amountTotal = integerField(session.amount_total);
-  if (amountTotal !== product.unitAmount) {
+  if (amountTotal !== quotedUnitAmount) {
     throw new Error("Stripe checkout session amount does not match its Hall Pass product.");
   }
   const currency = typeof session.currency === "string" ? session.currency.trim().toLowerCase() : "";
-  if (currency !== product.currency) {
+  if (currency !== quotedCurrency) {
     throw new Error("Stripe checkout session currency does not match its Hall Pass product.");
   }
-  return product;
+  return {
+    ...product,
+    hallPasses: metadataHallPasses,
+    unitAmount: quotedUnitAmount,
+    currency: quotedCurrency,
+  };
 }
 
 function hallPassesForProductId(productId: string | undefined | null): number | null {
@@ -748,6 +777,14 @@ function assertRevenueCatWebhookAuth(ctx: RouteContext): void {
   if (!revenueCatAuthAllowed(header, configured)) throw new Error("Unauthorized RevenueCat webhook.");
 }
 
+function stripeObjectId(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string") {
+    return ((value as { id: string }).id).trim();
+  }
+  return "";
+}
+
 function fulfillStripeCheckout(ruby: RubyHighService, session: StripeCheckoutSession): {
   sessionId: string;
   amount: number;
@@ -761,17 +798,21 @@ function fulfillStripeCheckout(ruby: RubyHighService, session: StripeCheckoutSes
   if (!session.id) throw new Error("Stripe checkout session is missing an id.");
   if (!sessionId) throw new Error("Stripe checkout session is missing a Ruby High session id.");
   const product = validateStripeCheckoutHallPasses(session, metadata);
+  const paymentIntentId = stripeObjectId(session.payment_intent);
   const result = ruby.grantHallPasses(sessionId, {
     amount: product.hallPasses,
     idempotencyKey: `stripe:checkout:${session.id}`,
     source: "stripe",
     description: `${product.hallPasses} Ruby High Hall Pass${product.hallPasses === 1 ? "" : "es"}`,
+    amountCents: product.unitAmount,
     metadata: {
       stripeCheckoutSessionId: session.id,
+      ...(paymentIntentId ? { stripePaymentIntentId: paymentIntentId } : {}),
       hallPassProductId: product.id,
       hallPasses: product.hallPasses,
       amountTotal: session.amount_total ?? null,
       currency: session.currency ?? null,
+      billingTermsVersion: metadata.billing_terms_version ?? null,
     },
   });
   return {
@@ -781,6 +822,295 @@ function fulfillStripeCheckout(ruby: RubyHighService, session: StripeCheckoutSes
     packCount: product.packCount,
     cardCount: product.cardCount,
     applied: result.applied,
+  };
+}
+
+type StripeReversalKind = "refund" | "dispute";
+
+interface StripeReversalMarker {
+  idempotencyKey: string;
+  kind: StripeReversalKind;
+  paymentIntentId: string;
+  amountCents: number;
+  referenceId: string;
+  status: string;
+  mode: "incremental" | "cumulative";
+}
+
+function stripeRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function stripePositiveInteger(value: unknown): number {
+  const parsed = Math.floor(Number(value));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function stripeEventAt(event: StripeEvent): number {
+  const seconds = stripePositiveInteger(event.created);
+  return seconds > 0 ? seconds * 1000 : Date.now();
+}
+
+function stripeRefundStatus(value: unknown): string {
+  const status = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return status === "failed" || status === "canceled" || status === "cancelled" ? "failed" : "active";
+}
+
+function stripeReversalEventKey(event: StripeEvent, kind: StripeReversalKind, referenceId: string, status: string): string {
+  const eventId = stripeObjectId(event.id);
+  return eventId
+    ? `stripe:event:${eventId}:${kind}:${referenceId}`
+    : `stripe:${kind}:${referenceId}:${status}`;
+}
+
+function stripeReversalMarkers(event: StripeEvent): StripeReversalMarker[] {
+  const object = stripeRecord(event.data?.object);
+  if (event.type === "refund.created" || event.type === "refund.updated" || event.type === "refund.failed") {
+    const refundId = stripeObjectId(object.id);
+    const paymentIntentId = stripeObjectId(object.payment_intent);
+    const amountCents = stripePositiveInteger(object.amount);
+    const status = event.type === "refund.failed" ? "failed" : stripeRefundStatus(object.status);
+    if (!refundId || !paymentIntentId || !amountCents) return [];
+    return [{
+      idempotencyKey: stripeReversalEventKey(event, "refund", refundId, status),
+      kind: "refund",
+      paymentIntentId,
+      amountCents,
+      referenceId: refundId,
+      status,
+      mode: "incremental",
+    }];
+  }
+  if (event.type === "charge.refunded") {
+    const paymentIntentId = stripeObjectId(object.payment_intent);
+    const refunds = stripeRecord(object.refunds);
+    const refundItems = Array.isArray(refunds.data) ? refunds.data : [];
+    const markers = refundItems.flatMap((value): StripeReversalMarker[] => {
+      const refund = stripeRecord(value);
+      const refundId = stripeObjectId(refund.id);
+      const amountCents = stripePositiveInteger(refund.amount);
+      const refundPaymentIntentId = stripeObjectId(refund.payment_intent) || paymentIntentId;
+      const status = stripeRefundStatus(refund.status);
+      if (!refundId || !refundPaymentIntentId || !amountCents) return [];
+      return [{
+        idempotencyKey: stripeReversalEventKey(event, "refund", refundId, status),
+        kind: "refund",
+        paymentIntentId: refundPaymentIntentId,
+        amountCents,
+        referenceId: refundId,
+        status,
+        mode: "incremental",
+      }];
+    });
+    if (markers.length > 0) return markers;
+    const chargeId = stripeObjectId(object.id);
+    const amountCents = stripePositiveInteger(object.amount_refunded);
+    if (!chargeId || !paymentIntentId || !amountCents) return [];
+    return [{
+      idempotencyKey: stripeReversalEventKey(event, "refund", chargeId, `cumulative-${amountCents}`),
+      kind: "refund",
+      paymentIntentId,
+      amountCents,
+      referenceId: chargeId,
+      status: "active",
+      mode: "cumulative",
+    }];
+  }
+  if (
+    event.type === "charge.dispute.created" ||
+    event.type === "charge.dispute.updated" ||
+    event.type === "charge.dispute.closed" ||
+    event.type === "charge.dispute.funds_withdrawn" ||
+    event.type === "charge.dispute.funds_reinstated"
+  ) {
+    const disputeId = stripeObjectId(object.id);
+    const paymentIntentId = stripeObjectId(object.payment_intent);
+    const amountCents = stripePositiveInteger(object.amount);
+    const rawStatus = typeof object.status === "string" ? object.status.trim().toLowerCase() : "";
+    const status = event.type === "charge.dispute.funds_withdrawn"
+      ? "active"
+      : event.type === "charge.dispute.funds_reinstated"
+        ? "inactive"
+        : rawStatus === "needs_response" || rawStatus === "under_review" || rawStatus === "lost"
+          ? "active"
+          : "inactive";
+    if (!disputeId || !paymentIntentId || !amountCents) return [];
+    return [{
+      idempotencyKey: stripeReversalEventKey(event, "dispute", disputeId, status),
+      kind: "dispute",
+      paymentIntentId,
+      amountCents,
+      referenceId: disputeId,
+      status,
+      mode: "incremental",
+    }];
+  }
+  return [];
+}
+
+function proportionalStripeHallPasses(hallPasses: number, purchaseCents: number, reversalCents: number): number {
+  if (reversalCents <= 0) return 0;
+  if (reversalCents >= purchaseCents) return hallPasses;
+  return Math.min(hallPasses, Math.max(1, Math.ceil((hallPasses * reversalCents) / purchaseCents)));
+}
+
+function desiredStripeReversalHallPasses(
+  ruby: RubyHighService,
+  sessionId: string,
+  purchaseTransactionId: string,
+  purchasedHallPasses: number,
+  purchaseCents: number,
+): { desired: number; netReversed: number } {
+  const transactions = ruby.walletTransactions(sessionId);
+  const eventMarkers = transactions.filter((transaction) => (
+    transaction.metadata?.stripeReversalEvent === true &&
+    transaction.metadata?.stripePurchaseTransactionId === purchaseTransactionId
+  ));
+
+  const refunds = new Map<string, { at: number; amountCents: number; status: string }>();
+  let cumulativeRefundCents = 0;
+  const disputes = new Map<string, { at: number; amountCents: number; status: string }>();
+  for (const transaction of eventMarkers) {
+    const kind = transaction.metadata?.stripeReversalKind;
+    const amountCents = stripePositiveInteger(transaction.metadata?.stripeReversalAmountCents);
+    const status = String(transaction.metadata?.stripeReversalStatus ?? "active");
+    const referenceId = String(transaction.metadata?.stripeReversalReferenceId ?? "");
+    const mode = String(transaction.metadata?.stripeReversalMode ?? "incremental");
+    if (!referenceId || !amountCents) continue;
+    if (kind === "refund") {
+      if (mode === "cumulative" && status === "active") {
+        cumulativeRefundCents = Math.max(cumulativeRefundCents, amountCents);
+        continue;
+      }
+      const previous = refunds.get(referenceId);
+      if (!previous || transaction.at >= previous.at) refunds.set(referenceId, { at: transaction.at, amountCents, status });
+    } else if (kind === "dispute") {
+      const previous = disputes.get(referenceId);
+      if (!previous || transaction.at >= previous.at) disputes.set(referenceId, { at: transaction.at, amountCents, status });
+    }
+  }
+  const incrementalRefundCents = [...refunds.values()]
+    .filter((refund) => refund.status === "active")
+    .reduce((sum, refund) => sum + refund.amountCents, 0);
+  const refundPasses = proportionalStripeHallPasses(
+    purchasedHallPasses,
+    purchaseCents,
+    Math.max(cumulativeRefundCents, incrementalRefundCents),
+  );
+  const disputePasses = [...disputes.values()]
+    .filter((dispute) => dispute.status === "active")
+    .reduce((maximum, dispute) => Math.max(
+      maximum,
+      proportionalStripeHallPasses(purchasedHallPasses, purchaseCents, dispute.amountCents),
+    ), 0);
+  const netReversed = transactions
+    .filter((transaction) => (
+      transaction.metadata?.stripeReversalAdjustment === true &&
+      transaction.metadata?.stripePurchaseTransactionId === purchaseTransactionId
+    ))
+    .reduce((sum, transaction) => sum - Math.floor(Number(transaction.hallPasses ?? 0)), 0);
+  return {
+    desired: Math.min(purchasedHallPasses, Math.max(refundPasses, disputePasses)),
+    netReversed: Math.min(purchasedHallPasses, Math.max(0, netReversed)),
+  };
+}
+
+async function fulfillStripeReversal(
+  ruby: RubyHighService,
+  event: StripeEvent,
+  marker: StripeReversalMarker,
+): Promise<{ applied: boolean; sessionId: string; amount: number; hallPasses: number; reason?: string }> {
+  const purchase = ruby.walletTransactionOwnerByMetadata(
+    "stripePaymentIntentId",
+    marker.paymentIntentId,
+    "hall-pass-grant",
+  );
+  if (!purchase) throw new Error("Stripe purchase is not recorded yet; retry this webhook.");
+  const purchasedHallPasses = Math.max(0, Math.floor(Number(purchase.transaction.hallPasses ?? 0)));
+  const purchaseCents = Math.max(0, Math.floor(Number(
+    purchase.transaction.amountCents ?? purchase.transaction.metadata?.amountTotal ?? 0,
+  )));
+  if (!purchasedHallPasses || !purchaseCents) throw new Error("Stripe purchase record is missing its original terms.");
+
+  const recordedMarker = ruby.recordWalletMarker(purchase.sessionId, {
+    idempotencyKey: marker.idempotencyKey,
+    kind: "hall-pass-revoke",
+    hallPasses: 0,
+    source: "stripe",
+    description: `Stripe ${marker.kind} reconciliation marker`,
+    at: stripeEventAt(event),
+    display: false,
+    metadata: {
+      stripeReversalEvent: true,
+      stripeEventId: event.id ?? null,
+      stripeEventType: event.type ?? null,
+      stripePurchaseTransactionId: purchase.transaction.id,
+      stripePaymentIntentId: marker.paymentIntentId,
+      stripeReversalKind: marker.kind,
+      stripeReversalReferenceId: marker.referenceId,
+      stripeReversalAmountCents: marker.amountCents,
+      stripeReversalStatus: marker.status,
+      stripeReversalMode: marker.mode,
+    },
+  });
+  const target = desiredStripeReversalHallPasses(
+    ruby,
+    purchase.sessionId,
+    purchase.transaction.id,
+    purchasedHallPasses,
+    purchaseCents,
+  );
+  const delta = target.desired - target.netReversed;
+  if (delta === 0) {
+    await ruby.flushSession(purchase.sessionId);
+    return {
+      applied: recordedMarker.applied,
+      sessionId: purchase.sessionId,
+      amount: 0,
+      hallPasses: ruby.hallPassBalance(purchase.sessionId),
+      reason: "balance-already-reconciled",
+    };
+  }
+  const availableHallPasses = ruby.hallPassBalance(purchase.sessionId);
+  const adjustmentAmount = delta > 0 ? Math.min(delta, availableHallPasses) : Math.abs(delta);
+  if (adjustmentAmount <= 0) {
+    await ruby.flushSession(purchase.sessionId);
+    throw new Error(`Stripe reversal has ${delta} Hall Pass${delta === 1 ? "" : "es"} outstanding; retry this webhook.`);
+  }
+  const adjustmentInput = {
+    amount: adjustmentAmount,
+    idempotencyKey: `stripe:reconcile:${marker.idempotencyKey}:${target.desired}:${target.netReversed}`,
+    source: "stripe" as const,
+    description: delta > 0 ? "Stripe purchase reversed" : "Stripe dispute funds restored",
+    at: stripeEventAt(event),
+    amountCents: marker.amountCents,
+    metadata: {
+      stripeReversalAdjustment: true,
+      stripeEventId: event.id ?? null,
+      stripeEventType: event.type ?? null,
+      stripePurchaseTransactionId: purchase.transaction.id,
+      stripePaymentIntentId: marker.paymentIntentId,
+      stripeReversalKind: marker.kind,
+      stripeReversalReferenceId: marker.referenceId,
+      stripeReversalTargetHallPasses: target.desired,
+    },
+  };
+  const adjustment = delta > 0
+    ? ruby.revokeHallPasses(purchase.sessionId, adjustmentInput)
+    : ruby.refundHallPasses(purchase.sessionId, adjustmentInput);
+  await ruby.flushSession(purchase.sessionId);
+  const actualAdjustment = Math.abs(Math.floor(Number(adjustment.transaction.hallPasses ?? 0)));
+  if (actualAdjustment < Math.abs(delta)) {
+    const outstanding = Math.abs(delta) - actualAdjustment;
+    throw new Error(`Stripe reversal has ${outstanding} Hall Pass${outstanding === 1 ? "" : "es"} outstanding; retry this webhook.`);
+  }
+  return {
+    applied: adjustment.applied,
+    sessionId: purchase.sessionId,
+    amount: Math.floor(Number(adjustment.transaction.hallPasses ?? 0)),
+    hallPasses: adjustment.state.wallet.hallPasses,
   };
 }
 
@@ -1106,6 +1436,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       products: billingProducts(),
       solana: {
         configured: solana.configured && corePacks.configured,
+        ...(solana.reason ? { reason: solana.reason } : {}),
         recipient: solana.recipient,
         symbol: solana.symbol,
         packNfts: corePacks,
@@ -1133,7 +1464,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
   if (ctx.method === "POST" && ctx.pathname === `${BILLING_PREFIX}/solana/quote`) {
     const solana = solanaBillingConfig();
     if (!solana.configured) {
-      ctx.error(ctx.res, "Solana card billing is not configured.", 503);
+      ctx.error(ctx.res, solana.reason || "Solana card billing is not configured.", 503);
       return true;
     }
     const packNfts = publicCorePackNftStatus();
@@ -1203,7 +1534,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
   if (ctx.method === "POST" && ctx.pathname === `${BILLING_PREFIX}/solana/submit`) {
     const solana = solanaBillingConfig();
     if (!solana.configured) {
-      ctx.error(ctx.res, "Solana card billing is not configured.", 503);
+      ctx.error(ctx.res, solana.reason || "Solana card billing is not configured.", 503);
       return true;
     }
     const packNfts = publicCorePackNftStatus();
@@ -1270,7 +1601,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
   if (ctx.method === "POST" && ctx.pathname === `${BILLING_PREFIX}/solana/confirm`) {
     const solana = solanaBillingConfig();
     if (!solana.configured) {
-      ctx.error(ctx.res, "Solana card billing is not configured.", 503);
+      ctx.error(ctx.res, solana.reason || "Solana card billing is not configured.", 503);
       return true;
     }
     const packNfts = publicCorePackNftStatus();
@@ -1584,11 +1915,17 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     params.set("line_items[0][price_data][product_data][name]", product.name);
     params.set("line_items[0][price_data][product_data][description]", product.description);
     params.set("metadata[ruby_high_session_id]", stateKey);
+    params.set("metadata[billing_terms_version]", STRIPE_BILLING_TERMS_VERSION);
     params.set("metadata[hall_pass_product_id]", product.id);
     params.set("metadata[hall_passes]", String(product.hallPasses));
+    params.set("metadata[hall_pass_unit_amount]", String(product.unitAmount));
+    params.set("metadata[hall_pass_currency]", product.currency);
     params.set("payment_intent_data[metadata][ruby_high_session_id]", stateKey);
+    params.set("payment_intent_data[metadata][billing_terms_version]", STRIPE_BILLING_TERMS_VERSION);
     params.set("payment_intent_data[metadata][hall_pass_product_id]", product.id);
     params.set("payment_intent_data[metadata][hall_passes]", String(product.hallPasses));
+    params.set("payment_intent_data[metadata][hall_pass_unit_amount]", String(product.unitAmount));
+    params.set("payment_intent_data[metadata][hall_pass_currency]", product.currency);
 
     const response = await fetch(`${STRIPE_API_BASE}/checkout/sessions`, {
       method: "POST",
@@ -1641,7 +1978,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       ctx.error(ctx.res, "Invalid Stripe webhook JSON.", 400);
       return true;
     }
-    const session = event.data?.object;
+    const session = event.data?.object as StripeCheckoutSession | undefined;
     if (
       session &&
       (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded")
@@ -1665,6 +2002,24 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         });
       } catch (err) {
         ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 400);
+      }
+      return true;
+    }
+    const reversalMarkers = stripeReversalMarkers(event);
+    if (reversalMarkers.length > 0) {
+      try {
+        const results = [];
+        for (const marker of reversalMarkers) {
+          results.push(await fulfillStripeReversal(deps.ruby, event, marker));
+        }
+        ctx.json(ctx.res, {
+          received: true,
+          applied: results.some((result) => result.applied),
+          reversals: results,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        ctx.error(ctx.res, message, message.includes("retry this webhook") ? 500 : 400);
       }
       return true;
     }

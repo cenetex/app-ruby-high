@@ -637,7 +637,7 @@ export interface RubyHighWalletTransaction {
   photoDayCredits?: number;
   source?: "stripe" | "solana" | "iap" | "revenuecat" | "chat" | "hosted-image" | "hosted-ai" | "question-generation" | "character-slot" | "course-slot" | "photo-day" | "hall-pass-pack" | "hall-pass-card" | "admin" | "system";
   description?: string;
-  /** Revenue amount in cents (USD). Set by billing routes at grant time. */
+  /** Purchase price in the configured currency's minor units. Set by billing routes at grant time. */
   amountCents?: number;
   metadata?: Record<string, string | number | boolean | null>;
 }

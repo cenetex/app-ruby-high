@@ -3856,6 +3856,33 @@ export class RubyHighService extends Service {
     return null;
   }
 
+  walletTransactions(sessionId: string): RubyHighWalletTransaction[] {
+    const state = this.getOrCreate(sessionId);
+    state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+    const ledger = Object.values(state.wallet.operationLedger ?? {});
+    return ledger.length > 0 ? ledger : [...(state.wallet.transactions ?? [])];
+  }
+
+  walletTransactionOwnerByMetadata(
+    metadataKey: string,
+    metadataValue: string,
+    kind?: RubyHighWalletTransactionKind,
+  ): { sessionId: string; transaction: RubyHighWalletTransaction } | null {
+    const key = metadataKey.trim();
+    const value = metadataValue.trim();
+    if (!key || !value) return null;
+    for (const [sessionId, state] of this.sessions.entries()) {
+      state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
+      const transactions = Object.values(state.wallet.operationLedger ?? {});
+      const fallback = state.wallet.transactions ?? [];
+      const transaction = (transactions.length > 0 ? transactions : fallback).find((candidate) => (
+        (!kind || candidate.kind === kind) && String(candidate.metadata?.[key] ?? "") === value
+      ));
+      if (transaction) return { sessionId, transaction };
+    }
+    return null;
+  }
+
   recordWalletMarker(
     sessionId: string,
     input: {
@@ -11524,6 +11551,9 @@ function normalizeWalletTransaction(raw: unknown): RubyHighWalletTransaction | n
   }
   if (typeof tx.photoDayCredits === "number" && Number.isFinite(tx.photoDayCredits)) {
     entry.photoDayCredits = Math.floor(tx.photoDayCredits);
+  }
+  if (typeof tx.amountCents === "number" && Number.isFinite(tx.amountCents)) {
+    entry.amountCents = Math.floor(tx.amountCents);
   }
   const source = normalizedWalletSource(tx.source);
   if (source) {

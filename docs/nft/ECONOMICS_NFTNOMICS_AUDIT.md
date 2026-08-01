@@ -34,11 +34,11 @@
    list makes the economics unclear, so the UI now separates Buy Hall Passes
    from Buy Card Packs.
 
-3. **Default Solana token prices need production review.**
-   The defaults can make different pack sizes cost the same token amount unless
-   `RUBY_HIGH_SOLANA_HALL_PASS_*_TOKENS` values are set intentionally. Before a
-   larger release, set token prices so 1/3/5/10 pack tiers reflect their burn
-   floor and collectible upside.
+3. **Production Solana prices are explicit.**
+   The server now keeps SOL pack checkout disabled in production unless all of
+   `RUBY_HIGH_SOLANA_PACK_1_SOL`, `_3_SOL`, `_5_SOL`, and `_10_SOL` are set.
+   Set those prices so every tier reflects its burn floor and collectible upside;
+   the in-code values are development fallbacks only.
 
 4. **Captain Null should remain upside, not burn inventory.**
    Captain Null is ultra-rare/special and guaranteed only in larger bundles.
