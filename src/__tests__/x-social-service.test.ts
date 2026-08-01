@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, stat } from "node:fs/promises";
+import { join } from "node:path";
 import {
   XSocialService,
   generatePkce,
@@ -134,6 +135,33 @@ describe("XSocialService", () => {
       connected: false,
       teacherId: "ruby",
     });
+  });
+
+  it("stores OAuth tokens with owner-only filesystem permissions", async () => {
+    await connectRuby(svc);
+
+    expect((await stat(join(TEST_STATE_DIR, "x-tokens.json"))).mode & 0o777).toBe(0o600);
+  });
+
+  it("rejects oversized inline images before upload", async () => {
+    const oversized = `data:image/png;base64,${Buffer.alloc(10 * 1024 * 1024 + 1).toString("base64")}`;
+    const resolveImage = (svc as unknown as { resolveImageToBuffer: (url: string) => Promise<Buffer> })
+      .resolveImageToBuffer.bind(svc);
+
+    await expect(resolveImage(oversized)).rejects.toThrow("Image is too large.");
+  });
+
+  it("revalidates image redirect destinations before fetching them", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 302,
+      headers: new Headers({ location: "http://127.0.0.1/private-image.png" }),
+    });
+    const resolveImage = (svc as unknown as { resolveImageToBuffer: (url: string) => Promise<Buffer> })
+      .resolveImageToBuffer.bind(svc);
+
+    await expect(resolveImage("https://1.1.1.1/image.png")).rejects.toThrow("Image URL must use https");
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   describe("beginConnect", () => {

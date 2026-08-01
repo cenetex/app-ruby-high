@@ -5,12 +5,13 @@ import {
   llmProviderInfo,
   llmHeaders,
   llmProviderKind,
+  prepareLlmRequestBody,
   resolveCourseModel,
   resolveLlmApiKey,
   resolveLlmModel,
   resolveStudentModel,
 } from "../services/llm-provider.js";
-import { DEFAULT_COURSE_MODEL, DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
+import { DEFAULT_COURSE_MODEL, DEFAULT_OPENROUTER_MODEL, DEFAULT_STUDENT_MODEL } from "../model-defaults.js";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -19,11 +20,14 @@ afterEach(() => {
 
 describe("llm-provider", () => {
   it("defaults to OpenRouter when no local endpoint is configured", () => {
+    expect(DEFAULT_OPENROUTER_MODEL).toBe("openai/gpt-5.6-luna");
+    expect(DEFAULT_STUDENT_MODEL).toBe("openai/gpt-5.6-luna");
+    expect(DEFAULT_COURSE_MODEL).toBe("openai/gpt-5.6-terra");
     expect(llmProviderKind()).toBe("openrouter");
     expect(llmChatCompletionsUrl()).toBe("https://openrouter.ai/api/v1/chat/completions");
     expect(llmProviderInfo().defaultModel).toBe(DEFAULT_OPENROUTER_MODEL);
     expect(resolveLlmModel("")).toBe(DEFAULT_OPENROUTER_MODEL);
-    expect(resolveStudentModel()).toBe("google/gemini-3.5-flash");
+    expect(resolveStudentModel()).toBe(DEFAULT_STUDENT_MODEL);
     expect(resolveCourseModel()).toBe(DEFAULT_COURSE_MODEL);
     expect(resolveLlmModel("custom/model")).toBe("custom/model");
     expect(resolveLlmApiKey("sk-user")).toBe("sk-user");
@@ -33,7 +37,28 @@ describe("llm-provider", () => {
     vi.stubEnv("RUBY_HIGH_COURSE_MODEL", "custom/course-model");
 
     expect(resolveCourseModel()).toBe("custom/course-model");
-    expect(resolveStudentModel()).toBe("google/gemini-3.5-flash");
+    expect(resolveStudentModel()).toBe(DEFAULT_STUDENT_MODEL);
+  });
+
+  it("applies GPT-5.6 Chat Completions compatibility defaults", () => {
+    expect(prepareLlmRequestBody({
+      model: DEFAULT_STUDENT_MODEL,
+      messages: [],
+      temperature: 0.95,
+    })).toEqual({
+      model: "openai/gpt-5.6-luna",
+      messages: [],
+      reasoning_effort: "none",
+    });
+
+    expect(prepareLlmRequestBody({
+      model: DEFAULT_COURSE_MODEL,
+      messages: [],
+      temperature: 0.45,
+    })).toEqual({
+      model: "openai/gpt-5.6-terra",
+      messages: [],
+    });
   });
 
   it("normalizes a local OpenAI-compatible base URL", () => {

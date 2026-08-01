@@ -38,6 +38,7 @@
     "test:ci": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --disable-warning=ExperimentalWarning\" vitest --run --testTimeout=15000",
     "test:browser": "playwright test",
     "test:coverage": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --disable-warning=ExperimentalWarning\" vitest --run --coverage --testTimeout=15000",
+    "audit:prod": "npm audit --omit=dev --audit-level=high",
     "check": "npm run typecheck && npm run test:ci && npm run build",
     "check:browser": "npm run test:browser",
     "check:full": "npm run typecheck && npm run test:ci && npm run build:spa",

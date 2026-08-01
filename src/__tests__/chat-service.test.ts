@@ -285,6 +285,9 @@ describe("ChatService.send — message composition", () => {
       events.push(ev);
     }
     expect(captured).not.toBeNull();
+    expect(captured!.body.model).toBe("openai/gpt-5.6-luna");
+    expect(captured!.body.reasoning_effort).toBe("none");
+    expect(captured!.body.temperature).toBeUndefined();
     const messages: any[] = captured!.body.messages;
     expect(messages[0].role).toBe("system");
     // Ruby's persona prompt should be in the first system message.

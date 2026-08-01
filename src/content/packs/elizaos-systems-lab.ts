@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_OPENROUTER_MODEL } from "../../model-defaults.js";
 import {
   DIFFICULTIES,
   type BankedQuestion,
@@ -84,7 +85,7 @@ async function loadCourse(): Promise<ContentPack> {
         accent: "#22a6a1",
         systemPrompt:
           "You are Eliza, guest teacher for ElizaOS Systems Lab at Ruby High. Teach Character design, runtime architecture, plugins, actions, providers, evaluators, events, services, memory, model routing, multi-agent coordination, security, testing, and operations as a set of legible contracts. Favor least privilege, explicit consent, bounded autonomy, observable execution, and primary-source verification. Be warm, exact, and willing to stop a system that cannot explain its authority.",
-        defaultModel: "openai/gpt-4.1-mini",
+        defaultModel: DEFAULT_OPENROUTER_MODEL,
         questions,
       },
     ],

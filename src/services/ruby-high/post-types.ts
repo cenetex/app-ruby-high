@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { TeacherCharacter } from "../../characters/teachers.js";
+import { DEFAULT_OPENROUTER_MODEL } from "../../model-defaults.js";
 import type { XMilestoneContext } from "../x-social-service.js";
 import { log } from "../logger.js";
 import {
@@ -175,7 +176,7 @@ export async function generateScheduledSchoolUpdateText(
   try {
     const response = await fetchLlmChatCompletions({
       body: {
-        model: process.env.RUBY_HIGH_COURSE_MODEL ?? "qwen/qwen3.7-max",
+        model: DEFAULT_OPENROUTER_MODEL,
         messages: [{ role: "user", content: prompt }],
         max_tokens: 180,
         temperature: 0.65,
@@ -385,7 +386,7 @@ export async function generateLlmPostText(
     try {
       const response = await fetchLlmChatCompletions({
         body: {
-          model: process.env.RUBY_HIGH_COURSE_MODEL ?? "qwen/qwen3.7-max",
+          model: DEFAULT_OPENROUTER_MODEL,
           messages: [{ role: "user", content: prompt }],
           max_tokens: 200,
           temperature: 0.6,
@@ -479,7 +480,7 @@ export async function generateQuestionPostText(
   try {
     const response = await fetchLlmChatCompletions({
       body: {
-        model: process.env.RUBY_HIGH_COURSE_MODEL ?? "qwen/qwen3.7-max",
+        model: DEFAULT_OPENROUTER_MODEL,
         messages: [{ role: "user", content: prompt }],
         max_tokens: 200,
         temperature: 0.8,
@@ -522,7 +523,7 @@ export async function generateEngagementPostText(
   try {
     const response = await fetchLlmChatCompletions({
       body: {
-        model: process.env.RUBY_HIGH_COURSE_MODEL ?? "qwen/qwen3.7-max",
+        model: DEFAULT_OPENROUTER_MODEL,
         messages: [{ role: "user", content: prompt }],
         max_tokens: 200,
         temperature: 0.8,

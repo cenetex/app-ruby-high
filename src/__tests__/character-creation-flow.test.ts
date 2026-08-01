@@ -64,6 +64,16 @@ describe("character creation flow", () => {
   });
 
   describe("explicit enrollment after preview", () => {
+    it("keeps Quick Roll inside the customizable creation sheet", () => {
+      const quickRollHandler = CLIENT_SOURCE.slice(
+        CLIENT_SOURCE.indexOf('const onboardingCreateBtn = document.getElementById("onboarding-create-btn")'),
+        CLIENT_SOURCE.indexOf("if (onboardingCustomizeBtn)", CLIENT_SOURCE.indexOf('const onboardingCreateBtn = document.getElementById("onboarding-create-btn")')),
+      );
+
+      expect(quickRollHandler).toContain('addEventListener("click", openCharacterCreation)');
+      expect(quickRollHandler).not.toContain('type: "quick-roll-student"');
+    });
+
     it("keeps rollComponents local until the player starts Freshman year", () => {
       const rollFn = CLIENT_SOURCE.slice(
         CLIENT_SOURCE.indexOf("async function rollComponents"),

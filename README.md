@@ -105,6 +105,8 @@ No hosted account or OpenRouter key is needed for these:
 
 The standalone server starts the school, faculty, auth, chat, agent-access, and configured social services backed by the content-pack registry under `src/content/`. Ruby High Original is always the base school; public creator packs rotate into one Guest Faculty course automatically each week. Eliza's built-in 64-question ElizaOS Systems Lab is the first curated guest course, and Eliza remains available as a collectible teacher card.
 
+All hosted text/agent paths default to `openai/gpt-5.6-luna` through OpenRouter, including faculty dialogue and tool use, NPC opinion chimes, guest faculty, character text, social posts, creator drafts, and voice evaluation. Course and question-bank generation use `openai/gpt-5.6-terra`. Image generation keeps its dedicated image-capable models.
+
 ## ElizaOS agents
 
 The registry-ready ElizaOS package lives in [`packages/plugin-ruby-high`](./packages/plugin-ruby-high). It supports enrollment, classes, answers, progress, explicit public presence, and scheduled attendance through the same authoritative game engine as human players.
@@ -117,7 +119,8 @@ Scheduled play is opt-in and server-bounded: 15–1440 minute intervals, at most
 |---|---|---|
 | `PORT` | `8080` | HTTP port. |
 | `HOST` | `0.0.0.0` | Bind address. |
-| `RUBY_HIGH_PUBLIC_BASE` | `http://localhost:3000` | Public URL the app is reachable at. **Must be HTTPS in production** — OpenRouter rejects HTTP callbacks. |
+| `RUBY_HIGH_PUBLIC_BASE` | `http://localhost:3000` (dev) | Public URL the app is reachable at. Required and enforced as HTTPS in production. |
+| `RUBY_HIGH_TRUST_PROXY` | `false` | Trust proxy-provided client IP, host, and protocol headers. Enable only when the server is reachable exclusively through a trusted reverse proxy; Fly enables it explicitly. |
 | `RUBY_HIGH_PRIVY_APP_ID` | — | Enables Privy account sign-in when set with `RUBY_HIGH_PRIVY_CLIENT_ID` and one server verifier secret. |
 | `RUBY_HIGH_PRIVY_CLIENT_ID` | — | Public Privy client id embedded in the viewer so the browser SDK can initialize. |
 | `RUBY_HIGH_PRIVY_LOGIN_METHODS` | `email,wallet,google,twitter,passkey` | Comma-separated Privy login methods shown in the viewer. Use `google` for Gmail sign-in. Each method must also be enabled in the Privy dashboard. |
@@ -136,7 +139,7 @@ Scheduled play is opt-in and server-bounded: 15–1440 minute intervals, at most
 | `RUBY_HIGH_LLM_BASE_URL` | `http://127.0.0.1:11434/v1` in local mode | Local OpenAI-compatible base URL. Values ending in `/v1` or `/chat/completions` are both accepted. |
 | `RUBY_HIGH_LLM_MODEL` | `ruby-high-local` in local mode | Model id sent to the local endpoint. Many single-model servers ignore it, but OpenAI-compatible servers require the field. |
 | `RUBY_HIGH_LLM_API_KEY` | `local` in local mode | Optional bearer token for local servers configured with an API key. |
-| `RUBY_HIGH_STUDENT_MODEL` | `google/gemini-3.5-flash` | Model used for NPC opinion responses. |
+| `RUBY_HIGH_STUDENT_MODEL` | `openai/gpt-5.6-luna` | Model used for NPC opinion responses and other lightweight student/character text. |
 | `RUBY_HIGH_OPENROUTER_API_KEY` | — | Optional server-side OpenRouter key for sponsored text AI plus hosted portrait/diploma generation. Server-hosted text chat is globally available when configured and player chat spends Merit Stars; browser-owned OpenRouter keys remain BYOK and do not spend Hall Passes. |
 | `RUBY_HIGH_OPENROUTER_REFERER` | `https://ruby-high.local` | Sent in OpenRouter request headers. |
 | `RUBY_HIGH_OPENROUTER_TITLE` | `Ruby High` | Sent in OpenRouter request headers. |
@@ -174,15 +177,16 @@ Scheduled play is opt-in and server-bounded: 15–1440 minute intervals, at most
 | `RUBY_HIGH_COURSE_SLOT_HALL_PASS_COST` | `3` | Hall Pass cost to reserve/publish one creator course slot. The legacy `RUBY_HIGH_COURSE_GENERATION_HALL_PASS_COST` is still honored as a fallback. |
 | `RUBY_HIGH_REVENUECAT_WEBHOOK_AUTH` | — | Required Authorization header value for `/api/apps/ruby-high/billing/revenuecat/webhook`. The route accepts either this exact value or `Bearer <value>`. |
 | `RUBY_HIGH_REVENUECAT_VIRTUAL_CURRENCY_CODE` | `HLP` | RevenueCat Virtual Currency code to credit as Hall Passes when using RevenueCat Virtual Currency events. |
-| `RUBY_HIGH_CREATOR_DEFAULT_MODEL` | `google/gemini-3.5-flash` | Default OpenRouter model for local teacher drafts created in Edit Pack. |
+| `RUBY_HIGH_CREATOR_DEFAULT_MODEL` | `openai/gpt-5.6-luna` | Default OpenRouter model for local teacher drafts created in Edit Pack. |
+| `RUBY_HIGH_COURSE_MODEL` | `openai/gpt-5.6-terra` | Model used for course and question-bank generation. |
 | `RUBY_HIGH_DRAFT_GENERATIONS_PER_DAY` | `5` | Per-teacher daily cap for draft question/course generation. |
 | `RUBY_HIGH_COURSE_GENERATION_QUESTION_COUNT` | `18` | Default number of questions requested by AI course generation, clamped to 4–24. |
 | `RUBY_HIGH_ALLOW_HTTP_MATERIAL_URLS` | — | Set to `true` only in trusted local/dev environments. Remote course-material imports require HTTPS by default and reject localhost/private/reserved hosts. |
 | `RUBY_HIGH_ALLOWED_MATERIAL_HOSTS` | `raw.githubusercontent.com,gist.githubusercontent.com` | Comma-separated list of additional trusted hosts for remote course-material imports. GitHub blob URLs are normalized to `raw.githubusercontent.com`. |
-| `RUBY_HIGH_EVAL_MODEL` | `openai/gpt-4.1-mini` | LLM-judge model for `npm run eval:voice` when an OpenRouter key is available. |
+| `RUBY_HIGH_EVAL_MODEL` | `openai/gpt-5.6-luna` | LLM-judge model for `npm run eval:voice` when an OpenRouter key is available. |
 | `RUBY_HIGH_EVAL_REQUIRE_API` | — | Set to `1` to make `npm run eval:voice` fail when no `RUBY_HIGH_OPENROUTER_API_KEY` is configured. |
 
-The `/health` route is readiness: it returns 200 only after services have booted, so the platform should not route first-load traffic while Ruby High is hydrating. `/livez` is a process-liveness probe. The server trusts `x-forwarded-*` headers from the first hop for proto, host, and client IP.
+The `/health` route is readiness: it returns 200 only after services have booted, so the platform should not route first-load traffic while Ruby High is hydrating. `/livez` is a process-liveness probe. Forwarded proxy headers are ignored unless `RUBY_HIGH_TRUST_PROXY` is explicitly enabled.
 
 No OpenRouter key is required on the server for normal play: each user can authenticate with their own key via PKCE, or use a Privy account for persistent identity/wallet ownership when Privy is configured. `RUBY_HIGH_OPENROUTER_API_KEY` sponsors server-hosted text AI for signed-in players, while player-authored chat spends Merit Stars. The same key enables hosted image generation with per-image Hall Pass costs. Edit Pack creates OpenRouter-backed local teacher drafts; Ruby High does not list, import, grant, or call external avatar/agent backends.
 

@@ -17,6 +17,7 @@ import { APP_ROUTE_PREFIX, X_SOCIAL_PREFIX } from "./constants.js";
 import type { RouteContext } from "./context.js";
 import type { BankedQuestion, Grade } from "../types.js";
 import { multipleChoiceDefinition } from "../question-choices.js";
+import { constantTimeSecretEqual } from "../services/secret-comparison.js";
 
 export const ADMIN_PATH = `${APP_ROUTE_PREFIX}/admin`;
 export const ADMIN_METRICS_PATH = `${APP_ROUTE_PREFIX}/admin/metrics`;
@@ -285,7 +286,8 @@ function configuredToken(): string | null {
 
 function authorized(ctx: RouteContext, token: string): boolean {
   const auth = firstHeader(ctx.authorizationHeader).trim();
-  return auth === token || auth === `Bearer ${token}`;
+  const match = auth.match(/^Bearer\s+(.+)$/i);
+  return constantTimeSecretEqual(match?.[1]?.trim() ?? auth, token);
 }
 
 function requireAdminAuth(ctx: RouteContext): string | null {
@@ -2499,7 +2501,7 @@ export function renderAdminDashboardHtml(): string {
   <script>
     const xSocialPrefix = ${JSON.stringify(X_SOCIAL_PREFIX)};
     async function saveTelegramConfig() {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       tgSave.disabled = true;
       tgSave.textContent = "Saving…";
@@ -2522,7 +2524,7 @@ export function renderAdminDashboardHtml(): string {
     };
 
 async function postTelegramSnapshot() {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       tgPost.disabled = true;
       tgPost.textContent = "Posting…";
@@ -2565,7 +2567,7 @@ async function postTelegramSnapshot() {
     let latestMetrics = null;
     let latestReplenishment = null;
 
-    tokenEl.value = localStorage.getItem(tokenKey) || "";
+    tokenEl.value = sessionStorage.getItem(tokenKey) || "";
     if (tokenEl.value) refresh();
 
     formEl.addEventListener("submit", (event) => {
@@ -2573,7 +2575,7 @@ async function postTelegramSnapshot() {
       refresh();
     });
     clearEl.addEventListener("click", () => {
-      localStorage.removeItem(tokenKey);
+      sessionStorage.removeItem(tokenKey);
       tokenEl.value = "";
       latestMetrics = null;
       latestReplenishment = null;
@@ -2640,7 +2642,7 @@ async function postTelegramSnapshot() {
         if (!response.ok) {
           throw new Error(data.error || "Metrics request failed.");
         }
-        localStorage.setItem(tokenKey, token);
+        sessionStorage.setItem(tokenKey, token);
         latestMetrics = data;
         latestReplenishment = await loadReplenishment(token);
         render(data);
@@ -3306,7 +3308,7 @@ async function postTelegramSnapshot() {
     }
 
     async function refreshXSocial() {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) {
         connectedTeachers = [];
         renderSocialTeacherSelect();
@@ -3333,7 +3335,7 @@ async function postTelegramSnapshot() {
     }
 
     async function connectX(teacherId) {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       try {
         const res = await fetch(xSocialPrefix + "/connect/" + teacherId, {
@@ -3346,7 +3348,7 @@ async function postTelegramSnapshot() {
     }
 
     async function disconnectX(teacherId) {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       try {
         await fetch(xSocialPrefix + "/disconnect/" + teacherId, {
@@ -3362,7 +3364,7 @@ async function postTelegramSnapshot() {
     const studentsPanel = document.getElementById("students-panel");
 
     async function refreshStudents() {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) { studentsPanel.innerHTML = '<div class="empty">Unlock to see students.</div>'; return; }
       try {
         const res = await fetch(xSocialPrefix + "/students", {
@@ -3397,7 +3399,7 @@ async function postTelegramSnapshot() {
     }
 
     async function postReportCard(sessionId, btn) {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       btn.disabled = true;
       const origText = btn.textContent;
@@ -3426,7 +3428,7 @@ async function postTelegramSnapshot() {
     }
 
     async function postClassPhoto(btn) {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       btn.disabled = true;
       const origText = btn.textContent;
@@ -3466,7 +3468,7 @@ async function postTelegramSnapshot() {
 
     // Find chat ID from recent updates
     async function refreshTelegram() {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       try {
         const res = await fetch(xSocialPrefix + "/telegram", {
@@ -3484,7 +3486,7 @@ async function postTelegramSnapshot() {
     
     
     async function showClassPhotoHistory() {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       const panel = document.getElementById("students-panel");
       panel.innerHTML = '<div class="empty">Loading class photos…</div>';
@@ -3511,7 +3513,7 @@ async function postTelegramSnapshot() {
     refreshTelegram();
     refreshStudents();
     async function postX(teacherId, btn) {
-      const token = localStorage.getItem(tokenKey);
+      const token = sessionStorage.getItem(tokenKey);
       if (!token) return;
       btn.disabled = true;
       const origText = btn.textContent;

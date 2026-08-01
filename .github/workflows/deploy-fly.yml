@@ -23,7 +23,7 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: npm audit --omit=dev || true
+      - run: npm run audit:prod
       - run: npm run check:full
       - run: npm run test:coverage
 

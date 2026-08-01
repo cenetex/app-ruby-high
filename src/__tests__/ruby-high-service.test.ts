@@ -2933,6 +2933,7 @@ describe("RubyHighService Phase 1", () => {
       expect(ruby.publicWorldSummarySnapshot(now + 1).studySparks.byGrade["10"]).toBe(day + 1);
     }
     const rallyAt = start + 6 * 24 * 60 * 60 * 1000;
+    usePublicWorldFixtureTime(rallyAt + 60_000);
     expect(ruby.publicWorldSummarySnapshot(rallyAt).termProgress).toMatchObject({
       totalSparks: 6,
       level: 2,

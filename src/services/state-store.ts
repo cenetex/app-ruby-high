@@ -828,7 +828,7 @@ export class StateStore implements StateStoreLike {
 
   private async writeCurrentSnapshot(): Promise<void> {
     const dir = dirname(this.path);
-    await mkdir(dir, { recursive: true });
+    await mkdir(dir, { recursive: true, mode: 0o700 });
     const tmp = resolve(dir, `.${basename(this.path)}.${process.pid}.${nextStateStoreWriteSeq()}.tmp`);
     try {
       await writeFile(tmp, JSON.stringify({
@@ -842,7 +842,7 @@ export class StateStore implements StateStoreLike {
         metricEvents: Array.from(this.metricEvents.values()),
         schoolEvents: Array.from(this.schoolEvents.values()),
         serviceStates: Array.from(this.serviceStates.values()),
-      }, null, 2), "utf8");
+      }, null, 2), { encoding: "utf8", mode: 0o600 });
       await rename(tmp, this.path);
     } catch (err) {
       try { await unlink(tmp); } catch {}

@@ -11,8 +11,8 @@ import {
   llmChatCompletionsUrl,
   llmHeaders,
   llmProviderName,
+  prepareLlmRequestBody,
   resolveLlmApiKey,
-  resolveLlmModel,
 } from "./llm-provider.js";
 
 export interface PublicTeacherProvider {
@@ -67,10 +67,7 @@ export async function* streamTeacherCompletion(opts: {
     yield* chatCompletionStream({
       url: llmChatCompletionsUrl(),
       headers: llmHeaders(apiKey),
-      body: {
-        ...opts.body,
-        model: resolveLlmModel(typeof opts.body.model === "string" ? opts.body.model : null),
-      },
+      body: prepareLlmRequestBody(opts.body),
       label: opts.label ?? "local-teacher-stream",
       providerName: llmProviderName(),
       timeoutMs: OPENROUTER_STREAM_TIMEOUT_MS,
@@ -80,7 +77,7 @@ export async function* streamTeacherCompletion(opts: {
   yield* openRouterStream({
     apiKey,
     label: opts.label,
-    body: opts.body,
+    body: prepareLlmRequestBody(opts.body),
   });
 }
 

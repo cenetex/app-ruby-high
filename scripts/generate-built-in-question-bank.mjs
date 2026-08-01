@@ -6,7 +6,7 @@ const root = resolve(import.meta.dirname, "..");
 const TARGET_COUNT = Number(argValue("target") ?? 200);
 const PROVIDER = (argValue("provider") ?? process.env.RUBY_HIGH_LLM_PROVIDER ?? "openrouter").toLowerCase();
 const BATCH_SIZE = Number(argValue("batch") ?? (PROVIDER === "local" ? 2 : 10));
-const MODEL = argValue("model") ?? process.env.RUBY_HIGH_COURSE_MODEL ?? (PROVIDER === "local" ? "gemma4:latest" : "qwen/qwen3.7-max");
+const MODEL = argValue("model") ?? process.env.RUBY_HIGH_COURSE_MODEL ?? (PROVIDER === "local" ? "gemma4:latest" : "openai/gpt-5.6-terra");
 const CHAT_COMPLETIONS_URL = PROVIDER === "local"
   ? normalizeChatCompletionsUrl(argValue("base-url") ?? process.env.RUBY_HIGH_LLM_BASE_URL ?? "http://127.0.0.1:11434/v1")
   : "https://openrouter.ai/api/v1/chat/completions";
@@ -285,8 +285,12 @@ async function generateBatch(args) {
           ],
           max_tokens: maxTokens,
           response_format: PROVIDER === "local" ? undefined : { type: "json_object" },
-          options: PROVIDER === "local" ? { num_predict: maxTokens, temperature: 0.35 } : undefined,
-          temperature: 0.48,
+          ...(PROVIDER === "local"
+            ? {
+                options: { num_predict: maxTokens, temperature: 0.35 },
+                temperature: 0.48,
+              }
+            : {}),
         }),
       });
     } catch (err) {
@@ -367,8 +371,12 @@ async function getResearchBrief(args) {
           ],
           max_tokens: PROVIDER === "local" ? 2400 : 1400,
           response_format: PROVIDER === "local" ? undefined : { type: "json_object" },
-          options: PROVIDER === "local" ? { num_predict: 2400, temperature: 0.35 } : undefined,
-          temperature: 0.38,
+          ...(PROVIDER === "local"
+            ? {
+                options: { num_predict: 2400, temperature: 0.35 },
+                temperature: 0.38,
+              }
+            : {}),
         }),
       });
     } catch (err) {
