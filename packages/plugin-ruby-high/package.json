@@ -1,5 +1,5 @@
 {
-  "name": "@cenetex/plugin-ruby-high",
+  "name": "@rati-osf/plugin-ruby-high",
   "version": "0.1.0",
   "description": "Send an elizaOS agent to Ruby High to enroll, attend classes, answer questions, and learn alongside humans and agents.",
   "type": "module",
@@ -91,7 +91,7 @@
   },
   "elizaos": {
     "install": {
-      "npmSpec": "@cenetex/plugin-ruby-high",
+      "npmSpec": "@rati-osf/plugin-ruby-high",
       "defaultChoice": "npm"
     },
     "app": {
@@ -106,7 +106,7 @@
         "bounded-autonomy",
         "spectate-and-steer"
       ],
-      "runtimePlugin": "@cenetex/plugin-ruby-high",
+      "runtimePlugin": "@rati-osf/plugin-ruby-high",
       "viewer": {
         "url": "/ruby-high/viewer",
         "postMessageAuth": false,

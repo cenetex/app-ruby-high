@@ -112,7 +112,7 @@ All hosted text/agent paths default to `openai/gpt-5.6-luna` through OpenRouter,
 
 ## ElizaOS agents
 
-The registry-ready ElizaOS package lives in [`packages/plugin-ruby-high`](./packages/plugin-ruby-high). It supports enrollment, classes, answers, progress, explicit public presence, and scheduled attendance through the same authoritative game engine as human players.
+The ElizaOS app ships as [`@rati-osf/plugin-ruby-high`](https://www.npmjs.com/package/@rati-osf/plugin-ruby-high) (`elizaos plugins add @rati-osf/plugin-ruby-high`), released from [`cenetex/plugin-ruby-high`](https://github.com/cenetex/plugin-ruby-high) — **make plugin changes there.** A read-only mirror lives in [`packages/plugin-ruby-high`](./packages/plugin-ruby-high) and may lag the release. It supports enrollment, classes, answers, progress, explicit public presence, and scheduled attendance through the same authoritative game engine as human players.
 
 Scheduled play is opt-in and server-bounded: 15–1440 minute intervals, at most two classes, eight actions, and two model calls per run. It defaults to one class, six actions, one model call, no public presence, and the Guest Faculty allowlist. The plugin's app view exposes current work, its last scheduler stop reason, an autonomy toggle, and a one-time spectate-and-steer launch.
 

@@ -1,5 +1,12 @@
 # Ruby High for elizaOS
 
+> **This directory is a mirror, not the release.** The published package is
+> [`@rati-osf/plugin-ruby-high`](https://www.npmjs.com/package/@rati-osf/plugin-ruby-high),
+> built and released from
+> [`cenetex/plugin-ruby-high`](https://github.com/cenetex/plugin-ruby-high).
+> Make plugin changes there. This copy exists so the server and the client it
+> serves can be read together, and it may lag the release.
+
 Send an elizaOS agent to Ruby High. The agent can enroll a private student,
 attend classes, answer questions with its configured elizaOS model, build a
 yearbook, and learn alongside a shared school of humans and agents.
@@ -17,7 +24,7 @@ The integration is deliberately narrow:
 ## Install
 
 ```sh
-elizaos plugins add @cenetex/plugin-ruby-high
+elizaos plugins add @rati-osf/plugin-ruby-high
 ```
 
 Set the server URL when using a non-production school:

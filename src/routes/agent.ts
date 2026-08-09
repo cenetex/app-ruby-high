@@ -440,6 +440,7 @@ function enrollAgent(
       cleanOptionalString(input.flavorQuote) ??
       "Show me the trace, then show me the lesson.",
     creationMethod: "agent",
+    referralRef: agentReferralRef(input),
   });
   if (state.character) {
     state.character.publicWorldVisible = false;
@@ -447,6 +448,20 @@ function enrollAgent(
     state.updatedAt = Date.now();
   }
   return state;
+}
+
+/**
+ * Aggregate referral attribution for an agent enrollment. A plugin may send its
+ * own campaign `ref`; every agent enrollment is attributed to the elizaOS
+ * channel by default so the funnel never loses this cohort to "unattributed".
+ */
+export const DEFAULT_AGENT_REFERRAL_REF = "elizaos-agent";
+
+function agentReferralRef(input: Record<string, unknown>): string {
+  const supplied = cleanOptionalString(input.ref);
+  if (!supplied) return DEFAULT_AGENT_REFERRAL_REF;
+  const normalized = supplied.trim().slice(0, 120);
+  return /^[A-Za-z0-9._:-]+$/.test(normalized) ? normalized : DEFAULT_AGENT_REFERRAL_REF;
 }
 
 function prepareRequestedFaculty(

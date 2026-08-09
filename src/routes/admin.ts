@@ -1729,10 +1729,10 @@ function buildAdminMetricsSchema(): {
       {
         path: "ruby.events.referral",
         label: "Share loop",
-        source: "StoredMetricEventRecord share_artifact_created, share_initiated, and share_link_visited",
-        semantics: "Shareable artifact creation, outbound share starts, inbound link visits, unique referred visitors, click-through rates, and bounded per-ref visit/visitor attribution.",
+        source: "StoredMetricEventRecord share_artifact_created, share_initiated, share_link_visited, and funnel_step first_character_created",
+        semantics: "Shareable artifact creation, outbound share starts, inbound link visits, unique referred visitors, click-through rates, and bounded per-ref visit/visitor/enrollment attribution.",
         reliability: "authoritative",
-        caveat: "Link visits are recorded when a referred visitor reaches the viewer with a ref parameter; visits to static share pages alone are not counted.",
+        caveat: "Link visits are recorded when a referred visitor reaches the viewer with a ref parameter; visits to static share pages alone are not counted. byRef enrollments count attributed character creations and are not limited to refs that also produced a link visit, so an agent-channel ref can report enrollments with zero visits.",
       },
       {
         path: "ruby.guestSpotlight",

@@ -330,6 +330,56 @@ describe("Ruby High Agent API", () => {
     });
   });
 
+  it("attributes agent enrollments to the elizaOS channel by default", async () => {
+    const connect = async (agentName: string) => {
+      const issued = await access.issueDeviceCode({
+        agentName,
+        scopes: ["school:read", "student:play"],
+      });
+      await access.approveDeviceCode(issued.userCode, `rh:user:${agentName}`);
+      const exchanged = await access.exchangeDeviceCode(issued.deviceCode);
+      if (exchanged.status !== "approved") throw new Error("Expected approved token.");
+      return exchanged;
+    };
+
+    // No ref supplied: the enrollment must still be attributable to the channel.
+    const plain = await connect("Default Agent");
+    await request({
+      path: `${AGENT_API_PREFIX}/enroll`,
+      body: { requestId: "attribution-default", name: "Default Agent" },
+      authorization: `Bearer ${plain.accessToken}`,
+    });
+
+    // A plugin-supplied campaign ref refines the attribution.
+    const campaign = await connect("Campaign Agent");
+    await request({
+      path: `${AGENT_API_PREFIX}/enroll`,
+      body: {
+        requestId: "attribution-campaign",
+        name: "Campaign Agent",
+        ref: "elizaos-registry",
+      },
+      authorization: `Bearer ${campaign.accessToken}`,
+    });
+
+    // A hostile ref falls back to the channel default rather than being stored.
+    const hostile = await connect("Hostile Agent");
+    await request({
+      path: `${AGENT_API_PREFIX}/enroll`,
+      body: {
+        requestId: "attribution-hostile",
+        name: "Hostile Agent",
+        ref: "<script>alert(1)</script>",
+      },
+      authorization: `Bearer ${hostile.accessToken}`,
+    });
+
+    const byRef = ruby.analyticsSnapshot().events.referral.byRef;
+    expect(byRef["elizaos-agent"]).toMatchObject({ enrollments: 2, visits: 0 });
+    expect(byRef["elizaos-registry"]).toMatchObject({ enrollments: 1, visits: 0 });
+    expect(Object.keys(byRef)).not.toContain("<script>alert(1)</script>");
+  });
+
   async function request(args: {
     method?: "GET" | "POST";
     path: string;

@@ -63,7 +63,7 @@
       "bounded-autonomy",
       "spectate-and-steer"
     ],
-    "runtimePlugin": "@cenetex/plugin-ruby-high",
+    "runtimePlugin": "@rati-osf/plugin-ruby-high",
     "viewer": {
       "url": "/ruby-high/viewer",
       "postMessageAuth": false,

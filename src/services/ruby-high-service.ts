@@ -9296,6 +9296,8 @@ export class RubyHighService extends Service {
       portraitDataUrl?: string;
       mentorAccepted?: boolean;
       creationMethod?: "custom" | "quick-roll" | "agent";
+      /** Aggregate referral attribution for the source that produced this student. */
+      referralRef?: string;
     },
   ): QuizState {
     const state = this.getOrCreate(sessionId);
@@ -9363,6 +9365,7 @@ export class RubyHighService extends Service {
       playbookId: input.playbookId,
       mentorAccepted: !!inheritedFrom,
       creationMethod: input.creationMethod ?? "custom",
+      ...(input.referralRef ? { ref: clippedMetricValue(input.referralRef, 120) } : {}),
     });
     return state;
   }
@@ -13231,7 +13234,15 @@ function buildMetricEventsSnapshot(
     uniqueVisitors: 0,
   };
   const referredVisitors = new Set<string>();
-  const referralByRef = new Map<string, { visits: number; visitors: Set<string> }>();
+  const referralByRef = new Map<
+    string,
+    { visits: number; visitors: Set<string>; enrollments: number }
+  >();
+  const referralBucket = (ref: string) => {
+    const bucket = referralByRef.get(ref) ?? { visits: 0, visitors: new Set<string>(), enrollments: 0 };
+    referralByRef.set(ref, bucket);
+    return bucket;
+  };
   const referral = {
     artifactsCreated: 0,
     sharesInitiated: 0,
@@ -13239,7 +13250,7 @@ function buildMetricEventsSnapshot(
     uniqueReferredVisitors: 0,
     shareClickThroughRate: null as number | null,
     uniqueShareClickThroughRate: null as number | null,
-    byRef: {} as Record<string, { visits: number; uniqueVisitors: number }>,
+    byRef: {} as Record<string, { visits: number; uniqueVisitors: number; enrollments: number }>,
   };
   const guestSpotlight = {
     seen: 0,
@@ -13295,7 +13306,11 @@ function buildMetricEventsSnapshot(
       if (day) day.sessionResumes += 1;
     } else if (event.name === "funnel_step") {
       if (day) day.funnelSteps += 1;
-      if (event.step === "first_character_created") funnel.firstCharacterCreated += 1;
+      if (event.step === "first_character_created") {
+        funnel.firstCharacterCreated += 1;
+        const ref = typeof event.metadata?.ref === "string" ? event.metadata.ref : "";
+        if (ref) referralBucket(ref).enrollments += 1;
+      }
       else if (event.step === "first_question_answered") funnel.firstQuestionAnswered += 1;
       else if (event.step === "first_bell_report_awarded") funnel.firstBellReportAwarded += 1;
       else if (event.step === "first_essay_submitted") funnel.firstEssaySubmitted += 1;
@@ -13330,10 +13345,9 @@ function buildMetricEventsSnapshot(
       if (event.visitorHash) referredVisitors.add(event.visitorHash);
       const ref = typeof event.metadata?.ref === "string" ? event.metadata.ref : "";
       if (ref) {
-        const bucket = referralByRef.get(ref) ?? { visits: 0, visitors: new Set<string>() };
+        const bucket = referralBucket(ref);
         bucket.visits += 1;
         if (event.visitorHash) bucket.visitors.add(event.visitorHash);
-        referralByRef.set(ref, bucket);
       }
     } else if (event.name === "guest_spotlight_seen") {
       guestSpotlight.seen += 1;
@@ -13390,9 +13404,16 @@ function buildMetricEventsSnapshot(
     : null;
   referral.byRef = Object.fromEntries(
     Array.from(referralByRef.entries())
-      .sort((a, b) => b[1].visits - a[1].visits || a[0].localeCompare(b[0]))
+      .sort((a, b) =>
+        b[1].visits - a[1].visits ||
+        b[1].enrollments - a[1].enrollments ||
+        a[0].localeCompare(b[0]))
       .slice(0, 50)
-      .map(([ref, bucket]) => [ref, { visits: bucket.visits, uniqueVisitors: bucket.visitors.size }]),
+      .map(([ref, bucket]) => [ref, {
+        visits: bucket.visits,
+        uniqueVisitors: bucket.visitors.size,
+        enrollments: bucket.enrollments,
+      }]),
   );
   const conversionFunnel = {
     totalVisitors: visitorHashes.size,
