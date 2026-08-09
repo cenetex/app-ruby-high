@@ -139,21 +139,22 @@ function fakePack(id: string): ContentPack {
 function fakeQuestionPack(id: string): ContentPack {
   const pack = fakePack(id);
   const faculty = pack.faculty[0]!;
-  faculty.questions = [{
-    id: `${id}-q1`,
+  faculty.questions = Array.from({ length: 4 }, (_, index) => ({
+    id: `${id}-q${index + 1}`,
     faculty: faculty.id,
-    prompt: "What makes this published pack editable?",
+    prompt: `What makes published pack editing step ${index + 1} reliable?`,
     subject: "creator-tools",
-    difficulty: "easy",
+    difficulty: "easy" as const,
+    stat: (["head", "heart", "hustle", "honor"] as const)[index],
     options: {
-      A: "An owner edit draft",
-      B: "A read-only system pack",
-      C: "A hidden lounge room",
-      D: "A stale install record",
+      A: `An owner edit draft with validation ${index + 1}`,
+      B: `A read-only system pack copy ${index + 1}`,
+      C: `A hidden lounge room state ${index + 1}`,
+      D: `A stale install record value ${index + 1}`,
     },
     correct: "A",
-    explanation: "Published creator packs can be opened through an owner edit draft.",
-  }];
+    explanation: "Published creator packs can be opened through a validated owner edit draft.",
+  }));
   return pack;
 }
 
@@ -511,9 +512,9 @@ describe("/pack-library", () => {
     expect(response.body.packs[0]).toMatchObject({
       id: pack.id,
       source: "creator",
-      installed: true,
+      installed: false,
       enabled: false,
-      active: true,
+      active: false,
       owner: false,
     });
 
@@ -528,7 +529,7 @@ describe("/pack-library", () => {
       source: "creator",
       installed: true,
       enabled: true,
-      active: true,
+      active: false,
     });
 
     response = await route({
@@ -582,10 +583,70 @@ describe("/pack-library", () => {
     });
     expect(response.body.packs[0]).toMatchObject({
       id: pack.id,
-      installed: true,
+      installed: false,
       enabled: false,
-      active: true,
+      active: false,
     });
+  });
+
+  it("keeps private published packs owner-scoped across search, share, and reviews", async () => {
+    const aliceSessionId = signInUser("alice");
+    signInUser("bob");
+    const pack = fakeQuestionPack("pack:private-owner-only");
+    pack.name = "Private Owner Course";
+    const now = Date.now();
+    await ruby.persistPublicTeacherPack(pack, {
+      creatorUserId: "test-alice",
+      courseSlot: {
+        id: "course-slot-private-owner-only",
+        ownerUserId: "test-alice",
+        ownerSessionId: aliceSessionId,
+        draftId: "draft-private-owner-only",
+        shareSlug: "private-owner-only",
+        visibility: "private",
+        status: "published",
+        walletTransactionId: "wallet-private-owner-only",
+        createdAt: now,
+        updatedAt: now,
+        packId: pack.id,
+        publishedAt: now,
+      },
+    });
+
+    let response = await route({
+      method: "GET",
+      path: `/api/apps/ruby-high/pack/${encodeURIComponent(pack.id)}?format=json`,
+    });
+    expect(response.status).toBe(404);
+
+    response = await route({
+      method: "GET",
+      path: `/api/apps/ruby-high/pack/${encodeURIComponent(pack.id)}?format=json`,
+      cookie: "rh_session=bob",
+    });
+    expect(response.status).toBe(404);
+
+    response = await route({
+      method: "GET",
+      path: `/api/apps/ruby-high/pack/${encodeURIComponent(pack.id)}?format=json`,
+      cookie: "rh_session=alice",
+    });
+    expect(response.status).toBe(200);
+
+    response = await route({
+      method: "GET",
+      path: "/api/apps/ruby-high/pack-library/search?q=private+owner",
+      cookie: "rh_session=bob",
+    });
+    expect(response.body.packs).toEqual([]);
+
+    response = await route({
+      method: "POST",
+      path: `/api/apps/ruby-high/pack/${encodeURIComponent(pack.id)}/review`,
+      cookie: "rh_session=bob",
+      body: { rating: 5 },
+    });
+    expect(response.status).toBe(404);
   });
 
   it("serves and reviews encoded creator pack share ids", async () => {
@@ -1388,6 +1449,47 @@ describe("/pack-library", () => {
     expect(ruby.hallPassBalance(aliceSessionId)).toBe(0);
   });
 
+  it("rejects duplicate public-course questions before reserving a paid slot", async () => {
+    const aliceSessionId = signInUser("alice");
+    const now = Date.now();
+    const questions = structuredClone(fakeQuestionPack("pack:invalid-public").faculty[0]!.questions);
+    questions[1]!.prompt = questions[0]!.prompt;
+    await ruby.saveDraftPackRecord({
+      id: "draft-invalid-public",
+      ownerUserId: "test-alice",
+      ownerSessionId: aliceSessionId,
+      name: "Invalid Public Course",
+      description: "A public course that must pass editorial validation.",
+      visibility: "public",
+      teachers: [{
+        id: "teacher-invalid-public",
+        displayName: "Validation Coach",
+        subject: "creator tools",
+        description: "Teaches reliable course publishing.",
+        materials: "Reliable publishing requires distinct, grounded questions.",
+        sourceCards: [],
+        questions,
+        generationCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      }],
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const response = await route({
+      method: "POST",
+      path: "/api/apps/ruby-high/pack-drafts/draft-invalid-public/publish",
+      cookie: "rh_session=alice",
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("Publish validation failed");
+    expect(response.body.error).toContain("duplicates");
+    expect(ruby.hallPassBalance(aliceSessionId)).toBe(0);
+    expect((await ruby.listPersistedPackRecords()).some((entry) => entry.pack.id === "pack:draft-invalid-public")).toBe(false);
+  });
+
   it("charges a fresh course slot spend after a refunded reservation failure", async () => {
     const aliceSessionId = signInUser("alice");
     ruby.claimWelcomeHallPasses(aliceSessionId);
@@ -1684,7 +1786,7 @@ describe("/pack-library", () => {
       source: "creator",
       installed: true,
       enabled: true,
-      active: true,
+      active: false,
       owner: true,
       canEdit: true,
       draftId,
@@ -1758,7 +1860,7 @@ describe("/pack-library", () => {
     });
     expect(response.body.packs.find((pack: { id: string }) => pack.id === packId)).toMatchObject({
       enabled: false,
-      active: true,
+      active: false,
     });
     expect(response.body.packs.find((pack: { id: string }) => pack.id === ORIGINAL_PACK_ID)).toMatchObject({
       enabled: true,
@@ -1949,6 +2051,8 @@ describe("/pack-library", () => {
     expect(questionRequest.model).toBe(DEFAULT_COURSE_MODEL);
     const questionPrompt = questionRequest.messages[1].content as string;
     expect(questionPrompt).toContain("Current teacher balance: 8 existing cards.");
+    expect(questionPrompt).toContain("Existing generated question prompts to avoid:");
+    expect(questionPrompt).toContain("Existing easy fact card 1?");
     expect(questionPrompt).toContain("Difficulty counts: easy=8, medium=0, hard=0.");
     expect(questionPrompt).toContain("Stat counts: head=8, heart=0, hustle=0, honor=0.");
     expect(questionPrompt).toContain("difficulty=medium, stat=heart");
@@ -1969,10 +2073,10 @@ describe("/pack-library", () => {
     expect(listed).toMatchObject({
       id: pack.id,
       owner: true,
-      installed: true,
+      installed: false,
       canEdit: true,
       canDelete: true,
-      canUninstall: true,
+      canUninstall: false,
     });
     expect(listed.draftId).toBeUndefined();
 
@@ -1996,7 +2100,7 @@ describe("/pack-library", () => {
     });
     expect(response.body.draft.teachers[0]).toMatchObject({
       displayName: pack.faculty[0]!.displayName,
-      questionCount: 1,
+      questionCount: 4,
     });
 
     response = await route({

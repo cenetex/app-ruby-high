@@ -160,16 +160,16 @@
       "subject": "runtime-mental-model",
       "difficulty": "hard",
       "stat": "heart",
-      "prompt": "Which design best separates agent reasoning from domain authority?",
-      "correct": "The model chooses an action; the domain service validates and safely applies it",
+      "prompt": "A domain service rejects an action chosen by an ElizaOS model. What should the runtime do next?",
+      "correct": "Return a structured failure, then explain or re-plan without mutating state",
       "decoys": [
-        "The model validates its own request and writes the accepted mutation directly",
-        "The provider chooses an effect and treats retrieved memory as current authority",
-        "The client awards the result and sends the runtime a completed state snapshot",
-        "Each plugin owns a copy of domain state and resolves differences after the turn",
-        "The model emits a confidence score and high confidence bypasses service policy"
+        "Retry the same mutation until the service accepts the model's original decision",
+        "Write the intended state first, then attach the service rejection as a warning",
+        "Ask the client to apply the mutation and report a completed state snapshot",
+        "Treat model confidence as authority and bypass the rejected service validation",
+        "Store the rejected action as successful memory so later turns stay consistent"
       ],
-      "explanation": "The agent can reason about intent, but deterministic domain code must validate effects and own authoritative state.",
+      "explanation": "A structured failure preserves domain authority while giving the agent enough information to explain the outcome or choose a safe alternative.",
       "minGrade": "12"
     },
     {
@@ -603,7 +603,7 @@
       "difficulty": "easy",
       "stat": "honor",
       "prompt": "Which fact is safest for an ElizaOS agent to store as durable learning history?",
-      "correct": "The agent's completed task result",
+      "correct": "A sanitized task result with purpose, provenance, and retention limits",
       "decoys": [
         "The connector's raw bearer token",
         "An unrevealed answer key",
@@ -611,7 +611,7 @@
         "The current state version copied without its source or retrieval time",
         "The model's private reasoning from each unsuccessful attempt"
       ],
-      "explanation": "Completed outcomes support continuity; secrets and unrevealed answers should not become ordinary memory.",
+      "explanation": "Durable memory should be minimized, sanitized, attributable to a source, tied to a purpose, and governed by retention limits.",
       "minGrade": "9"
     },
     {

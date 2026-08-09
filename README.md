@@ -93,7 +93,7 @@ No hosted account or OpenRouter key is needed for these:
 - `GET /api/apps/ruby-high/admin` renders a browser dashboard for the token-gated usage snapshot, 14-day charts, and an operator overview. Paste the admin token once; the page stores it locally and calls admin endpoints with a Bearer header.
 - `POST /api/apps/ruby-high/metrics/event` records first-party viewer events. The bundled viewer sends durable `app_open` on boot and `session_resume` after returning from five-plus minutes inactive.
 - `GET /api/apps/ruby-high/admin/metrics` returns a compact JSON snapshot for retention tuning: auth identity records/sessions, visitor counts, 14-day auth/play/event series, Ruby High session progression, visitor and character D1 retention, durable metric events, public-read/live-stream ops, and in-process log counters. `auth.users` is identity records, not unique humans. It is disabled until `RUBY_HIGH_ADMIN_TOKEN` is set and accepts either `Authorization: Bearer <token>` or the exact token value.
-- `GET /api/apps/ruby-high/admin/metrics/schema` publishes the current admin metrics contract (`ruby-high-admin-metrics.v5`): field semantics, reliability levels, caveats, and the durable event streams for traffic, retention, funnel, commerce, LLM, and errors.
+- `GET /api/apps/ruby-high/admin/metrics/schema` publishes the current admin metrics contract (`ruby-high-admin-metrics.v7`): field semantics, reliability levels, caveats, and the durable event streams for traffic, retention, funnel, commerce, LLM, and errors.
 - `GET /api/apps/ruby-high/admin/overview` returns a token-gated LLM-generated operator overview built only from aggregate metrics. It requires the normal server LLM credential.
 - `GET /api/apps/ruby-high/yearbook/:shareId/:grade` renders a static public yearbook card for a sealed grade. Sealed year cards expose Open/Copy controls in the viewer. `?format=json` returns card data, `?format=svg` returns the fallback social image, and `?format=png` serves or redirects to the generated yearbook image when present before falling back to SVG.
 - `GET /api/apps/ruby-high/cohort/:grade` renders the classroom cohort leaderboard for the current grade, scoped to active sessions at that year level.
@@ -103,7 +103,7 @@ No hosted account or OpenRouter key is needed for these:
 
 ## Service Wiring
 
-The standalone server starts the school, faculty, auth, chat, agent-access, and configured social services backed by the content-pack registry under `src/content/`. Ruby High Original is always the base school; public creator packs rotate into one Guest Faculty course automatically each week. Eliza's built-in 64-question ElizaOS Systems Lab is the first curated guest course, and Eliza remains available as a collectible teacher card.
+The standalone server starts the school, faculty, auth, chat, agent-access, and configured social services backed by the content-pack registry under `src/content/`. Ruby High Original is always the base school; public creator packs rotate into one Guest Faculty course automatically each week. Eliza's built-in 96-question ElizaOS Systems Lab is the first curated guest course, and Eliza remains available as a collectible teacher card.
 
 All hosted text/agent paths default to `openai/gpt-5.6-luna` through OpenRouter, including faculty dialogue and tool use, NPC opinion chimes, guest faculty, character text, social posts, creator drafts, and voice evaluation. Course and question-bank generation use `openai/gpt-5.6-terra`. Image generation keeps its dedicated image-capable models.
 
@@ -202,6 +202,8 @@ Web purchases use Stripe Checkout for Hall Passes only:
 - `GET /api/apps/ruby-high/billing/products` returns Hall Pass top-ups, hosted image costs, and the separate Solana pack quote surface.
 - `POST /api/apps/ruby-high/billing/ai-pass` is retired and returns `410`; server-hosted text AI is sponsored when configured, and player chat spends Merit Stars.
 - Publishing a draft course reserves a creator course slot for 3 Hall Passes. BYOK/local course generation does not spend Hall Passes.
+- Course visibility is enforced end to end: private courses are owner-only, unlisted courses are link-accessible but omitted from discovery/rotation, and only public courses enter search or weekly Guest Faculty rotation.
+- Publishing validates question structure, explanations, duplicate prompts, grade gates, source metadata, and public-course difficulty/stat balance before spending a course slot.
 - Generate More Questions is free with browser OpenRouter or local LLM access; when it uses the server-hosted OpenRouter key, it spends 1 Hall Pass per run.
 - Unlocking an extra student slot costs 1 Hall Pass and grants a Photo Day credit; hosted character portraits consume that credit before spending a Hall Pass.
 - `POST /api/apps/ruby-high/billing/checkout` creates a Stripe Checkout Session for Hall Passes for the signed-in Ruby High cookie session.

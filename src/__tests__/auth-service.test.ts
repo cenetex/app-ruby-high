@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AuthService } from "../services/auth-service.js";
+import { AuthService, clientSurfaceFromUserAgent } from "../services/auth-service.js";
 import { StateStore, type AuthStoreSnapshot, type AuthSessionRecord, type AuthUserRecord, type StateStoreLike } from "../services/state-store.js";
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -166,6 +166,28 @@ describe("AuthService.gcSessions", () => {
     expect(again.record.userId).toBe(first.record.userId);
     expect(auth.resolve(first.token)?.userId).toBe(first.record.userId);
     expect(auth.stateKeyForToken(first.token)).toBe(`rh:user:${first.record.userId}`);
+  });
+
+  it("persists scheduled smoke identity and excludes it from product analytics", async () => {
+    const auth = await freshAuth();
+    const human = await auth.createGuestSession(null, "rhv_human_visitor_123");
+    const smoke = await auth.createGuestSession(null, null, "smoke");
+
+    expect(smoke.record.clientSurface).toBe("smoke");
+    expect(auth.resolve(smoke.token)?.clientSurface).toBe("smoke");
+    expect(auth.analyticsSnapshot()).toMatchObject({
+      users: 1,
+      unexpiredAuthSessions: 1,
+      excludedSynthetic: { users: 1, sessions: 1 },
+    });
+    expect(auth.resolve(human.token)?.clientSurface).toBeUndefined();
+  });
+
+  it("classifies coarse client surfaces without retaining raw user agents", () => {
+    expect(clientSurfaceFromUserAgent("RubyHighSmoke/1.0")).toBe("smoke");
+    expect(clientSurfaceFromUserAgent("Mozilla/5.0 AppleWebKit/537.36")).toBe("viewer");
+    expect(clientSurfaceFromUserAgent("curl/8.7.1")).toBe("api");
+    expect(clientSurfaceFromUserAgent("custom-client")).toBeUndefined();
   });
 
   it("reuses a guest identity when the cookie is lost but the visitor id remains", async () => {

@@ -11,7 +11,14 @@ import {
 } from "../services/ruby-high-service.js";
 import { SqliteStateStore } from "../services/sqlite-state-store.js";
 import { StateStore, type StateStoreLike, type StoredServiceStateRecord } from "../services/state-store.js";
-import { getLoadedPack, MAX_PACKS_PER_OWNER, registerPack, resetActivePack } from "../content/registry.js";
+import {
+  getLoadedPack,
+  getPackByIdForSession,
+  MAX_PACKS_PER_OWNER,
+  publicCreatorPacks,
+  registerPack,
+  resetActivePack,
+} from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
 import { FIRST_BELL_SET_CODE, FIRST_BELL_SET_NAME } from "../services/hall-pass-card-catalog.js";
 import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
@@ -870,6 +877,63 @@ function fakeAnkiPackWithSally(id = "anki:vocab-test", questionId = "vocab-q1"):
 }
 
 describe("imported pack persistence", () => {
+  it("cleans abandoned empty private drafts at startup", async () => {
+    const old = Date.now() - 60 * 60 * 1000;
+    await new StateStore(storePath).saveDraftPack({
+      id: "draft-abandoned-empty",
+      ownerUserId: "inactive-owner",
+      ownerSessionId: "rh:user:inactive-owner",
+      name: "Untitled Content Pack",
+      description: "",
+      visibility: "private",
+      teachers: [],
+      createdAt: old,
+      updatedAt: old,
+    });
+
+    const { ruby } = await makeServices();
+    expect(await ruby.listDraftPackRecords()).toEqual([]);
+    await ruby.flush();
+    expect(await new StateStore(storePath).loadDraftPacks()).toEqual([]);
+  });
+
+  it("migrates legacy private creator packs out of the global registry", async () => {
+    const ownerSessionId = "rh:user:private-pack-owner";
+    const pack = fakeAnkiPackWithSally("pack:legacy-private-course", "legacy-private-q");
+    const now = Date.now();
+    await new StateStore(storePath).savePack({
+      pack,
+      ownerSessionId: null,
+      creatorUserId: "private-pack-owner",
+      courseSlot: {
+        id: "slot-legacy-private-course",
+        ownerUserId: "private-pack-owner",
+        ownerSessionId,
+        draftId: "draft-legacy-private-course",
+        shareSlug: "legacy-private-course",
+        visibility: "private",
+        status: "published",
+        walletTransactionId: "wallet-legacy-private-course",
+        createdAt: now,
+        updatedAt: now,
+        packId: pack.id,
+        publishedAt: now,
+      },
+      touchedAt: now,
+    });
+
+    const { ruby } = await makeServices();
+    expect(getPackByIdForSession(pack.id, null)).toBeNull();
+    expect(getPackByIdForSession(pack.id, ownerSessionId)?.id).toBe(pack.id);
+    expect(publicCreatorPacks().map((entry) => entry.id)).not.toContain(pack.id);
+
+    await ruby.flush();
+    const stored = (await new StateStore(storePath).loadPacks())
+      .filter((entry) => entry.pack.id === pack.id);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ ownerSessionId, visibility: "private" });
+  });
+
   it("does not let a persisted global built-in snapshot override bundled question assets", async () => {
     const staleOriginal: ContentPack = {
       ...fakeAnkiPackWithSally("ruby-high-original", "stale-global-q"),
@@ -5591,10 +5655,12 @@ describe("RubyHighService Phase 1", () => {
     ruby.recordMetricEvent("class_result_viewed", { sessionId: human, step: "class_result", source: "viewer" });
 
     ruby.recordAppOpen(smoke, { clientSurface: "smoke" });
+    ruby.markSyntheticSession(smoke);
     ruby.recordMetricEvent("funnel_step", { sessionId: smoke, step: "first_character_created", source: "smoke" });
 
-    const events = ruby.analyticsSnapshot(Date.now()).events;
-    expect(events.activationFunnel.raw).toMatchObject({ sampleSize: 2, eligibleSessions: 2 });
+    const analytics = ruby.analyticsSnapshot(Date.now());
+    const events = analytics.events;
+    expect(events.activationFunnel.raw).toMatchObject({ sampleSize: 1, eligibleSessions: 1 });
     expect(events.activationFunnel.humanViewer).toMatchObject({ sampleSize: 1, eligibleSessions: 1 });
     expect(Object.fromEntries(events.activationFunnel.humanViewer.steps.map((step) => [step.key, step.uniqueSessions]))).toMatchObject({
       app_open: 1,
@@ -5610,6 +5676,31 @@ describe("RubyHighService Phase 1", () => {
       result_viewed: 1,
     });
     expect(events.byClientSurface.viewer).toBeGreaterThan(0);
-    expect(events.byClientSurface.smoke).toBeGreaterThan(0);
+    expect(events.byClientSurface.smoke).toBe(0);
+    expect(events.excludedSynthetic).toBe(2);
+    expect(analytics.excludedSynthetic).toMatchObject({ sessions: 1, metricEvents: 2 });
+    expect(analytics.sessions).toBe(0);
+  });
+
+  it("does not call free Hall Pass grants payers", async () => {
+    const { ruby } = await makeServices();
+    ruby.recordMetricEvent("commerce", {
+      sessionId: "viewer:free-credit",
+      source: "system",
+      hallPassesDelta: 5,
+      amountCents: 0,
+    });
+    ruby.recordMetricEvent("commerce", {
+      sessionId: "viewer:paid",
+      source: "stripe",
+      hallPassesDelta: 20,
+      amountCents: 499,
+    });
+
+    expect(ruby.analyticsSnapshot().events.commerce).toMatchObject({
+      creditedSessions: 2,
+      payingSessions: 1,
+      amountCents: 499,
+    });
   });
 });

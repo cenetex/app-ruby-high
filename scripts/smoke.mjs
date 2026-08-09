@@ -80,7 +80,15 @@ async function fetchWithTimeout(url, opts = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    return await fetch(url, { ...opts, signal: ctrl.signal, redirect: "manual" });
+    return await fetch(url, {
+      ...opts,
+      headers: {
+        "User-Agent": "RubyHighSmoke/1.0",
+        ...(opts.headers || {}),
+      },
+      signal: ctrl.signal,
+      redirect: "manual",
+    });
   } finally {
     clearTimeout(timer);
   }

@@ -674,6 +674,10 @@ export interface CharacterSlotEntitlements {
 
 export interface QuizState {
   sessionId: string;
+  /** Operational/synthetic sessions persist normally but are excluded from
+   *  human acquisition, engagement, progression, and commerce metrics. */
+  synthetic?: boolean;
+  metricClientSurface?: "viewer" | "agent" | "smoke" | "api" | "unknown";
   faculty: string;
   subject: string | null;
   current: Question | null;

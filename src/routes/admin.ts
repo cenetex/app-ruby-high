@@ -25,9 +25,9 @@ export const ADMIN_METRICS_SCHEMA_PATH = `${APP_ROUTE_PREFIX}/admin/metrics/sche
 export const ADMIN_OVERVIEW_PATH = `${APP_ROUTE_PREFIX}/admin/overview`;
 export const ADMIN_CURRICULUM_REPLENISHMENT_PATH = `${APP_ROUTE_PREFIX}/admin/curriculum/replenishment`;
 export const ADMIN_WORLD_MODERATION_PATH = `${APP_ROUTE_PREFIX}/admin/world/moderation`;
-export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v6";
-const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-07-26";
-const ADMIN_METRICS_DEFAULT_TRUST_START = ADMIN_METRICS_SCHEMA_PUBLISHED_AT;
+export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v7";
+const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-08-09";
+const ADMIN_METRICS_DEFAULT_TRUST_START = "2026-07-26";
 const BUILT_IN_GENERATOR_FACULTY_IDS = new Set(["ruby", "sally-science", "professor-edward"]);
 const BUILT_IN_QUESTION_FILES: Record<string, string> = {
   ruby: "assets/questions/ruby.json",
@@ -304,8 +304,8 @@ function requireAdminAuth(ctx: RouteContext): string | null {
 }
 
 function buildAdminMetricsSnapshot(deps: AdminDeps): AdminMetricsSnapshot {
-  const auth = deps.auth.analyticsSnapshot();
   const ruby = deps.ruby.analyticsSnapshot();
+  const auth = deps.auth.analyticsSnapshot(Date.now(), deps.ruby.syntheticAuthUserIds());
   const logs = logMetricsSnapshot();
   const ops = deps.ops ?? {
     publicReadLimiter: {
@@ -1456,10 +1456,18 @@ function buildAdminMetricsSchema(): {
     trustModel: [
       "Durable product-state metrics are authoritative for current state.",
       "Auth users are identity records. Visitor metrics use the browser-local visitor id after server-side hashing.",
+      "Scheduled smoke identities, sessions, characters, and events are retained operationally but excluded from product metrics.",
       "Daily buckets are UTC day buckets derived from current records unless a field explicitly says it is event-backed.",
       "In-process log counters are operational smoke signals only.",
     ],
     fields: [
+      {
+        path: "auth.excludedSynthetic",
+        label: "Excluded synthetic auth records",
+        source: "AuthUserRecord/AuthSessionRecord clientSurface plus synthetic QuizState ownership",
+        semantics: "Scheduled smoke users and cookie sessions removed from every auth product metric in this snapshot.",
+        reliability: "authoritative",
+      },
       {
         path: "auth.users",
         label: "Identity records",
@@ -1546,6 +1554,14 @@ function buildAdminMetricsSchema(): {
         semantics: "Persisted Ruby High state buckets keyed by Ruby High session id.",
         reliability: "authoritative",
         caveat: "One human can still own multiple saved sessions after cookie loss.",
+      },
+      {
+        path: "ruby.excludedSynthetic",
+        label: "Excluded synthetic product state",
+        source: "QuizState.synthetic, legacy smoke fingerprints, and StoredMetricEventRecord.clientSurface",
+        semantics: "Counts smoke sessions, characters, and durable events excluded from product-state and event metrics.",
+        reliability: "authoritative",
+        caveat: "Legacy detection is intentionally limited to the scheduled smoke test's exact character fingerprints.",
       },
       {
         path: "ruby.updatedLast24h",
@@ -1685,13 +1701,13 @@ function buildAdminMetricsSchema(): {
         source: "StoredMetricEventRecord app_open, funnel_step, and daily class ritual events",
         semantics: "Ordered, session-deduped activation steps with explicit open denominators, previous-step rates, window, and sample sizes.",
         reliability: "authoritative",
-        caveat: "humanViewer includes only visitor-backed viewer app opens after trustStart; raw includes agent, smoke, API, and unknown surfaces.",
+        caveat: "humanViewer includes only visitor-backed viewer app opens after trustStart; raw includes non-smoke agent, API, viewer, and unknown surfaces.",
       },
       {
         path: "ruby.events.byClientSurface",
         label: "Metric events by client surface",
         source: "StoredMetricEventRecord.clientSurface",
-        semantics: "Bounded viewer, agent, smoke, api, and unknown classification applied when each event is recorded.",
+        semantics: "Bounded viewer, agent, api, and unknown classification for included product events. Excluded smoke volume is reported under ruby.events.excludedSynthetic.",
         reliability: "authoritative",
       },
       {
@@ -1731,7 +1747,7 @@ function buildAdminMetricsSchema(): {
         source: "StoredMetricEventRecord commerce plus wallet mutation path",
         semantics: "Durable wallet and entitlement mutations with currency deltas and transaction ids.",
         reliability: "authoritative",
-        caveat: "Stripe/RevenueCat revenue uses server webhook metadata when present; this is not accounting-grade financial reporting.",
+        caveat: "payingSessions requires a positive amountCents event; creditedSessions separately counts non-payment Hall Pass grants. Revenue is not accounting-grade financial reporting.",
       },
       {
         path: "ruby.events.llm",
@@ -2007,10 +2023,12 @@ function compactMetricsForOverview(metrics: AdminMetricsSnapshot): Record<string
       identityD1Retention: metrics.auth.d1Retention,
       providers: metrics.auth.providers,
       daily: metrics.auth.daily,
+      excludedSynthetic: metrics.auth.excludedSynthetic,
     },
     play: {
       store: metrics.ruby.store,
       sessions: metrics.ruby.sessions,
+      excludedSynthetic: metrics.ruby.excludedSynthetic,
       updatedLast24h: metrics.ruby.updatedLast24h,
       characterSessionsUpdatedLast24h: metrics.ruby.characterSessionsUpdatedLast24h,
       characterD1Retention: metrics.ruby.characterD1Retention,

@@ -6,6 +6,7 @@ import {
   getDefaultStateStore,
   type StoredAccountDeletionTarget,
   type AuthUserRecord,
+  type MetricClientSurface,
   type StateStoreLike,
 } from "./state-store.js";
 
@@ -23,12 +24,17 @@ export interface AuthRecord {
   label?: string;
   walletAddress?: string;
   walletChainType?: "ethereum" | "solana";
+  clientSurface?: MetricClientSurface;
 }
 
 export interface AuthAnalyticsSnapshot {
   users: number;
   unexpiredAuthSessions: number;
   pendingAuth: number;
+  excludedSynthetic: {
+    users: number;
+    sessions: number;
+  };
   providers: Record<AuthUserRecord["provider"], number>;
   createdLast24h: number;
   signedInLast24h: number;
@@ -165,10 +171,21 @@ export class AuthService extends Service {
     return this.sessions.size;
   }
 
-  analyticsSnapshot(now: number = Date.now()): AuthAnalyticsSnapshot {
+  analyticsSnapshot(
+    now: number = Date.now(),
+    excludedUserIds: ReadonlySet<string> = new Set(),
+  ): AuthAnalyticsSnapshot {
     const dayMs = 24 * 60 * 60 * 1000;
     const { days, byDate } = buildAuthDailyBuckets(now, 14);
-    const users = Array.from(this.usersById.values());
+    const allUsers = Array.from(this.usersById.values());
+    const users = allUsers.filter((user) =>
+      user.clientSurface !== "smoke" && !excludedUserIds.has(user.userId)
+    );
+    const sessions = Array.from(this.sessions.values()).filter((session) =>
+      session.clientSurface !== "smoke"
+      && this.usersById.get(session.userId)?.clientSurface !== "smoke"
+      && !excludedUserIds.has(session.userId)
+    );
     const providers: Record<AuthUserRecord["provider"], number> = {
       guest: 0,
       openrouter: 0,
@@ -203,7 +220,7 @@ export class AuthService extends Service {
           : { firstSeenAt, lastSeenAt });
       }
     }
-    for (const session of this.sessions.values()) {
+    for (const session of sessions) {
       incrementAuthDay(byDate, session.createdAt, "sessionStarts");
     }
     let newVisitors = 0;
@@ -222,8 +239,12 @@ export class AuthService extends Service {
     }
     return {
       users: users.length,
-      unexpiredAuthSessions: this.sessions.size,
+      unexpiredAuthSessions: sessions.length,
       pendingAuth: this.pending.size,
+      excludedSynthetic: {
+        users: allUsers.length - users.length,
+        sessions: this.sessions.size - sessions.length,
+      },
       providers,
       createdLast24h,
       signedInLast24h,
@@ -261,11 +282,22 @@ export class AuthService extends Service {
   async createGuestSession(
     existingToken?: string | null,
     visitorHeader?: string | string[] | null,
+    clientSurface?: MetricClientSurface,
   ): Promise<{ token: string; record: AuthRecord }> {
     const visitorHash = visitorHashFromHeader(visitorHeader);
     const existing = this.resolve(existingToken ?? null);
     if (existing) {
-      const touched = await this.touchUserActivity(existing, Date.now(), visitorHash);
+      const touched = await this.touchUserActivity(existing, Date.now(), visitorHash, clientSurface);
+      if (clientSurface && touched.clientSurface !== existing.clientSurface) {
+        this.sessions.set(existingToken!, touched);
+        await this.store.saveAuthSession({
+          token: existingToken!,
+          userId: touched.userId,
+          createdAt: touched.createdAt,
+          expiresAt: touched.expiresAt,
+          clientSurface,
+        });
+      }
       return { token: existingToken!, record: touched };
     }
 
@@ -278,6 +310,7 @@ export class AuthService extends Service {
       ? {
           ...existingVisitorUser,
           lastLoginAt: now,
+          ...(clientSurface ? { clientSurface } : {}),
           ...(visitorHash
             ? {
                 visitorHash,
@@ -295,6 +328,7 @@ export class AuthService extends Service {
           createdAt: now,
           lastLoginAt: now,
           label: "Guest",
+          ...(clientSurface ? { clientSurface } : {}),
           ...(visitorHash
             ? {
                 visitorHash,
@@ -313,6 +347,7 @@ export class AuthService extends Service {
       expiresAt: now + SESSION_TTL_MS,
       provider: user.provider,
       label: user.label,
+      ...(clientSurface ? { clientSurface } : {}),
     };
     this.sessions.set(token, record);
     await this.store.saveAuthSession({
@@ -320,6 +355,7 @@ export class AuthService extends Service {
       userId: record.userId,
       createdAt: record.createdAt,
       expiresAt: record.expiresAt,
+      ...(record.clientSurface ? { clientSurface: record.clientSurface } : {}),
     });
     log.event("auth.guest-session-created", { userId: user.userId, visitor: !!visitorHash, returningVisitor: !!existingVisitorUser });
     return { token, record };
@@ -641,6 +677,9 @@ export class AuthService extends Service {
         label: user?.label,
         ...(user?.walletAddress ? { walletAddress: user.walletAddress } : {}),
         ...(user?.walletChainType ? { walletChainType: user.walletChainType } : {}),
+        ...(session.clientSurface ?? user?.clientSurface
+          ? { clientSurface: session.clientSurface ?? user?.clientSurface }
+          : {}),
       }));
     }
   }
@@ -659,6 +698,7 @@ export class AuthService extends Service {
       label: user.label ?? profile.label,
       ...(profile.walletAddress ? { walletAddress: profile.walletAddress } : {}),
       ...(profile.walletChainType ? { walletChainType: profile.walletChainType } : {}),
+      ...(profile.clientSurface ? { clientSurface: profile.clientSurface } : {}),
     };
   }
 
@@ -666,16 +706,19 @@ export class AuthService extends Service {
     record: AuthRecord,
     now: number = Date.now(),
     visitorHash?: string | null,
+    clientSurface?: MetricClientSurface,
   ): Promise<AuthRecord> {
     const user = this.usersById.get(record.userId);
     if (!user) return record;
     const shouldTouchLogin = now - user.lastLoginAt >= ACTIVITY_TOUCH_INTERVAL_MS;
     const shouldTouchVisitor = !!visitorHash && user.visitorHash !== visitorHash;
     const shouldTouchVisitorSeen = !!visitorHash && user.visitorHash === visitorHash && shouldTouchVisitorLastSeen(user, now);
-    if (!shouldTouchLogin && !shouldTouchVisitor && !shouldTouchVisitorSeen) return record;
+    const shouldTouchSurface = !!clientSurface && user.clientSurface !== clientSurface;
+    if (!shouldTouchLogin && !shouldTouchVisitor && !shouldTouchVisitorSeen && !shouldTouchSurface) return record;
     const touched = this.rememberAuthUser({
       ...user,
       ...(shouldTouchLogin ? { lastLoginAt: now } : {}),
+      ...(clientSurface ? { clientSurface } : {}),
       ...(visitorHash
         ? {
             visitorHash,
@@ -700,7 +743,10 @@ export class AuthService extends Service {
         await this.store.saveAuthUser(alias);
       }
     }
-    return this.enrichRecord(record);
+    return this.enrichRecord({
+      ...record,
+      ...(clientSurface ? { clientSurface } : {}),
+    });
   }
 
   private rememberAuthUser(user: AuthUserRecord): AuthUserRecord {
@@ -732,6 +778,9 @@ export class AuthService extends Service {
         : {}),
       ...(record.walletChainType ?? profile.walletChainType
         ? { walletChainType: record.walletChainType ?? profile.walletChainType }
+        : {}),
+      ...(record.clientSurface ?? profile.clientSurface
+        ? { clientSurface: record.clientSurface ?? profile.clientSurface }
         : {}),
     };
   }
@@ -774,7 +823,25 @@ function mergeAuthUserProfile(current: AuthUserRecord | undefined, next: AuthUse
     ...(primary.walletChainType ?? secondary.walletChainType
       ? { walletChainType: primary.walletChainType ?? secondary.walletChainType }
       : {}),
+    ...(primary.clientSurface === "smoke" || secondary.clientSurface === "smoke"
+      ? { clientSurface: "smoke" as const }
+      : primary.clientSurface ?? secondary.clientSurface
+        ? { clientSurface: primary.clientSurface ?? secondary.clientSurface }
+        : {}),
   };
+}
+
+/** Coarse product-surface classification only; the raw User-Agent is never
+ *  retained here and is not used as an identity signal. */
+export function clientSurfaceFromUserAgent(
+  value: string | string[] | null | undefined,
+): MetricClientSurface | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== "string") return undefined;
+  if (/(?:^|\s)RubyHighSmoke\//i.test(raw)) return "smoke";
+  if (/Mozilla\/|AppleWebKit\/|Chrome\/|Firefox\/|Safari\//i.test(raw)) return "viewer";
+  if (/curl\/|HTTPie\/|PostmanRuntime\//i.test(raw)) return "api";
+  return undefined;
 }
 
 function buildAuthDailyBuckets(now: number, count: number): {

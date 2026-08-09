@@ -16,6 +16,9 @@ export interface AuthUserRecord {
   visitorLastSeenAt?: number;
   walletAddress?: string;
   walletChainType?: "ethereum" | "solana";
+  /** Synthetic clients (for example the scheduled smoke test) are retained
+   *  operationally but excluded from product analytics. */
+  clientSurface?: MetricClientSurface;
 }
 
 export interface AuthSessionRecord {
@@ -23,6 +26,7 @@ export interface AuthSessionRecord {
   userId: string;
   createdAt: number;
   expiresAt: number;
+  clientSurface?: MetricClientSurface;
 }
 
 export interface AuthStoreSnapshot {
@@ -32,10 +36,13 @@ export interface AuthStoreSnapshot {
 
 export interface StoredContentPackRecord {
   pack: ContentPack;
-  /** null = globally visible public pack. The legacy built-in active pack
-   *  uses RubyHighService's private sentinel string instead. */
+  /** null = globally addressable public/unlisted pack. The legacy built-in
+   *  active pack uses RubyHighService's private sentinel string instead. */
   ownerSessionId: string | null;
-  /** User who authored a globally visible pack, when known. */
+  /** Visibility is independent from the storage owner. Public and unlisted
+   *  packs are globally addressable; private packs are owner-scoped. */
+  visibility?: StoredPackVisibility;
+  /** User who authored a creator pack, when known. */
   creatorUserId?: string;
   /** Durable creator slot backing an authored pack, when the pack was
    *  published through the draft studio. */
@@ -79,6 +86,14 @@ export interface StoredTeacherRecord {
 
 export type StoredPackVisibility = "private" | "unlisted" | "public";
 export type StoredCourseSlotStatus = "reserved" | "published";
+
+/** Backward-compatible visibility for records written before visibility was
+ * persisted at pack level. Course-slot visibility is authoritative. */
+export function storedContentPackVisibility(record: StoredContentPackRecord): StoredPackVisibility {
+  return record.visibility
+    ?? record.courseSlot?.visibility
+    ?? (record.ownerSessionId === null ? "public" : "private");
+}
 
 export interface StoredCourseSlotRecord {
   id: string;

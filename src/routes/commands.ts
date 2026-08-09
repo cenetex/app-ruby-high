@@ -159,10 +159,15 @@ export async function handleCommandRoute(args: {
       return true;
     }
   }
+  const commandAuthRecord = auth
+    ? args.authRecord ?? auth.resolve(auth.parseSessionToken(cookieHeader))
+    : null;
+  if (commandAuthRecord?.clientSurface) {
+    ruby.markSessionClientSurface(stateKey, commandAuthRecord.clientSurface);
+  }
   const guestAccess = (() => {
     if (!auth) return null;
-    const record = args.authRecord ?? auth.resolve(auth.parseSessionToken(cookieHeader));
-    return guestAccessStateForSession({ record, ruby, sessionId: stateKey });
+    return guestAccessStateForSession({ record: commandAuthRecord, ruby, sessionId: stateKey });
   })();
   const commandFaculty = (commandType: string | undefined): string | null => {
     if (!commandType) return null;

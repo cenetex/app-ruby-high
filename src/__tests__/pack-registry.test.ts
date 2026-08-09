@@ -213,14 +213,29 @@ describe("packForSession — weekly guest composition", () => {
     }];
     registerPublicPack(guestPack, 1_000);
 
-    const composed = packForSession({ activePackId: null, guestPackMode: "auto" });
+    const guestSession = {
+      sessionId: "session:guest-signals",
+      activePackId: null,
+      guestPackMode: "override" as const,
+      guestPackOverrideId: guestPack.id,
+    };
+    const composed = packForSession(guestSession);
     expect(composed.id).toContain(`${ORIGINAL_PACK_ID}+guest`);
     expect(composed.faculty.map((f) => f.id)).toContain(GUEST_COURSE_ID);
     expect(composed.faculty.map((f) => f.id)).toContain("ruby");
-    expect(coursesForSession({ activePackId: null, guestPackMode: "auto" })).toHaveLength(4);
+    expect(coursesForSession(guestSession)).toHaveLength(4);
     expect(composed.faculty.find((f) => f.id === GUEST_COURSE_ID)?.questions[0]).toMatchObject({
       faculty: GUEST_COURSE_ID,
       subject: "signals",
     });
+  });
+
+  it("keeps unlisted packs addressable but out of public search and rotation", async () => {
+    await getActivePack();
+    const unlisted = fakePack("pack:unlisted-signals");
+    registerPublicPack(unlisted, 2_000, { visibility: "unlisted" });
+
+    expect(getPackByIdForSession(unlisted.id, null)?.id).toBe(unlisted.id);
+    expect(publicCreatorPacks().map((pack) => pack.id)).not.toContain(unlisted.id);
   });
 });

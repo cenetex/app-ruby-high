@@ -150,9 +150,11 @@ import {
   type MetricClientSurface,
   type StoredPackInstallationRecord,
   type StoredPackReview,
+  type StoredPackVisibility,
   type StoredSchoolEventRecord,
   type StoredServiceStateRecord,
   type StoredTeacherRecord,
+  storedContentPackVisibility,
 } from "./state-store.js";
 import { log, setLogSink, type LogSinkRecord } from "./logger.js";
 import { rewriteGeneratedPortraitS3Url } from "./generated-portrait-assets.js";
@@ -751,6 +753,11 @@ export interface RubyHighAnalyticsSnapshot {
   store: string;
   loaded: boolean;
   sessions: number;
+  excludedSynthetic: {
+    sessions: number;
+    characters: number;
+    metricEvents: number;
+  };
   updatedLast24h: number;
   characterSessionsUpdatedLast24h: number;
   characterD1Retention: {
@@ -939,6 +946,7 @@ export interface RubyHighAnalyticsDay {
 
 export interface RubyHighMetricEventsSnapshot {
   total: number;
+  excludedSynthetic: number;
   byName: Record<StoredMetricEventName, number>;
   appOpen: {
     total: number;
@@ -1020,6 +1028,7 @@ export interface RubyHighMetricEventsSnapshot {
     photoDayCreditsDelta: number;
     amountCents: number;
     revenueBySource: Record<string, number>;
+    creditedSessions: number;
     payingSessions: number;
   };
   conversionFunnel: {
@@ -1199,6 +1208,10 @@ const PUBLIC_WORLD_ROOM_OUTCOME_LIMIT = 120;
 const PUBLIC_WORLD_TERM_RECORD_LIMIT = 12;
 const PUBLIC_WORLD_TEACHER_AGENDA_LIMIT = 80;
 const LIVE_ROOM_CLASS_CHAIN_WINDOW_MS = 10 * 60 * 1000;
+const EMPTY_DRAFT_STARTUP_CLEANUP_AGE_MS = Math.max(
+  60_000,
+  Math.floor(Number(process.env.RUBY_HIGH_EMPTY_DRAFT_CLEANUP_AGE_MS) || 10 * 60 * 1000),
+);
 
 export interface LiveRoomGoalContributionResult {
   grade: Grade;
@@ -2247,7 +2260,7 @@ export class RubyHighService extends Service {
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
       ...(input.userId ? { userId: input.userId } : {}),
       ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
-      clientSurface: inferMetricClientSurface(input, this.metricEvents.values()),
+      clientSurface: this.metricClientSurfaceForEvent(input),
       ...(input.source ? { source: input.source } : {}),
       ...(input.feature ? { feature: input.feature } : {}),
       ...(input.step ? { step: input.step } : {}),
@@ -2264,6 +2277,15 @@ export class RubyHighService extends Service {
     };
     this.metricEvents.set(event.id, event);
     return event;
+  }
+
+  private metricClientSurfaceForEvent(input: MetricEventInput): MetricClientSurface {
+    const state = input.sessionId ? this.sessions.get(input.sessionId) : undefined;
+    if (isSyntheticQuizState(state)) return "smoke";
+    return inferMetricClientSurface({
+      ...input,
+      clientSurface: input.clientSurface ?? state?.metricClientSurface,
+    }, this.metricEvents.values());
   }
 
   private persistMetricEvent(event: StoredMetricEventRecord, options: { surfaceErrors: boolean }): Promise<void> {
@@ -2449,7 +2471,16 @@ export class RubyHighService extends Service {
     let repeatedAnswers = 0;
     let meritStars = 0;
     let hallPasses = 0;
+    let excludedSyntheticSessions = 0;
+    let excludedSyntheticCharacters = 0;
+    const syntheticSessionIds = new Set<string>();
     for (const state of this.sessions.values()) {
+      if (isSyntheticQuizState(state)) {
+        excludedSyntheticSessions += 1;
+        if (state.character) excludedSyntheticCharacters += 1;
+        syntheticSessionIds.add(state.sessionId);
+        continue;
+      }
       const updatedAt = Number(state.updatedAt ?? 0);
       if (now - updatedAt <= dayMs) updatedLast24h += 1;
       incrementRubyHighDay(byDate, updatedAt, "updatedSessions");
@@ -2491,12 +2522,27 @@ export class RubyHighService extends Service {
       meritStars += wallet.meritStars;
       hallPasses += wallet.hallPasses;
     }
-    const events = buildMetricEventsSnapshot(this.metricEvents.values(), byDate, now);
-    const eventRetention = buildEventRetentionSnapshot(this.metricEvents.values(), now);
+    const allMetricEvents = Array.from(this.metricEvents.values());
+    const productMetricEvents = allMetricEvents.filter((event) =>
+      !isSyntheticMetricEvent(event, syntheticSessionIds)
+    );
+    const excludedSyntheticMetricEvents = allMetricEvents.length - productMetricEvents.length;
+    const events = buildMetricEventsSnapshot(
+      productMetricEvents,
+      byDate,
+      now,
+      excludedSyntheticMetricEvents,
+    );
+    const eventRetention = buildEventRetentionSnapshot(productMetricEvents, now);
     return {
       store: this.store.describe(),
       loaded: this.loaded,
-      sessions: this.sessions.size,
+      sessions: this.sessions.size - excludedSyntheticSessions,
+      excludedSynthetic: {
+        sessions: excludedSyntheticSessions,
+        characters: excludedSyntheticCharacters,
+        metricEvents: excludedSyntheticMetricEvents,
+      },
       updatedLast24h,
       characterSessionsUpdatedLast24h,
       characterD1Retention: {
@@ -5505,9 +5551,27 @@ export class RubyHighService extends Service {
       this.store.loadServiceState?.(LIVE_ROOM_GOALS_STATE_ID) ?? Promise.resolve(null),
     ]);
     const staleBuiltInPackRecords = storedPacks.filter(isPersistedBuiltInPackOverride);
-    this.persistedPackRecords = storedPacks.filter((record) => !isPersistedBuiltInPackOverride(record));
+    const restoredPackRecords = storedPacks
+      .filter((record) => !isPersistedBuiltInPackOverride(record))
+      .map(normalizePersistedPackVisibility);
+    const packVisibilityMigrations = restoredPackRecords.flatMap((record, index) => {
+      const previous = storedPacks.filter((entry) => !isPersistedBuiltInPackOverride(entry))[index];
+      if (!previous) return [];
+      if (
+        previous.ownerSessionId === record.ownerSessionId
+        && previous.visibility === record.visibility
+        && JSON.stringify(previous.pack) === JSON.stringify(record.pack)
+      ) return [];
+      return [{ previous, record }];
+    });
+    this.persistedPackRecords = uniquePersistedPackRecords(restoredPackRecords);
     this.teacherRecords = storedTeachers.slice();
-    this.draftPackRecords = storedDraftPacks.slice();
+    const staleEmptyDrafts = storedDraftPacks.filter((draft) =>
+      isAbandonedEmptyDraftRecord(draft, Date.now())
+    );
+    this.draftPackRecords = storedDraftPacks.filter((draft) =>
+      !isAbandonedEmptyDraftRecord(draft, Date.now())
+    );
     this.packInstallationRecords = storedPackInstallations.slice();
     this.persistedPackRecords
       .slice()
@@ -5517,7 +5581,10 @@ export class RubyHighService extends Service {
           if (record.ownerSessionId === GLOBAL_PACK_OWNER) {
             setActivePack(record.pack);
           } else if (record.ownerSessionId === null) {
-            registerPublicPack(record.pack, record.touchedAt);
+            const visibility = storedContentPackVisibility(record);
+            registerPublicPack(record.pack, record.touchedAt, {
+              visibility: visibility === "unlisted" ? "unlisted" : "public",
+            });
           } else {
             registerPack(record.pack, record.ownerSessionId, record.touchedAt);
           }
@@ -5535,6 +5602,27 @@ export class RubyHighService extends Service {
       ).then(() => undefined).catch((err) => {
         log.error("ruby-high.delete-stale-built-in-pack-override-failed", err, {
           count: staleBuiltInPackRecords.length,
+        });
+      }));
+    }
+    if (packVisibilityMigrations.length > 0) {
+      this.trackBackgroundWrite(Promise.all(packVisibilityMigrations.map(async ({ previous, record }) => {
+        await this.store.savePack(record);
+        if (previous.ownerSessionId !== record.ownerSessionId) {
+          await this.store.deletePack(previous.ownerSessionId, previous.pack.id);
+        }
+      })).then(() => undefined).catch((err) => {
+        log.error("ruby-high.migrate-pack-visibility-failed", err, {
+          count: packVisibilityMigrations.length,
+        });
+      }));
+    }
+    if (staleEmptyDrafts.length > 0) {
+      this.trackBackgroundWrite(Promise.all(staleEmptyDrafts.map((draft) =>
+        this.store.deleteDraftPack(draft.id)
+      )).then(() => undefined).catch((err) => {
+        log.error("ruby-high.cleanup-stale-empty-drafts-failed", err, {
+          count: staleEmptyDrafts.length,
         });
       }));
     }
@@ -5813,21 +5901,49 @@ export class RubyHighService extends Service {
     opts: { previousOwnerSessionId?: string | null; creatorUserId?: string; courseSlot?: StoredCourseSlotRecord; allowGlobalOverwrite?: boolean } = {},
   ): Promise<void> {
     const touchedAt = Date.now();
+    const visibility: StoredPackVisibility = opts.courseSlot?.visibility ?? "public";
+    const ownerSessionId = visibility === "private"
+      ? opts.courseSlot?.ownerSessionId ?? opts.previousOwnerSessionId
+      : null;
+    if (visibility === "private" && !ownerSessionId) {
+      throw new Error("Private packs require an owner session.");
+    }
+    const previousRecords = (this.persistedPackRecords ?? [])
+      .filter((entry) => entry.pack.id === pack.id);
     const record: StoredContentPackRecord = {
       pack,
-      ownerSessionId: null,
+      ownerSessionId: ownerSessionId ?? null,
+      visibility,
       ...(opts.creatorUserId ? { creatorUserId: opts.creatorUserId } : {}),
       ...(opts.courseSlot ? { courseSlot: opts.courseSlot } : {}),
+      ...((previousRecords.find((entry) => entry.reviews?.length)?.reviews?.length ?? 0) > 0
+        ? { reviews: previousRecords.find((entry) => entry.reviews?.length)!.reviews }
+        : {}),
       touchedAt,
     };
     try {
-      registerPublicPack(pack, touchedAt, {
-        ownerSessionId: opts.previousOwnerSessionId ?? null,
-        allowGlobalOverwrite: opts.allowGlobalOverwrite,
-      });
+      unregisterPack(pack.id);
+      if (visibility === "private") {
+        registerPack(pack, ownerSessionId!, touchedAt);
+      } else {
+        registerPublicPack(pack, touchedAt, {
+          ownerSessionId: opts.previousOwnerSessionId ?? null,
+          allowGlobalOverwrite: opts.allowGlobalOverwrite,
+          visibility,
+        });
+      }
       await this.store.savePack(record);
+      for (const previous of previousRecords) {
+        if (previous.ownerSessionId === record.ownerSessionId) continue;
+        await this.store.deletePack(previous.ownerSessionId, pack.id);
+        this.removePersistedPackRecord(previous.ownerSessionId, pack.id);
+      }
       this.upsertPersistedPackRecord(record);
-      if (opts.previousOwnerSessionId) {
+      if (
+        opts.previousOwnerSessionId
+        && opts.previousOwnerSessionId !== record.ownerSessionId
+        && !previousRecords.some((entry) => entry.ownerSessionId === opts.previousOwnerSessionId)
+      ) {
         await this.store.deletePack(opts.previousOwnerSessionId, pack.id);
         this.removePersistedPackRecord(opts.previousOwnerSessionId, pack.id);
       }
@@ -5984,6 +6100,33 @@ export class RubyHighService extends Service {
       void this.persistSession(sessionId);
     }
     return state;
+  }
+
+  markSyntheticSession(sessionId: string): QuizState {
+    const state = this.getOrCreate(sessionId);
+    if (!state.synthetic) {
+      state.synthetic = true;
+      state.updatedAt = Date.now();
+    }
+    return state;
+  }
+
+  markSessionClientSurface(sessionId: string, clientSurface: MetricClientSurface): QuizState {
+    const state = this.getOrCreate(sessionId);
+    state.metricClientSurface = clientSurface;
+    if (clientSurface === "smoke") state.synthetic = true;
+    state.updatedAt = Date.now();
+    return state;
+  }
+
+  syntheticAuthUserIds(): ReadonlySet<string> {
+    const userIds = new Set<string>();
+    for (const state of this.sessions.values()) {
+      if (!isSyntheticQuizState(state)) continue;
+      const match = state.sessionId.match(/^rh:user:(.+)$/);
+      if (match?.[1]) userIds.add(match[1]);
+    }
+    return userIds;
   }
 
   claimWelcomeHallPasses(sessionId: string): HallPassMutationResult {
@@ -10754,6 +10897,92 @@ export class RubyHighService extends Service {
 
 }
 
+function normalizePersistedPackVisibility(record: StoredContentPackRecord): StoredContentPackRecord {
+  if (record.ownerSessionId === GLOBAL_PACK_OWNER) return record;
+  const visibility = storedContentPackVisibility(record);
+  const ownerSessionId = visibility === "private"
+    ? record.courseSlot?.ownerSessionId
+      ?? record.ownerSessionId
+      ?? (record.creatorUserId ? `rh:user:${record.creatorUserId}` : `private:orphan:${record.pack.id}`)
+    : null;
+  return {
+    ...record,
+    pack: record.creatorUserId || record.courseSlot
+      ? normalizeLegacyCreatorPack(record.pack, record.touchedAt)
+      : record.pack,
+    ownerSessionId,
+    visibility,
+  };
+}
+
+function normalizeLegacyCreatorPack(pack: ContentPack, touchedAt: number): ContentPack {
+  const faculty = pack.faculty.map((teacher) => ({
+    ...teacher,
+    questions: teacher.questions.map((question) => {
+      const definition = multipleChoiceDefinition(question);
+      if (!definition) {
+        return {
+          ...question,
+          minGrade: question.minGrade ?? creatorMinGradeForDifficulty(question.difficulty),
+        };
+      }
+      const { options: _options, correctChoice: _correctChoice, ...rest } = question;
+      return {
+        ...rest,
+        correct: definition.correct,
+        decoys: definition.decoys,
+        minGrade: question.minGrade ?? creatorMinGradeForDifficulty(question.difficulty),
+      };
+    }),
+    sourceCards: teacher.sourceCards?.map((card) => ({
+      ...card,
+      minGrade: card.minGrade ?? creatorMinGradeForDifficulty(card.difficulty),
+    })),
+  }));
+  const modules = Array.from(new Set(faculty.flatMap((teacher) => teacher.subjects))).sort();
+  const reviewedAt = Number.isFinite(touchedAt) && touchedAt > 0 ? touchedAt : Date.now();
+  return {
+    ...pack,
+    faculty,
+    curriculum: pack.curriculum ?? {
+      framework: "ruby-high-creator-v1/migrated",
+      reviewedAt: new Date(reviewedAt).toISOString().slice(0, 10),
+      guidingQuestion: pack.description,
+      modules,
+      sources: ["Legacy creator course; source provenance was not recorded."],
+    },
+  };
+}
+
+function creatorMinGradeForDifficulty(difficulty: Difficulty): Grade {
+  if (difficulty === "easy") return "9";
+  if (difficulty === "medium") return "10";
+  return "11";
+}
+
+function uniquePersistedPackRecords(records: StoredContentPackRecord[]): StoredContentPackRecord[] {
+  const byKey = new Map<string, StoredContentPackRecord>();
+  for (const record of records.sort((a, b) => a.touchedAt - b.touchedAt)) {
+    byKey.set(persistedPackRecordKey(record.ownerSessionId, record.pack.id), record);
+  }
+  return Array.from(byKey.values());
+}
+
+function isAbandonedEmptyDraftRecord(
+  draft: StoredDraftContentPackRecord,
+  now: number,
+): boolean {
+  if (now - Math.max(draft.updatedAt || 0, draft.createdAt || 0) < EMPTY_DRAFT_STARTUP_CLEANUP_AGE_MS) {
+    return false;
+  }
+  return !draft.derivedFrom
+    && !draft.courseSlot
+    && draft.visibility === "private"
+    && !draft.description.trim()
+    && /^Untitled Content Pack$/i.test(draft.name.trim())
+    && draft.teachers.length === 0;
+}
+
 // ── transition action space ─────────────────────────────────────────────────
 // The state machine is action-driven, not phase-driven. Mutators name what
 // the player just did ("clear the board", "pose a question") rather than
@@ -12906,6 +13135,7 @@ function buildMetricEventsSnapshot(
   events: Iterable<StoredMetricEventRecord>,
   byDate: Map<string, RubyHighAnalyticsDay>,
   now: number,
+  excludedSynthetic = 0,
 ): RubyHighMetricEventsSnapshot {
   const orderedEvents = Array.from(events).sort((a, b) => a.occurredAt - b.occurredAt);
   const byName: Record<StoredMetricEventName, number> = {
@@ -13000,6 +13230,7 @@ function buildMetricEventsSnapshot(
     amountCents: 0,
   };
   const payingSessions = new Set<string>();
+  const creditedSessions = new Set<string>();
   const revenueBySource: Record<string, number> = {};
   const llm = {
     calls: 0,
@@ -13089,7 +13320,10 @@ function buildMetricEventsSnapshot(
       commerce.meritStarsDelta += metricIntegerOrZero(event.meritStarsDelta);
       commerce.photoDayCreditsDelta += metricIntegerOrZero(event.photoDayCreditsDelta);
       commerce.amountCents += metricIntegerOrZero(event.amountCents);
-      if (hpDelta > 0 && event.sessionId) payingSessions.add(event.sessionId);
+      if (hpDelta > 0 && event.sessionId) creditedSessions.add(event.sessionId);
+      if (metricIntegerOrZero(event.amountCents) > 0 && event.sessionId) {
+        payingSessions.add(event.sessionId);
+      }
       const src = event.source || "unknown";
       revenueBySource[src] = (revenueBySource[src] ?? 0) + metricIntegerOrZero(event.amountCents);
       if (day) day.commerceEvents += 1;
@@ -13135,6 +13369,7 @@ function buildMetricEventsSnapshot(
   };
   return {
     total,
+    excludedSynthetic,
     byName,
     appOpen: {
       total: byName.app_open,
@@ -13179,6 +13414,7 @@ function buildMetricEventsSnapshot(
       photoDayCreditsDelta: commerce.photoDayCreditsDelta,
       amountCents: commerce.amountCents,
       revenueBySource,
+      creditedSessions: creditedSessions.size,
       payingSessions: payingSessions.size,
     },
     conversionFunnel,
@@ -13461,6 +13697,34 @@ function isMetricClientSurface(value: unknown): value is MetricClientSurface {
     || value === "smoke"
     || value === "api"
     || value === "unknown";
+}
+
+function isSyntheticMetricEvent(
+  event: StoredMetricEventRecord,
+  syntheticSessionIds: ReadonlySet<string>,
+): boolean {
+  return event.clientSurface === "smoke"
+    || (!!event.sessionId && syntheticSessionIds.has(event.sessionId));
+}
+
+/** Explicit marking handles all new smoke runs. The narrow character
+ * fingerprints remove the historical scheduled-smoke rows that predate the
+ * marker without sweeping up ordinary players. */
+function isSyntheticQuizState(state: QuizState | undefined): boolean {
+  if (!state) return false;
+  if (state.synthetic === true) return true;
+  const name = String(state.character?.name ?? "");
+  const personality = String(state.character?.personality ?? "").toLowerCase();
+  const flavorQuote = String(state.character?.flavorQuote ?? "").toLowerCase();
+  return (
+    name.startsWith("Smoke ")
+    && personality.includes("synthetic smoke-test")
+    && flavorQuote === "smoke test"
+  ) || (
+    name.startsWith("Pacing ")
+    && personality.includes("synthetic pacing smoke-test")
+    && flavorQuote === "pacing smoke"
+  );
 }
 
 function inferMetricClientSurface(

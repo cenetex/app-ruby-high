@@ -12,7 +12,7 @@ import { renderViewerHtml } from "./viewer.js";
 import { handleChatRoutes } from "./chat-routes.js";
 import { handlePackRoutes } from "./pack-routes.js";
 import { handlePackLibraryRoutes } from "./pack-library-routes.js";
-import { AuthService } from "./services/auth-service.js";
+import { AuthService, clientSurfaceFromUserAgent } from "./services/auth-service.js";
 import { getRuntime, getSessionId, tryGetService } from "./services/session-identity.js";
 import {
   APP_ROUTE_PREFIX,
@@ -717,6 +717,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       cookieHeader: ctx.cookieHeader,
       apiKeyHeader: ctx.apiKeyHeader,
       visitorHeader: ctx.visitorHeader,
+      userAgentHeader: ctx.userAgentHeader,
       authorizationHeader: ctx.authorizationHeader,
       callbackUrlBuilder: ctx.callbackUrlBuilder,
       isSecure: ctx.isSecure,
@@ -871,7 +872,14 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       const existingRecord = auth.resolve(existingToken);
       const session = existingRecord && existingToken
         ? { token: existingToken, record: existingRecord, isNew: false }
-        : { ...(await auth.createGuestSession(existingToken, ctx.visitorHeader)), isNew: true };
+        : {
+            ...(await auth.createGuestSession(
+              existingToken,
+              ctx.visitorHeader,
+              clientSurfaceFromUserAgent(ctx.userAgentHeader),
+            )),
+            isNew: true,
+          };
       if (session.isNew || session.token !== existingToken) {
         setCookieHeader(ctx.res, auth.buildSessionCookie(session.token, { secure: ctx.isSecure ?? false }));
       }

@@ -1787,7 +1787,7 @@ describe("admin metrics route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       ok: true,
-      schemaVersion: "ruby-high-admin-metrics.v6",
+      schemaVersion: "ruby-high-admin-metrics.v7",
       schemaPath: "/api/apps/ruby-high/admin/metrics/schema",
       auth: {
         users: 1,
@@ -2848,7 +2848,7 @@ describe("admin metrics route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       ok: true,
-      schemaVersion: "ruby-high-admin-metrics.v6",
+      schemaVersion: "ruby-high-admin-metrics.v7",
       endpoint: "/api/apps/ruby-high/admin/metrics",
       bucketTimezone: "UTC",
       trustStart: "2026-07-26",
@@ -3343,7 +3343,7 @@ describe("admin metrics route", () => {
     expect(headers.Authorization).toBe("Bearer or-test-key");
     const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body));
     const prompt = body.messages[1].content as string;
-    expect(prompt).toContain("ruby-high-admin-metrics.v6");
+    expect(prompt).toContain("ruby-high-admin-metrics.v7");
     expect(prompt).toContain("identityRecords");
     expect(prompt).toContain("not deduped people");
     expect(prompt).toContain("characterD1Retention");

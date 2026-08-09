@@ -41,9 +41,10 @@ export const MAX_PACKS_PER_OWNER = 16;
 
 interface RegisteredPack {
   pack: ContentPack;
-  /** Session id of the user who registered this pack. null = built-in,
-   *  visible to everyone, never evicted. */
+  /** Session id for owner-scoped private packs. null = globally addressable
+   *  built-in, public, or unlisted pack. */
   ownerSessionId: string | null;
+  visibility: "private" | "unlisted" | "public";
   /** Insertion / re-touch timestamp. Used as the LRU tiebreaker. */
   touchedAt: number;
 }
@@ -57,11 +58,17 @@ let active: Promise<ContentPack> | null = null;
  *  the cache is populated. */
 let loadedPack: ContentPack | null = null;
 
-function touch(id: string, pack: ContentPack, ownerSessionId: string | null, touchedAt = Date.now()): void {
+function touch(
+  id: string,
+  pack: ContentPack,
+  ownerSessionId: string | null,
+  touchedAt = Date.now(),
+  visibility: RegisteredPack["visibility"] = ownerSessionId === null ? "public" : "private",
+): void {
   // Map preserves insertion order — re-inserting moves the entry to
   // the end, so iteration order doubles as LRU.
   packs.delete(id);
-  packs.set(id, { pack, ownerSessionId, touchedAt });
+  packs.set(id, { pack, ownerSessionId, touchedAt, visibility });
   if (ownerSessionId !== null) evictExcess(ownerSessionId);
 }
 
@@ -80,11 +87,12 @@ export function getActivePack(): Promise<ContentPack> {
   if (!active) {
     active = Promise.all([getRubyHighOriginal(), getElizaOsSystemsLab()]).then(([p, elizaCourse]) => {
       // Built-in: owner=null, pinned forever.
-      packs.set(p.id, { pack: p, ownerSessionId: null, touchedAt: Date.now() });
+      packs.set(p.id, { pack: p, ownerSessionId: null, touchedAt: Date.now(), visibility: "public" });
       packs.set(elizaCourse.id, {
         pack: elizaCourse,
         ownerSessionId: null,
         touchedAt: Date.now(),
+        visibility: "public",
       });
       loadedPack = p;
       return p;
@@ -112,7 +120,7 @@ export function isPackLoaded(): boolean {
  *  tests + the runtime built-in swap (rare). The pack is registered as
  *  a built-in (owner=null, pinned). */
 export function setActivePack(pack: ContentPack): void {
-  packs.set(pack.id, { pack, ownerSessionId: null, touchedAt: Date.now() });
+  packs.set(pack.id, { pack, ownerSessionId: null, touchedAt: Date.now(), visibility: "public" });
   loadedPack = pack;
   active = Promise.resolve(pack);
 }
@@ -162,7 +170,7 @@ export function registerPack(pack: ContentPack, ownerSessionId: string, touchedA
   if (existing && existing.ownerSessionId !== ownerSessionId) {
     throw new Error(`Pack ${pack.id} is owned by another session — cannot re-register.`);
   }
-  touch(pack.id, pack, ownerSessionId, touchedAt);
+  touch(pack.id, pack, ownerSessionId, touchedAt, "private");
 }
 
 /** Publish a runtime pack globally. Public teacher packs use owner=null so
@@ -172,7 +180,11 @@ export function registerPack(pack: ContentPack, ownerSessionId: string, touchedA
 export function registerPublicPack(
   pack: ContentPack,
   touchedAt = Date.now(),
-  opts: { ownerSessionId?: string | null; allowGlobalOverwrite?: boolean } = {},
+  opts: {
+    ownerSessionId?: string | null;
+    allowGlobalOverwrite?: boolean;
+    visibility?: "unlisted" | "public";
+  } = {},
 ): void {
   const existing = packs.get(pack.id);
   if (existing) {
@@ -186,7 +198,7 @@ export function registerPublicPack(
       throw new Error(`Cannot overwrite global pack: ${pack.id}`);
     }
   }
-  touch(pack.id, pack, null, touchedAt);
+  touch(pack.id, pack, null, touchedAt, opts.visibility ?? "public");
 }
 
 /** Remove a runtime pack from the in-memory registry. Built-in packs stay
@@ -301,6 +313,7 @@ export function publicCreatorPacks(): ContentPack[] {
   return Array.from(packs.values())
     .filter((r) =>
       r.ownerSessionId === null &&
+      r.visibility === "public" &&
       r.pack.id !== ORIGINAL_PACK_ID &&
       (r.pack.id.startsWith("pack:") || r.pack.id.startsWith("teacher:"))
     )
@@ -326,7 +339,11 @@ export function guestPackForSession(session: PackSession | null, date = new Date
   if (session?.activePackId && session.activePackId !== ORIGINAL_PACK_ID) return null;
   if (session?.guestPackMode === "override" && session.guestPackOverrideId) {
     const record = packs.get(session.guestPackOverrideId);
-    if (record && record.ownerSessionId === null && record.pack.id !== ORIGINAL_PACK_ID) {
+    if (
+      record
+      && (record.ownerSessionId === null || record.ownerSessionId === session.sessionId)
+      && record.pack.id !== ORIGINAL_PACK_ID
+    ) {
       return guestFacultyForPack(record.pack) ? record.pack : null;
     }
   }
