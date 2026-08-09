@@ -5633,7 +5633,7 @@ describe("RubyHighService Phase 1", () => {
 
   it("separates raw and visitor-backed human activation cohorts with ordered deduped steps", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(Date.UTC(2026, 6, 26, 12));
+    vi.setSystemTime(Date.UTC(2026, 7, 9, 12));
     const { ruby } = await makeServices();
     const human = "viewer:activation:human";
     const smoke = "viewer:activation:smoke";
@@ -5642,6 +5642,9 @@ describe("RubyHighService Phase 1", () => {
       clientSurface: "viewer",
       visitorHash: "visitor-human",
     });
+    ruby.recordMetricEvent("funnel_step", { sessionId: human, step: "onboarding_creation_opened", source: "viewer" });
+    ruby.recordMetricEvent("funnel_step", { sessionId: human, step: "onboarding_candidate_ready", source: "viewer" });
+    ruby.recordMetricEvent("funnel_step", { sessionId: human, step: "onboarding_enrollment_started", source: "viewer" });
     ruby.recordMetricEvent("funnel_step", { sessionId: human, step: "first_character_created", source: "gameplay" });
     ruby.recordMetricEvent("daily_class_started", { sessionId: human, step: "evidence_1", source: "gameplay" });
     ruby.recordMetricEvent("funnel_step", { sessionId: human, step: "first_question_answered", source: "gameplay" });
@@ -5674,6 +5677,15 @@ describe("RubyHighService Phase 1", () => {
       take_submitted: 1,
       result_completed: 1,
       result_viewed: 1,
+    });
+    expect(events.onboardingFunnel.humanViewer).toMatchObject({ sampleSize: 1, eligibleSessions: 1 });
+    expect(Object.fromEntries(events.onboardingFunnel.humanViewer.steps.map((step) => [step.key, step.uniqueSessions]))).toEqual({
+      app_open: 1,
+      creation_opened: 1,
+      candidate_ready: 1,
+      enrollment_started: 1,
+      character_created: 1,
+      daily_class_started: 1,
     });
     expect(events.byClientSurface.viewer).toBeGreaterThan(0);
     expect(events.byClientSurface.smoke).toBe(0);

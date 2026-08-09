@@ -990,6 +990,7 @@ export interface RubyHighMetricEventsSnapshot {
     uniqueReferredVisitors: number;
     shareClickThroughRate: number | null;
     uniqueShareClickThroughRate: number | null;
+    byRef: Record<string, { visits: number; uniqueVisitors: number }>;
   };
   guestSpotlight: {
     seen: number;
@@ -1000,6 +1001,10 @@ export interface RubyHighMetricEventsSnapshot {
   activationFunnel: {
     trustStart: string;
     raw: ActivationFunnelCohortSnapshot;
+    humanViewer: ActivationFunnelCohortSnapshot;
+  };
+  onboardingFunnel: {
+    instrumentationStart: string;
     humanViewer: ActivationFunnelCohortSnapshot;
   };
   classRitual: {
@@ -13205,6 +13210,7 @@ function buildMetricEventsSnapshot(
     uniqueVisitors: 0,
   };
   const referredVisitors = new Set<string>();
+  const referralByRef = new Map<string, { visits: number; visitors: Set<string> }>();
   const referral = {
     artifactsCreated: 0,
     sharesInitiated: 0,
@@ -13212,6 +13218,7 @@ function buildMetricEventsSnapshot(
     uniqueReferredVisitors: 0,
     shareClickThroughRate: null as number | null,
     uniqueShareClickThroughRate: null as number | null,
+    byRef: {} as Record<string, { visits: number; uniqueVisitors: number }>,
   };
   const guestSpotlight = {
     seen: 0,
@@ -13300,6 +13307,13 @@ function buildMetricEventsSnapshot(
     } else if (event.name === "share_link_visited") {
       referral.linkVisits += 1;
       if (event.visitorHash) referredVisitors.add(event.visitorHash);
+      const ref = typeof event.metadata?.ref === "string" ? event.metadata.ref : "";
+      if (ref) {
+        const bucket = referralByRef.get(ref) ?? { visits: 0, visitors: new Set<string>() };
+        bucket.visits += 1;
+        if (event.visitorHash) bucket.visitors.add(event.visitorHash);
+        referralByRef.set(ref, bucket);
+      }
     } else if (event.name === "guest_spotlight_seen") {
       guestSpotlight.seen += 1;
       if (day) day.guestSpotlightSeen += 1;
@@ -13353,6 +13367,12 @@ function buildMetricEventsSnapshot(
   referral.uniqueShareClickThroughRate = referral.sharesInitiated > 0
     ? referral.uniqueReferredVisitors / referral.sharesInitiated
     : null;
+  referral.byRef = Object.fromEntries(
+    Array.from(referralByRef.entries())
+      .sort((a, b) => b[1].visits - a[1].visits || a[0].localeCompare(b[0]))
+      .slice(0, 50)
+      .map(([ref, bucket]) => [ref, { visits: bucket.visits, uniqueVisitors: bucket.visitors.size }]),
+  );
   const conversionFunnel = {
     totalVisitors: visitorHashes.size,
     charactersCreated: funnel.firstCharacterCreated,
@@ -13366,6 +13386,17 @@ function buildMetricEventsSnapshot(
     trustStart: new Date(trustStartMs).toISOString(),
     raw: buildActivationFunnelCohort(orderedEvents, trustStartMs, now, "raw"),
     humanViewer: buildActivationFunnelCohort(orderedEvents, trustStartMs, now, "human-viewer"),
+  };
+  const onboardingStartMs = onboardingMetricsStart();
+  const onboardingFunnel = {
+    instrumentationStart: new Date(onboardingStartMs).toISOString(),
+    humanViewer: buildActivationFunnelCohort(
+      orderedEvents,
+      onboardingStartMs,
+      now,
+      "human-viewer",
+      ONBOARDING_FUNNEL_STEPS,
+    ),
   };
   return {
     total,
@@ -13392,6 +13423,7 @@ function buildMetricEventsSnapshot(
     guestSpotlight,
     byClientSurface,
     activationFunnel,
+    onboardingFunnel,
     classRitual: {
       dailyClassStarted: byName.daily_class_started,
       evidenceCardCompleted: byName.evidence_card_completed,
@@ -13461,9 +13493,43 @@ const ACTIVATION_FUNNEL_STEPS: ReadonlyArray<{
   { key: "result_viewed", label: "Result viewed", matches: (event) => event.name === "class_result_viewed" },
 ];
 
+const ONBOARDING_FUNNEL_STEPS: typeof ACTIVATION_FUNNEL_STEPS = [
+  { key: "app_open", label: "App open", matches: (event) => event.name === "app_open" },
+  {
+    key: "creation_opened",
+    label: "Student creator opened",
+    matches: (event) => event.name === "funnel_step" && event.step === "onboarding_creation_opened",
+  },
+  {
+    key: "candidate_ready",
+    label: "Student candidate ready",
+    matches: (event) => event.name === "funnel_step" && event.step === "onboarding_candidate_ready",
+  },
+  {
+    key: "enrollment_started",
+    label: "Enrollment clicked",
+    matches: (event) => event.name === "funnel_step" && event.step === "onboarding_enrollment_started",
+  },
+  {
+    key: "character_created",
+    label: "Character created",
+    matches: (event) => event.name === "funnel_step" && event.step === "first_character_created",
+  },
+  {
+    key: "daily_class_started",
+    label: "Daily class started",
+    matches: (event) => event.name === "daily_class_started",
+  },
+];
+
 function activationMetricsTrustStart(): number {
   const configured = Date.parse(String(process.env.RUBY_HIGH_METRICS_TRUST_START ?? ""));
   return Number.isFinite(configured) ? configured : Date.UTC(2026, 6, 26);
+}
+
+function onboardingMetricsStart(): number {
+  const configured = Date.parse(String(process.env.RUBY_HIGH_ONBOARDING_METRICS_START ?? ""));
+  return Number.isFinite(configured) ? configured : Date.UTC(2026, 7, 9);
 }
 
 function buildActivationFunnelCohort(
@@ -13471,6 +13537,7 @@ function buildActivationFunnelCohort(
   trustStartMs: number,
   now: number,
   cohort: ActivationFunnelCohortSnapshot["cohort"],
+  definitions = ACTIVATION_FUNNEL_STEPS,
 ): ActivationFunnelCohortSnapshot {
   const inWindow = events.filter((event) => event.occurredAt >= trustStartMs && event.occurredAt <= now);
   const eligibleSessions = new Set<string>();
@@ -13491,11 +13558,11 @@ function buildActivationFunnelCohort(
     current.push(event);
     eventsBySession.set(event.sessionId, current);
   }
-  const counts = ACTIVATION_FUNNEL_STEPS.map(() => 0);
+  const counts = definitions.map(() => 0);
   for (const sessionEvents of eventsBySession.values()) {
     let cursor = 0;
-    for (let stepIndex = 0; stepIndex < ACTIVATION_FUNNEL_STEPS.length; stepIndex += 1) {
-      const definition = ACTIVATION_FUNNEL_STEPS[stepIndex]!;
+    for (let stepIndex = 0; stepIndex < definitions.length; stepIndex += 1) {
+      const definition = definitions[stepIndex]!;
       const foundAt = sessionEvents.findIndex((event, index) => index >= cursor && definition.matches(event));
       if (foundAt < 0) break;
       counts[stepIndex] = (counts[stepIndex] ?? 0) + 1;
@@ -13503,7 +13570,7 @@ function buildActivationFunnelCohort(
     }
   }
   const denominator = eligibleSessions.size;
-  const steps = ACTIVATION_FUNNEL_STEPS.map((definition, index): ActivationFunnelStepSnapshot => {
+  const steps = definitions.map((definition, index): ActivationFunnelStepSnapshot => {
     const uniqueSessions = counts[index] ?? 0;
     const previousStepSessions = index === 0 ? denominator : counts[index - 1] ?? 0;
     return {

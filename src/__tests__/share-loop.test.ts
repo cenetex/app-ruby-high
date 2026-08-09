@@ -46,6 +46,9 @@ describe("share loop instrumentation", () => {
       uniqueReferredVisitors: 1,
       shareClickThroughRate: 2,
       uniqueShareClickThroughRate: 1,
+      byRef: {
+        yb_abc123: { visits: 2, uniqueVisitors: 1 },
+      },
     });
     expect(events.byName.share_artifact_created).toBe(1);
     expect(events.byName.share_initiated).toBe(1);

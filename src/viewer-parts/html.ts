@@ -100,9 +100,8 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         </div>
         <button class="blackboard-empty-action" id="blackboard-empty-action" type="button" hidden>Create Character</button>
         <div class="onboarding-actions" id="onboarding-actions" hidden>
-          <button class="blackboard-empty-action" id="onboarding-create-btn" type="button">Quick roll a student</button>
-          <button class="blackboard-empty-action onboarding-alt" id="onboarding-customize-btn" type="button">Customize</button>
-          <button class="blackboard-empty-action onboarding-alt" id="onboarding-books-btn" type="button">Browse books</button>
+          <button class="blackboard-empty-action" id="onboarding-create-btn" type="button">Create my student</button>
+          <div class="onboarding-reassurance">Free · no account or AI key needed · class starts immediately</div>
         </div>
       </div>
 

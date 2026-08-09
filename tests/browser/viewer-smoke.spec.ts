@@ -8,7 +8,7 @@ test("enrolls a first student through the creation sheet into First Bell", async
   await expect(page.getByRole("button", { name: "Lock it in" })).toHaveCount(0);
 
   const sheet = page.locator("#sheet-overlay");
-  const rollAStudent = page.getByRole("button", { name: "Quick roll a student" });
+  const rollAStudent = page.getByRole("button", { name: "Create my student" });
   if (!(await sheet.evaluate((element) => element.classList.contains("is-open")))) {
     await expect(rollAStudent).toBeVisible();
     await expect(rollAStudent).toBeEnabled();
@@ -31,17 +31,16 @@ test("enrolls a first student through the creation sheet into First Bell", async
   expect(errors).toEqual([]);
 });
 
-test("keeps Customize as a preview until Freshman year is started", async ({ page }) => {
+test("keeps the generated student as a preview until Freshman year is started", async ({ page }) => {
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);
 
-  await page.getByRole("button", { name: "Customize", exact: true }).click();
   await expect(page.getByRole("button", { name: "Start Freshman Year", exact: true })).toBeVisible();
   await page.locator("#sheet-close").click();
 
   await page.reload();
   await dismissAnnouncements(page);
-  await expect(page.getByRole("button", { name: "Quick roll a student", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create my student", exact: true })).toBeVisible();
   await expect(page.locator(".answer:not([disabled])")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
@@ -121,11 +120,11 @@ test("keeps morning announcements keyboard-modal", async ({ page }) => {
   await expect(page.locator("#announcements-dismiss")).toBeFocused();
 
   await page.keyboard.press("Tab");
-  await expect(announcements.getByRole("link", { name: "About" })).toBeFocused();
+  await expect(page.locator("#announcements-dismiss")).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   await expect(page.locator("#announcements-dismiss")).toBeFocused();
 
-  await page.locator("#announcements-dismiss").click();
+  await page.keyboard.press("Escape");
   await expect(announcements).not.toBeVisible();
   await expect(page.locator("#shell")).not.toHaveAttribute("inert", "");
   expect(errors).toEqual([]);

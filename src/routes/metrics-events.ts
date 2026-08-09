@@ -46,7 +46,15 @@ type MetricsEventBody = {
   providerIsPhantom?: unknown;
   hasConnect?: unknown;
   hasSignMessage?: unknown;
+  step?: unknown;
 };
+
+const VIEWER_ONBOARDING_STEPS = new Set([
+  "onboarding_intro_shown",
+  "onboarding_creation_opened",
+  "onboarding_candidate_ready",
+  "onboarding_enrollment_started",
+]);
 
 export async function handleMetricsEventRoute(
   ctx: RouteContext,
@@ -89,6 +97,24 @@ export async function handleMetricsEventRoute(
         visitorHash,
         clientSurface,
         questionId: requestString(body.questionId),
+      });
+    });
+  }
+  if (type === "funnel_step") {
+    const step = requestString(body.step);
+    if (!step || !VIEWER_ONBOARDING_STEPS.has(step)) {
+      ctx.error(ctx.res, "Unknown onboarding funnel step.", 400);
+      return true;
+    }
+    return await respondAfterMetricPersist(ctx, async () => {
+      await deps.ruby.recordMetricEventDurably("funnel_step", {
+        sessionId: deps.sessionId,
+        ...(visitorHash ? { visitorHash } : {}),
+        ...(clientSurface ? { clientSurface } : {}),
+        source: "viewer",
+        feature: "first_run_onboarding",
+        step,
+        status: "success",
       });
     });
   }

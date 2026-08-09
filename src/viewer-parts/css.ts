@@ -2042,6 +2042,14 @@ export const VIEWER_CSS = `
   .onboarding-actions .blackboard-empty-action {
     min-width: 200px;
   }
+  .onboarding-reassurance {
+    max-width: 360px;
+    color: var(--text-dim);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.45;
+    text-align: center;
+  }
   .onboarding-alt {
     min-width: auto !important;
     min-height: 36px;

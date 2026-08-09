@@ -160,7 +160,8 @@ describe("viewer regression guardrails", () => {
     const html = renderedViewer();
     const script = inlineScript(html);
 
-    expect(html).toContain(">Quick roll a student</button>");
+    expect(html).toContain(">Create my student</button>");
+    expect(html).toContain("Free · no account or AI key needed · class starts immediately");
     expect(html).toContain('<svg aria-hidden="true"');
     expect(VIEWER_CSS).toContain("--text-dim:");
     expect(VIEWER_CSS).toContain("--border:");

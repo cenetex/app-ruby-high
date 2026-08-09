@@ -1338,6 +1338,13 @@ export function runViewerClient(bootstrap) {
     }).catch(() => {});
   }
 
+  const onboardingFunnelStepsSent = new Set();
+  function postOnboardingFunnelStep(step) {
+    if (!step || onboardingFunnelStepsSent.has(step)) return;
+    onboardingFunnelStepsSent.add(step);
+    postViewerMetricEvent("funnel_step", { step: step });
+  }
+
   // imageRequestId is in client-pure.
 
   async function command(payload) {
@@ -2578,6 +2585,9 @@ export function runViewerClient(bootstrap) {
   }
 
   function openCharacterCreation() {
+    if (!lastTelemetry || !lastTelemetry.character) {
+      postOnboardingFunnelStep("onboarding_creation_opened");
+    }
     closePrivyAccount();
     openSheet();
   }
@@ -5008,20 +5018,22 @@ export function runViewerClient(bootstrap) {
     if (guestPack && guestPack.teacher_name) {
       notes.push({ icon: "📚", text: "<strong>Guest Faculty:</strong> " + escapeHtml(guestPack.teacher_name) + " — " + escapeHtml(guestPack.name || guestPack.subject || "guest class") });
     }
-    notes.push({ icon: "📖", text: "<strong>Books:</strong> <em>Qiao</em> and <em>Egregoregramming 101</em> on Gumroad" });
+    if (hasCharacter) {
+      notes.push({ icon: "📖", text: "<strong>Books:</strong> <em>Qiao</em> and <em>Egregoregramming 101</em> on Gumroad" });
+    }
 
     if (!hasCharacter) {
       // First visit — welcome
       if (titleEl) titleEl.textContent = "Welcome to Ruby High";
       if (bodyEl) {
         bodyEl.innerHTML =
-          "<p>A new question every day. Three teachers — Ruby, Sally Science, and Professor Edward — grade what you actually say.</p>" +
-          "<p>Six classmates run their own arcs beside you. Every grade you finish goes in the yearbook. It takes four years to graduate.</p>" +
-          "<p>Class starts at <strong>17:00 UTC</strong>. Today's teacher is <strong>" + escapeHtml(facultyName) + "</strong>. Roll a student and take your seat.</p>";
+          "<p>Create a student, meet six classmates, and answer today's first question. " + escapeHtml(facultyName) + " grades what you actually say.</p>" +
+          "<p><strong>Today's class is ready now.</strong> New classes arrive daily at 17:00 UTC, and every finished year goes in your yearbook.</p>";
       }
       if (notesEl) notesEl.innerHTML = notes.map(function(n) {
         return "<div class=\"announcements-note\"><span class=\"announcements-note-icon\">" + n.icon + "</span><span>" + n.text + "</span></div>";
       }).join("");
+      postOnboardingFunnelStep("onboarding_intro_shown");
     } else {
       // Returning student — daily briefing
       if (titleEl) titleEl.textContent = "Morning Announcements";
@@ -5040,6 +5052,13 @@ export function runViewerClient(bootstrap) {
         return "<div class=\"announcements-note\"><span class=\"announcements-note-icon\">" + n.icon + "</span><span>" + n.text + "</span></div>";
       }).join("");
     }
+
+    const announcementCta = document.getElementById("announcements-dismiss");
+    if (announcementCta) announcementCta.textContent = hasCharacter ? "Take your seat" : "Create my student";
+    const announcementAbout = document.getElementById("announcements-about");
+    const announcementBooks = document.getElementById("announcements-books");
+    if (announcementAbout) announcementAbout.hidden = !hasCharacter;
+    if (announcementBooks) announcementBooks.hidden = !hasCharacter;
 
     announcementsPreviousFocus = document.activeElement && typeof document.activeElement.focus === "function"
       ? document.activeElement
@@ -6821,6 +6840,7 @@ export function runViewerClient(bootstrap) {
         personalityRow,
         quoteRow,
       }, !!aiPortraitDataUrl);
+      postOnboardingFunnelStep("onboarding_candidate_ready");
     }
 
     async function rollComponents(components) {
@@ -6974,6 +6994,7 @@ export function runViewerClient(bootstrap) {
       const snapshot = currentCharacterSnapshot();
       if (!snapshot) return;
       inFlight.saving = true;
+      postOnboardingFunnelStep("onboarding_enrollment_started");
       applyDisabled();
       setStatus("Enrolling...");
       try {
@@ -10473,7 +10494,11 @@ export function runViewerClient(bootstrap) {
   // ── onboarding button handlers ──────────────────────────────────────────
   // ── morning announcements dismiss ───────────────────────────────────────
   const announcementsDismiss = document.getElementById("announcements-dismiss");
-  if (announcementsDismiss) announcementsDismiss.addEventListener("click", dismissAnnouncements);
+  if (announcementsDismiss) announcementsDismiss.addEventListener("click", function() {
+    const startCreation = !!lastTelemetry && !lastTelemetry.character;
+    dismissAnnouncements();
+    if (startCreation) setTimeout(() => openCharacterCreation(), 0);
+  });
   // Allow Escape key to dismiss
   document.addEventListener("keydown", function(ev) {
     if (announcementsOverlay && !announcementsOverlay.hidden) {
@@ -10497,17 +10522,11 @@ export function runViewerClient(bootstrap) {
   });
 
   const onboardingCreateBtn = document.getElementById("onboarding-create-btn");
-  const onboardingCustomizeBtn = document.getElementById("onboarding-customize-btn");
-  const onboardingBooksBtn = document.getElementById("onboarding-books-btn");
-  // Quick Roll still supplies the first candidate immediately, but it lands
+  // The first action supplies a candidate immediately, but it lands
   // in the creation sheet before enrollment. That keeps the fast first-run
   // path while preserving whole-student rerolls, field rerolls, and the AI
   // portrait affordance until the player explicitly starts Freshman year.
   if (onboardingCreateBtn) onboardingCreateBtn.addEventListener("click", openCharacterCreation);
-  if (onboardingCustomizeBtn) onboardingCustomizeBtn.addEventListener("click", openCharacterCreation);
-  if (onboardingBooksBtn) onboardingBooksBtn.addEventListener("click", () => {
-    window.open("https://ratimics.gumroad.com", "_blank", "noopener,noreferrer");
-  });
 
   if (els.youProfile) els.youProfile.addEventListener("click", () => { if (authed) openSheet(); });
   els.chatForm.addEventListener("submit", (e) => { e.preventDefault(); sendChatMessage(els.chatInput.value); });

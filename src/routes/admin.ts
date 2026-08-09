@@ -25,7 +25,7 @@ export const ADMIN_METRICS_SCHEMA_PATH = `${APP_ROUTE_PREFIX}/admin/metrics/sche
 export const ADMIN_OVERVIEW_PATH = `${APP_ROUTE_PREFIX}/admin/overview`;
 export const ADMIN_CURRICULUM_REPLENISHMENT_PATH = `${APP_ROUTE_PREFIX}/admin/curriculum/replenishment`;
 export const ADMIN_WORLD_MODERATION_PATH = `${APP_ROUTE_PREFIX}/admin/world/moderation`;
-export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v7";
+export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v8";
 const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-08-09";
 const ADMIN_METRICS_DEFAULT_TRUST_START = "2026-07-26";
 const BUILT_IN_GENERATOR_FACULTY_IDS = new Set(["ruby", "sally-science", "professor-edward"]);
@@ -1704,6 +1704,14 @@ function buildAdminMetricsSchema(): {
         caveat: "humanViewer includes only visitor-backed viewer app opens after trustStart; raw includes non-smoke agent, API, viewer, and unknown surfaces.",
       },
       {
+        path: "ruby.events.onboardingFunnel",
+        label: "First-visit onboarding funnel",
+        source: "StoredMetricEventRecord app_open, viewer onboarding funnel_step, and gameplay milestones",
+        semantics: "Ordered, visitor-backed steps from app open through student creator, candidate, enrollment, character creation, and first class start.",
+        reliability: "authoritative",
+        caveat: "Begins at instrumentationStart in schema v8; earlier visits are intentionally excluded because the intermediate client events did not exist.",
+      },
+      {
         path: "ruby.events.byClientSurface",
         label: "Metric events by client surface",
         source: "StoredMetricEventRecord.clientSurface",
@@ -1722,7 +1730,7 @@ function buildAdminMetricsSchema(): {
         path: "ruby.events.referral",
         label: "Share loop",
         source: "StoredMetricEventRecord share_artifact_created, share_initiated, and share_link_visited",
-        semantics: "Shareable artifact creation, outbound share starts, inbound link visits, unique referred visitors, and click-through rates.",
+        semantics: "Shareable artifact creation, outbound share starts, inbound link visits, unique referred visitors, click-through rates, and bounded per-ref visit/visitor attribution.",
         reliability: "authoritative",
         caveat: "Link visits are recorded when a referred visitor reaches the viewer with a ref parameter; visits to static share pages alone are not counted.",
       },
@@ -2881,6 +2889,10 @@ async function postTelegramSnapshot() {
       const humanActivationSteps = Array.isArray(humanActivation.steps) ? humanActivation.steps : [];
       const humanCharacterStep = humanActivationSteps.find(function(step) { return step && step.key === "character_created"; }) || {};
       const humanResultStep = humanActivationSteps.find(function(step) { return step && step.key === "result_viewed"; }) || {};
+      const onboarding = events.onboardingFunnel && events.onboardingFunnel.humanViewer || {};
+      const onboardingSteps = Array.isArray(onboarding.steps) ? onboarding.steps : [];
+      const creatorOpenedStep = onboardingSteps.find(function(step) { return step && step.key === "creation_opened"; }) || {};
+      const enrollmentStep = onboardingSteps.find(function(step) { return step && step.key === "enrollment_started"; }) || {};
       const ops = data.ops || {};
       const logs = data.logs || {};
       status("Updated " + time(data.generatedAt) + " - build " + (logs.build || "unknown") + " - " + (data.schemaVersion || "legacy schema"), "");
@@ -2898,6 +2910,7 @@ async function postTelegramSnapshot() {
         metric("Character D1 / D7", pct(ruby.characterD1Retention && ruby.characterD1Retention.rate) + " / " + pct(ruby.retention && ruby.retention.characterD7 && ruby.retention.characterD7.rate), n(ruby.characterD1Retention && ruby.characterD1Retention.returnedSessions) + " / " + n(ruby.characterD1Retention && ruby.characterD1Retention.eligibleSessions)),
         metric("App opens", n(events.appOpen && events.appOpen.total), n(events.sessionResume && events.sessionResume.total) + " resumes"),
         metric("Human activation", n(humanActivation.eligibleSessions) + " opens", pct(humanCharacterStep.rateFromOpen) + " character · " + pct(humanResultStep.rateFromOpen) + " result viewed"),
+        metric("First-visit journey", n(onboarding.eligibleSessions) + " opens", pct(creatorOpenedStep.rateFromOpen) + " creator · " + pct(enrollmentStep.rateFromOpen) + " enroll click"),
         metric("Characters", n(ruby.characters), n(ruby.graduatedCharacters) + " graduated - " + n(ruby.completedGrades) + " grades sealed"),
         metric("Questions", n(ruby.questions && ruby.questions.total), n(ruby.questions && ruby.questions.correct) + " correct - " + pct(ruby.questions && ruby.questions.accuracy) + " accuracy"),
         metric("Curriculum", n(ruby.curriculum && ruby.curriculum.lowPools && ruby.curriculum.lowPools.length), n(ruby.curriculum && ruby.curriculum.rows && ruby.curriculum.rows.length) + " grade/teacher pools"),

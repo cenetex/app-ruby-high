@@ -1787,7 +1787,7 @@ describe("admin metrics route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       ok: true,
-      schemaVersion: "ruby-high-admin-metrics.v7",
+      schemaVersion: "ruby-high-admin-metrics.v8",
       schemaPath: "/api/apps/ruby-high/admin/metrics/schema",
       auth: {
         users: 1,
@@ -2848,7 +2848,7 @@ describe("admin metrics route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       ok: true,
-      schemaVersion: "ruby-high-admin-metrics.v7",
+      schemaVersion: "ruby-high-admin-metrics.v8",
       endpoint: "/api/apps/ruby-high/admin/metrics",
       bucketTimezone: "UTC",
       trustStart: "2026-07-26",
@@ -2995,6 +2995,46 @@ describe("admin metrics route", () => {
     const persistedEvents = await store.loadMetricEvents();
     expect(persistedEvents.map((event) => event.name)).toEqual(["app_open"]);
     expect(persistedEvents[0]?.visitorHash).toBeUndefined();
+  });
+
+  it("accepts only allowlisted first-run onboarding steps from the viewer", async () => {
+    const { token } = await auth.createGuestSession();
+    const cookieHeader = `rh_session=${token}`;
+
+    for (const step of [
+      "onboarding_intro_shown",
+      "onboarding_creation_opened",
+      "onboarding_candidate_ready",
+      "onboarding_enrollment_started",
+    ]) {
+      const response = await appRoute({
+        method: "POST",
+        path: "/api/apps/ruby-high/metrics/event",
+        cookieHeader,
+        visitorHeader: "rhv_onboarding_metrics_visitor",
+        body: { type: "funnel_step", step, clientSurface: "viewer" },
+      });
+      expect(response.status).toBe(200);
+    }
+
+    const rejected = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/metrics/event",
+      cookieHeader,
+      visitorHeader: "rhv_onboarding_metrics_visitor",
+      body: { type: "funnel_step", step: "arbitrary_client_claim" },
+    });
+    expect(rejected.status).toBe(400);
+
+    const events = (await store.loadMetricEvents()).filter((event) => event.feature === "first_run_onboarding");
+    expect(events).toHaveLength(4);
+    expect(events.map((event) => event.step)).toEqual([
+      "onboarding_intro_shown",
+      "onboarding_creation_opened",
+      "onboarding_candidate_ready",
+      "onboarding_enrollment_started",
+    ]);
+    expect(events.every((event) => event.clientSurface === "viewer")).toBe(true);
   });
 
   it("accepts viewer class-ritual visibility events as durable metrics", async () => {
@@ -3343,7 +3383,7 @@ describe("admin metrics route", () => {
     expect(headers.Authorization).toBe("Bearer or-test-key");
     const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body));
     const prompt = body.messages[1].content as string;
-    expect(prompt).toContain("ruby-high-admin-metrics.v7");
+    expect(prompt).toContain("ruby-high-admin-metrics.v8");
     expect(prompt).toContain("identityRecords");
     expect(prompt).toContain("not deduped people");
     expect(prompt).toContain("characterD1Retention");

@@ -8,6 +8,9 @@ Ruby High is a standalone Node service and installable SPA. Ruby hosts the schoo
 
 Production is on **Fly.io** with SQLite on a Fly Volume; see [`infra/fly-deploy.md`](./infra/fly-deploy.md). The legacy DynamoDB backend and App Runner deployment are archived in [`infra/README.md`](./infra/README.md); the AWS exit migration is documented in [`docs/aws-exit-migration.md`](./docs/aws-exit-migration.md). Public-world service-state migration and rollback notes live in [`docs/world-state-runbook.md`](./docs/world-state-runbook.md).
 
+The two-wave first-class activation study is documented in [`docs/activation-playtest.md`](./docs/activation-playtest.md), including tracked invitation links, privacy boundaries, observation prompts, and decision thresholds.
+The current dependency-security disposition is recorded in [`docs/dependabot-triage-2026-08-09.md`](./docs/dependabot-triage-2026-08-09.md), separating the Fly runtime from plugin build tooling and offline visual-scene packages.
+
 ## Run it locally
 
 ```bash
@@ -93,7 +96,7 @@ No hosted account or OpenRouter key is needed for these:
 - `GET /api/apps/ruby-high/admin` renders a browser dashboard for the token-gated usage snapshot, 14-day charts, and an operator overview. Paste the admin token once; the page stores it locally and calls admin endpoints with a Bearer header.
 - `POST /api/apps/ruby-high/metrics/event` records first-party viewer events. The bundled viewer sends durable `app_open` on boot and `session_resume` after returning from five-plus minutes inactive.
 - `GET /api/apps/ruby-high/admin/metrics` returns a compact JSON snapshot for retention tuning: auth identity records/sessions, visitor counts, 14-day auth/play/event series, Ruby High session progression, visitor and character D1 retention, durable metric events, public-read/live-stream ops, and in-process log counters. `auth.users` is identity records, not unique humans. It is disabled until `RUBY_HIGH_ADMIN_TOKEN` is set and accepts either `Authorization: Bearer <token>` or the exact token value.
-- `GET /api/apps/ruby-high/admin/metrics/schema` publishes the current admin metrics contract (`ruby-high-admin-metrics.v7`): field semantics, reliability levels, caveats, and the durable event streams for traffic, retention, funnel, commerce, LLM, and errors.
+- `GET /api/apps/ruby-high/admin/metrics/schema` publishes the current admin metrics contract (`ruby-high-admin-metrics.v8`): field semantics, reliability levels, caveats, and the durable event streams for traffic, onboarding, retention, funnel, commerce, LLM, and errors.
 - `GET /api/apps/ruby-high/admin/overview` returns a token-gated LLM-generated operator overview built only from aggregate metrics. It requires the normal server LLM credential.
 - `GET /api/apps/ruby-high/yearbook/:shareId/:grade` renders a static public yearbook card for a sealed grade. Sealed year cards expose Open/Copy controls in the viewer. `?format=json` returns card data, `?format=svg` returns the fallback social image, and `?format=png` serves or redirects to the generated yearbook image when present before falling back to SVG.
 - `GET /api/apps/ruby-high/cohort/:grade` renders the classroom cohort leaderboard for the current grade, scoped to active sessions at that year level.
