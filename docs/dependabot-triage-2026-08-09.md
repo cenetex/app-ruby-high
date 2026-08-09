@@ -73,8 +73,9 @@ alert remains open.
 
 - Root `npm run audit:prod`: zero critical/high/moderate advisories.
 - Root full typecheck, tests, build, and production smoke must pass.
-- `packages/plugin-ruby-high` `npm run check`: typecheck, tests, and build pass
-  with the overrides installed.
+- The elizaOS plugin is no longer vendored here. Its dependency posture is
+  gated in [`cenetex/plugin-ruby-high`](https://github.com/cenetex/plugin-ruby-high),
+  which runs its own `npm run check` and publishes `@rati-osf/plugin-ruby-high`.
 - Dependabot may take time after the commit lands to recalculate and close the
   corresponding GitHub alerts; repository alert count is not used as a proxy
   for the production image audit.
