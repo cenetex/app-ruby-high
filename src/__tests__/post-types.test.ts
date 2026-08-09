@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  appendScheduledSchoolUpdateLink,
   buildDeterministicPostText,
   isLowSignalMilestone,
   weightedPickPostKind,
@@ -215,5 +216,17 @@ describe("scheduled school update safety", () => {
     expect(normalizeScheduledSchoolUpdateText("Read https://example.com #RubyHigh")).toBeNull();
     expect(normalizeScheduledSchoolUpdateText("A".repeat(400))).toMatch(/^A+\.\.\. #RubyHigh$/);
     expect(normalizeScheduledSchoolUpdateText("A".repeat(400))!.length).toBeLessThanOrEqual(280);
+  });
+
+  it("appends only a bounded HTTPS activation link after generated copy is validated", () => {
+    const url = "https://ruby-high.ai/api/apps/ruby-high/viewer?ref=activation-x-school-update";
+    expect(appendScheduledSchoolUpdateLink("Take today's class. #RubyHigh", url)).toBe(
+      `Take today's class. #RubyHigh ${url}`,
+    );
+    expect(appendScheduledSchoolUpdateLink("A".repeat(260) + " #RubyHigh", url)).toMatch(
+      new RegExp(`^A+\\.\\.\\. #RubyHigh ${url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`),
+    );
+    expect(appendScheduledSchoolUpdateLink("A".repeat(260) + " #RubyHigh", url)!.length).toBeLessThanOrEqual(280);
+    expect(appendScheduledSchoolUpdateLink("Take class", "http://example.com")).toBeNull();
   });
 });

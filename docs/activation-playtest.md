@@ -19,6 +19,15 @@ The `ref` value is stored only as aggregate referral attribution in the admin
 metrics. Assign each participant an offline code such as `A1`; do not put that
 code, their name, or contact details in the URL.
 
+### Organic X cohort
+
+The existing daily scheduled X update appends a direct class link with one of
+these aggregate refs: `activation-x-school-update`,
+`activation-x-guest-welcome`, or `activation-x-guest-insights`. Treat these as
+an unobserved organic cohort, not as Wave A or B. Compare visits in
+`ruby.events.referral.byRef`, but do not combine them with the five-person
+observed-wave denominators.
+
 ## Invitation
 
 > Try the first class at Ruby High. It is free, works without an account or AI

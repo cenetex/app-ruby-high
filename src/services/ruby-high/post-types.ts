@@ -123,6 +123,36 @@ export function normalizeScheduledSchoolUpdateText(
   return text.length <= 280 ? text : null;
 }
 
+/** Attach the measured class link after model output has passed the no-URL
+ * safety check. Keeping this deterministic prevents untrusted/generated copy
+ * from choosing a destination while making every scheduled post actionable. */
+export function appendScheduledSchoolUpdateLink(text: string, url: string): string | null {
+  const cleanText = text.replace(/\s+/g, " ").trim();
+  const cleanUrl = url.trim();
+  if (!cleanText) return null;
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(cleanUrl);
+  } catch {
+    return null;
+  }
+  const localDevelopmentUrl = parsedUrl.protocol === "http:" &&
+    (parsedUrl.hostname === "127.0.0.1" || parsedUrl.hostname === "localhost" || parsedUrl.hostname === "[::1]");
+  if (parsedUrl.protocol !== "https:" && !localDevelopmentUrl) return null;
+
+  const maxPrefixLength = 280 - cleanUrl.length - 1;
+  if (maxPrefixLength <= 0) return null;
+  if (cleanText.length <= maxPrefixLength) return `${cleanText} ${cleanUrl}`;
+
+  const hasCampaignTag = /(?:^|\s)#RubyHigh\b/i.test(cleanText);
+  const tag = hasCampaignTag ? " #RubyHigh" : "";
+  const body = cleanText.replace(/\s*#RubyHigh\b/gi, "").trim();
+  const bodyLimit = maxPrefixLength - tag.length;
+  if (bodyLimit <= 3) return null;
+  const clippedBody = `${body.slice(0, bodyLimit - 3).trimEnd()}...`;
+  return `${clippedBody}${tag} ${cleanUrl}`;
+}
+
 /** Generate one privacy-safe school update from aggregate classroom signals.
  *  Aggregate updates and guest insights deliberately have no deterministic
  *  fallback. A guest welcome may fall back to verified roster metadata because
@@ -166,7 +196,8 @@ export async function generateScheduledSchoolUpdateText(
       ? `The only permitted X handle is @${guestHandle}. Do not mention individual students, other handles, URLs, internal systems, analytics, retention, or that an AI wrote the post.`
       : "Do not mention individual students, handles, URLs, internal systems, analytics, retention, or that an AI wrote the post.",
     "Translate numbers into a natural observation instead of sounding like a dashboard.",
-    "Keep it under 270 characters, use at most one emoji, and end with #RubyHigh.",
+    "End with a concrete invitation to take today's class, but do not include a URL; the system appends the measured class link.",
+    "Keep it under 180 characters, use at most one emoji, and end with #RubyHigh.",
     "",
     JSON.stringify(scheduledSchoolUpdatePromptContext(context)),
     "",

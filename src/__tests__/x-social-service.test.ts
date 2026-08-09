@@ -1033,6 +1033,7 @@ describe("XSocialService", () => {
     it("posts the exact LLM-written scheduled school update with media", async () => {
       await connectRuby(svc);
       vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "test-key");
+      vi.stubEnv("RUBY_HIGH_PUBLIC_BASE", "https://ruby-high.ai");
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
@@ -1063,9 +1064,15 @@ describe("XSocialService", () => {
       );
       const body = JSON.parse((tweetCall![1] as RequestInit).body as string);
       expect(body).toEqual({
-        text: "The classrooms are moving, and the lounge has plenty to talk about. #RubyHigh",
+        text: "The classrooms are moving, and the lounge has plenty to talk about. #RubyHigh https://ruby-high.ai/api/apps/ruby-high/viewer?ref=activation-x-school-update",
         media: { media_ids: ["media-school-update"] },
       });
+      const llmCall = mockFetch.mock.calls.find((call: unknown[]) => {
+        const bodyText = String((call[1] as RequestInit | undefined)?.body ?? "");
+        return bodyText.includes("concrete invitation to take today's class");
+      });
+      expect(llmCall).toBeDefined();
+      expect(String((llmCall![1] as RequestInit).body)).toContain("under 180 characters");
       const imageCall = mockFetch.mock.calls.find((call: unknown[]) => {
         const bodyText = String((call[1] as RequestInit | undefined)?.body ?? "");
         return bodyText.includes('"modalities":["image","text"]');
@@ -1141,6 +1148,7 @@ describe("XSocialService", () => {
       );
       const body = JSON.parse((tweetCall![1] as RequestInit).body as string);
       expect(body.text).toContain("Insights from @elizaOS");
+      expect(body.text).toContain("ref=activation-x-guest-insights");
       expect(body.media.media_ids).toEqual(["media-guest-insight"]);
     });
 

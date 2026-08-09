@@ -19,6 +19,7 @@ import type { TeacherCharacter } from "../characters/teachers.js";
 import { listTeachers, teacherById } from "../characters/teachers.js";
 import { listStudents } from "../characters/students.js";
 import {
+  appendScheduledSchoolUpdateLink,
   buildDeterministicPostText,
   generateScheduledSchoolUpdateText,
   isLowSignalMilestone,
@@ -144,6 +145,19 @@ function xClientSecret(): string { return process.env.RUBY_HIGH_X_CLIENT_SECRET 
 function xRedirectUri(): string {
   const base = process.env.RUBY_HIGH_PUBLIC_BASE?.replace(/\/+$/, "") ?? "http://127.0.0.1:3000";
   return `${base}/api/apps/ruby-high/x/callback`;
+}
+
+function scheduledSchoolUpdateAcquisitionRef(mode: ScheduledSchoolUpdateEditorialMode): string {
+  if (mode === "guest-welcome") return "activation-x-guest-welcome";
+  if (mode === "guest-insights") return "activation-x-guest-insights";
+  return "activation-x-school-update";
+}
+
+function scheduledSchoolUpdateActivationUrl(mode: ScheduledSchoolUpdateEditorialMode): string {
+  const base = process.env.RUBY_HIGH_PUBLIC_BASE?.replace(/\/+$/, "") ?? "http://127.0.0.1:3000";
+  const url = new URL("/api/apps/ruby-high/viewer", `${base}/`);
+  url.searchParams.set("ref", scheduledSchoolUpdateAcquisitionRef(mode));
+  return url.toString();
 }
 
 const X_OAUTH_SCOPES = ["tweet.read", "tweet.write", "users.read", "offline.access", "media.write"].join(" ");
@@ -1412,11 +1426,20 @@ export class XSocialService extends Service {
     const sourcedContext = opts?.editorialMode === "guest-insights"
       ? await this.withRecentFeaturedGuestXPosts(postToken, context)
       : context;
-    const text = await generateScheduledSchoolUpdateText(teacher, sourcedContext, {
+    const generatedText = await generateScheduledSchoolUpdateText(teacher, sourcedContext, {
       editorialMode: opts?.editorialMode,
     });
-    if (!text) {
+    if (!generatedText) {
       log.event("x-social.scheduled-text-skipped", { teacherId: teacher.id });
+      return null;
+    }
+    const acquisitionRef = scheduledSchoolUpdateAcquisitionRef(postKind);
+    const text = appendScheduledSchoolUpdateLink(
+      generatedText,
+      scheduledSchoolUpdateActivationUrl(postKind),
+    );
+    if (!text) {
+      log.event("x-social.scheduled-text-skipped", { teacherId: teacher.id, reason: "activation-link" });
       return null;
     }
     if (
@@ -1434,6 +1457,7 @@ export class XSocialService extends Service {
         teacherId: teacher.id,
         xScreenName: token.xScreenName,
         kind: postKind,
+        acquisitionRef,
         text: text.slice(0, 200),
       });
       return "dry-run:school-update";
@@ -1446,7 +1470,7 @@ export class XSocialService extends Service {
     const generatedImageUrl = await this.generateScheduledSchoolUpdatePhoto(
       teacher,
       sourcedContext,
-      text,
+      generatedText,
     );
     const imageCandidates = Array.from(new Set([
       generatedImageUrl,
@@ -1469,6 +1493,7 @@ export class XSocialService extends Service {
         kind: postKind,
         tweetId,
         mediaId,
+        acquisitionRef,
       });
       this.analytics.enqueueFetch(tweetId, Date.now());
     }
