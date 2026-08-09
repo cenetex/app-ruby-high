@@ -55,6 +55,20 @@ web app. A move to PyTorch 2.13 must be paired with its supported torchvision
 release and revalidated against Segment Anything; it is intentionally not
 forced as an untested security-only upgrade in this pass.
 
+The plugin development lockfile also retains `elliptic` 6.6.1 through
+`@elizaos/core` → `crypto-browserify`. The plugin declares ElizaOS as a peer at
+runtime and is not copied into the Fly image, so this is not an internet-facing
+Ruby High dependency. It remains visible until the ElizaOS dependency graph
+removes the affected package.
+
+## Post-merge recalculation
+
+GitHub recalculated the default branch after commit `ccbedc9`: 32 of the 35
+alerts closed. The three remaining alerts are all low severity: root `elliptic`,
+plugin-lockfile `elliptic`, and the offline PyTorch pin. These correspond to the
+accepted-and-monitored cases above; no critical, high, or moderate Dependabot
+alert remains open.
+
 ## Verification gates
 
 - Root `npm run audit:prod`: zero critical/high/moderate advisories.

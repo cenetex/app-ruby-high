@@ -5637,6 +5637,15 @@ describe("RubyHighService Phase 1", () => {
     const { ruby } = await makeServices();
     const human = "viewer:activation:human";
     const smoke = "viewer:activation:smoke";
+    const beforeOnboardingInstrumentation = "viewer:activation:pre-onboarding";
+
+    ruby.recordMetricEvent("app_open", {
+      sessionId: beforeOnboardingInstrumentation,
+      visitorHash: "visitor-before-onboarding",
+      clientSurface: "viewer",
+      source: "viewer",
+      occurredAt: Date.UTC(2026, 7, 9, 5, 20),
+    });
 
     ruby.recordAppOpen(human, {
       clientSurface: "viewer",
@@ -5663,10 +5672,10 @@ describe("RubyHighService Phase 1", () => {
 
     const analytics = ruby.analyticsSnapshot(Date.now());
     const events = analytics.events;
-    expect(events.activationFunnel.raw).toMatchObject({ sampleSize: 1, eligibleSessions: 1 });
-    expect(events.activationFunnel.humanViewer).toMatchObject({ sampleSize: 1, eligibleSessions: 1 });
+    expect(events.activationFunnel.raw).toMatchObject({ sampleSize: 2, eligibleSessions: 2 });
+    expect(events.activationFunnel.humanViewer).toMatchObject({ sampleSize: 2, eligibleSessions: 2 });
     expect(Object.fromEntries(events.activationFunnel.humanViewer.steps.map((step) => [step.key, step.uniqueSessions]))).toMatchObject({
-      app_open: 1,
+      app_open: 2,
       character_created: 1,
       daily_class_started: 1,
       first_answer: 1,
@@ -5678,6 +5687,7 @@ describe("RubyHighService Phase 1", () => {
       result_completed: 1,
       result_viewed: 1,
     });
+    expect(events.onboardingFunnel.instrumentationStart).toBe("2026-08-09T05:23:59.000Z");
     expect(events.onboardingFunnel.humanViewer).toMatchObject({ sampleSize: 1, eligibleSessions: 1 });
     expect(Object.fromEntries(events.onboardingFunnel.humanViewer.steps.map((step) => [step.key, step.uniqueSessions]))).toEqual({
       app_open: 1,

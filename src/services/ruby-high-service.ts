@@ -13529,7 +13529,11 @@ function activationMetricsTrustStart(): number {
 
 function onboardingMetricsStart(): number {
   const configured = Date.parse(String(process.env.RUBY_HIGH_ONBOARDING_METRICS_START ?? ""));
-  return Number.isFinite(configured) ? configured : Date.UTC(2026, 7, 9);
+  // Schema v8's intermediate onboarding events first reached production when
+  // the Fly rollout completed. Starting at midnight would include app opens
+  // that could not possibly emit the new steps and would manufacture a false
+  // drop-off at creation_opened.
+  return Number.isFinite(configured) ? configured : Date.UTC(2026, 7, 9, 5, 23, 59);
 }
 
 function buildActivationFunnelCohort(
