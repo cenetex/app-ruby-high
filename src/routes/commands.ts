@@ -1,7 +1,7 @@
 import type { IAgentRuntime } from "../runtime.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { FacultyService } from "../services/faculty-service.js";
-import { AuthService, type AuthRecord } from "../services/auth-service.js";
+import { AuthService, type AuthRecord, visitorHashFromHeader } from "../services/auth-service.js";
 import {
   guestAccessStateForSession,
   guestTargetFacultyForCommand,
@@ -73,6 +73,7 @@ type CommandBody = {
   personality?: string;
   portraitDataUrl?: string;
   mentorAccepted?: boolean;
+  startFirstBell?: boolean;
   grade?: string;
   requestId?: string;
   socialConsent?: boolean;
@@ -198,6 +199,18 @@ export async function handleCommandRoute(args: {
       command,
       message,
     });
+  const startFirstBellIfRequested = (state: QuizState): QuizState => {
+    if (!body?.startFirstBell || state.current || (state.activeRound && !state.activeRound.resolved)) {
+      return state;
+    }
+    try {
+      return ruby.pickAndPose(stateKey, { mode: "class" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (isNoScheduledQuestionDue(message)) return state;
+      throw err;
+    }
+  };
   const characterInputFromBody = () => {
     if (typeof body?.name !== "string" || typeof body.playbookId !== "string" || !body.stats) {
       throw new Error("Missing name, playbookId, or stats.");
@@ -314,16 +327,27 @@ export async function handleCommandRoute(args: {
     },
     "create-character": async () => {
       const input = characterInputFromBody();
+      if (body?.startFirstBell) {
+        await ruby.recordViewerOnboardingStepDurably(stateKey, "onboarding_enrollment_started", {
+          visitorHash: visitorHashFromHeader(ctx.visitorHeader),
+          clientSurface: commandAuthRecord?.clientSurface ?? "viewer",
+        });
+      }
       const current = ruby.getOrCreate(stateKey);
       if (current.character) {
-        return await persist(current, "Character already created");
+        const resumed = startFirstBellIfRequested(current);
+        return await persist(
+          resumed,
+          resumed.current ? "Character already created. First Bell ready." : "Character already created",
+        );
       }
-      const state = ruby.createCharacter(stateKey, {
+      let state = ruby.createCharacter(stateKey, {
         ...input,
         mentorAccepted: !!body?.mentorAccepted,
         creationMethod: "custom",
       });
-      return await persist(state, "Character created");
+      state = startFirstBellIfRequested(state);
+      return await persist(state, state.current ? "Character created. First Bell ready." : "Character created");
     },
     "quick-roll-student": async () => {
       const state = ruby.quickRollIntoFirstBell(stateKey);

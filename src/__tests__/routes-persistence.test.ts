@@ -12,6 +12,7 @@ import type {
   StateStoreLike,
   StoredContentPackRecord,
   StoredDraftContentPackRecord,
+  StoredMetricEventRecord,
   StoredPackInstallationRecord,
   StoredTeacherRecord,
 } from "../services/state-store.js";
@@ -73,6 +74,16 @@ class MemorySessionStore implements StateStoreLike {
   }
   async flush(): Promise<void> {}
   describe(): string { return "memory-test-store"; }
+}
+
+class MetricMemorySessionStore extends MemorySessionStore {
+  metricEvents = new Map<string, StoredMetricEventRecord>();
+  async loadMetricEvents(): Promise<StoredMetricEventRecord[]> {
+    return Array.from(this.metricEvents.values());
+  }
+  async saveMetricEvent(event: StoredMetricEventRecord): Promise<void> {
+    this.metricEvents.set(event.id, event);
+  }
 }
 
 function runtimeFor(
@@ -353,6 +364,63 @@ describe("command route persistence and scheduler misses", () => {
     expect(retry.response?.status).toBe(200);
     expect(retry.response?.body.message).toBe("Character already created");
     expect(retry.response?.body.session.telemetry.character.name).toBe("Ari");
+  });
+
+  it("atomically enrolls a custom student into First Bell and preserves it on retry", async () => {
+    setActivePack(singleQuestionPack());
+    const store = new MetricMemorySessionStore();
+    const faculty = await FacultyService.start({} as never);
+    const ruby = new RubyHighService({} as never, store);
+    ruby.setFacultyService(faculty);
+    try {
+      const first = makeCommandCtx(ruby, {
+        type: "create-character",
+        startFirstBell: true,
+        name: "Ari",
+        playbookId: "overachiever",
+        stats: { head: 2, heart: 0, hustle: -1, honor: 1 },
+        arcAnswer: "I want the transcript to look impossible.",
+        personality: "intense but kind",
+      }, faculty);
+      await handleAppRoutes(first.ctx);
+
+      expect(first.response?.status).toBe(200);
+      expect(first.response?.body.message).toBe("Character created. First Bell ready.");
+      expect(first.response?.body.session.telemetry.character.name).toBe("Ari");
+      const questionId = first.response?.body.session.telemetry.current?.id;
+      expect(questionId).toBe("route-test-q1");
+      expect(first.response?.body.session.telemetry.active_round).toMatchObject({
+        questionId,
+        classSession: { mode: "class", index: 1, total: 3 },
+      });
+      await ruby.flush();
+      const activationEvents = (await store.loadMetricEvents()).filter((event) =>
+        event.name === "daily_class_started" || event.name === "funnel_step"
+      );
+      expect(activationEvents.map((event) => [event.name, event.step])).toEqual([
+        ["funnel_step", "onboarding_enrollment_started"],
+        ["funnel_step", "first_character_created"],
+        ["daily_class_started", "evidence_1"],
+      ]);
+
+      const retry = makeCommandCtx(ruby, {
+        type: "create-character",
+        startFirstBell: true,
+        name: "Retry must not replace Ari",
+        playbookId: "lifer",
+        stats: { head: 2, heart: 1, hustle: 0, honor: -1 },
+        arcAnswer: "Retry",
+        personality: "retry",
+      }, faculty);
+      await handleAppRoutes(retry.ctx);
+
+      expect(retry.response?.status).toBe(200);
+      expect(retry.response?.body.message).toBe("Character already created. First Bell ready.");
+      expect(retry.response?.body.session.telemetry.character.name).toBe("Ari");
+      expect(retry.response?.body.session.telemetry.current?.id).toBe(questionId);
+    } finally {
+      await faculty.stop();
+    }
   });
 
   it("keeps browser commands on the launched agent viewer session", async () => {

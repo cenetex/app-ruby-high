@@ -109,14 +109,13 @@ export async function handleMetricsEventRoute(
       return true;
     }
     return await respondAfterMetricPersist(ctx, async () => {
-      await deps.ruby.recordMetricEventDurably("funnel_step", {
-        sessionId: deps.sessionId,
-        ...(visitorHash ? { visitorHash } : {}),
-        ...(clientSurface ? { clientSurface } : {}),
-        source: "viewer",
-        feature: "first_run_onboarding",
-        step,
-        status: "success",
+      await deps.ruby.recordViewerOnboardingStepDurably(deps.sessionId, step as
+        | "onboarding_intro_shown"
+        | "onboarding_creation_opened"
+        | "onboarding_candidate_ready"
+        | "onboarding_enrollment_started", {
+        visitorHash,
+        clientSurface,
       });
     });
   }

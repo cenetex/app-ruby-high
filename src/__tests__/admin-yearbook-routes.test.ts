@@ -3017,6 +3017,19 @@ describe("admin metrics route", () => {
       expect(response.status).toBe(200);
     }
 
+    const duplicateEnrollment = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/metrics/event",
+      cookieHeader,
+      visitorHeader: "rhv_onboarding_metrics_visitor",
+      body: {
+        type: "funnel_step",
+        step: "onboarding_enrollment_started",
+        clientSurface: "viewer",
+      },
+    });
+    expect(duplicateEnrollment.status).toBe(200);
+
     const rejected = await appRoute({
       method: "POST",
       path: "/api/apps/ruby-high/metrics/event",

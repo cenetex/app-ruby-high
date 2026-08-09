@@ -2229,6 +2229,27 @@ export class RubyHighService extends Service {
     });
   }
 
+  async recordViewerOnboardingStepDurably(
+    sessionId: string,
+    step:
+      | "onboarding_intro_shown"
+      | "onboarding_creation_opened"
+      | "onboarding_candidate_ready"
+      | "onboarding_enrollment_started",
+    input: { visitorHash?: string | null; clientSurface?: MetricClientSurface } = {},
+  ): Promise<void> {
+    if (this.hasMetricEventForSession(sessionId, "funnel_step", step)) return;
+    await this.recordMetricEventDurably("funnel_step", {
+      sessionId,
+      ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
+      ...(input.clientSurface ? { clientSurface: input.clientSurface } : {}),
+      source: "viewer",
+      feature: "first_run_onboarding",
+      step,
+      status: "success",
+    });
+  }
+
   recordMetricEvent(
     name: StoredMetricEventName,
     input: MetricEventInput = {},

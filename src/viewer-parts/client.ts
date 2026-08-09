@@ -7023,6 +7023,7 @@ export function runViewerClient(bootstrap) {
       try {
         const data = await command({
           type: "create-character",
+          startFirstBell: true,
           ...snapshot,
         });
         if (!data || !data.session) {

@@ -835,8 +835,14 @@ function offlineApiScript(data) {
       state = defaultState();
       message = "Session reset";
     } else if (type === "create-character") {
-      state = createCharacter(state, body || {});
-      message = "Character created";
+      const existed = !!state.character;
+      if (!state.character) state = createCharacter(state, body || {});
+      if (body.startFirstBell && !state.current && !(state.activeRound && !state.activeRound.resolved)) {
+        state = pickQuestion(state);
+      }
+      message = existed
+        ? state.current ? "Character already created. First Bell ready." : "Character already created"
+        : state.current ? "Character created. First Bell ready." : "Character created";
     } else if (type === "clear-character") {
       archiveCompletedCharacter(state, state.character);
       state.character = null;

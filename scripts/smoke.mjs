@@ -448,6 +448,7 @@ async function check7OfflinePlayFlow() {
 
     const create = await postJson(commandPath, {
       type: "create-character",
+      startFirstBell: true,
       name: `Smoke ${Date.now().toString(36)}`,
       playbookId: "overachiever",
       stats: { head: 2, heart: 1, hustle: 0, honor: -1 },
@@ -460,9 +461,14 @@ async function check7OfflinePlayFlow() {
     if (!created?.session?.telemetry?.character?.name?.startsWith("Smoke ")) {
       return fail(name, `create-character did not return character telemetry: ${JSON.stringify(created).slice(0, 240)}`);
     }
+    const current = created?.session?.telemetry?.current;
+    if (!current?.id || !created?.session?.telemetry?.active_round) {
+      return fail(name, `create-character did not start First Bell atomically: ${JSON.stringify(created).slice(0, 260)}`);
+    }
 
     const retryCreate = await postJson(commandPath, {
       type: "create-character",
+      startFirstBell: true,
       name: "Smoke retry must not replace student",
       playbookId: "lifer",
       stats: { head: 2, heart: 1, hustle: 0, honor: -1 },
@@ -476,13 +482,11 @@ async function check7OfflinePlayFlow() {
     if (retried?.session?.telemetry?.character?.name !== created.session.telemetry.character.name) {
       return fail(name, `create-character retry replaced the enrolled student: ${JSON.stringify(retried).slice(0, 240)}`);
     }
-
-    const pick = await postJson(commandPath, { type: "pick" });
-    if (pick.status !== 200) return fail(name, `pick expected 200, got ${pick.status}: ${(await pick.text()).slice(0, 200)}`);
-    const picked = await readJson(pick);
-    const current = picked?.session?.telemetry?.current;
-    if (!current || !current.id || !current.options?.A || !picked?.session?.telemetry?.active_round) {
-      return fail(name, `pick did not produce a live board: ${JSON.stringify(picked).slice(0, 260)}`);
+    if (retried?.session?.telemetry?.current?.id !== current.id) {
+      return fail(name, `create-character retry replaced the First Bell question: ${JSON.stringify(retried).slice(0, 240)}`);
+    }
+    if (!current.options?.A) {
+      return fail(name, `First Bell did not include playable choices: ${JSON.stringify(created).slice(0, 260)}`);
     }
 
     const answer = await postJson(commandPath, { type: "answer", picked: "A" });

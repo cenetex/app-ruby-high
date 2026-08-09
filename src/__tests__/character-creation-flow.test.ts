@@ -115,6 +115,7 @@ describe("character creation flow", () => {
 
       expect(autoStartFn).toContain("creationSheetOpen()");
       expect(beginFn).toContain('type: "create-character"');
+      expect(beginFn).toContain("startFirstBell: true");
       expect(finishFn).toContain("void pickNext()");
       expect(beginFn).toContain("apiClient.lastCommandError()");
       expect(beginFn).toContain("await fetchSession");
