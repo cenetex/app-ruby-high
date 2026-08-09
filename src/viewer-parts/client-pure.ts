@@ -85,11 +85,12 @@ export function dailyClassProgressView(telemetry: NullableRecord): DailyClassPro
   );
   const count = Math.max(0, Math.min(3, Math.floor(Number(today && today.questionCount) || 0)));
   const complete = !!(today && today.status === "complete");
+  const offlineStatic = telemetry && telemetry.store_path === "localStorage";
   const currentIndex = complete ? 3 : Math.min(2, count);
   const definitions: Array<{ key: DailyClassProgressStepView["key"]; label: string }> = [
     { key: "evidence-1", label: "Evidence 1" },
     { key: "evidence-2", label: "Evidence 2" },
-    { key: "take", label: "Your Take" },
+    { key: "take", label: offlineStatic ? "Evidence 3" : "Your Take" },
     { key: "result", label: "Result" },
   ];
   const steps = definitions.map((definition, index): DailyClassProgressStepView => ({
@@ -102,7 +103,7 @@ export function dailyClassProgressView(telemetry: NullableRecord): DailyClassPro
     continuationLabel: currentIndex === 1
       ? "Next: Evidence 2"
       : currentIndex === 2
-        ? "Next: Your Take"
+        ? offlineStatic ? "Next: Evidence 3" : "Next: Your Take"
         : currentIndex === 3
           ? "View Result"
           : "Start Evidence 1",

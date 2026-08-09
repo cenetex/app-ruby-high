@@ -1,5 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { detectGenericPraise, parseTeacherGrades } from "../grading.js";
+import { detectGenericPraise, offlineOpinionContentScore, parseTeacherGrades } from "../grading.js";
+
+describe("offlineOpinionContentScore", () => {
+  const question = "When a classmate answers confidently, what should you trust and what should you check?";
+  const rubric = "Names one concrete trust signal and one concrete reason to verify.";
+
+  it("passes a concise, relevant answer with evidence and a verification step", () => {
+    expect(offlineOpinionContentScore({
+      question,
+      rubric,
+      response: "I trust a clear trail of evidence and check the source behind the confidence.",
+    })).toBeGreaterThanOrEqual(7.5);
+  });
+
+  it("does not pass a non-answer", () => {
+    expect(offlineOpinionContentScore({ question, rubric, response: "I don't know." })).toBeLessThan(7);
+  });
+});
 
 describe("parseTeacherGrades", () => {
   it("parses a well-formed teacher response", () => {

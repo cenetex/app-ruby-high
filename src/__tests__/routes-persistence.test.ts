@@ -1206,6 +1206,21 @@ describe("command route persistence and scheduler misses", () => {
       expect(handled).toBe(true);
       expect(harness.response?.status).toBe(403);
       expect(harness.response?.body.error).toMatch(/Sign up to keep your character/i);
+
+      const clearHarness = makeCommandCtx(
+        ruby,
+        { type: "clear" },
+        faculty,
+        null,
+        auth,
+        `rh_session=${token}`,
+      );
+      const clearHandled = await handleAppRoutes(clearHarness.ctx);
+
+      expect(clearHandled).toBe(true);
+      expect(clearHarness.response?.status).toBe(200);
+      expect(clearHarness.response?.body.session.telemetry.current).toBeNull();
+      expect(clearHarness.response?.body.session.telemetry.guest_access.requiresSignup).toBe(true);
     } finally {
       await auth.stop();
     }

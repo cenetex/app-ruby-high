@@ -31,6 +31,62 @@ export interface ParsedTeacherGrades {
   narrativeText: string;
 }
 
+const OFFLINE_STOP_WORDS = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "but", "by", "do", "for",
+  "from", "had", "has", "have", "he", "her", "hers", "him", "his", "i",
+  "in", "is", "it", "its", "me", "my", "of", "on", "or", "our", "ours",
+  "she", "so", "that", "the", "their", "theirs", "them", "they", "this",
+  "to", "us", "was", "we", "were", "what", "which", "who", "will", "with",
+  "you", "your", "yours",
+]);
+
+function offlineWords(value: string): string[] {
+  return (value.toLowerCase().match(/[a-z0-9]+(?:['’][a-z0-9]+)?/g) ?? [])
+    .map((word) => word.replace("’", "'"));
+}
+
+/**
+ * Content-first fallback score for an opinion response when the teacher LLM
+ * is unavailable. This intentionally rewards relevance, reasoning, and a
+ * concrete verification step; character dice may nudge this score elsewhere,
+ * but never replace it.
+ */
+export function offlineOpinionContentScore(input: {
+  question: string;
+  rubric?: string;
+  response: string;
+}): number {
+  const words = offlineWords(input.response);
+  const meaningful = words.filter((word) => !OFFLINE_STOP_WORDS.has(word));
+  if (words.length < 4 || meaningful.length < 2) return 3;
+  if (/\b(?:i\s+do(?:n't| not)\s+know|no\s+idea|idk)\b/i.test(input.response)) return 3;
+
+  const uniqueMeaningful = new Set(meaningful);
+  const promptKeywords = new Set(
+    offlineWords(`${input.question} ${input.rubric ?? ""}`)
+      .filter((word) => !OFFLINE_STOP_WORDS.has(word)),
+  );
+  const overlap = [...uniqueMeaningful].filter((word) => promptKeywords.has(word)).length;
+  const hasReasoning = /\b(?:because|before|evidence|if|reason|since|so|therefore|when|why|would)\b/i.test(input.response);
+  const hasVerificationStep = /\b(?:ask|check|compare|confirm|question|source|test|verify)\b/i.test(input.response);
+
+  let score = 4.5;
+  if (words.length >= 8) score += 0.75;
+  if (words.length >= 15) score += 0.75;
+  if (words.length >= 25) score += 0.5;
+  if (meaningful.length >= 4) score += 0.5;
+  if (uniqueMeaningful.size / meaningful.length >= 0.65) score += 0.5;
+  if (hasReasoning) score += 0.75;
+  if (hasVerificationStep) score += 0.5;
+  if (overlap >= 2) score += 0.75;
+  if (overlap >= 4) score += 0.5;
+  if (/[.!?].+[.!?]/s.test(input.response.trim())) score += 0.25;
+
+  // Length alone must not pass an unrelated or unsupported response.
+  if (!hasReasoning && !hasVerificationStep && overlap < 2) score = Math.min(score, 6.5);
+  return Math.min(9, Math.max(0, Math.round(score * 2) / 2));
+}
+
 // Accepts negative scores so the clamp can ground them at 0 — better than
 // silently letting a "-3" line fall through as narrative.
 const GRADE_LINE = /^\s*GRADE\s+responder=([\w-]+)\s+score=(-?\d+(?:\.\d+)?)\s+comment=(.+?)\s*$/i;

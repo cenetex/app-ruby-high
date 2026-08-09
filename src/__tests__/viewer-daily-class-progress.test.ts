@@ -38,6 +38,16 @@ describe("daily class progress view", () => {
     expect(result.steps.map((step) => step.state)).toEqual(["complete", "complete", "complete", "current"]);
   });
 
+  it("labels the static offline third card as evidence instead of a written take", () => {
+    const view = dailyClassProgressView({
+      ...telemetry(2),
+      store_path: "localStorage",
+    });
+
+    expect(view.steps[2]).toMatchObject({ label: "Evidence 3", state: "current" });
+    expect(view.continuationLabel).toBe("Next: Evidence 3");
+  });
+
   it("stays hidden without a character-backed class context", () => {
     expect(dailyClassProgressView({})).toMatchObject({ visible: false });
   });

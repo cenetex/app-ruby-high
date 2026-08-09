@@ -1524,6 +1524,17 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "subjectDisplayName(cg.facultyId, cg.progress)");
   });
 
+  it("shows the completed class report before post-class signup or practice", () => {
+    const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
+    const pickNext = clientSource.slice(clientSource.indexOf("async function pickNext()"));
+
+    expect(pickNext.indexOf("currentRevealCompletedClass(lastTelemetry)")).toBeGreaterThanOrEqual(0);
+    expect(pickNext.indexOf("currentRevealCompletedClass(lastTelemetry)")).toBeLessThan(
+      pickNext.indexOf("const postClass = postClassState(lastTelemetry)"),
+    );
+    expectScriptToContain(pickNext, 'await command({ type: "clear" })');
+  });
+
   it("builds the class report with full-body teacher standee art and a score metric", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
@@ -1536,6 +1547,11 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function shouldShowClassReport");
     expectScriptToContain(script, "let dismissedClassReportKey = null");
     expectScriptToContain(script, "key !== dismissedClassReportKey");
+    expectScriptToContain(clientSource, '(cp && cp.mode === "class" && cp.completed) || activeDailyClassIsComplete(t)');
+    const emptyBoard = clientSource.slice(clientSource.indexOf("if (!question) {"));
+    expect(emptyBoard.indexOf("shouldShowClassReport(lastTelemetry)")).toBeLessThan(
+      emptyBoard.indexOf("lastTelemetry.graduation_ready"),
+    );
     expectScriptToContain(script, "dismissedClassReportKey = reportKey");
     expectScriptToContain(script, "class-report-teacher-art");
     expectScriptToContain(script, 'teacherAssetUrl(artAssetId, "full-sticker")');

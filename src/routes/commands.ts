@@ -184,6 +184,10 @@ export async function handleCommandRoute(args: {
     const facultyId = commandFaculty(commandType);
     const violation = guestAccessViolation({ guestAccess, facultyId });
     if (!violation) return false;
+    // A completed guest lesson still has its final reveal on the board.
+    // Clearing that resolved card is the transition into the report screen,
+    // not access to more gameplay, so it must precede the signup gate.
+    if (commandType === "clear" && violation.reason === "signup-required") return false;
     ctx.error(ctx.res, violation.message, violation.status);
     return true;
   };

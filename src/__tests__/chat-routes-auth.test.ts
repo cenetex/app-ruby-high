@@ -2320,7 +2320,10 @@ describe("chat event context", () => {
     expect(state.activeRound?.opinionResponses.map((r) => r.responder)).toEqual(
       expect.arrayContaining(["player", ...round!.npcs.map((n) => n.studentId)]),
     );
-    expect(state.activeRound?.opinionGrades.some((g) => g.responder === "player")).toBe(true);
+    const playerGrade = state.activeRound?.opinionGrades.find((g) => g.responder === "player");
+    expect(playerGrade?.score).toBeGreaterThanOrEqual(7);
+    expect(playerGrade?.comment).toContain("evidence");
+    expect(state.lastReveal?.wasCorrect).toBe(true);
   });
 
   it("drops answer-graded teacher turns when the live reveal has moved on", async () => {

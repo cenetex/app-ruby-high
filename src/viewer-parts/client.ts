@@ -216,15 +216,15 @@ export function runViewerClient(bootstrap) {
   }
   function shouldShowClassReport(t) {
     const key = classReportKey(t);
-    return !!(key && !t.current && !t.graduation_ready && key !== dismissedClassReportKey);
+    return !!(key && !t.current && key !== dismissedClassReportKey);
   }
   function currentRevealMatches(t) {
     return !!(t && t.current && t.lastReveal && t.lastReveal.questionId === t.current.id);
   }
   function currentRevealCompletedClass(t) {
-    if (!currentRevealMatches(t)) return false;
+    if (!t || !t.current || (!currentRevealMatches(t) && t.status !== "revealed")) return false;
     const cp = t.lastReveal && t.lastReveal.classProgress;
-    return !!(cp && cp.mode === "class" && cp.completed);
+    return !!((cp && cp.mode === "class" && cp.completed) || activeDailyClassIsComplete(t));
   }
   function telemetryPhase(t) {
     if (!t) return "in-room";
@@ -3613,12 +3613,12 @@ export function runViewerClient(bootstrap) {
     renderTeacherFigure(faculty);
     els.blackboardPanel.dataset.faculty = faculty ? faculty.id : "";
     if (!question) {
-      if (authed && lastTelemetry && lastTelemetry.character && lastTelemetry.graduation_ready) {
-        showBlackboardCeremony(faculty, currentGrade);
-        return;
-      }
       if (authed && lastTelemetry && lastTelemetry.character && shouldShowClassReport(lastTelemetry)) {
         showBlackboardClassReport(faculty, currentGrade);
+        return;
+      }
+      if (authed && lastTelemetry && lastTelemetry.character && lastTelemetry.graduation_ready) {
+        showBlackboardCeremony(faculty, currentGrade);
         return;
       }
       showBlackboardEmpty(true);
@@ -4634,6 +4634,17 @@ export function runViewerClient(bootstrap) {
     // the Ceremony button works even while a teacher SSE turn is in flight.
     if (lastTelemetry && lastTelemetry.graduation_ready && !lastTelemetry.current) {
       openSheet();
+      return;
+    }
+    // A completed class still has its final reveal on the board. Clear that
+    // reveal first so render() can show the promised report; signup/practice
+    // is the action from the report, not a replacement for it.
+    if (lastTelemetry && currentRevealCompletedClass(lastTelemetry)) {
+      const now = Date.now();
+      if (now - lastChatButtonAt < 900) return;
+      lastChatButtonAt = now;
+      await command({ type: "clear" });
+      lockedFor = null;
       return;
     }
     const postClass = postClassState(lastTelemetry);

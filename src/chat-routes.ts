@@ -60,7 +60,12 @@ import {
   type RolledCharacter,
 } from "./services/character-generation.js";
 import { renderYearbookCard } from "./services/yearbook-image.js";
-import { detectGenericPraise, parseTeacherGrades, teacherResponseHasSubstance } from "./grading.js";
+import {
+  detectGenericPraise,
+  offlineOpinionContentScore,
+  parseTeacherGrades,
+  teacherResponseHasSubstance,
+} from "./grading.js";
 import {
   GRADES,
   GRADE_LABELS,
@@ -791,12 +796,9 @@ function pickNextLoungeSpeaker(chat: ChatService, sessionToken: string, teacherI
 
 /** Have the teacher grade all opinion responses in one call. Returns
  *  parsed { grades, bestResponder, narrativeText }. */
-/** Offline (no-OpenRouter) opinion grading. Without an LLM we can't read
- *  the essay, so we resolve the round on dice instead — the player rolls
- *  2d6 + the question's stat, and the outcome maps to a score. NPCs use
- *  their own pre-rolled outcomes from when the round was opened. The
- *  point is to keep the player from getting trapped on a Social card
- *  when AI is off, and to keep stat investments meaningful. */
+/** Offline (no-OpenRouter) opinion grading. The player's written content is
+ *  the primary grade; 2d6 + the question's stat only nudges it by half a
+ *  point. NPCs keep their pre-rolled outcomes from when the round opened. */
 function buildOfflineOpinionClassResult(args: {
   state: QuizState;
 }): import("./grading.js").ParsedTeacherGrades & {
@@ -821,16 +823,28 @@ function buildOfflineOpinionClassResult(args: {
   const playerDice = roll2d6();
   const playerTotal = playerDice.total + playerStatMod;
   const playerOutcome = classifyTotal(playerTotal);
+  const playerResponse = round.opinionResponses.find((entry) => entry.responder === "player")?.text ?? "";
+  const contentScore = offlineOpinionContentScore({
+    question: q.prompt,
+    rubric: q.rubric,
+    response: playerResponse,
+  });
+  const rollAdjustment = playerOutcome === "hit" ? 0.5 : playerOutcome === "miss" ? -0.5 : 0;
+  const playerScore = Math.min(10, Math.max(0, Math.round((contentScore + rollAdjustment) * 2) / 2));
+
+  const cleanResponse = playerResponse.replace(/\s+/g, " ").trim();
+  const responseSnippet = cleanResponse.length > 72
+    ? `${cleanResponse.slice(0, 71).trimEnd()}…`
+    : cleanResponse;
 
   const scoreFor = (outcome: RoundOutcome): number =>
     outcome === "hit" ? 8.5 : outcome === "mixed" ? 7 : 4;
-  const playerComment = (outcome: RoundOutcome): string =>
-    outcome === "hit" ? `${playerName} brought ${stat.toUpperCase()} to it.`
-    : outcome === "mixed" ? `${playerName} just barely landed it on ${stat.toUpperCase()}.`
-    : `${playerName} swung at it but came up short on ${stat.toUpperCase()}.`;
+  const playerComment = playerScore >= 7
+    ? `${playerName} grounded the take in “${responseSnippet}” and made the reasoning concrete.`
+    : `${playerName}'s “${responseSnippet}” needs a specific reason, source, or question before it counts as evidence.`;
 
   const grades: Array<{ responder: string; score: number; comment: string }> = [
-    { responder: "player", score: scoreFor(playerOutcome), comment: playerComment(playerOutcome) },
+    { responder: "player", score: playerScore, comment: playerComment },
   ];
   for (const entry of round.npcs) {
     const name = STUDENTS[entry.studentId]?.name ?? entry.studentId;
@@ -852,8 +866,8 @@ function buildOfflineOpinionClassResult(args: {
   const playerPassed = playerGrade.score >= 7;
   const diceLine = `${playerDice.dice[0]}+${playerDice.dice[1]}${playerStatMod >= 0 ? "+" : ""}${playerStatMod} ${stat.toUpperCase()} = ${playerTotal}`;
   const narrativeText = playerPassed
-    ? `${playerName} rolled ${diceLine} — that's a ${playerOutcome}. Class moves on.`
-    : `${playerName} rolled ${diceLine} — a ${playerOutcome}. Take another swing tomorrow.`;
+    ? `${playerName}'s response held up; the ${diceLine} ${playerOutcome} roll nudged it to ${playerScore}/10. Class moves on.`
+    : `${playerName}'s response needs more support; the ${diceLine} ${playerOutcome} roll nudged it to ${playerScore}/10. Take another swing tomorrow.`;
   return {
     grades,
     bestResponder,

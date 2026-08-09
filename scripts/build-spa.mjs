@@ -315,6 +315,24 @@ function offlineApiScript(data) {
     return state.comicCollection;
   }
 
+  function ensureOfflineClassStreak(state) {
+    if (!state.character) return;
+    const grade = state.currentGrade || "9";
+    const records = Object.values(state.character.dailyClasses || {}).filter(function(record) {
+      return record && record.grade === grade && record.status === "complete" && record.date;
+    });
+    const completedDates = Array.from(new Set(records.map(function(record) { return record.date; }))).sort();
+    if (!completedDates.length) return;
+    const streak = state.character.streak && typeof state.character.streak === "object"
+      ? state.character.streak
+      : { grade, count: 0 };
+    state.character.streak = {
+      grade,
+      count: Math.max(Number(streak.count || 0), completedDates.length),
+      lastDate: completedDates[completedDates.length - 1]
+    };
+  }
+
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -322,6 +340,7 @@ function offlineApiScript(data) {
         const loaded = ensureWallet(Object.assign(defaultState(), JSON.parse(raw)));
         ensureCharacterSlots(loaded);
         ensureComicCollection(loaded);
+        ensureOfflineClassStreak(loaded);
         return loaded;
       }
     } catch (_err) {}
@@ -392,6 +411,30 @@ function offlineApiScript(data) {
 
   function questionBank(facultyId) {
     return DATA.questions[facultyId] || DATA.questions.ruby || [];
+  }
+
+  function dailyClassRecord(state, facultyId) {
+    if (!state.character) return null;
+    state.character.dailyClasses = state.character.dailyClasses && typeof state.character.dailyClasses === "object"
+      ? state.character.dailyClasses
+      : {};
+    const grade = state.currentGrade || "9";
+    const date = dailyKey();
+    const key = facultyId + ":" + grade + ":" + date;
+    const existing = state.character.dailyClasses[key];
+    if (existing && typeof existing === "object") return existing;
+    const record = {
+      mode: "class",
+      facultyId,
+      grade,
+      date,
+      status: "available",
+      questionCount: 0,
+      correctCount: 0,
+      totalQuestions: 3
+    };
+    state.character.dailyClasses[key] = record;
+    return record;
   }
 
   function builtInPackSummary() {
@@ -498,8 +541,14 @@ function offlineApiScript(data) {
     };
   }
 
-  function pickQuestion(state) {
+  function pickQuestion(state, mode) {
     const facultyId = state.faculty === "lounge" ? "ruby" : state.faculty;
+    const classMode = mode === "practice" ? "practice" : "class";
+    const dailyClass = classMode === "class" ? dailyClassRecord(state, facultyId) : null;
+    if (dailyClass && dailyClass.status === "complete") {
+      throw new Error("No scheduled question is ready right now.");
+    }
+    if (dailyClass) dailyClass.status = "active";
     const bank = questionBank(facultyId);
     const grade = state.currentGrade || "9";
     const gradeDifficulty = difficultyForGrade(grade);
@@ -545,13 +594,15 @@ function offlineApiScript(data) {
       media: []
     };
     state.lastReveal = null;
-    state.activeRound = buildRound(state, state.current);
+    state.activeRound = buildRound(state, state.current, classMode);
     transition(state, "asking");
     return state;
   }
 
-  function buildRound(state, q) {
+  function buildRound(state, q, classMode) {
     const startedAt = now();
+    const mode = classMode === "practice" ? "practice" : "class";
+    const dailyClass = mode === "class" ? dailyClassRecord(state, state.faculty) : null;
     const room = roomForFaculty(state.faculty);
     const studentIds = room && ROOM_COHORT[room.id] ? ROOM_COHORT[room.id] : ["lyra", "sami"];
     const correct = q.correctChoice || "A";
@@ -586,12 +637,12 @@ function offlineApiScript(data) {
       advantage: null,
       isBonus: false,
       classSession: {
-        mode: "class",
+        mode,
         facultyId: state.faculty,
         grade: state.currentGrade || "9",
         date: dailyKey(),
-        index: 1,
-        total: 3
+        index: mode === "class" ? Math.min(3, Number(dailyClass && dailyClass.questionCount || 0) + 1) : 1,
+        total: mode === "class" ? 3 : 1
       },
       cardRole: "class",
       stat: q.stat || "head"
@@ -636,6 +687,14 @@ function offlineApiScript(data) {
     const mod = state.character && state.character.stats ? Number(state.character.stats[stat] || 0) : 0;
     const total = roll.total + mod;
     const outcome = classify(total);
+    const classMode = state.activeRound.classSession && state.activeRound.classSession.mode === "practice" ? "practice" : "class";
+    const dailyClass = classMode === "class" ? dailyClassRecord(state, state.faculty) : null;
+    const classQuestionIndex = classMode === "class"
+      ? Math.min(3, Math.max(
+        Number(dailyClass && dailyClass.questionCount || 0) + 1,
+        Number(state.activeRound.classSession && state.activeRound.classSession.index || 1)
+      ))
+      : 1;
     state.activeRound.player = { picked, answerText: null, answeredAt };
     state.activeRound.resolved = true;
     state.activeRound.resolvedAt = answeredAt;
@@ -652,7 +711,26 @@ function offlineApiScript(data) {
       state.score.points = Number(state.score.points || 0) + points;
       wallet.meritStars += points;
     }
-    state.history.push({ questionId: q.id, picked, correct, wasCorrect, at: answeredAt });
+    state.history.push({ questionId: q.id, picked, correct, wasCorrect, at: answeredAt, mode: classMode });
+    if (dailyClass && classQuestionIndex > Number(dailyClass.questionCount || 0)) {
+      dailyClass.questionCount = classQuestionIndex;
+      if (wasCorrect) dailyClass.correctCount = Number(dailyClass.correctCount || 0) + 1;
+      dailyClass.status = classQuestionIndex >= 3 ? "complete" : "active";
+      dailyClass.score = Math.round((Number(dailyClass.correctCount || 0) / Math.max(1, classQuestionIndex)) * 100);
+      dailyClass.letterGrade = letterGrade(dailyClass.score);
+      if (dailyClass.status === "complete" && state.character) {
+        const streak = state.character.streak && typeof state.character.streak === "object"
+          ? state.character.streak
+          : { grade: state.currentGrade || "9", count: 0 };
+        if (streak.lastDate !== dailyClass.date) {
+          state.character.streak = {
+            grade: state.currentGrade || "9",
+            count: Number(streak.count || 0) + 1,
+            lastDate: dailyClass.date
+          };
+        }
+      }
+    }
     state.lastReveal = {
       questionId: q.id,
       questionPrompt: q.prompt,
@@ -668,17 +746,17 @@ function offlineApiScript(data) {
       scoreAward: wasCorrect ? { base: outcome === "hit" ? 100 : outcome === "mixed" ? 90 : 80, multiplier: 1, points: outcome === "hit" ? 100 : outcome === "mixed" ? 90 : 80, possible: 100 } : { base: 0, multiplier: 1, points: 0, possible: 100 },
       playerRoll: { stat, dice: roll.dice, total, outcome },
       classProgress: {
-        mode: "class",
-        cardRole: "class",
+        mode: classMode,
+        cardRole: classMode === "class" ? "class" : "practice",
         facultyId: state.faculty,
         grade: state.currentGrade || "9",
         date: dailyKey(),
-        questionCount: 1,
-        correctCount: wasCorrect ? 1 : 0,
-        totalQuestions: 3,
-        completed: false,
-        letterGrade: wasCorrect ? "B" : "F",
-        score: wasCorrect ? 85 : 0
+        questionCount: dailyClass ? dailyClass.questionCount : classQuestionIndex,
+        correctCount: dailyClass ? dailyClass.correctCount : (wasCorrect ? 1 : 0),
+        totalQuestions: classMode === "class" ? 3 : 1,
+        completed: !!(dailyClass && dailyClass.status === "complete"),
+        letterGrade: dailyClass ? dailyClass.letterGrade : (wasCorrect ? "B" : "F"),
+        score: dailyClass ? dailyClass.score : (wasCorrect ? 85 : 0)
       },
       npcEvents: state.activeRound.npcs.map(function(n) {
         return { studentId: n.studentId, gotIt: n.plannedPick === correct };
@@ -808,7 +886,7 @@ function offlineApiScript(data) {
     const type = body && body.type;
     let message = "OK";
     if (type === "pick" || type === "play-daily" || type === "play-bonus") {
-      state = pickQuestion(state);
+      state = pickQuestion(state, body.mode);
       message = "Picked";
     } else if (type === "answer") {
       state = answerQuestion(state, body.picked);
@@ -939,23 +1017,29 @@ function offlineApiScript(data) {
     const total = questionBank(facultyId).length;
     const answered = state.history.filter(function(h) {
       const q = questionBank(facultyId).find(function(candidate) { return candidate.id === h.questionId; });
-      return !!q;
+      return !!q && h.mode !== "practice";
     });
     const correct = answered.filter(function(h) { return h.wasCorrect; }).length;
     const avg = answered.length ? Math.round((correct / answered.length) * 100) : undefined;
-    const today = state.current && state.faculty === facultyId
-      ? { mode: "class", status: state.activeRound && state.activeRound.resolved ? "complete" : "active", questionCount: state.activeRound && state.activeRound.resolved ? 1 : 0, correctCount: state.activeRound && state.activeRound.resolved ? correct : 0, totalQuestions: 3, letterGrade: avg == null ? undefined : letterGrade(avg), score: avg }
+    const record = dailyClassRecord(state, facultyId);
+    const today = record
+      ? Object.assign({}, record)
       : { mode: "class", status: "available", questionCount: 0, correctCount: 0, totalQuestions: 3 };
+    const completedClasses = state.character && state.character.dailyClasses
+      ? Object.values(state.character.dailyClasses).filter(function(entry) {
+        return entry && entry.facultyId === facultyId && entry.status === "complete";
+      }).length
+      : 0;
     return {
       mode: "bank",
       facultyId,
       displayName: facultyById(facultyId).displayName,
       total,
       ready: Math.max(0, total - answered.length),
-      canPick: facultyId !== "lounge" && total > 0,
+      canPick: facultyId !== "lounge" && total > 0 && today.status !== "complete",
       nextCardRole: "class",
       grade: avg == null ? undefined : letterGrade(avg),
-      completedClasses: 0,
+      completedClasses,
       requiredClasses: 1,
       averageScore: avg,
       today,
@@ -993,6 +1077,7 @@ function offlineApiScript(data) {
         newCount: progress.new
       });
     });
+    const activeCourseProgress = state.faculty === "lounge" ? null : courseProgress(state, state.faculty);
     const telemetry = {
       faculty: state.faculty,
       facultyDisplayName: state.faculty === "lounge" ? "Teachers' Lounge" : activeFaculty.displayName,
@@ -1031,7 +1116,7 @@ function offlineApiScript(data) {
       active_pack: { id: "ruby-high-original", name: "Ruby High", description: "Bundled offline curriculum." },
       guest_pack: { mode: "auto", weekKey: "", auto: null, overrideId: null, active: null },
       active_course: { id: activeFaculty.id, title: roomForFaculty(activeFaculty.id) ? roomForFaculty(activeFaculty.id).name : activeFaculty.displayName, facultyId: activeFaculty.id, roomId: roomForFaculty(activeFaculty.id) ? roomForFaculty(activeFaculty.id).id : "homeroom", teacherTemplateId: activeFaculty.id, subjects: activeFaculty.subjects },
-      active_course_progress: state.faculty === "lounge" ? null : courseProgress(state, state.faculty),
+      active_course_progress: activeCourseProgress,
       courses: FACULTY.map(function(f) { const room = roomForFaculty(f.id); return { id: f.id, title: room ? room.name : f.displayName, facultyId: f.id, roomId: room ? room.id : f.id, teacherTemplateId: f.id, subjects: f.subjects }; }),
       available_packs: [{ id: "ruby-high-original", name: "Ruby High", description: "Bundled offline curriculum.", faculty_count: FACULTY.length, question_count: Object.values(DATA.questions).reduce(function(sum, list) { return sum + list.length; }, 0) }],
       rooms: ROOMS,
@@ -1045,7 +1130,11 @@ function offlineApiScript(data) {
       comic_collection: ensureComicCollection(state),
       school_events: state.schoolEvents || [],
       playbooks: DATA.playbooks,
-      daily: { available: !!state.character, facultyId: state.faculty === "lounge" ? "ruby" : state.faculty, dailyKey: dailyKey() },
+      daily: {
+        available: !!state.character && (!activeCourseProgress || activeCourseProgress.today.status !== "complete"),
+        facultyId: state.faculty === "lounge" ? "ruby" : state.faculty,
+        dailyKey: dailyKey()
+      },
       npc_cohort: state.npcCohort || [],
       mentor_offer: null,
       advantage_rolls: deriveAdvantageRolls(state),
