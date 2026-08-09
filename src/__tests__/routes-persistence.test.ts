@@ -330,6 +330,31 @@ describe("command route persistence and scheduler misses", () => {
     }
   });
 
+  it("makes character creation retries idempotent after a lost response", async () => {
+    await getActivePack();
+    const store = new MemorySessionStore();
+    const ruby = new RubyHighService({} as never, store);
+
+    const first = makeCommandCtx(ruby);
+    await handleAppRoutes(first.ctx);
+    expect(first.response?.status).toBe(200);
+    expect(first.response?.body.session.telemetry.character.name).toBe("Ari");
+
+    const retry = makeCommandCtx(ruby, {
+      type: "create-character",
+      name: "A different retry payload",
+      playbookId: "lifer",
+      stats: { head: 2, heart: 1, hustle: 0, honor: -1 },
+      arcAnswer: "This must not replace the enrolled student.",
+      personality: "retry",
+    });
+    await handleAppRoutes(retry.ctx);
+
+    expect(retry.response?.status).toBe(200);
+    expect(retry.response?.body.message).toBe("Character already created");
+    expect(retry.response?.body.session.telemetry.character.name).toBe("Ari");
+  });
+
   it("keeps browser commands on the launched agent viewer session", async () => {
     await getActivePack();
     const store = new MemorySessionStore();

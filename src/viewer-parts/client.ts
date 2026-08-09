@@ -6989,6 +6989,29 @@ export function runViewerClient(bootstrap) {
       };
     }
 
+    function finishCharacterEnrollment() {
+      closeSheet();
+      setTimeout(() => {
+        if (lastTelemetry && shouldAutoStartClass(lastTelemetry)) void pickNext();
+      }, 0);
+    }
+
+    function reportCharacterEnrollmentFailure(error) {
+      const failureKind = error && typeof error.kind === "string"
+        ? error.kind
+        : "missing_response";
+      postViewerMetricEvent("onboarding_enrollment_failed", {
+        failureKind: failureKind,
+        ...(error && Number.isFinite(Number(error.status)) ? { statusCode: Number(error.status) } : {}),
+      });
+      const message = failureKind === "timeout"
+        ? "Enrollment took too long. Your student is still here — tap Start Freshman Year to retry."
+        : failureKind === "network"
+          ? "Enrollment lost its connection. Your student is still here — reconnect and retry."
+          : "Could not start Freshman year. Your student is still here — try again.";
+      setStatus(message, true);
+    }
+
     async function beginClassFromCharacter() {
       if (!rolled || inFlight.all || inFlight.saving) return;
       const snapshot = currentCharacterSnapshot();
@@ -7003,13 +7026,17 @@ export function runViewerClient(bootstrap) {
           ...snapshot,
         });
         if (!data || !data.session) {
-          setStatus("Could not start Freshman year — try again.", true);
+          const commandError = apiClient.lastCommandError();
+          setStatus("Checking enrollment...");
+          await fetchSession({ timeoutMs: SESSION_REFRESH_TIMEOUT_MS });
+          if (lastTelemetry && lastTelemetry.character) {
+            finishCharacterEnrollment();
+            return;
+          }
+          reportCharacterEnrollmentFailure(commandError);
           return;
         }
-        closeSheet();
-        setTimeout(() => {
-          if (lastTelemetry && shouldAutoStartClass(lastTelemetry)) void pickNext();
-        }, 0);
+        finishCharacterEnrollment();
       } finally {
         inFlight.saving = false;
         if (sheetOverlayOpen) applyDisabled();

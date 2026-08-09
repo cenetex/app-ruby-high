@@ -47,6 +47,8 @@ type MetricsEventBody = {
   hasConnect?: unknown;
   hasSignMessage?: unknown;
   step?: unknown;
+  failureKind?: unknown;
+  statusCode?: unknown;
 };
 
 const VIEWER_ONBOARDING_STEPS = new Set([
@@ -115,6 +117,25 @@ export async function handleMetricsEventRoute(
         feature: "first_run_onboarding",
         step,
         status: "success",
+      });
+    });
+  }
+  if (type === "onboarding_enrollment_failed") {
+    return await respondAfterMetricPersist(ctx, async () => {
+      const failureKind = onboardingEnrollmentFailureKind(body.failureKind);
+      const statusCode = Number(body.statusCode);
+      await deps.ruby.recordMetricEventDurably("error", {
+        sessionId: deps.sessionId,
+        ...(visitorHash ? { visitorHash } : {}),
+        ...(clientSurface ? { clientSurface } : {}),
+        source: "viewer",
+        feature: "first_run_onboarding",
+        step: "onboarding_enrollment_failed",
+        status: "error",
+        metadata: {
+          failureKind,
+          ...(Number.isInteger(statusCode) && statusCode >= 400 && statusCode <= 599 ? { statusCode } : {}),
+        },
       });
     });
   }
@@ -238,6 +259,13 @@ function requestBoolean(value: unknown): boolean | undefined {
   if (value === "true") return true;
   if (value === "false") return false;
   return undefined;
+}
+
+function onboardingEnrollmentFailureKind(value: unknown): string {
+  const kind = requestString(value);
+  return kind === "http" || kind === "network" || kind === "timeout"
+    ? kind
+    : "missing_response";
 }
 
 function privyAuthErrorMetadata(body: MetricsEventBody): Record<string, string | boolean> {

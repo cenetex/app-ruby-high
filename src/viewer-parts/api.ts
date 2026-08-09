@@ -8,6 +8,12 @@ export interface ViewerApiResponse {
   json(): Promise<unknown>;
 }
 
+export interface ViewerCommandError {
+  kind: "http" | "network" | "timeout";
+  message: string;
+  status?: number;
+}
+
 export interface ViewerApiClientDeps {
   sessionUrl: string;
   commandUrl: string;
@@ -33,6 +39,7 @@ export interface ViewerApiClient {
   command(payload: unknown): Promise<unknown | null>;
   fetchSession(opts?: { timeoutMs?: number }): Promise<void>;
   commandState(): { commandSeq: number; lastSettledCommandSeq: number };
+  lastCommandError(): ViewerCommandError | null;
 }
 
 export function withViewerTimeoutSignal(opts: RequestInit, timeoutMs?: number): () => void {
@@ -49,6 +56,7 @@ export function withViewerTimeoutSignal(opts: RequestInit, timeoutMs?: number): 
 export function createViewerApiClient(deps: ViewerApiClientDeps): ViewerApiClient {
   let commandSeq = 0;
   let lastSettledCommandSeq = 0;
+  let commandError: ViewerCommandError | null = null;
   const fetchImpl = deps.fetchImpl || ((url: string, init?: RequestInit) => fetch(url, init));
 
   function isRecord(value: unknown): value is Record<string, unknown> {
@@ -93,6 +101,7 @@ export function createViewerApiClient(deps: ViewerApiClientDeps): ViewerApiClien
 
   async function command(payload: unknown): Promise<unknown | null> {
     const seq = ++commandSeq;
+    commandError = null;
     try {
       const response = await apiFetch(deps.commandUrl, {
         method: "POST",
@@ -104,6 +113,7 @@ export function createViewerApiClient(deps: ViewerApiClientDeps): ViewerApiClien
       if (!response.ok) {
         const err = await response.json().catch(() => ({ error: "request " + response.status }));
         const message = responseErrorMessage(err, response.status);
+        commandError = { kind: "http", message, status: response.status };
         if (/no scheduled (question|deck card) is due/i.test(message)) {
           deps.onNoScheduledQuestion();
           return null;
@@ -119,7 +129,10 @@ export function createViewerApiClient(deps: ViewerApiClientDeps): ViewerApiClien
       if (isRecord(data) && data.session) deps.onCommandSession(data.session);
       return data;
     } catch (err) {
-      deps.onCommandFailed(err instanceof Error ? err.message : "error");
+      const message = err instanceof Error ? err.message : "error";
+      const name = isRecord(err) && typeof err.name === "string" ? err.name : "";
+      commandError = { kind: name === "AbortError" ? "timeout" : "network", message };
+      deps.onCommandFailed(message);
       return null;
     } finally {
       lastSettledCommandSeq = seq;
@@ -156,6 +169,9 @@ export function createViewerApiClient(deps: ViewerApiClientDeps): ViewerApiClien
     fetchSession,
     commandState() {
       return { commandSeq, lastSettledCommandSeq };
+    },
+    lastCommandError() {
+      return commandError ? { ...commandError } : null;
     },
   };
 }

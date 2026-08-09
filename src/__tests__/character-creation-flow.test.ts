@@ -108,10 +108,26 @@ describe("character creation flow", () => {
         CLIENT_SOURCE.indexOf("async function beginClassFromCharacter"),
         CLIENT_SOURCE.indexOf("saveBtn.addEventListener"),
       );
+      const finishFn = CLIENT_SOURCE.slice(
+        CLIENT_SOURCE.indexOf("function finishCharacterEnrollment"),
+        CLIENT_SOURCE.indexOf("function reportCharacterEnrollmentFailure"),
+      );
 
       expect(autoStartFn).toContain("creationSheetOpen()");
       expect(beginFn).toContain('type: "create-character"');
-      expect(beginFn).toContain("void pickNext()");
+      expect(finishFn).toContain("void pickNext()");
+      expect(beginFn).toContain("apiClient.lastCommandError()");
+      expect(beginFn).toContain("await fetchSession");
+      expect(beginFn).toContain("lastTelemetry.character");
+      expect(beginFn).toContain("finishCharacterEnrollment()");
+    });
+
+    it("keeps the candidate retryable and records bounded enrollment failures", () => {
+      const script = renderedViewerScript();
+      expectScriptToContain(script, '"onboarding_enrollment_failed"');
+      expectScriptToContain(script, "failureKind");
+      expectScriptToContain(script, "Your student is still here");
+      expectScriptToContain(script, 'setStatus("Checking enrollment...")');
     });
 
     it("does not leave a stale acceptBtn handler in the rendered viewer", () => {

@@ -3123,6 +3123,40 @@ describe("admin metrics route", () => {
     });
   });
 
+  it("records bounded first-run enrollment failures without advancing the funnel", async () => {
+    const { token } = await auth.createGuestSession();
+    const cookieHeader = `rh_session=${token}`;
+
+    const response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/metrics/event",
+      cookieHeader,
+      visitorHeader: "rhv_enrollment_failure_visitor",
+      body: {
+        type: "onboarding_enrollment_failed",
+        clientSurface: "viewer",
+        failureKind: "timeout",
+        statusCode: 503,
+        errorMessage: "must not be persisted",
+      },
+    });
+    expect(response.status).toBe(200);
+
+    const events = await store.loadMetricEvents();
+    const failure = events.find((event) => event.feature === "first_run_onboarding");
+    expect(failure).toMatchObject({
+      name: "error",
+      source: "viewer",
+      clientSurface: "viewer",
+      feature: "first_run_onboarding",
+      step: "onboarding_enrollment_failed",
+      status: "error",
+      metadata: { failureKind: "timeout", statusCode: 503 },
+    });
+    expect(failure?.metadata).not.toHaveProperty("errorMessage");
+    expect(ruby.analyticsSnapshot().events.errors.byFeature.first_run_onboarding).toBe(1);
+  });
+
   it("computes event-backed visitor and character D1 retention", async () => {
     vi.stubEnv("RUBY_HIGH_ADMIN_TOKEN", "admin-test-token");
     const base = Date.UTC(2026, 4, 1, 12);

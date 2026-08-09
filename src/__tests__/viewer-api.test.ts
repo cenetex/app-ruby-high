@@ -103,6 +103,37 @@ describe("viewer API client", () => {
 
     expect(onCommandSession).toHaveBeenCalledWith({ id: "fresh-session" });
     expect(client.commandState()).toEqual({ commandSeq: 1, lastSettledCommandSeq: 1 });
+    expect(client.lastCommandError()).toBeNull();
+  });
+
+  it("exposes a bounded HTTP failure for command-specific recovery", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(503, { error: "storage unavailable" }));
+    const client = createViewerApiClient(baseDeps({ fetchImpl }));
+
+    await expect(client.command({ type: "create-character" })).resolves.toBeNull();
+
+    expect(client.lastCommandError()).toEqual({
+      kind: "http",
+      message: "storage unavailable",
+      status: 503,
+    });
+  });
+
+  it("classifies aborted commands as timeouts and clears the failure on the next command", async () => {
+    const timeout = Object.assign(new Error("This operation was aborted"), { name: "AbortError" });
+    const fetchImpl = vi.fn()
+      .mockRejectedValueOnce(timeout)
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    const client = createViewerApiClient(baseDeps({ fetchImpl }));
+
+    await client.command({ type: "create-character" });
+    expect(client.lastCommandError()).toEqual({
+      kind: "timeout",
+      message: "This operation was aborted",
+    });
+
+    await client.command({ type: "pick" });
+    expect(client.lastCommandError()).toBeNull();
   });
 
   it("swallows expected scheduler race errors without surfacing generic command errors", async () => {

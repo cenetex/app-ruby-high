@@ -314,6 +314,10 @@ export async function handleCommandRoute(args: {
     },
     "create-character": async () => {
       const input = characterInputFromBody();
+      const current = ruby.getOrCreate(stateKey);
+      if (current.character) {
+        return await persist(current, "Character already created");
+      }
       const state = ruby.createCharacter(stateKey, {
         ...input,
         mentorAccepted: !!body?.mentorAccepted,

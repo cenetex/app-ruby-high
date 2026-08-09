@@ -29,8 +29,8 @@
  *      Catches: hosted economy payload regressions without requiring live
  *      Stripe/OpenRouter secrets in the smoke environment.
  *
- *   7. Guest session flow: GET session, create character, draw a board,
- *      answer it.
+ *   7. Guest session flow: GET session, create character, retry the create
+ *      after a simulated lost response, draw a board, and answer it.
  *      Catches: broken telemetry shape, offline character creation command,
  *      scheduler question posting, and answer resolution.
  *
@@ -459,6 +459,22 @@ async function check7OfflinePlayFlow() {
     const created = await readJson(create);
     if (!created?.session?.telemetry?.character?.name?.startsWith("Smoke ")) {
       return fail(name, `create-character did not return character telemetry: ${JSON.stringify(created).slice(0, 240)}`);
+    }
+
+    const retryCreate = await postJson(commandPath, {
+      type: "create-character",
+      name: "Smoke retry must not replace student",
+      playbookId: "lifer",
+      stats: { head: 2, heart: 1, hustle: 0, honor: -1 },
+      arcAnswer: "Simulated lost-response retry",
+      personality: "Synthetic retry payload.",
+    });
+    if (retryCreate.status !== 200) {
+      return fail(name, `create-character retry expected 200, got ${retryCreate.status}: ${(await retryCreate.text()).slice(0, 200)}`);
+    }
+    const retried = await readJson(retryCreate);
+    if (retried?.session?.telemetry?.character?.name !== created.session.telemetry.character.name) {
+      return fail(name, `create-character retry replaced the enrolled student: ${JSON.stringify(retried).slice(0, 240)}`);
     }
 
     const pick = await postJson(commandPath, { type: "pick" });
