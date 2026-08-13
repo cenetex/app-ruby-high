@@ -1508,6 +1508,7 @@ export function runViewerClient(bootstrap) {
   const classReportRenderer = createClassReportRenderer({
     document,
     teacherShortName,
+    gradeLabel: (grade) => GRADE_LABELS[grade] || (grade ? "Grade " + grade : "current year"),
     letterGradeForScore,
     letterGradePasses,
     todayCorrectSummary,

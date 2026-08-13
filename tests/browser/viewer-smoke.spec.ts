@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { closeBlockingSheetIfVisible, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
+import { closeBlockingSheetIfVisible, closeFirstBellReportIfVisible, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
 
 test("canonical issue-174 link opens the Quick Roll/customize choice with bounded attribution", async ({ page }) => {
   let appOpenBody: Record<string, unknown> | null = null;
@@ -60,6 +60,64 @@ test("enrolls a first student through the creation sheet into First Bell", async
   await expect(page.locator(".answer:not([disabled])").first()).toBeVisible({ timeout: 15_000 });
   await expect(page.locator("#stream")).not.toContainText("Make your first student");
 
+  expect(errors).toEqual([]);
+});
+
+test("keeps a specific Class Result after refresh with one truthful next step", async ({ page }) => {
+  test.setTimeout(60_000);
+  const { errors } = await openViewer(page);
+  await dismissAnnouncements(page);
+  await createCharacter(page);
+  const continueUntilVisible = async (target: ReturnType<typeof page.locator>) => {
+    const next = page.locator("#next-btn");
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const ready = await target.isVisible().catch(() => false)
+        && !(await page.locator("#board-reveal").isVisible().catch(() => false));
+      if (ready) return;
+      if (await next.isVisible().catch(() => false) && await next.isEnabled().catch(() => false)) {
+        await next.click();
+      }
+      await page.waitForTimeout(750);
+    }
+    await expect(target).toBeVisible();
+    await expect(page.locator("#board-reveal")).toBeHidden();
+  };
+
+  for (let evidence = 0; evidence < 2; evidence += 1) {
+    await page.locator(".answer:not([disabled])").first().click();
+    await expect(page.locator("#board-reveal")).toBeVisible();
+    await closeFirstBellReportIfVisible(page);
+    if (evidence === 0) {
+      await continueUntilVisible(page.locator(".answer:not([disabled])").first());
+    } else {
+      await continueUntilVisible(page.locator("#typed-answer-input"));
+    }
+  }
+
+  const finalResponse = "I would verify the claim against a named source before I trust it.";
+  await page.locator("#typed-answer-input").fill(finalResponse);
+  await page.locator("#typed-submit-btn").click();
+  await expect(page.locator("#board-reveal")).toBeVisible({ timeout: 15_000 });
+
+  const report = page.locator(".class-report-card");
+  await continueUntilVisible(report);
+  await expect(report.locator(".class-report-title")).toContainText("class result");
+  await expect(report.locator(".class-result-prompt")).toContainText("Final prompt:");
+  await expect(report.locator(".class-result-section.observation")).toContainText("What Ruby noticed");
+  await expect(report.locator(".class-result-section.observation")).toContainText(finalResponse);
+  await expect(report.locator(".class-result-section.consequence")).toContainText(/class recorded|mark recorded/i);
+  await expect(report.locator(".class-result-section.progress")).toContainText("Course progress");
+  await expect(page.locator(".class-report-next")).toContainText(/return tomorrow for the next graded class/i);
+  const resultText = await report.textContent();
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(report).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await page.reload();
+  await dismissAnnouncements(page);
+  await expect(page.locator(".class-report-card")).toBeVisible();
+  await expect(page.locator(".class-report-card")).toHaveText(resultText || "");
   expect(errors).toEqual([]);
 });
 

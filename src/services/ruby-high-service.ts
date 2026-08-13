@@ -96,6 +96,7 @@ import {
   type ComicPageUnlock,
   type ComicPageUnlockReason,
   type DailyClassRecord,
+  type DailyClassResult,
   type DeckCardRole,
   type Difficulty,
   type DifficultyWeights,
@@ -554,6 +555,7 @@ export interface CourseProgress {
     socialCount?: number;
     letterGrade?: string;
     score?: number;
+    result?: DailyClassResult;
   };
   mastered: number;
   learning: number;
@@ -1557,6 +1559,17 @@ interface DailyClassUpdate {
   letterGrade?: string;
   score?: number;
   passedClass?: boolean;
+}
+
+interface DailyClassResultInput {
+  questionId: string;
+  prompt: string;
+  subject?: string;
+  answerText: string;
+  correctAnswerText?: string;
+  wasCorrect: boolean;
+  forfeit: boolean;
+  teacherFeedback?: string;
 }
 
 type MetricEventInput = Omit<StoredMetricEventRecord, "id" | "name" | "occurredAt" | "day" | "metadata"> & {
@@ -6751,6 +6764,7 @@ export class RubyHighService extends Service {
           socialCount: todayRecord.socialCount ?? 0,
           letterGrade: todayRecord.letterGrade,
           score: classAverage(todayRecord),
+          ...(todayRecord.result ? { result: todayRecord.result } : {}),
         }
       : todayRecord
         ? {
@@ -6888,6 +6902,7 @@ export class RubyHighService extends Service {
     score: number,
     now = Date.now(),
     rollOutcome?: "hit" | "mixed" | "miss" | null,
+    resultInput?: DailyClassResultInput,
   ): DailyClassUpdate {
     const round = state.activeRound;
     const session = round?.classSession;
@@ -6928,6 +6943,9 @@ export class RubyHighService extends Service {
       record.completedAt = now;
       const avg = classAverage(record);
       record.letterGrade = letterGradeForClassRecord(record);
+      if (resultInput && !record.result) {
+        record.result = this.buildDailyClassResult(state, record, resultInput);
+      }
       log.event("class.completed", {
         sessionId: state.sessionId,
         faculty: session.facultyId,
@@ -6992,6 +7010,48 @@ export class RubyHighService extends Service {
     return teacherById(facultyId)?.displayName
       ?? facultyForSession(state).find((faculty) => faculty.id === facultyId)?.displayName
       ?? facultyId;
+  }
+
+  private buildDailyClassResult(
+    state: QuizState,
+    record: DailyClassRecord,
+    input: DailyClassResultInput,
+  ): DailyClassResult {
+    const teacherName = this.firstBellFacultyName(state, record.facultyId);
+    const subject = clippedMetricValue(String(input.subject || "class").trim() || "class", 80);
+    const answerText = clippedMetricValue(String(input.answerText || "No answer").trim() || "No answer", 220);
+    const correctAnswerText = input.correctAnswerText
+      ? clippedMetricValue(String(input.correctAnswerText).trim(), 220)
+      : undefined;
+    const feedback = input.teacherFeedback
+      ? clippedMetricValue(String(input.teacherFeedback).trim(), 220)
+      : undefined;
+    const teacherObservation = input.forfeit
+      ? `${teacherName} recorded that the final ${subject} prompt went unanswered.`
+      : feedback
+        ? `${teacherName}: “${feedback}” Your response — “${answerText}” — ${input.wasCorrect ? "met" : "did not yet meet"} the ${subject} rubric.`
+        : input.wasCorrect
+          ? `${teacherName} noticed that “${answerText}” matched what the final ${subject} prompt asked for.`
+          : correctAnswerText
+            ? `${teacherName} noticed “${answerText}”; review “${correctAnswerText}” before the next graded class.`
+            : `${teacherName} marked “${answerText}” for another pass before the next graded class.`;
+    const standing = this.courseStandingForState(state, record.facultyId);
+    const passed = letterGradePasses(record.letterGrade);
+    return {
+      version: 1,
+      questionId: clippedMetricValue(input.questionId, 160),
+      prompt: clippedMetricValue(input.prompt, 360),
+      ...(input.subject ? { subject } : {}),
+      answerText,
+      ...(correctAnswerText ? { correctAnswerText } : {}),
+      wasCorrect: input.wasCorrect,
+      forfeit: input.forfeit,
+      teacherObservation: clippedMetricValue(teacherObservation, 520),
+      consequenceLabel: passed ? "Passing class recorded" : "Review mark recorded",
+      consequenceDetail: `${GRADE_LABELS[record.grade]} with ${teacherName}: ${record.letterGrade ?? "—"}, ${record.correctCount} of ${record.questionCount} graded cards correct.`,
+      completedClasses: standing.completed,
+      requiredClasses: standing.required,
+    };
   }
 
   private maybeAwardFirstBellReport(
@@ -7659,6 +7719,21 @@ export class RubyHighService extends Service {
       classGradeQuestionScore(wasCorrect),
       reviewAt,
       picked == null || forfeit ? null : playerRoll?.outcome ?? null,
+      {
+        questionId: q.id,
+        prompt: q.prompt,
+        ...(q.subject ? { subject: q.subject } : {}),
+        answerText: forfeit || picked == null
+          ? "No answer"
+          : isTypedQuestion
+            ? answerText
+            : q.options?.[picked] ?? picked,
+        correctAnswerText: isTypedQuestion
+          ? q.expectedAnswer ?? acceptedAnswers[0]
+          : q.options?.[correctChoice] ?? correctAnswerForQuestion(q) ?? correctChoice,
+        wasCorrect,
+        forfeit,
+      },
     );
     if (
       classProgress.mode === "class"
@@ -8748,6 +8823,16 @@ export class RubyHighService extends Service {
         passed,
         classGradeQuestionScore(passed),
         record.at,
+        null,
+        {
+          questionId: q.id,
+          prompt: q.prompt,
+          ...(q.subject ? { subject: q.subject } : {}),
+          answerText: playerResponse?.text?.trim() || "No answer",
+          wasCorrect: passed,
+          forfeit: !playerResponse?.text?.trim(),
+          ...(playerGrade?.comment ? { teacherFeedback: playerGrade.comment } : {}),
+        },
       );
       const reportFaculty = q.faculty ?? round.classSession?.facultyId ?? state.faculty;
       const reportClassSession: EssayReport["classSession"] | undefined = round.classSession

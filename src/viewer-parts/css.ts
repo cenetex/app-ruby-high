@@ -5299,7 +5299,7 @@ export const VIEWER_CSS = `
     font-size: 10px;
   }
   .blackboard-panel[data-question-type="class-report"] .board {
-    min-height: clamp(240px, 32vw, 360px);
+    min-height: clamp(390px, 50vw, 500px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -5313,11 +5313,11 @@ export const VIEWER_CSS = `
   }
   .board .class-report-card {
     margin: 0 auto;
-    width: min(100%, 700px);
-    min-height: clamp(210px, 27vw, 280px);
+    width: min(100%, 760px);
+    min-height: clamp(350px, 45vw, 440px);
     position: relative;
     display: grid;
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto;
     gap: clamp(8px, 1.8vw, 12px);
     padding: clamp(10px, 2.2vw, 16px) clamp(104px, 16vw, 146px) clamp(10px, 2.2vw, 16px) clamp(10px, 2.2vw, 16px);
     border: 2px solid rgba(255,255,255,0.24);
@@ -5334,7 +5334,7 @@ export const VIEWER_CSS = `
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
     gap: clamp(10px, 2.4vw, 18px);
-    min-height: clamp(112px, 17vw, 150px);
+    min-height: clamp(96px, 14vw, 124px);
     overflow: visible;
     position: relative;
   }
@@ -5351,6 +5351,7 @@ export const VIEWER_CSS = `
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 100%;
+    margin: 0;
   }
   .board .class-report-subtitle {
     color: var(--ink-soft);
@@ -5358,7 +5359,20 @@ export const VIEWER_CSS = `
     font-size: clamp(12px, 1.9vw, 16px);
     line-height: 1.14;
     margin-top: 4px;
-    text-transform: lowercase;
+    margin-bottom: 0;
+  }
+  .board .class-result-prompt {
+    color: var(--ink-soft);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    font-size: clamp(10px, 1.45vw, 12px);
+    font-weight: 700;
+    line-height: 1.3;
+    margin-top: 7px;
+    margin-bottom: 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
   }
   .board .class-report-teacher-art {
     position: absolute;
@@ -5413,10 +5427,43 @@ export const VIEWER_CSS = `
   }
   .board .class-report-metrics {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     min-width: 0;
-    max-width: 320px;
+    max-width: none;
+  }
+  .board .class-result-sections {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    min-width: 0;
+  }
+  .board .class-result-section {
+    min-width: 0;
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.07);
+    padding: 7px 9px;
+    text-align: left;
+  }
+  .board .class-result-section.observation {
+    grid-column: 1 / -1;
+    border-color: rgba(184,228,255,0.30);
+    background: rgba(184,228,255,0.09);
+  }
+  .board .class-result-label {
+    color: #fff0a6;
+    font: 900 clamp(9px, 1.25vw, 10px)/1.2 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 0;
+  }
+  .board .class-result-body {
+    color: var(--ink);
+    font: 700 clamp(10px, 1.45vw, 12px)/1.35 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    margin-top: 3px;
+    margin-bottom: 0;
+    overflow-wrap: anywhere;
   }
   .board .graduation-report-card .class-report-metrics {
     grid-template-columns: minmax(0, 1.06fr) minmax(0, 0.9fr) minmax(0, 1.14fr);
@@ -5464,18 +5511,18 @@ export const VIEWER_CSS = `
   }
   @media (max-width: 620px) {
     .blackboard-panel[data-question-type="class-report"] .board {
-      min-height: 210px;
+      min-height: 390px;
       padding: 10px;
     }
     .board .class-report-card {
       gap: 8px;
-      min-height: 168px;
+      min-height: 350px;
       padding: 9px 76px 9px 9px;
     }
     .board .class-report-main {
       grid-template-columns: auto minmax(0, 1fr);
       gap: 8px;
-      min-height: clamp(92px, 25vw, 120px);
+      min-height: clamp(84px, 22vw, 104px);
     }
     .board .class-report-letter {
       width: clamp(64px, 19vw, 82px);
@@ -5495,6 +5542,9 @@ export const VIEWER_CSS = `
     }
     .board .class-report-metric .d {
       display: none;
+    }
+    .board .class-result-section {
+      padding: 6px 7px;
     }
     .board .graduation-report-card .class-report-metric {
       grid-template-columns: minmax(42px, 0.30fr) minmax(0, 0.70fr);
@@ -5566,8 +5616,15 @@ export const VIEWER_CSS = `
       text-align: left;
     }
     .board .class-report-metrics {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 5px;
+    }
+    .board .class-result-sections {
       grid-template-columns: 1fr;
       gap: 5px;
+    }
+    .board .class-result-section.observation {
+      grid-column: auto;
     }
     .board .graduation-report-card .class-report-metrics {
       grid-template-columns: 1fr;
