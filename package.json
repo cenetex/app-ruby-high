@@ -71,17 +71,17 @@
     "arweave": "^1.15.7"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.0",
+    "@playwright/test": "^1.62.1",
     "@privy-io/react-auth": "3.32.1",
-    "@types/node": "^26.1.2",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "@vitest/coverage-v8": "4.1.9",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitest/coverage-v8": "4.1.10",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "tsup": "^8.0.0",
     "typescript": "6.0.3",
-    "vitest": "4.1.9"
+    "vitest": "4.1.10"
   },
   "overrides": {
     "@irys/bundles": "0.0.3",
