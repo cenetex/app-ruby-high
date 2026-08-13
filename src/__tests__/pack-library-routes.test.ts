@@ -484,7 +484,7 @@ describe("/pack-library", () => {
     expect(ruby.getOrCreate(bobSessionId).guestPackOverrideId).not.toBe(pack.id);
   });
 
-  it("keeps creator packs in search until a user installs them", async () => {
+  it("keeps featured creator packs searchable across explicit install changes", async () => {
     signInUser("alice");
     const bobSessionId = signInUser("bob");
     const pack = fakePack("pack:shared-signals");
@@ -512,9 +512,9 @@ describe("/pack-library", () => {
     expect(response.body.packs[0]).toMatchObject({
       id: pack.id,
       source: "creator",
-      installed: false,
+      installed: true,
       enabled: false,
-      active: false,
+      active: true,
       owner: false,
     });
 
@@ -529,7 +529,7 @@ describe("/pack-library", () => {
       source: "creator",
       installed: true,
       enabled: true,
-      active: false,
+      active: true,
     });
 
     response = await route({
@@ -583,9 +583,9 @@ describe("/pack-library", () => {
     });
     expect(response.body.packs[0]).toMatchObject({
       id: pack.id,
-      installed: false,
+      installed: true,
       enabled: false,
-      active: false,
+      active: true,
     });
   });
 
@@ -2073,10 +2073,10 @@ describe("/pack-library", () => {
     expect(listed).toMatchObject({
       id: pack.id,
       owner: true,
-      installed: false,
+      installed: true,
       canEdit: true,
       canDelete: true,
-      canUninstall: false,
+      canUninstall: true,
     });
     expect(listed.draftId).toBeUndefined();
 
