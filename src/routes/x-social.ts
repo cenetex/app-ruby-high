@@ -7,18 +7,9 @@ import type {
 } from "../services/ruby-high-service.js";
 import type { RouteContext } from "./context.js";
 import { X_SOCIAL_CONNECT_PATH, X_SOCIAL_CALLBACK_PATH, X_SOCIAL_PREFIX } from "./constants.js";
-import { constantTimeSecretEqual } from "../services/secret-comparison.js";
+import { requireAdminAuth } from "./admin-auth.js";
 
 const TELEGRAM_TOKEN_PLACEHOLDER = "(already set)";
-
-function requireAdminAuth(ctx: RouteContext): boolean {
-  const token = process.env.RUBY_HIGH_ADMIN_TOKEN;
-  if (!token) return false;
-  const auth = ctx.authorizationHeader;
-  if (typeof auth !== "string") return false;
-  const match = auth.trim().match(/^Bearer\s+(.+)$/i);
-  return constantTimeSecretEqual(match?.[1]?.trim() ?? auth.trim(), token);
-}
 
 function sendRedirect(res: unknown, url: string, status = 302): void {
   const r = res as { setHeader?: (n: string, v: string) => void; writeHead?: (s: number, h: Record<string, string>) => void; end?: (b?: string) => void };
@@ -156,10 +147,7 @@ export async function handleXSocialRoutes(
 
   // GET /x/connect/:teacherId — start OAuth (admin only)
   if (ctx.method === "GET" && pathname.startsWith(X_SOCIAL_CONNECT_PATH + "/")) {
-    if (!requireAdminAuth(ctx)) {
-      sendError(ctx.res, "Admin authentication required.", 401);
-      return true;
-    }
+    if (!requireAdminAuth(ctx)) return true;
     const teacherId = pathname.slice((X_SOCIAL_CONNECT_PATH + "/").length).split("?")[0];
     if (!teacherId) {
       sendError(ctx.res, "Teacher ID is required.", 400);
@@ -182,7 +170,7 @@ export async function handleXSocialRoutes(
 
   // GET /x/status/:teacherId (admin only)
   if (ctx.method === "GET" && pathname.startsWith(`${X_SOCIAL_PREFIX}/status/`)) {
-    if (!requireAdminAuth(ctx)) { sendError(ctx.res, "Admin authentication required.", 401); return true; }
+    if (!requireAdminAuth(ctx)) return true;
     const teacherId = pathname.slice(`${X_SOCIAL_PREFIX}/status/`.length).split("?")[0];
     if (!teacherId) { sendError(ctx.res, "Teacher ID is required.", 400); return true; }
     sendJson(ctx.res, xSocial.getStatus(teacherId));
@@ -191,14 +179,14 @@ export async function handleXSocialRoutes(
 
   // GET /x/connected — list connected teachers (admin only)
   if (ctx.method === "GET" && pathname === `${X_SOCIAL_PREFIX}/connected`) {
-    if (!requireAdminAuth(ctx)) { sendError(ctx.res, "Admin authentication required.", 401); return true; }
+    if (!requireAdminAuth(ctx)) return true;
     sendJson(ctx.res, { teachers: xSocial.listConnected() });
     return true;
   }
 
   // GET /x/students — list recently active students (admin only)
   if (ctx.method === "GET" && pathname === `${X_SOCIAL_PREFIX}/students`) {
-    if (!requireAdminAuth(ctx)) { sendError(ctx.res, "Admin authentication required.", 401); return true; }
+    if (!requireAdminAuth(ctx)) return true;
     const rsvc = rubySocialService(xSocial);
     const students = await freshRecentlyActiveStudents(rsvc);
     ctx.json(ctx.res, { students });
@@ -207,7 +195,7 @@ export async function handleXSocialRoutes(
 
   // POST /x/import-token/:teacherId — import raw tokens (admin only)
   if (ctx.method === "POST" && pathname.startsWith(`${X_SOCIAL_PREFIX}/import-token/`)) {
-    if (!requireAdminAuth(ctx)) { sendError(ctx.res, "Admin authentication required.", 401); return true; }
+    if (!requireAdminAuth(ctx)) return true;
     const teacherId = pathname.slice(`${X_SOCIAL_PREFIX}/import-token/`.length);
     if (!teacherId) { sendError(ctx.res, "Teacher ID is required.", 400); return true; }
     try {
@@ -230,7 +218,7 @@ export async function handleXSocialRoutes(
 
   // GET /x/snapshot — full school context for bots (admin only)
   if (ctx.method === "GET" && pathname === `${X_SOCIAL_PREFIX}/snapshot`) {
-    if (!requireAdminAuth(ctx)) { sendError(ctx.res, "Admin authentication required.", 401); return true; }
+    if (!requireAdminAuth(ctx)) return true;
     const rsvc = rubySocialService(xSocial);
     const snapshot = await freshSchoolSnapshot(rsvc) ?? { topByYear: {}, photoPool: [], classPhotoHistory: [], dailyMemories: {} };
     ctx.json(ctx.res, snapshot);
@@ -239,7 +227,7 @@ export async function handleXSocialRoutes(
 
   // POST /x/post-scheduled/:teacherId — force one generated school update (admin only)
   if (ctx.method === "POST" && pathname.startsWith(`${X_SOCIAL_PREFIX}/post-scheduled/`)) {
-    if (!requireAdminAuth(ctx)) { ctx.error(ctx.res, "Admin authentication required.", 401); return true; }
+    if (!requireAdminAuth(ctx)) return true;
     const teacherId = pathname.slice(`${X_SOCIAL_PREFIX}/post-scheduled/`.length);
     if (!teacherId) { ctx.error(ctx.res, "Teacher ID is required.", 400); return true; }
     const rsvc = rubySocialService(xSocial);
@@ -265,7 +253,7 @@ export async function handleXSocialRoutes(
 
   // POST /x/post/:teacherId — teacher reflection post (admin only)
   if (ctx.method === "POST" && pathname.startsWith(`${X_SOCIAL_PREFIX}/post/`)) {
-    if (!requireAdminAuth(ctx)) { sendError(ctx.res, "Admin authentication required.", 401); return true; }
+    if (!requireAdminAuth(ctx)) return true;
     const teacherId = pathname.slice(`${X_SOCIAL_PREFIX}/post/`.length);
     if (!teacherId) { sendError(ctx.res, "Teacher ID is required.", 400); return true; }
     try {
@@ -288,7 +276,7 @@ export async function handleXSocialRoutes(
 
   // POST /x/post-report/:teacherId — post student report card (admin only)
   if (ctx.method === "POST" && pathname.startsWith(`${X_SOCIAL_PREFIX}/post-report/`)) {
-    if (!requireAdminAuth(ctx)) { sendError(ctx.res, "Admin authentication required.", 401); return true; }
+    if (!requireAdminAuth(ctx)) return true;
     const teacherId = pathname.slice(`${X_SOCIAL_PREFIX}/post-report/`.length);
     if (!teacherId) { sendError(ctx.res, "Teacher ID is required.", 400); return true; }
     try {
@@ -316,7 +304,7 @@ export async function handleXSocialRoutes(
 
   // POST /x/class-photo/:teacherId — post a class photo (admin only)
   if (ctx.method === "POST" && pathname.startsWith(`${X_SOCIAL_PREFIX}/class-photo/`)) {
-    if (!requireAdminAuth(ctx)) { ctx.error(ctx.res, "Admin authentication required.", 401); return true; }
+    if (!requireAdminAuth(ctx)) return true;
     const teacherId = pathname.slice(`${X_SOCIAL_PREFIX}/class-photo/`.length);
     if (!teacherId) { ctx.error(ctx.res, "Teacher ID is required.", 400); return true; }
     try {
@@ -365,7 +353,7 @@ export async function handleXSocialRoutes(
 
   // POST /x/disconnect/:teacherId — revoke (admin only)
   if (ctx.method === "POST" && pathname.startsWith(`${X_SOCIAL_PREFIX}/disconnect/`)) {
-    if (!requireAdminAuth(ctx)) { sendError(ctx.res, "Admin authentication required.", 401); return true; }
+    if (!requireAdminAuth(ctx)) return true;
     const teacherId = pathname.slice(`${X_SOCIAL_PREFIX}/disconnect/`.length);
     if (!teacherId) { sendError(ctx.res, "Teacher ID is required.", 400); return true; }
     await xSocial.disconnect(teacherId);
@@ -376,7 +364,7 @@ export async function handleXSocialRoutes(
   // POST /x/telegram/find-chat — proxy Telegram getUpdates (admin only).
   // Accept the token only in the JSON body so it does not leak through URLs.
   if (ctx.method === "POST" && pathname === `${X_SOCIAL_PREFIX}/telegram/find-chat`) {
-    if (!requireAdminAuth(ctx)) { ctx.error(ctx.res, "Admin authentication required.", 401); return true; }
+    if (!requireAdminAuth(ctx)) return true;
     const body = await ctx.readJsonBody() as Record<string, unknown> | null;
     const token = typeof body?.token === "string" ? body.token.trim() : "";
     if (!token) { ctx.error(ctx.res, "token is required.", 400); return true; }
@@ -393,7 +381,7 @@ export async function handleXSocialRoutes(
 
   // GET /x/telegram — get Telegram config (admin only)
   if (ctx.method === "GET" && pathname === `${X_SOCIAL_PREFIX}/telegram`) {
-    if (!requireAdminAuth(ctx)) { ctx.error(ctx.res, "Admin authentication required.", 401); return true; }
+    if (!requireAdminAuth(ctx)) return true;
     const runtime = (xSocial as any).runtime;
     const telegram = runtime?.getService?.("telegram") as { getConfig?: () => any } | null;
     ctx.json(ctx.res, telegram?.getConfig?.() ?? { chatId: "", enabled: false, hasToken: false });
@@ -402,7 +390,7 @@ export async function handleXSocialRoutes(
 
   // POST /x/telegram — update Telegram config (admin only)
   if (ctx.method === "POST" && pathname === `${X_SOCIAL_PREFIX}/telegram`) {
-    if (!requireAdminAuth(ctx)) { ctx.error(ctx.res, "Admin authentication required.", 401); return true; }
+    if (!requireAdminAuth(ctx)) return true;
     const body = await ctx.readJsonBody() as Record<string, unknown> | null;
     const rawBotToken = typeof body?.botToken === "string" ? body.botToken.trim() : "";
     const chatId = typeof body?.chatId === "string" ? body.chatId.trim() : "";
@@ -441,7 +429,7 @@ export async function handleXSocialRoutes(
 
   // POST /x/telegram/post — trigger a school snapshot post (admin only)
   if (ctx.method === "POST" && pathname === `${X_SOCIAL_PREFIX}/telegram/post`) {
-    if (!requireAdminAuth(ctx)) { ctx.error(ctx.res, "Admin authentication required.", 401); return true; }
+    if (!requireAdminAuth(ctx)) return true;
     const runtime = (xSocial as any).runtime;
     const telegram = runtime?.getService?.("telegram") as { postSchoolSnapshot?: () => Promise<void> } | null;
     if (!telegram) { ctx.error(ctx.res, "Telegram service not available.", 503); return true; }
