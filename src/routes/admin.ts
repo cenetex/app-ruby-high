@@ -14,10 +14,10 @@ import type { StoredDraftContentPackRecord, StoredDraftTeacherRecord } from "../
 import { getActivePack } from "../content/registry.js";
 import type { ContentPack, PackSourceCard } from "../content/types.js";
 import { APP_ROUTE_PREFIX, X_SOCIAL_PREFIX } from "./constants.js";
+import { requireAdminAuth } from "./admin-auth.js";
 import type { RouteContext } from "./context.js";
 import type { BankedQuestion, Grade } from "../types.js";
 import { multipleChoiceDefinition } from "../question-choices.js";
-import { constantTimeSecretEqual } from "../services/secret-comparison.js";
 
 export const ADMIN_PATH = `${APP_ROUTE_PREFIX}/admin`;
 export const ADMIN_METRICS_PATH = `${APP_ROUTE_PREFIX}/admin/metrics`;
@@ -272,35 +272,6 @@ interface AdminMetricFieldSchema {
   semantics: string;
   reliability: "authoritative" | "proxy" | "legacy" | "volatile" | "missing";
   caveat?: string;
-}
-
-function firstHeader(value: string | string[] | null | undefined): string {
-  if (Array.isArray(value)) return value[0] ?? "";
-  return value ?? "";
-}
-
-function configuredToken(): string | null {
-  const raw = process.env.RUBY_HIGH_ADMIN_TOKEN?.trim();
-  return raw ? raw : null;
-}
-
-function authorized(ctx: RouteContext, token: string): boolean {
-  const auth = firstHeader(ctx.authorizationHeader).trim();
-  const match = auth.match(/^Bearer\s+(.+)$/i);
-  return constantTimeSecretEqual(match?.[1]?.trim() ?? auth, token);
-}
-
-function requireAdminAuth(ctx: RouteContext): string | null {
-  const token = configuredToken();
-  if (!token) {
-    ctx.error(ctx.res, "Admin metrics are not configured.", 503);
-    return null;
-  }
-  if (!authorized(ctx, token)) {
-    ctx.error(ctx.res, "Unauthorized.", 401);
-    return null;
-  }
-  return token;
 }
 
 function buildAdminMetricsSnapshot(deps: AdminDeps): AdminMetricsSnapshot {
