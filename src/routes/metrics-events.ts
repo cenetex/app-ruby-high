@@ -1,6 +1,6 @@
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { TokenBucket } from "../services/rate-limit.js";
-import { visitorHashFromHeader } from "../services/auth-service.js";
+import { clientSurfaceFromUserAgent, visitorHashFromHeader } from "../services/auth-service.js";
 import type { MetricClientSurface } from "../services/state-store.js";
 import type { RouteContext } from "./context.js";
 import { APP_ROUTE_PREFIX } from "./constants.js";
@@ -12,6 +12,10 @@ const METRICS_EVENT_LIMITER = new TokenBucket(60, 1);
 type MetricsEventBody = {
   type?: unknown;
   clientSurface?: unknown;
+  campaignSource?: unknown;
+  campaignId?: unknown;
+  landingVariant?: unknown;
+  entrypoint?: unknown;
   inactiveMs?: unknown;
   reason?: unknown;
   path?: unknown;
@@ -81,16 +85,18 @@ export async function handleMetricsEventRoute(
   const body = (await ctx.readJsonBody().catch(() => ({}))) as MetricsEventBody;
   const type = typeof body?.type === "string" ? body.type : "";
   const visitorHash = visitorHashFromHeader(ctx.visitorHeader);
-  const clientSurface = metricClientSurface(body.clientSurface);
+  const clientSurface = trustedMetricClientSurface(body.clientSurface, ctx.userAgentHeader);
   if (type === "app_open") {
     return await respondAfterMetricPersist(ctx, () => deps.ruby.recordAppOpenDurably(deps.sessionId, {
       source: "viewer",
       clientSurface,
       visitorHash,
-      path: typeof body.path === "string" ? body.path : undefined,
-      referrer: typeof body.referrer === "string" ? body.referrer : undefined,
-      ref: typeof body.ref === "string" ? body.ref : undefined,
-      userAgent: requestHeaderString(ctx.userAgentHeader),
+      attribution: {
+        source: body.campaignSource,
+        campaignId: body.campaignId,
+        landingVariant: body.landingVariant,
+        entrypoint: body.entrypoint,
+      },
     }));
   }
   if (type === "take_card_started" || type === "class_result_viewed") {
@@ -232,12 +238,6 @@ function metricsRateLimitKey(clientIp: string | null | undefined, sessionId: str
   return `${clientIp || "no-ip"}:${sessionId || "anon"}`;
 }
 
-function requestHeaderString(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
-  return undefined;
-}
-
 function metricClientSurface(value: unknown): MetricClientSurface | undefined {
   return value === "viewer"
     || value === "agent"
@@ -245,6 +245,17 @@ function metricClientSurface(value: unknown): MetricClientSurface | undefined {
     || value === "api"
     ? value
     : undefined;
+}
+
+function trustedMetricClientSurface(
+  claimedValue: unknown,
+  userAgent: string | string[] | null | undefined,
+): MetricClientSurface | undefined {
+  const claimed = metricClientSurface(claimedValue);
+  if (claimed === "agent" || claimed === "smoke") return claimed;
+  const observed = clientSurfaceFromUserAgent(userAgent);
+  if (observed === "api" || observed === "smoke") return observed;
+  return claimed ?? observed;
 }
 
 function requestString(value: unknown): string | undefined {

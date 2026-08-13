@@ -1338,6 +1338,9 @@ export function runViewerClient(bootstrap) {
     }).catch(() => {});
   }
 
+  let acquisitionAttribution = null;
+  let quickRollExperimentLanding = false;
+
   const onboardingFunnelStepsSent = new Set();
   function postOnboardingFunnelStep(step) {
     if (!step || onboardingFunnelStepsSent.has(step)) return;
@@ -3434,6 +3437,34 @@ export function runViewerClient(bootstrap) {
     }
   }
 
+  function consumeAcquisitionAttribution() {
+    try {
+      const url = new URL(window.location.href);
+      const keys = ["rh_source", "rh_campaign", "rh_landing", "rh_entry"];
+      if (!keys.some((key) => url.searchParams.has(key))) return;
+      acquisitionAttribution = {
+        campaignSource: url.searchParams.get("rh_source") || "",
+        campaignId: url.searchParams.get("rh_campaign") || "",
+        landingVariant: url.searchParams.get("rh_landing") || "",
+        entrypoint: url.searchParams.get("rh_entry") || "",
+      };
+      quickRollExperimentLanding = acquisitionAttribution.landingVariant === "quick-roll-v1";
+      if (quickRollExperimentLanding) {
+        const subtitle = document.querySelector("#blackboard-empty-text .onboarding-sub");
+        const detail = document.querySelector("#blackboard-empty-text .onboarding-detail");
+        const create = document.getElementById("onboarding-create-btn");
+        if (subtitle) subtitle.textContent = "Roll a student. Complete one class. Get your report.";
+        if (detail) detail.textContent = "Quick Roll gives you a ready student; customize any field before you enroll.";
+        if (create) create.textContent = "Quick Roll or customize";
+      }
+      keys.forEach((key) => url.searchParams.delete(key));
+      window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+    } catch (_e) {
+      acquisitionAttribution = null;
+      quickRollExperimentLanding = false;
+    }
+  }
+
   // Inbound half of the share loop: a `?ref=` param means this visit arrived
   // from a shared artifact. Record the click, stash the ref so the app_open
   // event can attribute the session, then strip it from the URL.
@@ -5131,7 +5162,7 @@ export function runViewerClient(bootstrap) {
       firstRunCreationOpened = true;
       // If a class is already live, jump straight to character creation
       // so the teacher isn't hidden behind an intro screen.
-      if (t.current || t.active_round) {
+      if (t.current || t.active_round || quickRollExperimentLanding) {
         setTimeout(() => openCharacterCreation(), 0);
       }
     }
@@ -6655,7 +6686,9 @@ export function runViewerClient(bootstrap) {
     const hostedPortrait = hostedImageEntitlement("portrait");
     const hasPhotoDayCredit = characterSlotTelemetry().photoDayCredits > 0;
     const portraitCost = hostedPortrait && hostedPortrait.cost || 1;
-    const controlsSubtitle = hostedPortrait && hostedPortrait.configured && (hasPhotoDayCredit || canSpendHallPasses(portraitCost))
+    const controlsSubtitle = quickRollExperimentLanding
+      ? "Roll a student. Complete one class. Get your report. Customize any field before enrolling."
+      : hostedPortrait && hostedPortrait.configured && (hasPhotoDayCredit || canSpendHallPasses(portraitCost))
       ? "Reroll any field. Photo Day credits or Hall Passes can make a custom portrait."
       : localAiEnabled
         ? "Reroll any field. Local AI can refresh the voice."
@@ -10586,6 +10619,7 @@ export function runViewerClient(bootstrap) {
   desktopRailsQuery.addEventListener("change", (event) => setRailsOpen(event.matches));
 
   applyAuthUI();
+  consumeAcquisitionAttribution();
   consumeBillingReturnFlag();
   consumeReferralFlag();
   const sharedPackId = consumeSharedPackFlag();
@@ -10600,11 +10634,7 @@ export function runViewerClient(bootstrap) {
   async function bootInitialSession() {
     showWelcomeBackCopy = markLocalAppOpen();
     await deriveAuth();
-    postViewerMetricEvent("app_open", {
-      path: window.location.pathname,
-      referrer: document.referrer || "",
-      ref: referralRef || "",
-    });
+    postViewerMetricEvent("app_open", acquisitionAttribution || {});
     await fetchSession();
     await applySharedPackFromUrl(sharedPackId);
   }

@@ -25,8 +25,8 @@ export const ADMIN_METRICS_SCHEMA_PATH = `${APP_ROUTE_PREFIX}/admin/metrics/sche
 export const ADMIN_OVERVIEW_PATH = `${APP_ROUTE_PREFIX}/admin/overview`;
 export const ADMIN_CURRICULUM_REPLENISHMENT_PATH = `${APP_ROUTE_PREFIX}/admin/curriculum/replenishment`;
 export const ADMIN_WORLD_MODERATION_PATH = `${APP_ROUTE_PREFIX}/admin/world/moderation`;
-export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v8";
-const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-08-09";
+export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v9";
+const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-08-13";
 const ADMIN_METRICS_DEFAULT_TRUST_START = "2026-07-26";
 const BUILT_IN_GENERATOR_FACULTY_IDS = new Set(["ruby", "sally-science", "professor-edward"]);
 const BUILT_IN_QUESTION_FILES: Record<string, string> = {
@@ -1683,6 +1683,14 @@ function buildAdminMetricsSchema(): {
         caveat: "Begins at instrumentationStart in schema v8; earlier visits are intentionally excluded because the intermediate client events did not exist.",
       },
       {
+        path: "ruby.events.acquisition",
+        label: "Privacy-bounded acquisition funnels",
+        source: "First visitor-backed viewer app_open plus downstream session and visitor metric events",
+        semantics: "First-touch, visitor-deduped activation and D1-return cohorts segmented by fixed source and landing vocabularies and server-owned release markers. Includes the canonical issue-174 cohort export.",
+        reliability: "authoritative",
+        caveat: "Begins at instrumentationStart in schema v9. Raw referrers, query strings, user agents, and free-form campaign labels are neither accepted nor stored in the acquisition payload.",
+      },
+      {
         path: "ruby.events.byClientSurface",
         label: "Metric events by client surface",
         source: "StoredMetricEventRecord.clientSurface",
@@ -2414,6 +2422,7 @@ export function renderAdminDashboardHtml(): string {
         <input id="token" type="password" autocomplete="current-password" placeholder="Admin token">
         <button id="refresh" type="submit">Refresh</button>
         <button class="secondary" id="overview-refresh" type="button">Overview</button>
+        <button class="secondary" id="acquisition-export" type="button" disabled>Export acquisition</button>
         <button class="secondary" id="clear-token" type="button">Clear</button>
         <label class="toggle"><input id="auto-refresh" type="checkbox"> Auto</label>
       </form>
@@ -2546,6 +2555,7 @@ async function postTelegramSnapshot() {
     const formEl = document.getElementById("admin-form");
     const refreshEl = document.getElementById("refresh");
     const overviewRefreshEl = document.getElementById("overview-refresh");
+    const acquisitionExportEl = document.getElementById("acquisition-export");
     const clearEl = document.getElementById("clear-token");
     const curriculumDraftsCreateEl = document.getElementById("curriculum-drafts-create");
     const curriculumDraftsAutoEl = document.getElementById("curriculum-drafts-auto");
@@ -2575,6 +2585,7 @@ async function postTelegramSnapshot() {
       sessionStorage.removeItem(tokenKey);
       tokenEl.value = "";
       latestMetrics = null;
+      acquisitionExportEl.disabled = true;
       latestReplenishment = null;
       curriculumDraftsCreateEl.disabled = true;
       curriculumDraftsAutoEl.disabled = true;
@@ -2595,6 +2606,22 @@ async function postTelegramSnapshot() {
     });
     overviewRefreshEl.addEventListener("click", () => {
       generateOverview();
+    });
+    acquisitionExportEl.addEventListener("click", () => {
+      const acquisition = latestMetrics && latestMetrics.ruby && latestMetrics.ruby.events && latestMetrics.ruby.events.acquisition;
+      if (!acquisition) return;
+      const payload = {
+        schemaVersion: latestMetrics.schemaVersion,
+        generatedAt: latestMetrics.generatedAt,
+        acquisition: acquisition,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "ruby-high-acquisition.json";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
     });
     curriculumDraftsCreateEl.addEventListener("click", () => {
       createCurriculumDrafts();
@@ -2856,6 +2883,11 @@ async function postTelegramSnapshot() {
       const ruby = data.ruby || {};
       const events = ruby.events || {};
       const referral = events.referral || {};
+      const acquisition = events.acquisition || {};
+      const experiment174 = acquisition.canonicalExperiment174 || {};
+      const experiment174Funnel = experiment174.funnel || {};
+      const experiment174Steps = Array.isArray(experiment174Funnel.steps) ? experiment174Funnel.steps : [];
+      const experiment174Result = experiment174Steps.find(function(step) { return step && step.key === "result_viewed"; }) || {};
       const humanActivation = events.activationFunnel && events.activationFunnel.humanViewer || {};
       const humanActivationSteps = Array.isArray(humanActivation.steps) ? humanActivation.steps : [];
       const humanCharacterStep = humanActivationSteps.find(function(step) { return step && step.key === "character_created"; }) || {};
@@ -2867,6 +2899,7 @@ async function postTelegramSnapshot() {
       const ops = data.ops || {};
       const logs = data.logs || {};
       status("Updated " + time(data.generatedAt) + " - build " + (logs.build || "unknown") + " - " + (data.schemaVersion || "legacy schema"), "");
+      acquisitionExportEl.disabled = !events.acquisition;
       renderQuick(data);
       renderCharts(data);
       renderOverview(localOverview(data), "local");
@@ -2882,6 +2915,7 @@ async function postTelegramSnapshot() {
         metric("App opens", n(events.appOpen && events.appOpen.total), n(events.sessionResume && events.sessionResume.total) + " resumes"),
         metric("Human activation", n(humanActivation.eligibleSessions) + " opens", pct(humanCharacterStep.rateFromOpen) + " character · " + pct(humanResultStep.rateFromOpen) + " result viewed"),
         metric("First-visit journey", n(onboarding.eligibleSessions) + " opens", pct(creatorOpenedStep.rateFromOpen) + " creator · " + pct(enrollmentStep.rateFromOpen) + " enroll click"),
+        metric("Issue #174 cohort", n(experiment174Funnel.sampleSize) + " visitors", n(experiment174Result.numerator) + " results · " + pct(experiment174Result.rateFromOpen) + " activation"),
         metric("Characters", n(ruby.characters), n(ruby.graduatedCharacters) + " graduated - " + n(ruby.completedGrades) + " grades sealed"),
         metric("Questions", n(ruby.questions && ruby.questions.total), n(ruby.questions && ruby.questions.correct) + " correct - " + pct(ruby.questions && ruby.questions.accuracy) + " accuracy"),
         metric("Curriculum", n(ruby.curriculum && ruby.curriculum.lowPools && ruby.curriculum.lowPools.length), n(ruby.curriculum && ruby.curriculum.rows && ruby.curriculum.rows.length) + " grade/teacher pools"),
@@ -2918,6 +2952,7 @@ async function postTelegramSnapshot() {
       curriculumDraftsAutoEl.disabled = generationQueue.filter((step) => step.autoEligible).length === 0;
       tablesEl.innerHTML = [
         revenueTable,
+        acquisitionCohortTable(acquisition),
         curriculumTable(ruby.curriculum),
         curriculumGenerationQueueTable(generationQueue),
         curriculumReviewQueueTable(latestReplenishment && latestReplenishment.reviewQueue),
@@ -3158,6 +3193,23 @@ async function postTelegramSnapshot() {
       const entries = Object.entries(rows);
       if (!entries.length) return "<div class=\\"empty\\">" + esc(title) + "</div>";
       return "<table><thead><tr><th>" + esc(title) + "</th><th>USD value</th></tr></thead><tbody>" + entries.map(([key, value]) => "<tr><td>" + esc(key) + "</td><td>" + money(value) + "</td></tr>").join("") + "</tbody></table>";
+    }
+    function acquisitionCohortTable(acquisition) {
+      acquisition = acquisition || {};
+      const rows = Array.isArray(acquisition.cohorts) ? acquisition.cohorts : [];
+      const experiment = acquisition.canonicalExperiment174 || {};
+      const canonical = experiment.path
+        ? "<div class=\\"sub\\">Canonical #174: <code>" + esc(experiment.path) + "</code><br>" + esc(experiment.proposition || "") + "</div>"
+        : "";
+      if (!rows.length) return "<div class=\\"empty\\">Acquisition cohorts" + canonical + "</div>";
+      return "<table><thead><tr><th>Acquisition Cohort" + canonical + "</th><th>Sample</th><th>Result</th><th>D1</th></tr></thead><tbody>" + rows.map((row) => {
+        const steps = Array.isArray(row.steps) ? row.steps : [];
+        const result = steps.find(function(step) { return step && step.key === "result_viewed"; }) || {};
+        const d1 = row.d1Return || {};
+        const label = esc((row.source || "unknown") + " · " + (row.campaignId || "none"));
+        const sub = esc((row.landingVariant || "unknown") + " · " + (row.entrypoint || "unknown") + " · " + (row.releaseMarker || "unknown"));
+        return "<tr><td>" + label + "<div class=\\"sub\\">" + sub + "</div></td><td>" + n(row.sampleSize) + "</td><td>" + n(result.numerator) + " / " + n(result.denominator) + "<div class=\\"sub\\">" + pct(result.rateFromOpen) + "</div></td><td>" + n(d1.returnedVisitors) + " / " + n(d1.eligibleVisitors) + "<div class=\\"sub\\">" + pct(d1.rate) + "</div></td></tr>";
+      }).join("") + "</tbody></table>";
     }
     function curriculumTable(curriculum) {
       const rows = (curriculum && curriculum.lowPools) || [];

@@ -1494,6 +1494,9 @@ describe("admin metrics route", () => {
     expect(response.body).toContain("Classroom");
     expect(response.body).toContain("Economy");
     expect(response.body).toContain("Operations");
+    expect(response.body).toContain("Export acquisition");
+    expect(response.body).toContain("Canonical #174");
+    expect(response.body).toContain("ruby-high-acquisition.json");
     expect(response.body).toContain("Create review drafts");
     expect(response.body).toContain("curriculum-export-btn");
     expect(response.body).toContain("curriculum-approve-btn");
@@ -1787,7 +1790,7 @@ describe("admin metrics route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       ok: true,
-      schemaVersion: "ruby-high-admin-metrics.v8",
+      schemaVersion: "ruby-high-admin-metrics.v9",
       schemaPath: "/api/apps/ruby-high/admin/metrics/schema",
       auth: {
         users: 1,
@@ -2848,7 +2851,7 @@ describe("admin metrics route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       ok: true,
-      schemaVersion: "ruby-high-admin-metrics.v8",
+      schemaVersion: "ruby-high-admin-metrics.v9",
       endpoint: "/api/apps/ruby-high/admin/metrics",
       bucketTimezone: "UTC",
       trustStart: "2026-07-26",
@@ -2880,6 +2883,10 @@ describe("admin metrics route", () => {
       }),
       expect.objectContaining({
         path: "ruby.funnel.first10m",
+        reliability: "authoritative",
+      }),
+      expect.objectContaining({
+        path: "ruby.events.acquisition",
         reliability: "authoritative",
       }),
       expect.objectContaining({
@@ -2972,9 +2979,12 @@ describe("admin metrics route", () => {
     expect(ruby.analyticsSnapshot().events.appOpen.uniqueSessions).toBe(1);
     expect(ruby.analyticsSnapshot().events.appOpen.uniqueVisitors).toBe(1);
     const appOpen = (await store.loadMetricEvents()).find((event) => event.name === "app_open");
-    expect(appOpen?.metadata).toMatchObject({
-      path: "/api/apps/ruby-high/viewer",
-      userAgent: "Vitest Browser",
+    expect(appOpen?.metadata).toEqual({
+      acquisitionSource: "direct",
+      acquisitionCampaign: "none",
+      acquisitionLanding: "default",
+      acquisitionEntrypoint: "viewer",
+      acquisitionRelease: "dev",
     });
   });
 
@@ -2995,6 +3005,90 @@ describe("admin metrics route", () => {
     const persistedEvents = await store.loadMetricEvents();
     expect(persistedEvents.map((event) => event.name)).toEqual(["app_open"]);
     expect(persistedEvents[0]?.visitorHash).toBeUndefined();
+  });
+
+  it("normalizes acquisition fields without retaining raw request data and excludes known bots", async () => {
+    vi.stubEnv("RUBY_HIGH_BUILD", "abcdef1234567890");
+    const { token } = await auth.createGuestSession();
+    const cookieHeader = `rh_session=${token}`;
+
+    let response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/metrics/event",
+      cookieHeader,
+      userAgentHeader: "Mozilla/5.0 AppleWebKit/537.36",
+      visitorHeader: "rhv_acquisition_human",
+      body: {
+        type: "app_open",
+        clientSurface: "viewer",
+        campaignSource: "x",
+        campaignId: "issue-174-v1",
+        landingVariant: "quick-roll-v1",
+        entrypoint: "viewer",
+        path: "/viewer?token=must-not-persist",
+        referrer: "https://example.com/private?email=person@example.com",
+      },
+    });
+    expect(response.status).toBe(200);
+
+    response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/metrics/event",
+      cookieHeader,
+      userAgentHeader: "Mozilla/5.0 AppleWebKit/537.36",
+      visitorHeader: "rhv_acquisition_unknown",
+      body: {
+        type: "app_open",
+        clientSurface: "viewer",
+        campaignSource: "https://tracking.example/private",
+        campaignId: "arbitrary-campaign-that-is-not-allowlisted",
+        landingVariant: "free-form-landing",
+        entrypoint: "wallet:secret-address",
+      },
+    });
+    expect(response.status).toBe(200);
+
+    response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/metrics/event",
+      cookieHeader,
+      userAgentHeader: "Mozilla/5.0 (compatible; Googlebot/2.1)",
+      visitorHeader: "rhv_acquisition_bot",
+      body: {
+        type: "app_open",
+        clientSurface: "viewer",
+        campaignSource: "x",
+        campaignId: "issue-174-v1",
+        landingVariant: "quick-roll-v1",
+        entrypoint: "viewer",
+      },
+    });
+    expect(response.status).toBe(200);
+
+    const appOpens = (await store.loadMetricEvents()).filter((event) => event.name === "app_open");
+    expect(appOpens).toHaveLength(3);
+    expect(appOpens[0]).toMatchObject({
+      clientSurface: "viewer",
+      metadata: {
+        acquisitionSource: "x",
+        acquisitionCampaign: "issue-174-v1",
+        acquisitionLanding: "quick-roll-v1",
+        acquisitionEntrypoint: "viewer",
+        acquisitionRelease: "abcdef123456",
+      },
+    });
+    expect(appOpens[1]?.metadata).toMatchObject({
+      acquisitionSource: "unknown",
+      acquisitionCampaign: "unknown",
+      acquisitionLanding: "unknown",
+      acquisitionEntrypoint: "unknown",
+    });
+    expect(appOpens[2]).toMatchObject({ clientSurface: "api" });
+    expect(appOpens[2]?.metadata).toBeUndefined();
+    expect(JSON.stringify(appOpens)).not.toContain("must-not-persist");
+    expect(JSON.stringify(appOpens)).not.toContain("person@example.com");
+    expect(JSON.stringify(appOpens)).not.toContain("tracking.example");
+    expect(ruby.analyticsSnapshot().events.acquisition.totalEligibleVisitors).toBe(2);
   });
 
   it("accepts only allowlisted first-run onboarding steps from the viewer", async () => {
@@ -3430,7 +3524,7 @@ describe("admin metrics route", () => {
     expect(headers.Authorization).toBe("Bearer or-test-key");
     const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body));
     const prompt = body.messages[1].content as string;
-    expect(prompt).toContain("ruby-high-admin-metrics.v8");
+    expect(prompt).toContain("ruby-high-admin-metrics.v9");
     expect(prompt).toContain("identityRecords");
     expect(prompt).toContain("not deduped people");
     expect(prompt).toContain("characterD1Retention");
