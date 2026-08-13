@@ -5704,6 +5704,102 @@ describe("RubyHighService Phase 1", () => {
     expect(analytics.sessions).toBe(0);
   });
 
+  it("keeps first-touch acquisition across refresh and session rotation without double-counting the visitor", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const firstTouchAt = Date.UTC(2026, 7, 13, 1);
+    vi.setSystemTime(firstTouchAt);
+    const { ruby } = await makeServices();
+    const visitorHash = "visitor-acquisition-174";
+    const firstSession = "viewer:acquisition:first";
+    const rotatedSession = "viewer:acquisition:rotated";
+
+    ruby.recordAppOpen(firstSession, {
+      clientSurface: "viewer",
+      visitorHash,
+      attribution: {
+        source: "x",
+        campaignId: "issue-174-v1",
+        landingVariant: "quick-roll-v1",
+        entrypoint: "viewer",
+      },
+    });
+    for (const [name, step] of [
+      ["funnel_step", "first_character_created"],
+      ["daily_class_started", "evidence_1"],
+      ["funnel_step", "first_question_answered"],
+      ["evidence_card_completed", "evidence_1"],
+      ["evidence_card_completed", "evidence_2"],
+      ["take_card_presented", "take"],
+      ["take_card_started", "take"],
+      ["take_card_submitted", "take"],
+      ["class_result_completed", "class_result"],
+      ["class_result_viewed", "class_result"],
+    ] as const) {
+      ruby.recordMetricEvent(name, { sessionId: firstSession, step, source: "gameplay" });
+    }
+
+    vi.setSystemTime(firstTouchAt + 60 * 60 * 1000);
+    ruby.recordAppOpen(firstSession, {
+      clientSurface: "viewer",
+      visitorHash,
+      attribution: { source: "direct" },
+    });
+    vi.setSystemTime(firstTouchAt + 25 * 60 * 60 * 1000);
+    ruby.recordAppOpen(rotatedSession, {
+      clientSurface: "viewer",
+      visitorHash,
+      attribution: { source: "unknown" },
+    });
+    ruby.recordSessionResume(rotatedSession, { visitorHash });
+
+    ruby.recordAppOpen("viewer:acquisition:internal", {
+      clientSurface: "viewer",
+      visitorHash: "visitor-internal-qa",
+      attribution: { source: "internal", entrypoint: "internal-qa" },
+    });
+    ruby.recordAppOpen("viewer:acquisition:smoke", {
+      clientSurface: "smoke",
+      visitorHash: "visitor-smoke",
+      attribution: {
+        source: "x",
+        campaignId: "issue-174-v1",
+        landingVariant: "quick-roll-v1",
+      },
+    });
+
+    const acquisition = ruby.analyticsSnapshot(firstTouchAt + 26 * 60 * 60 * 1000).events.acquisition;
+    const experiment = acquisition.canonicalExperiment174.funnel;
+    expect(acquisition.totalEligibleVisitors).toBe(1);
+    expect(experiment).toMatchObject({
+      sampleSize: 1,
+      eligibleVisitors: 1,
+      d1Return: { eligibleVisitors: 1, returnedVisitors: 1, rate: 1 },
+    });
+    expect(Object.fromEntries(experiment.steps.map((step) => [step.key, step.numerator]))).toEqual({
+      app_open: 1,
+      character_created: 1,
+      daily_class_started: 1,
+      first_answer: 1,
+      evidence_1_completed: 1,
+      evidence_2_completed: 1,
+      take_presented: 1,
+      take_started: 1,
+      take_submitted: 1,
+      result_completed: 1,
+      result_viewed: 1,
+    });
+    expect(acquisition.bySource.find((row) => row.source === "x")?.sampleSize).toBe(1);
+    expect(acquisition.bySource.find((row) => row.source === "direct")?.sampleSize).toBe(0);
+    expect(acquisition.cohorts).toHaveLength(1);
+    expect(acquisition.cohorts[0]).toMatchObject({
+      source: "x",
+      campaignId: "issue-174-v1",
+      landingVariant: "quick-roll-v1",
+      entrypoint: "viewer",
+      releaseMarker: "dev",
+    });
+  });
+
   it("does not call free Hall Pass grants payers", async () => {
     const { ruby } = await makeServices();
     ruby.recordMetricEvent("commerce", {

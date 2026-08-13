@@ -187,6 +187,8 @@ describe("AuthService.gcSessions", () => {
     expect(clientSurfaceFromUserAgent("RubyHighSmoke/1.0")).toBe("smoke");
     expect(clientSurfaceFromUserAgent("Mozilla/5.0 AppleWebKit/537.36")).toBe("viewer");
     expect(clientSurfaceFromUserAgent("curl/8.7.1")).toBe("api");
+    expect(clientSurfaceFromUserAgent("Mozilla/5.0 (compatible; Googlebot/2.1)")).toBe("api");
+    expect(clientSurfaceFromUserAgent("Mozilla/5.0 HeadlessChrome/120.0 Playwright")).toBe("api");
     expect(clientSurfaceFromUserAgent("custom-client")).toBeUndefined();
   });
 

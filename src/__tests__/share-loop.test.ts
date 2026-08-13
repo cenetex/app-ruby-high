@@ -70,10 +70,16 @@ describe("share loop instrumentation", () => {
     expect(visited?.visitorHash).toBe("v2");
   });
 
-  it("tags a referred app_open with the ref so the session is attributable", async () => {
-    await ruby.recordAppOpenDurably("rh:s4", { visitorHash: "v3", path: "/viewer", ref: "yb_abc123" });
+  it("stores only bounded acquisition fields on app_open", async () => {
+    await ruby.recordAppOpenDurably("rh:s4", { visitorHash: "v3" });
 
     const appOpen = (await store.loadMetricEvents()).find((e) => e.name === "app_open");
-    expect(appOpen?.metadata).toMatchObject({ path: "/viewer", ref: "yb_abc123" });
+    expect(appOpen?.metadata).toEqual({
+      acquisitionSource: "direct",
+      acquisitionCampaign: "none",
+      acquisitionLanding: "default",
+      acquisitionEntrypoint: "viewer",
+      acquisitionRelease: "dev",
+    });
   });
 });

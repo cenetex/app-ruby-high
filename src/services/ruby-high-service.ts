@@ -157,6 +157,19 @@ import {
   storedContentPackVisibility,
 } from "./state-store.js";
 import { log, setLogSink, type LogSinkRecord } from "./logger.js";
+import {
+  ACQUISITION_LANDING_VARIANTS,
+  ACQUISITION_SOURCES,
+  EXPERIMENT_174_ATTRIBUTION,
+  EXPERIMENT_174_CANONICAL_PATH,
+  EXPERIMENT_174_PROPOSITION,
+  acquisitionAttributionFromMetadata,
+  acquisitionAttributionMetadata,
+  isDefaultAcquisitionCohort,
+  normalizeAcquisitionAttribution,
+  type AcquisitionAttribution,
+  type AcquisitionAttributionInput,
+} from "./acquisition-attribution.js";
 import { rewriteGeneratedPortraitS3Url } from "./generated-portrait-assets.js";
 import { PLAYBOOKS } from "../characters/playbooks.js";
 import {
@@ -1007,6 +1020,7 @@ export interface RubyHighMetricEventsSnapshot {
     instrumentationStart: string;
     humanViewer: ActivationFunnelCohortSnapshot;
   };
+  acquisition: AcquisitionAnalyticsSnapshot;
   classRitual: {
     dailyClassStarted: number;
     /** Legacy aggregate; prefer evidence1Completed and evidence2Completed. */
@@ -1073,6 +1087,50 @@ export interface ActivationFunnelCohortSnapshot {
   sampleSize: number;
   eligibleSessions: number;
   steps: ActivationFunnelStepSnapshot[];
+}
+
+export interface AcquisitionFunnelStepSnapshot {
+  key: string;
+  label: string;
+  numerator: number;
+  denominator: number;
+  rateFromOpen: number | null;
+  previousStepVisitors: number;
+  rateFromPrevious: number | null;
+}
+
+export interface AcquisitionFunnelSnapshot {
+  key: string;
+  source?: string;
+  campaignId?: string;
+  landingVariant?: string;
+  entrypoint?: string;
+  releaseMarker?: string;
+  windowStart: string;
+  windowEnd: string;
+  sampleSize: number;
+  eligibleVisitors: number;
+  steps: AcquisitionFunnelStepSnapshot[];
+  d1Return: {
+    eligibleVisitors: number;
+    returnedVisitors: number;
+    rate: number | null;
+  };
+}
+
+export interface AcquisitionAnalyticsSnapshot {
+  instrumentationStart: string;
+  totalEligibleVisitors: number;
+  canonicalExperiment174: {
+    path: string;
+    proposition: string;
+    attribution: Omit<AcquisitionAttribution, "releaseMarker">;
+    funnel: AcquisitionFunnelSnapshot;
+  };
+  bySource: AcquisitionFunnelSnapshot[];
+  byLandingVariant: AcquisitionFunnelSnapshot[];
+  byReleaseMarker: AcquisitionFunnelSnapshot[];
+  cohorts: AcquisitionFunnelSnapshot[];
 }
 
 export interface DailyMemoryEntry {
@@ -1884,11 +1942,8 @@ export class RubyHighService extends Service {
     input: {
       source?: string;
       clientSurface?: MetricClientSurface;
-      userAgent?: string;
-      referrer?: string;
-      path?: string;
-      ref?: string;
       visitorHash?: string | null;
+      attribution?: AcquisitionAttributionInput;
     } = {},
   ): void {
     if (input.visitorHash) {
@@ -1900,18 +1955,16 @@ export class RubyHighService extends Service {
         feature: "viewer",
       });
     }
+    const attribution = input.visitorHash && (input.clientSurface ?? "viewer") === "viewer"
+      ? firstTouchAttributionForVisitor(this.metricEvents.values(), input.visitorHash, input.attribution)
+      : null;
     this.recordMetricEvent("app_open", {
       sessionId,
       ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
       ...(input.clientSurface ? { clientSurface: input.clientSurface } : {}),
       source: input.source ?? "viewer",
       feature: "viewer",
-      metadata: {
-        ...(input.path ? { path: clippedMetricValue(input.path, 180) } : {}),
-        ...(input.referrer ? { referrer: clippedMetricValue(input.referrer, 180) } : {}),
-        ...(input.ref ? { ref: clippedMetricValue(input.ref, 120) } : {}),
-        ...(input.userAgent ? { userAgent: clippedMetricValue(input.userAgent, 180) } : {}),
-      },
+      ...(attribution ? { metadata: acquisitionAttributionMetadata(attribution) } : {}),
     });
   }
 
@@ -1920,11 +1973,8 @@ export class RubyHighService extends Service {
     input: {
       source?: string;
       clientSurface?: MetricClientSurface;
-      userAgent?: string;
-      referrer?: string;
-      path?: string;
-      ref?: string;
       visitorHash?: string | null;
+      attribution?: AcquisitionAttributionInput;
     } = {},
   ): Promise<void> {
     if (input.visitorHash) {
@@ -1936,18 +1986,16 @@ export class RubyHighService extends Service {
         feature: "viewer",
       });
     }
+    const attribution = input.visitorHash && (input.clientSurface ?? "viewer") === "viewer"
+      ? firstTouchAttributionForVisitor(this.metricEvents.values(), input.visitorHash, input.attribution)
+      : null;
     await this.recordMetricEventDurably("app_open", {
       sessionId,
       ...(input.visitorHash ? { visitorHash: input.visitorHash } : {}),
       ...(input.clientSurface ? { clientSurface: input.clientSurface } : {}),
       source: input.source ?? "viewer",
       feature: "viewer",
-      metadata: {
-        ...(input.path ? { path: clippedMetricValue(input.path, 180) } : {}),
-        ...(input.referrer ? { referrer: clippedMetricValue(input.referrer, 180) } : {}),
-        ...(input.ref ? { ref: clippedMetricValue(input.ref, 120) } : {}),
-        ...(input.userAgent ? { userAgent: clippedMetricValue(input.userAgent, 180) } : {}),
-      },
+      ...(attribution ? { metadata: acquisitionAttributionMetadata(attribution) } : {}),
     });
   }
 
@@ -13125,6 +13173,21 @@ function normalizeLoaded(s: QuizState): QuizState {
   };
 }
 
+function firstTouchAttributionForVisitor(
+  events: Iterable<StoredMetricEventRecord>,
+  visitorHash: string,
+  input: AcquisitionAttributionInput | undefined,
+): AcquisitionAttribution {
+  let first: { occurredAt: number; attribution: AcquisitionAttribution } | null = null;
+  for (const event of events) {
+    if (event.name !== "app_open" || event.visitorHash !== visitorHash || event.clientSurface !== "viewer") continue;
+    const attribution = acquisitionAttributionFromMetadata(event.metadata);
+    if (!attribution) continue;
+    if (!first || event.occurredAt < first.occurredAt) first = { occurredAt: event.occurredAt, attribution };
+  }
+  return first?.attribution ?? normalizeAcquisitionAttribution(input);
+}
+
 function buildRubyHighDailyBuckets(now: number, count: number): {
   days: RubyHighAnalyticsDay[];
   byDate: Map<string, RubyHighAnalyticsDay>;
@@ -13440,6 +13503,7 @@ function buildMetricEventsSnapshot(
       ONBOARDING_FUNNEL_STEPS,
     ),
   };
+  const acquisition = buildAcquisitionAnalyticsSnapshot(orderedEvents, now);
   return {
     total,
     excludedSynthetic,
@@ -13466,6 +13530,7 @@ function buildMetricEventsSnapshot(
     byClientSurface,
     activationFunnel,
     onboardingFunnel,
+    acquisition,
     classRitual: {
       dailyClassStarted: byName.daily_class_started,
       evidenceCardCompleted: byName.evidence_card_completed,
@@ -13576,6 +13641,224 @@ function onboardingMetricsStart(): number {
   // that could not possibly emit the new steps and would manufacture a false
   // drop-off at creation_opened.
   return Number.isFinite(configured) ? configured : Date.UTC(2026, 7, 9, 5, 23, 59);
+}
+
+const MAX_ACQUISITION_RELEASE_COHORTS = 24;
+const MAX_ACQUISITION_COMBINED_COHORTS = 50;
+
+interface AttributedVisitorEvents {
+  visitorHash: string;
+  attribution: AcquisitionAttribution;
+  firstTouchAt: number;
+  events: StoredMetricEventRecord[];
+}
+
+function acquisitionMetricsStart(): number {
+  const configured = Date.parse(String(process.env.RUBY_HIGH_ACQUISITION_METRICS_START ?? ""));
+  return Number.isFinite(configured) ? configured : Date.UTC(2026, 7, 13);
+}
+
+function buildAcquisitionAnalyticsSnapshot(
+  orderedEvents: StoredMetricEventRecord[],
+  now: number,
+): AcquisitionAnalyticsSnapshot {
+  const instrumentationStart = acquisitionMetricsStart();
+  const inWindow = orderedEvents.filter((event) =>
+    event.occurredAt >= instrumentationStart && event.occurredAt <= now);
+  const visitorsBySession = new Map<string, Set<string>>();
+  for (const event of inWindow) {
+    if (!event.sessionId || !event.visitorHash) continue;
+    const visitors = visitorsBySession.get(event.sessionId) ?? new Set<string>();
+    visitors.add(event.visitorHash);
+    visitorsBySession.set(event.sessionId, visitors);
+  }
+
+  const firstTouches = new Map<string, AttributedVisitorEvents>();
+  for (const event of inWindow) {
+    if (
+      event.name !== "app_open"
+      || event.clientSurface !== "viewer"
+      || !event.visitorHash
+    ) {
+      continue;
+    }
+    const attribution = acquisitionAttributionFromMetadata(event.metadata);
+    if (!attribution || !isDefaultAcquisitionCohort(attribution)) continue;
+    const current = firstTouches.get(event.visitorHash);
+    if (!current || event.occurredAt < current.firstTouchAt) {
+      firstTouches.set(event.visitorHash, {
+        visitorHash: event.visitorHash,
+        attribution,
+        firstTouchAt: event.occurredAt,
+        events: [],
+      });
+    }
+  }
+
+  for (const event of inWindow) {
+    const visitorHash = attributedVisitorForEvent(event, visitorsBySession, firstTouches);
+    if (!visitorHash) continue;
+    const visitor = firstTouches.get(visitorHash)!;
+    if (event.occurredAt >= visitor.firstTouchAt) visitor.events.push(event);
+  }
+
+  const visitors = Array.from(firstTouches.values());
+  const windowStart = new Date(instrumentationStart).toISOString();
+  const windowEnd = new Date(now).toISOString();
+  const snapshot = (
+    key: string,
+    selected: AttributedVisitorEvents[],
+    dimensions: Partial<Pick<AcquisitionFunnelSnapshot,
+      "source" | "campaignId" | "landingVariant" | "entrypoint" | "releaseMarker">> = {},
+  ) => buildAcquisitionFunnelSnapshot(key, selected, windowStart, windowEnd, now, dimensions);
+
+  const bySource = ACQUISITION_SOURCES.map((source) => snapshot(
+    `source:${source}`,
+    visitors.filter((visitor) => visitor.attribution.source === source),
+    { source },
+  ));
+  const byLandingVariant = ACQUISITION_LANDING_VARIANTS.map((landingVariant) => snapshot(
+    `landing:${landingVariant}`,
+    visitors.filter((visitor) => visitor.attribution.landingVariant === landingVariant),
+    { landingVariant },
+  ));
+
+  const releaseLastSeen = new Map<string, number>();
+  for (const visitor of visitors) {
+    const marker = visitor.attribution.releaseMarker;
+    releaseLastSeen.set(marker, Math.max(releaseLastSeen.get(marker) ?? 0, visitor.firstTouchAt));
+  }
+  const releaseMarkers = Array.from(releaseLastSeen.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, MAX_ACQUISITION_RELEASE_COHORTS)
+    .map(([marker]) => marker);
+  const byReleaseMarker = releaseMarkers.map((releaseMarker) => snapshot(
+    `release:${releaseMarker}`,
+    visitors.filter((visitor) => visitor.attribution.releaseMarker === releaseMarker),
+    { releaseMarker },
+  ));
+
+  const combined = new Map<string, AttributedVisitorEvents[]>();
+  for (const visitor of visitors) {
+    const attribution = visitor.attribution;
+    const key = [
+      attribution.source,
+      attribution.campaignId,
+      attribution.landingVariant,
+      attribution.entrypoint,
+      attribution.releaseMarker,
+    ].join(":");
+    const bucket = combined.get(key) ?? [];
+    bucket.push(visitor);
+    combined.set(key, bucket);
+  }
+  const cohorts = Array.from(combined.entries())
+    .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+    .slice(0, MAX_ACQUISITION_COMBINED_COHORTS)
+    .map(([key, cohortVisitors]) => {
+      const attribution = cohortVisitors[0]!.attribution;
+      return snapshot(`cohort:${key}`, cohortVisitors, {
+        source: attribution.source,
+        campaignId: attribution.campaignId,
+        landingVariant: attribution.landingVariant,
+        entrypoint: attribution.entrypoint,
+        releaseMarker: attribution.releaseMarker,
+      });
+    });
+  const experiment174Visitors = visitors.filter((visitor) =>
+    visitor.attribution.source === EXPERIMENT_174_ATTRIBUTION.source
+    && visitor.attribution.campaignId === EXPERIMENT_174_ATTRIBUTION.campaignId
+    && visitor.attribution.landingVariant === EXPERIMENT_174_ATTRIBUTION.landingVariant
+    && visitor.attribution.entrypoint === EXPERIMENT_174_ATTRIBUTION.entrypoint);
+
+  return {
+    instrumentationStart: windowStart,
+    totalEligibleVisitors: visitors.length,
+    canonicalExperiment174: {
+      path: EXPERIMENT_174_CANONICAL_PATH,
+      proposition: EXPERIMENT_174_PROPOSITION,
+      attribution: { ...EXPERIMENT_174_ATTRIBUTION },
+      funnel: snapshot("experiment:issue-174-v1", experiment174Visitors, {
+        ...EXPERIMENT_174_ATTRIBUTION,
+      }),
+    },
+    bySource,
+    byLandingVariant,
+    byReleaseMarker,
+    cohorts,
+  };
+}
+
+function attributedVisitorForEvent(
+  event: StoredMetricEventRecord,
+  visitorsBySession: ReadonlyMap<string, ReadonlySet<string>>,
+  firstTouches: ReadonlyMap<string, AttributedVisitorEvents>,
+): string | null {
+  if (event.visitorHash && firstTouches.has(event.visitorHash)) return event.visitorHash;
+  if (!event.sessionId) return null;
+  const candidates = Array.from(visitorsBySession.get(event.sessionId) ?? [])
+    .filter((visitorHash) => firstTouches.has(visitorHash));
+  return candidates.length === 1 ? candidates[0]! : null;
+}
+
+function buildAcquisitionFunnelSnapshot(
+  key: string,
+  visitors: AttributedVisitorEvents[],
+  windowStart: string,
+  windowEnd: string,
+  now: number,
+  dimensions: Partial<Pick<AcquisitionFunnelSnapshot,
+    "source" | "campaignId" | "landingVariant" | "entrypoint" | "releaseMarker">>,
+): AcquisitionFunnelSnapshot {
+  const counts = ACTIVATION_FUNNEL_STEPS.map(() => 0);
+  const dayMs = 24 * 60 * 60 * 1000;
+  let d1EligibleVisitors = 0;
+  let d1ReturnedVisitors = 0;
+  for (const visitor of visitors) {
+    let cursor = 0;
+    for (let stepIndex = 0; stepIndex < ACTIVATION_FUNNEL_STEPS.length; stepIndex += 1) {
+      const definition = ACTIVATION_FUNNEL_STEPS[stepIndex]!;
+      const foundAt = visitor.events.findIndex((event, index) => index >= cursor && definition.matches(event));
+      if (foundAt < 0) break;
+      counts[stepIndex] = (counts[stepIndex] ?? 0) + 1;
+      cursor = foundAt + 1;
+    }
+    if (now - visitor.firstTouchAt >= dayMs) {
+      d1EligibleVisitors += 1;
+      if (visitor.events.some((event) =>
+        (event.name === "app_open" || event.name === "session_resume")
+        && event.occurredAt - visitor.firstTouchAt >= dayMs)) {
+        d1ReturnedVisitors += 1;
+      }
+    }
+  }
+  const denominator = visitors.length;
+  return {
+    key,
+    ...dimensions,
+    windowStart,
+    windowEnd,
+    sampleSize: denominator,
+    eligibleVisitors: denominator,
+    steps: ACTIVATION_FUNNEL_STEPS.map((definition, index) => {
+      const numerator = counts[index] ?? 0;
+      const previousStepVisitors = index === 0 ? denominator : counts[index - 1] ?? 0;
+      return {
+        key: definition.key,
+        label: definition.label,
+        numerator,
+        denominator,
+        rateFromOpen: denominator > 0 ? numerator / denominator : null,
+        previousStepVisitors,
+        rateFromPrevious: previousStepVisitors > 0 ? numerator / previousStepVisitors : null,
+      };
+    }),
+    d1Return: {
+      eligibleVisitors: d1EligibleVisitors,
+      returnedVisitors: d1ReturnedVisitors,
+      rate: d1EligibleVisitors > 0 ? d1ReturnedVisitors / d1EligibleVisitors : null,
+    },
+  };
 }
 
 function buildActivationFunnelCohort(

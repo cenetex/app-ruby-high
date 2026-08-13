@@ -1,6 +1,38 @@
 import { expect, test } from "@playwright/test";
 import { closeBlockingSheetIfVisible, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
 
+test("canonical issue-174 link opens the Quick Roll/customize choice with bounded attribution", async ({ page }) => {
+  let appOpenBody: Record<string, unknown> | null = null;
+  page.on("request", (request) => {
+    if (!request.url().endsWith("/api/apps/ruby-high/metrics/event")) return;
+    const body = request.postDataJSON() as Record<string, unknown> | null;
+    if (body?.type === "app_open") appOpenBody = body;
+  });
+
+  await page.goto(
+    "/api/apps/ruby-high/viewer?rh_source=x&rh_campaign=issue-174-v1&rh_landing=quick-roll-v1&rh_entry=viewer",
+    { waitUntil: "domcontentloaded" },
+  );
+  await expect.poll(() => appOpenBody).toMatchObject({
+    type: "app_open",
+    campaignSource: "x",
+    campaignId: "issue-174-v1",
+    landingVariant: "quick-roll-v1",
+    entrypoint: "viewer",
+  });
+  expect(appOpenBody).not.toHaveProperty("path");
+  expect(appOpenBody).not.toHaveProperty("referrer");
+  await expect(page).not.toHaveURL(/rh_(source|campaign|landing|entry)=/);
+
+  await dismissAnnouncements(page);
+  await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
+  await expect(page.locator(".is-creation-control-card .ccg-subtitle")).toContainText(
+    "Roll a student. Complete one class. Get your report.",
+  );
+  await expect(page.locator(".creation-row")).toHaveCount(5);
+  await expect(page.getByRole("button", { name: "Start Freshman Year" })).toBeEnabled();
+});
+
 test("enrolls a first student through the creation sheet into First Bell", async ({ page }) => {
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);

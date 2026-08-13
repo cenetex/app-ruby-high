@@ -839,6 +839,7 @@ export function clientSurfaceFromUserAgent(
   const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== "string") return undefined;
   if (/(?:^|\s)RubyHighSmoke\//i.test(raw)) return "smoke";
+  if (/bot\b|crawler|spider|slurp|preview|facebookexternalhit|headlesschrome|lighthouse|playwright/i.test(raw)) return "api";
   if (/Mozilla\/|AppleWebKit\/|Chrome\/|Firefox\/|Safari\//i.test(raw)) return "viewer";
   if (/curl\/|HTTPie\/|PostmanRuntime\//i.test(raw)) return "api";
   return undefined;

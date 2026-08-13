@@ -73,6 +73,19 @@ describe("viewer regression guardrails", () => {
     expect(boot.indexOf("await fetchSession();")).toBeLessThan(boot.indexOf("await applySharedPackFromUrl(sharedPackId);"));
   });
 
+  it("captures only bounded acquisition keys and routes the canonical landing into student creation", () => {
+    const script = inlineScript(renderedViewer());
+
+    expectScriptToContain(script, "function consumeAcquisitionAttribution()");
+    expectScriptToContain(script, '["rh_source", "rh_campaign", "rh_landing", "rh_entry"]');
+    expectScriptToContain(script, 'quickRollExperimentLanding = acquisitionAttribution.landingVariant === "quick-roll-v1"');
+    expectScriptToContain(script, "Roll a student. Complete one class. Get your report.");
+    expectScriptToContain(script, "t.current || t.active_round || quickRollExperimentLanding");
+    expectScriptToContain(script, 'postViewerMetricEvent("app_open", acquisitionAttribution || {})');
+    expectScriptToContain(script, 'keys.forEach((key) => url.searchParams.delete(key))');
+    expect(script).not.toContain("document.referrer");
+  });
+
   it("uses an in-app confirmation dialog instead of native browser prompts", () => {
     const html = renderedViewer();
     const script = inlineScript(html);
