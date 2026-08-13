@@ -4874,11 +4874,17 @@ describe("RubyHighService Phase 1", () => {
     ruby.selectGrade(sid, "12");
     ruby.getOrCreate(sid).character!.stats = { head: 99, heart: 99, hustle: 99, honor: 99 };
     vi.spyOn(Math, "random").mockReturnValue(0.99);
+    let missedAnswerText = "";
+    let correctAnswerText = "";
 
     for (let i = 0; i < 3; i += 1) {
       const posed = ruby.pickAndPose(sid, { faculty: "level-test-course" });
       const correct = posed.current!.correctChoice!;
       const wrong = correct === "A" ? "B" : "A";
+      if (i === 2) {
+        missedAnswerText = posed.current!.options![wrong]!;
+        correctAnswerText = posed.current!.options![correct]!;
+      }
       ruby.submitAnswer(sid, i === 2 ? wrong : correct);
       ruby.clearBoard(sid);
     }
@@ -4889,6 +4895,15 @@ describe("RubyHighService Phase 1", () => {
       totalQuestions: 3,
       letterGrade: "C+",
       score: 67,
+      result: {
+        version: 1,
+        wasCorrect: false,
+        forfeit: false,
+        answerText: missedAnswerText,
+        correctAnswerText,
+        teacherObservation: expect.stringContaining(`review “${correctAnswerText}”`),
+        consequenceLabel: "Passing class recorded",
+      },
     });
   });
 
@@ -5235,7 +5250,7 @@ describe("RubyHighService Phase 1", () => {
   });
 
   it("closes a core daily class with a graded take after two evidence cards", async () => {
-    const { ruby } = await makeServices();
+    const { ruby, faculty } = await makeServices();
     const sid = "test:ruby-social-deck";
     ruby.selectGrade(sid, "10");
     const state = ruby.getOrCreate(sid);
@@ -5275,6 +5290,16 @@ describe("RubyHighService Phase 1", () => {
     expect(record).toMatchObject({
       status: "complete",
       questionCount: 3,
+      result: {
+        version: 1,
+        wasCorrect: true,
+        forfeit: false,
+        answerText: "I trust specific evidence and check claims that skip the source.",
+        teacherObservation: expect.stringContaining("Specific and grounded."),
+        consequenceLabel: "Passing class recorded",
+        completedClasses: 1,
+        requiredClasses: 1,
+      },
     });
     expect(record.practiceCount ?? 0).toBe(0);
     expect(record.socialCount ?? 0).toBe(1);
@@ -5285,6 +5310,16 @@ describe("RubyHighService Phase 1", () => {
       takeCardSubmitted: 1,
       classResultCompleted: 1,
     });
+    expect(ruby.courseProgress(sid, "ruby").today.result).toEqual(record.result);
+
+    await ruby.flushSession(sid);
+    await ruby.stop();
+    activeRuby = null;
+    const restored = new RubyHighService({} as never, new StateStore(storePath));
+    await restored["hydrate"]();
+    restored.setFacultyService(faculty);
+    activeRuby = restored;
+    expect(restored.courseProgress(sid, "ruby").today.result).toEqual(record.result);
   });
 
   it.each([

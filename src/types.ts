@@ -1460,6 +1460,22 @@ export interface AdvantageRoll {
   rolledAt: number;
 }
 
+export interface DailyClassResult {
+  version: 1;
+  questionId: string;
+  prompt: string;
+  subject?: string;
+  answerText: string;
+  correctAnswerText?: string;
+  wasCorrect: boolean;
+  forfeit: boolean;
+  teacherObservation: string;
+  consequenceLabel: string;
+  consequenceDetail: string;
+  completedClasses: number;
+  requiredClasses: number;
+}
+
 export interface DailyClassRecord {
   grade: Grade;
   facultyId: string;
@@ -1475,6 +1491,7 @@ export interface DailyClassRecord {
   rollMixedCount?: number;
   rollMissCount?: number;
   letterGrade?: string;
+  result?: DailyClassResult;
   completedAt?: number;
   updatedAt: number;
 }
