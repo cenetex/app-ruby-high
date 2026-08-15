@@ -3,8 +3,6 @@ import {
   appendScheduledSchoolUpdateLink,
   buildDeterministicPostText,
   isLowSignalMilestone,
-  weightedPickPostKind,
-  DEFAULT_POST_TYPE_WEIGHTS,
   buildFallbackPostText,
   buildScheduledGuestWelcomeText,
   hasMeaningfulScheduledSchoolActivity,
@@ -124,42 +122,6 @@ describe("buildFallbackPostText", () => {
       expect(text).toBeTruthy();
       expect(text.length).toBeLessThanOrEqual(280);
     }
-  });
-});
-
-describe("weightedPickPostKind", () => {
-  it("returns a valid post kind when all are eligible", () => {
-    const result = weightedPickPostKind(DEFAULT_POST_TYPE_WEIGHTS, () => true);
-    expect(result).toBeDefined();
-    expect(["milestone", "reflection", "question", "engagement"]).toContain(result);
-  });
-
-  it("returns null when nothing is eligible", () => {
-    const result = weightedPickPostKind(DEFAULT_POST_TYPE_WEIGHTS, () => false);
-    expect(result).toBeNull();
-  });
-
-  it("respects the cooldown filter", () => {
-    const results: string[] = [];
-    for (let i = 0; i < 100; i++) {
-      const result = weightedPickPostKind(
-        DEFAULT_POST_TYPE_WEIGHTS,
-        (kind) => kind === "milestone",
-      );
-      if (result) results.push(result);
-    }
-    expect(results.every((r) => r === "milestone")).toBe(true);
-  });
-
-  it("distributes picks according to weights", () => {
-    const counts: Record<string, number> = {};
-    for (let i = 0; i < 500; i++) {
-      const result = weightedPickPostKind(DEFAULT_POST_TYPE_WEIGHTS, () => true);
-      if (result) counts[result] = (counts[result] ?? 0) + 1;
-    }
-    expect(counts.milestone).toBeGreaterThan(counts.reflection ?? 0);
-    expect(counts.milestone).toBeGreaterThan(counts.question ?? 0);
-    expect(counts.milestone).toBeGreaterThan(counts.engagement ?? 0);
   });
 });
 

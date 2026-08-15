@@ -28,6 +28,12 @@ import {
   type ScheduledSchoolUpdateContext,
 } from "./ruby-high/post-types.js";
 import { PostAnalytics } from "./ruby-high/post-analytics.js";
+import {
+  generateScheduledTweetPlan,
+  type PlannedTweetSlot,
+  type RecentPlannedPost,
+  type ScheduledTweetPlan,
+} from "./ruby-high/tweet-planner.js";
 
 const MAX_REMOTE_IMAGE_BYTES = 10 * 1024 * 1024;
 
@@ -106,6 +112,13 @@ interface ScheduledSchoolUpdatePostOptions {
   dryRun?: boolean;
   imageUrl?: string;
   editorialMode?: ScheduledSchoolUpdateEditorialMode;
+  plannedSlot?: PlannedTweetSlot;
+  recentPosts?: RecentPlannedPost[];
+}
+
+interface ScheduledSchoolUpdatePublishResult {
+  tweetId: string;
+  text: string;
 }
 
 interface XTokenStore {
@@ -1407,6 +1420,25 @@ export class XSocialService extends Service {
     return this.analytics;
   }
 
+  /** Ask the social editor agent for a durable seven-day calendar. Guest
+   *  source posts are fetched before planning so the plan can reserve distinct,
+   *  source-grounded angles instead of rediscovering one theme every day. */
+  async planScheduledSchoolUpdates(
+    teacher: TeacherCharacter,
+    context: ScheduledSchoolUpdateContext,
+    recentPosts: RecentPlannedPost[],
+    now = Date.now(),
+  ): Promise<ScheduledTweetPlan | null> {
+    const token = this.tokens.get(teacher.id);
+    if (!token) return null;
+    const freshToken = await this.ensureFreshToken(token);
+    if (!freshToken) return null;
+    const sourcedContext = context.featuredGuest?.xHandle
+      ? await this.withRecentFeaturedGuestXPosts(freshToken, context)
+      : context;
+    return generateScheduledTweetPlan(teacher, sourcedContext, recentPosts, now);
+  }
+
   /** Publish an LLM-written update from aggregate, privacy-filtered school
    *  activity. Unlike milestone posting, this accepts the generated copy as
    *  the source of truth instead of regenerating unrelated milestone text. */
@@ -1415,19 +1447,32 @@ export class XSocialService extends Service {
     context: ScheduledSchoolUpdateContext,
     opts?: ScheduledSchoolUpdatePostOptions,
   ): Promise<string | null> {
+    const result = await this.postScheduledSchoolUpdateDetailed(teacher, context, opts);
+    return result?.tweetId ?? null;
+  }
+
+  private async postScheduledSchoolUpdateDetailed(
+    teacher: TeacherCharacter,
+    context: ScheduledSchoolUpdateContext,
+    opts?: ScheduledSchoolUpdatePostOptions,
+  ): Promise<ScheduledSchoolUpdatePublishResult | null> {
     const token = this.tokens.get(teacher.id);
     if (!token) return null;
     const freshToken = await this.ensureFreshToken(token);
     if (!freshToken) return null;
     const postToken = await this.ensurePostAllowed(freshToken);
     if (!postToken) return null;
-    const postKind = opts?.editorialMode ?? "school-update";
+    const postKind = opts?.plannedSlot?.pillar === "guest-spotlight"
+      ? "guest-insights"
+      : opts?.editorialMode ?? "school-update";
 
-    const sourcedContext = opts?.editorialMode === "guest-insights"
+    const sourcedContext = postKind === "guest-insights"
       ? await this.withRecentFeaturedGuestXPosts(postToken, context)
       : context;
     const generatedText = await generateScheduledSchoolUpdateText(teacher, sourcedContext, {
       editorialMode: opts?.editorialMode,
+      plannedSlot: opts?.plannedSlot,
+      recentPosts: opts?.recentPosts,
     });
     if (!generatedText) {
       log.event("x-social.scheduled-text-skipped", { teacherId: teacher.id });
@@ -1460,7 +1505,7 @@ export class XSocialService extends Service {
         acquisitionRef,
         text: text.slice(0, 200),
       });
-      return "dry-run:school-update";
+      return { tweetId: "dry-run:school-update", text };
     }
     if (!this.checkPostRateLimit(teacher.id)) {
       log.event("x-social.rate-limited", { teacherId: teacher.id, kind: postKind });
@@ -1497,7 +1542,7 @@ export class XSocialService extends Service {
       });
       this.analytics.enqueueFetch(tweetId, Date.now());
     }
-    return tweetId;
+    return tweetId ? { tweetId, text } : null;
   }
 
   private async withRecentFeaturedGuestXPosts(
@@ -1622,9 +1667,9 @@ export class XSocialService extends Service {
     teacher: TeacherCharacter,
     context: ScheduledSchoolUpdateContext,
     opts?: ScheduledSchoolUpdatePostOptions,
-  ): Promise<{ tweetId: string; teacherId: string } | null> {
-    const result = await this.postScheduledSchoolUpdate(teacher, context, opts);
-    if (result) return { tweetId: result, teacherId: teacher.id };
+  ): Promise<{ tweetId: string; teacherId: string; text: string } | null> {
+    const result = await this.postScheduledSchoolUpdateDetailed(teacher, context, opts);
+    if (result) return { ...result, teacherId: teacher.id };
 
     const connected = this.listConnected().filter(
       (status) => status.teacherId !== teacher.id && status.connected && status.hasTweetWrite,
@@ -1632,14 +1677,14 @@ export class XSocialService extends Service {
     for (const status of connected) {
       const fallback = teacherById(status.teacherId);
       if (!fallback) continue;
-      const fallbackResult = await this.postScheduledSchoolUpdate(fallback, context, opts);
+      const fallbackResult = await this.postScheduledSchoolUpdateDetailed(fallback, context, opts);
       if (!fallbackResult) continue;
       log.event("x-social.fallback-posted", {
         assignedTeacher: teacher.id,
         fallbackTeacher: fallback.id,
         kind: "school-update",
       });
-      return { tweetId: fallbackResult, teacherId: fallback.id };
+      return { ...fallbackResult, teacherId: fallback.id };
     }
     return null;
   }

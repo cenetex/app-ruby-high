@@ -1621,9 +1621,9 @@ function buildAdminMetricsSchema(): {
       },
       {
         path: "ruby.scheduledPosts",
-        label: "Scheduled school updates",
-        source: "RubyHighService aggregate world context and durable scheduled-post service state",
-        semantics: "Whether the aggregate LLM-to-X text-and-composed-photo job is enabled, its daily/retry cadence, last attempt/post, posting teacher, context fingerprint, and latest skip reason.",
+        label: "AI-planned school updates",
+        source: "RubyHighService live world context plus the durable seven-day social-editor plan",
+        semantics: "Whether AI-planned X posting is enabled, the rolling plan and its due/published slots, daily/retry cadence, recent copy memory, last attempt/post, posting teacher, and latest skip reason.",
         reliability: "authoritative",
         caveat: "Fly scale-to-zero means overdue work runs on the next service cold start rather than at an exact wall-clock minute.",
       },

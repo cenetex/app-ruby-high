@@ -25,7 +25,7 @@ import {
   type RubyHighPhotoPostSchedulerSnapshot,
 } from "./ruby-high/photo-post-scheduler.js";
 import {
-  PostRotationScheduler,
+  TweetPlanningScheduler,
   GENERAL_POST_SCHEDULER_INTERVAL_MS,
   SCHEDULED_POST_SCHEDULER_STATE_ID,
   hydrateScheduledPostSchedulerState,
@@ -1810,7 +1810,7 @@ export class RubyHighService extends Service {
   private photoPostSchedulerTimer: ReturnType<typeof setInterval> | null = null;
   private photoPostSchedulerIntervalMs: number | null = null;
   private photoPostSchedulerRunning = false;
-  private rotationScheduler: PostRotationScheduler;
+  private rotationScheduler: TweetPlanningScheduler;
   private rotationSchedulerTimer: ReturnType<typeof setInterval> | null = null;
   private rotationSchedulerRunning = false;
   private lastPhotoPostAttemptAt: number | null = null;
@@ -1828,7 +1828,7 @@ export class RubyHighService extends Service {
   constructor(runtime?: IAgentRuntime, store?: StateStoreLike) {
     super(runtime);
     this.store = store ?? getDefaultStateStore();
-    this.rotationScheduler = new PostRotationScheduler();
+    this.rotationScheduler = new TweetPlanningScheduler();
     this.disposeLogSink = setLogSink((record) => this.recordLogSinkMetricEvent(record));
   }
 
@@ -5728,7 +5728,7 @@ export class RubyHighService extends Service {
     }
     this.pruneSchoolEventRecords();
     this.hydratePhotoPostSchedulerState(storedPhotoPostSchedulerState);
-    this.rotationScheduler = new PostRotationScheduler({
+    this.rotationScheduler = new TweetPlanningScheduler({
       state: hydrateScheduledPostSchedulerState(storedScheduledPostSchedulerState),
     });
     this.hydratePublicWorldRoomState(storedPublicWorldRoomState);
