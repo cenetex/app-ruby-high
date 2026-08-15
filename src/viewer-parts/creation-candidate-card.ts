@@ -10,6 +10,7 @@ export interface CreationCandidateCardRefs {
   moveContent: HTMLElement;
   portraitStatus: HTMLElement;
   portraitBtn: HTMLButtonElement;
+  customizeBtn: HTMLButtonElement;
   saveBtn: HTMLButtonElement;
 }
 
@@ -50,6 +51,36 @@ export function createCreationCandidateCardRenderer(
       const subtitle = deps.document.createElement("div");
       subtitle.className = "ccg-subtitle";
       body.appendChild(subtitle);
+
+      const hint = deps.document.createElement("div");
+      hint.className = "ccg-next-step";
+      hint.textContent = "Free · no signup · your first class starts immediately.";
+      body.appendChild(hint);
+
+      // Put the decision immediately after the identity. On a small phone,
+      // the player can customize or start class before reading the optional
+      // stats, quote, and move details below.
+      const actions = deps.document.createElement("div");
+      actions.className = "ccg-card-actions";
+      const portraitBtn = deps.document.createElement("button");
+      portraitBtn.type = "button";
+      portraitBtn.className = "secondary";
+      portraitBtn.textContent = "\u2728 Generate AI portrait";
+      const customizeBtn = deps.document.createElement("button");
+      customizeBtn.type = "button";
+      customizeBtn.className = "secondary creation-customize-btn";
+      customizeBtn.textContent = "Customize";
+      const saveBtn = deps.document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "primary";
+      saveBtn.textContent = "Take my seat \u00b7 start class";
+      saveBtn.disabled = true;
+      saveBtn.hidden = true;
+      actions.appendChild(portraitBtn);
+      actions.appendChild(customizeBtn);
+      actions.appendChild(saveBtn);
+      body.appendChild(actions);
+
       const stats = deps.document.createElement("div");
       stats.className = "ccg-stats";
       body.appendChild(stats);
@@ -66,29 +97,9 @@ export function createCreationCandidateCardRenderer(
       move.appendChild(moveContent);
       body.appendChild(move);
 
-      const hint = deps.document.createElement("div");
-      hint.className = "ccg-next-step";
-      hint.textContent = "Freshman year is ready when you are.";
-      body.appendChild(hint);
       const portraitStatus = deps.document.createElement("div");
       portraitStatus.className = "creation-portrait-status";
       body.appendChild(portraitStatus);
-
-      const actions = deps.document.createElement("div");
-      actions.className = "ccg-card-actions";
-      const portraitBtn = deps.document.createElement("button");
-      portraitBtn.type = "button";
-      portraitBtn.className = "secondary";
-      portraitBtn.textContent = "\u2728 Generate AI portrait";
-      const saveBtn = deps.document.createElement("button");
-      saveBtn.type = "button";
-      saveBtn.className = "primary";
-      saveBtn.textContent = "Start Freshman Year";
-      saveBtn.disabled = true;
-      saveBtn.hidden = true;
-      actions.appendChild(portraitBtn);
-      actions.appendChild(saveBtn);
-      body.appendChild(actions);
 
       return {
         card,
@@ -102,6 +113,7 @@ export function createCreationCandidateCardRenderer(
         moveContent,
         portraitStatus,
         portraitBtn: portraitBtn as HTMLButtonElement,
+        customizeBtn: customizeBtn as HTMLButtonElement,
         saveBtn: saveBtn as HTMLButtonElement,
       };
     },
