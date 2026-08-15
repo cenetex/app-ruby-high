@@ -27,10 +27,12 @@ test("canonical issue-174 link opens the Quick Roll/customize choice with bounde
   await dismissAnnouncements(page);
   await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
   await expect(page.locator(".is-creation-control-card .ccg-subtitle")).toContainText(
-    "Roll a student. Complete one class. Get your report.",
+    "Edit the name and student style.",
   );
   await expect(page.locator(".creation-row")).toHaveCount(5);
-  await expect(page.getByRole("button", { name: "Start Freshman Year" })).toBeEnabled();
+  await expect(page.getByRole("textbox", { name: "Student name" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Student style" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /take my seat/i })).toBeEnabled();
 });
 
 test("enrolls a first student through the creation sheet into First Bell", async ({ page }) => {
@@ -48,9 +50,9 @@ test("enrolls a first student through the creation sheet into First Bell", async
   }
 
   await expect(sheet).toHaveClass(/is-open/);
-  const startFreshmanYear = page.getByRole("button", { name: "Start Freshman Year" });
-  await expect(startFreshmanYear).toBeEnabled();
-  await startFreshmanYear.click();
+  const takeSeat = page.getByRole("button", { name: /take my seat/i });
+  await expect(takeSeat).toBeEnabled();
+  await takeSeat.click();
 
   await expect(page.getByRole("button", { name: "Lock it in" })).toHaveCount(0);
   await expect(sheet).not.toHaveClass(/is-open/);
@@ -63,6 +65,34 @@ test("enrolls a first student through the creation sheet into First Bell", async
   expect(errors).toEqual([]);
 });
 
+test("keeps creator editing and the start-class action reachable on a small phone", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  const { errors } = await openViewer(page);
+  await dismissAnnouncements(page);
+
+  const sheet = page.getByRole("dialog", { name: "Create your Ruby High student" });
+  if (!(await sheet.evaluate((element) => element.classList.contains("is-open")))) {
+    await page.getByRole("button", { name: "Create my student" }).click();
+  }
+
+  await expect(sheet).toHaveClass(/is-open/);
+  await expect(page.getByRole("button", { name: "Close student creator" })).toBeVisible();
+  await page.getByRole("button", { name: "Customize", exact: true }).click();
+
+  const name = page.getByRole("textbox", { name: "Student name" });
+  const style = page.getByRole("combobox", { name: "Student style" });
+  await expect(name).toBeFocused();
+  await name.fill("Mina");
+  await style.selectOption("outsider");
+  await expect(page.locator(".is-creation-candidate-card .ccg-name")).toHaveText("Mina");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await page.getByRole("button", { name: "Done customizing" }).click();
+  await expect(page.getByRole("button", { name: /take my seat/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /take my seat/i })).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
 test("keeps a specific Class Result after refresh with one truthful next step", async ({ page }) => {
   test.setTimeout(60_000);
   const { errors } = await openViewer(page);
@@ -70,7 +100,11 @@ test("keeps a specific Class Result after refresh with one truthful next step", 
   await createCharacter(page);
   const continueUntilVisible = async (target: ReturnType<typeof page.locator>) => {
     const next = page.locator("#next-btn");
+    const rewardComic = page.locator(".comic-reader.is-reward").first();
     for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (await rewardComic.isVisible().catch(() => false)) {
+        await closeRewardComicIfVisible(page);
+      }
       const ready = await target.isVisible().catch(() => false)
         && !(await page.locator("#board-reveal").isVisible().catch(() => false));
       if (ready) return;
@@ -107,7 +141,9 @@ test("keeps a specific Class Result after refresh with one truthful next step", 
   await expect(report.locator(".class-result-section.observation")).toContainText(finalResponse);
   await expect(report.locator(".class-result-section.consequence")).toContainText(/class recorded|mark recorded/i);
   await expect(report.locator(".class-result-section.progress")).toContainText("Course progress");
-  await expect(page.locator(".class-report-next")).toContainText(/return tomorrow for the next graded class/i);
+  const nextStep = page.locator(".class-report-next");
+  await expect(nextStep).toContainText("Sign up to continue");
+  await expect(nextStep).toContainText(/guest lesson is complete/i);
   const resultText = await report.textContent();
 
   await page.setViewportSize({ width: 375, height: 812 });
@@ -121,11 +157,11 @@ test("keeps a specific Class Result after refresh with one truthful next step", 
   expect(errors).toEqual([]);
 });
 
-test("keeps the generated student as a preview until Freshman year is started", async ({ page }) => {
+test("keeps the generated student as a preview until the player takes their seat", async ({ page }) => {
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);
 
-  await expect(page.getByRole("button", { name: "Start Freshman Year", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /take my seat/i })).toBeVisible();
   await page.locator("#sheet-close").click();
 
   await page.reload();

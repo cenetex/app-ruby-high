@@ -43,9 +43,10 @@ describe("creation candidate card renderer", () => {
     expect(card.className).toBe("ccg-card is-character-card is-creation-candidate-card");
     expect(textTree(card)).toEqual([
       "player",
-      "Freshman year is ready when you are.",
+      "Free · no signup · your first class starts immediately.",
       "\u2728 Generate AI portrait",
-      "Start Freshman Year",
+      "Customize",
+      "Take my seat · start class",
     ]);
     expect(refs.role).toBe(card.children[0] as unknown as HTMLElement);
     expect(refs.portraitImg).toBe((card.children[1] as FakeElement).children[0] as unknown as HTMLImageElement);
@@ -55,11 +56,11 @@ describe("creation candidate card renderer", () => {
     expect(body.className).toBe("ccg-body");
     expect(refs.name).toBe(body.children[0] as unknown as HTMLElement);
     expect(refs.subtitle).toBe(body.children[1] as unknown as HTMLElement);
-    expect(refs.stats).toBe(body.children[2] as unknown as HTMLElement);
-    expect(refs.quote).toBe(body.children[3] as unknown as HTMLElement);
-    expect(refs.moveTitle).toBe((body.children[4] as FakeElement).children[0] as unknown as HTMLElement);
-    expect(refs.moveContent).toBe((body.children[4] as FakeElement).children[1] as unknown as HTMLElement);
-    expect(refs.portraitStatus).toBe(body.children[6] as unknown as HTMLElement);
+    expect(refs.stats).toBe(body.children[4] as unknown as HTMLElement);
+    expect(refs.quote).toBe(body.children[5] as unknown as HTMLElement);
+    expect(refs.moveTitle).toBe((body.children[6] as FakeElement).children[0] as unknown as HTMLElement);
+    expect(refs.moveContent).toBe((body.children[6] as FakeElement).children[1] as unknown as HTMLElement);
+    expect(refs.portraitStatus).toBe(body.children[7] as unknown as HTMLElement);
   });
 
   it("builds portrait and start actions with the expected initial state", () => {
@@ -67,14 +68,18 @@ describe("creation candidate card renderer", () => {
 
     const refs = renderer.build();
     const portraitBtn = refs.portraitBtn as unknown as FakeElement;
+    const customizeBtn = refs.customizeBtn as unknown as FakeElement;
     const saveBtn = refs.saveBtn as unknown as FakeElement;
 
     expect(portraitBtn.className).toBe("secondary");
     expect(portraitBtn.type).toBe("button");
     expect(portraitBtn.textContent).toBe("\u2728 Generate AI portrait");
+    expect(customizeBtn.className).toBe("secondary creation-customize-btn");
+    expect(customizeBtn.type).toBe("button");
+    expect(customizeBtn.textContent).toBe("Customize");
     expect(saveBtn.className).toBe("primary");
     expect(saveBtn.type).toBe("button");
-    expect(saveBtn.textContent).toBe("Start Freshman Year");
+    expect(saveBtn.textContent).toBe("Take my seat · start class");
     expect(saveBtn.disabled).toBe(true);
     expect(saveBtn.hidden).toBe(true);
   });

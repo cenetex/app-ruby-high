@@ -43,13 +43,15 @@ describe("creation control card renderer", () => {
       "roll",
       "Character Roll",
       "Reroll any field. AI can refresh the voice and portrait.",
+      "Done customizing",
       "Roll a student",
     ]);
     const body = card.children[1] as FakeElement;
     expect(body.className).toBe("ccg-body");
     expect(refs.fields).toBe(body.children[2] as unknown as HTMLElement);
     expect((refs.fields as unknown as FakeElement).className).toBe("creation-fields");
-    expect(refs.rollBtn).toBe((body.children[3] as FakeElement).children[0] as unknown as HTMLButtonElement);
+    expect(refs.doneBtn).toBe((body.children[3] as FakeElement).children[0] as unknown as HTMLButtonElement);
+    expect(refs.rollBtn).toBe((body.children[3] as FakeElement).children[1] as unknown as HTMLButtonElement);
     expect(refs.status).toBe(body.children[4] as unknown as HTMLElement);
     expect((refs.status as unknown as FakeElement).className).toBe("stat-budget");
   });
@@ -59,6 +61,6 @@ describe("creation control card renderer", () => {
 
     const card = renderer.build({}).card as unknown as FakeElement;
 
-    expect(textTree(card)).toEqual(["roll", "Character Roll", "Roll a student"]);
+    expect(textTree(card)).toEqual(["roll", "Character Roll", "Done customizing", "Roll a student"]);
   });
 });

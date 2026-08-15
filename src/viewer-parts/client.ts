@@ -5570,6 +5570,7 @@ export function runViewerClient(bootstrap) {
     const track = document.createElement("div");
     track.className = "card-deck-track";
     wrap.appendChild(track);
+    let scrollToCard = () => {};
 
     cardNodes.forEach((card) => track.appendChild(card));
 
@@ -5601,7 +5602,7 @@ export function runViewerClient(bootstrap) {
       wrap.appendChild(prev);
       wrap.appendChild(next);
 
-      const scrollToCard = (i) => {
+      scrollToCard = (i) => {
         const target = cards[Math.max(0, Math.min(cards.length - 1, i))];
         if (target && track.scrollTo) {
           const maxLeft = Math.max(0, track.scrollWidth - track.clientWidth);
@@ -5636,6 +5637,7 @@ export function runViewerClient(bootstrap) {
       next.addEventListener("click", () => scrollToCard(activeIndex() + 1));
       requestAnimationFrame(refreshControls);
     }
+    return { track, scrollToCard };
   }
 
   // ── teacher profile (click teacher thumb in channel rail to open) ───────
@@ -5788,9 +5790,15 @@ export function runViewerClient(bootstrap) {
   function renderSheet() {
     const t = lastTelemetry || {};
     const playbooks = t.playbooks || [];
+    const closeButton = document.getElementById("sheet-close");
+    sheetEl.classList.toggle("is-creation-overlay", !t.character);
     if (t.character) {
+      sheetEl.setAttribute("aria-label", "Student card");
+      if (closeButton) closeButton.setAttribute("aria-label", "Close student card");
       renderSheetReadonly(t.character, playbooks);
     } else {
+      sheetEl.setAttribute("aria-label", "Create your Ruby High student");
+      if (closeButton) closeButton.setAttribute("aria-label", "Close student creator");
       renderSheetCreation(playbooks);
     }
   }
@@ -6700,7 +6708,7 @@ export function runViewerClient(bootstrap) {
     sheetCard.classList.add("is-creation-sheet");
     sheetCard.innerHTML = "";
 
-    const { loading } = creationIntroRenderer.renderInto(sheetCard);
+    const { explanation } = creationIntroRenderer.renderInto(sheetCard);
 
     // Creation now uses the same two-card deck surface as profile sheets:
     // a playable character card beside a roll-control card.
@@ -6716,26 +6724,28 @@ export function runViewerClient(bootstrap) {
     const candidateMoveContent = candidateCardRefs.moveContent;
     const portraitStatus = candidateCardRefs.portraitStatus;
     const portraitBtn = candidateCardRefs.portraitBtn;
+    const customizeBtn = candidateCardRefs.customizeBtn;
     const saveBtn = candidateCardRefs.saveBtn;
 
     const hostedPortrait = hostedImageEntitlement("portrait");
     const hasPhotoDayCredit = characterSlotTelemetry().photoDayCredits > 0;
     const portraitCost = hostedPortrait && hostedPortrait.cost || 1;
     const controlsSubtitle = quickRollExperimentLanding
-      ? "Roll a student. Complete one class. Get your report. Customize any field before enrolling."
+      ? "Edit the name and student style. Reroll the rest, then complete one class to get your report."
       : hostedPortrait && hostedPortrait.configured && (hasPhotoDayCredit || canSpendHallPasses(portraitCost))
-      ? "Reroll any field. Photo Day credits or Hall Passes can make a custom portrait."
+      ? "Edit the name and student style. Reroll the rest; Photo Day credits or Hall Passes can make a custom portrait."
       : localAiEnabled
-        ? "Reroll any field. Local AI can refresh the voice."
+        ? "Edit the name and student style. Local AI can refresh the voice."
         : aiEnabled
-          ? "Reroll any field. AI can refresh the voice and portrait."
-          : "Reroll any field. Connect AI later for a custom portrait.";
+          ? "Edit the name and student style. AI can refresh the voice and portrait."
+          : "Edit the name and student style. Reroll the rest; connect AI later for a custom portrait.";
     const controlsCardRefs = creationControlCardRenderer.build({
       subtitle: controlsSubtitle,
     });
     const controlsCard = controlsCardRefs.card;
     const fields = controlsCardRefs.fields;
     const rollBtn = controlsCardRefs.rollBtn;
+    const doneBtn = controlsCardRefs.doneBtn;
     const status = controlsCardRefs.status;
 
     // Control rows: one per component. Each row has a reroll button that
@@ -6749,14 +6759,39 @@ export function runViewerClient(bootstrap) {
     const personalityRow = makeRow("Voice", "personality");
     const quoteRow = makeRow("Quote", "flavorQuote");
 
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.className = "creation-edit-input";
+    nameInput.maxLength = 48;
+    nameInput.autocomplete = "nickname";
+    nameInput.setAttribute("aria-label", "Student name");
+    nameInput.placeholder = "Student name";
+    nameRow.val.replaceChildren(nameInput);
+    nameRow.input = nameInput;
+
+    const playbookSelect = document.createElement("select");
+    playbookSelect.className = "creation-edit-input creation-playbook-select";
+    playbookSelect.setAttribute("aria-label", "Student style");
+    playbooks.forEach((playbook) => {
+      const option = document.createElement("option");
+      option.value = playbook.id;
+      option.textContent = playbook.name || playbook.id;
+      playbookSelect.appendChild(option);
+    });
+    playbookRow.val.replaceChildren(playbookSelect);
+    playbookRow.select = playbookSelect;
+
     let deckRendered = false;
+    let deckController = null;
 
     // Reveal the form (and hide the loading state) once the first
     // roll lands. Subsequent component-rerolls don't re-trigger this.
     function revealForm() {
       if (deckRendered) return;
       deckRendered = true;
-      renderCardDeck([candidateCard, controlsCard]);
+      deckController = renderCardDeck([candidateCard, controlsCard]);
+      explanation.classList.add("is-persistent");
+      sheetCard.prepend(explanation);
       sheetCard.classList.add("is-creation-sheet");
     }
 
@@ -6784,12 +6819,12 @@ export function runViewerClient(bootstrap) {
       "school spirit is just pattern recognition with banners",
     ];
     const OFFLINE_ARCS = {
-      outsider: "I want to find the hidden pattern without becoming part of it.",
       overachiever: "I want proof that being excellent is not the same as being safe.",
-      classclown: "I want to see what happens when everyone stops pretending this is normal.",
-      mystic: "I want to know which rules are real and which ones only scare people.",
-      rebel: "I want a reason to trust the room before the room gets my loyalty.",
-      lifer: "I want to make this place better without letting it own me.",
+      slacker: "I want to stop pretending I do not care before I disappoint someone who does.",
+      heart: "I want to learn how to help without carrying the whole room by myself.",
+      outsider: "I want to find the hidden pattern without becoming part of it.",
+      "class-clown": "I want to see what happens when I finish a thought without turning it into a joke.",
+      lifer: "I want to know this place well enough to make it better without letting it own me.",
     };
 
     function offlineStats() {
@@ -6817,7 +6852,9 @@ export function runViewerClient(bootstrap) {
       const stats = regen.has("stats") || !prev.stats ? offlineStats() : prev.stats;
       const name = regen.has("name") || !prev.name ? pickRandom(OFFLINE_NAMES) : prev.name;
       const personality = regen.has("personality") || !prev.personality ? pickRandom(OFFLINE_VOICES) : prev.personality;
-      const arcAnswer = regen.has("arcAnswer") || !prev.arcAnswer ? (OFFLINE_ARCS[pb.id] || "I want to figure out what kind of student this place makes me.") : prev.arcAnswer;
+      const arcAnswer = regen.has("arcAnswer") || regen.has("playbook") || !prev.arcAnswer
+        ? (OFFLINE_ARCS[pb.id] || "I want to figure out what kind of student this place makes me.")
+        : prev.arcAnswer;
       const flavorQuote = regen.has("flavorQuote") || !prev.flavorQuote ? pickRandom(OFFLINE_QUOTES) : prev.flavorQuote;
       return { name, playbookId: pb.id, stats, personality, arcAnswer, flavorQuote };
     }
@@ -6837,7 +6874,7 @@ export function runViewerClient(bootstrap) {
       return "request " + fallbackStatus;
     }
     async function fetchCharacterRoll(body, retryTransient) {
-      const waits = retryTransient ? [0, 900, 1800] : [0];
+      const waits = retryTransient ? [0, 650] : [0];
       let lastMessage = "";
       for (let attempt = 0; attempt < waits.length; attempt += 1) {
         if (waits[attempt] > 0) {
@@ -6847,6 +6884,7 @@ export function runViewerClient(bootstrap) {
         const r = await apiFetch("/api/apps/ruby-high/chat/character/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          timeoutMs: 6000,
           body: JSON.stringify(body),
         });
         if (r.ok) return await r.json();
@@ -6863,10 +6901,16 @@ export function runViewerClient(bootstrap) {
       rollBtn.textContent = inFlight.all
         ? "Rolling..."
         : rolled
-          ? "Reroll student"
+          ? aiEnabled
+            ? "AI remix student"
+            : "Reroll student"
           : "Roll a student";
       saveBtn.hidden = !rolled;
-      saveBtn.disabled = !rolled || inFlight.all || inFlight.saving;
+      saveBtn.disabled = !rolled || !String(rolled.name || "").trim() || inFlight.all || inFlight.saving;
+      nameInput.disabled = !rolled || inFlight.all || inFlight.saving || inFlight.name;
+      playbookSelect.disabled = !rolled || inFlight.all || inFlight.saving || inFlight.playbook;
+      customizeBtn.disabled = !rolled || inFlight.all || inFlight.saving;
+      doneBtn.disabled = !rolled || inFlight.all || inFlight.saving;
       [nameRow, playbookRow, statsRow, personalityRow, quoteRow].forEach(({ reroll }) => {
         const k = reroll.dataset.key;
         reroll.disabled = !rolled || inFlight.all || inFlight.saving || !!inFlight[k];
@@ -6941,11 +6985,15 @@ export function runViewerClient(bootstrap) {
         if (isFullRoll || (!isFullRoll && (components.includes("playbook") || components.includes("name")))) {
           aiPortraitDataUrl = null;
         }
-        if (!aiEnabled) {
+        // The first candidate is deliberately local and immediate. AI is an
+        // optional remix, never a dependency between landing and class.
+        if ((isFullRoll && !rolled) || !aiEnabled) {
           rolled = offlineCharacterRoll(components);
           renderRolled(rolled);
           revealForm();
-          setStatus("Offline mode — AI chat and custom portrait are disabled until you enable AI.");
+          setStatus(aiEnabled
+            ? "Ready instantly. Use a reroll for an AI remix, or take your seat now."
+            : "Ready instantly. Connect AI later for a custom voice or portrait.");
           return;
         }
         const body = isFullRoll
@@ -6958,8 +7006,13 @@ export function runViewerClient(bootstrap) {
         revealForm();
         setStatus("");
       } catch (err) {
+        // A creator should always create. If optional AI is slow or
+        // unavailable, complete the requested reroll locally instead of
+        // leaving an empty or stuck sheet.
+        rolled = offlineCharacterRoll(components);
+        renderRolled(rolled);
         revealForm();
-        setStatus(err && err.message ? err.message : "Roll failed — try again.", true);
+        setStatus("AI took too long, so Ruby used a quick local roll instead.");
       } finally {
         if (isFullRoll) {
           inFlight.all = false;
@@ -6987,6 +7040,43 @@ export function runViewerClient(bootstrap) {
       void rollComponents();
     });
 
+    nameInput.addEventListener("input", () => {
+      if (!rolled) return;
+      rolled = { ...rolled, name: nameInput.value };
+      candidateName.textContent = nameInput.value.trim() || "Your student";
+      if (aiPortraitDataUrl) {
+        aiPortraitDataUrl = null;
+        portraitImg.src = defaultPortraitFor(rolled.playbookId);
+        portraitStatus.textContent = "Name changed — using the included portrait.";
+      }
+      applyDisabled();
+    });
+
+    playbookSelect.addEventListener("change", () => {
+      if (!rolled) return;
+      const playbook = playbooks.find((entry) => entry.id === playbookSelect.value);
+      if (!playbook) return;
+      rolled = {
+        ...rolled,
+        playbookId: playbook.id,
+        arcAnswer: OFFLINE_ARCS[playbook.id] || "I want to figure out what kind of student this place makes me.",
+      };
+      aiPortraitDataUrl = null;
+      renderRolled(rolled);
+      portraitStatus.textContent = "Student style changed — using the included portrait.";
+      applyDisabled();
+    });
+
+    customizeBtn.addEventListener("click", () => {
+      if (deckController) deckController.scrollToCard(1);
+      setTimeout(() => focusWithoutScroll(nameInput), 220);
+    });
+
+    doneBtn.addEventListener("click", () => {
+      if (deckController) deckController.scrollToCard(0);
+      setTimeout(() => focusWithoutScroll(saveBtn), 220);
+    });
+
     // ✨ Generate AI portrait — fires /chat/character/portrait. On
     // success, replaces the default img and stashes the data URL so it
     // ships with the create-character command. On failure, leaves the
@@ -6998,7 +7088,7 @@ export function runViewerClient(bootstrap) {
         await promptForHallPasses({
           title: "Hall Pass needed",
           copy: "Custom character portrait needs " + hallPassCostLabel(cost) + ". Claim your free starter Hall Passes or add more.",
-          detail: "Rolling your student stays free.",
+          detail: "Creating your student stays free.",
         });
         return;
       }
@@ -7058,7 +7148,7 @@ export function runViewerClient(bootstrap) {
       if (!rolled) return null;
       const portraitUrl = aiPortraitDataUrl || defaultPortraitFor(rolled.playbookId);
       return {
-        name: rolled.name,
+        name: String(rolled.name || "").trim(),
         playbookId: rolled.playbookId,
         stats: { ...rolled.stats },
         arcAnswer: rolled.arcAnswer || "",
@@ -7084,7 +7174,7 @@ export function runViewerClient(bootstrap) {
         ...(error && Number.isFinite(Number(error.status)) ? { statusCode: Number(error.status) } : {}),
       });
       const message = failureKind === "timeout"
-        ? "Enrollment took too long. Your student is still here — tap Start Freshman Year to retry."
+        ? "Enrollment took too long. Your student is still here — tap Take my seat to retry."
         : failureKind === "network"
           ? "Enrollment lost its connection. Your student is still here — reconnect and retry."
           : "Could not start Freshman year. Your student is still here — try again.";

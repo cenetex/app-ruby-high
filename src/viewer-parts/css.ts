@@ -4548,15 +4548,42 @@ export const VIEWER_CSS = `
     color: var(--text);
     font-weight: 800;
   }
-.creation-loading-sub {
+  .creation-explanation.is-persistent {
+    flex: 0 0 auto;
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 2px 16px 4px;
+  }
+  .creation-explanation.is-persistent p:first-child {
+    font-size: 14px;
+  }
+  .creation-explanation.is-persistent p:last-child {
+    color: var(--text-mute);
+  }
+  .creation-loading-sub {
     font-size: 13px;
     color: var(--text-mute);
   }
 
   /* ── creation controls inside shared card surfaces ───────────────────── */
   @media (max-width: 600px) {
+    .sheet-overlay.is-creation-overlay {
+      padding-top: calc(var(--safe-top) + 58px);
+    }
+    .sheet-overlay.is-creation-overlay .sheet-close {
+      top: calc(var(--safe-top) + 8px);
+      right: calc(var(--safe-right) + 10px);
+    }
     .sheet-card.is-creation-sheet {
       padding: 10px;
+    }
+    .sheet-card.is-creation-sheet .creation-explanation.is-persistent {
+      padding: 0 8px 2px;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .sheet-card.is-creation-sheet .creation-explanation.is-persistent p {
+      margin-bottom: 4px;
     }
     .sheet-card.is-creation-sheet .card-deck {
       padding: 0;
@@ -4611,6 +4638,7 @@ export const VIEWER_CSS = `
       line-height: 1.35;
     }
     .sheet-card.is-creation-sheet .ccg-card-actions {
+      flex-wrap: wrap;
       margin-top: 4px;
     }
     .sheet-card.is-creation-sheet .ccg-card-actions button {
@@ -4619,6 +4647,9 @@ export const VIEWER_CSS = `
     }
     .sheet-card.is-creation-sheet .ccg-card-actions button.primary {
       flex: 1 1 auto;
+    }
+    .sheet-card.is-creation-sheet .card-deck-nav {
+      display: none;
     }
     .sheet-card.is-creation-sheet .card-deck-track > .ccg-card.is-creation-candidate-card,
     .sheet-card.is-creation-sheet .card-deck-track > .ccg-card.is-creation-control-card {
@@ -4629,6 +4660,9 @@ export const VIEWER_CSS = `
     .sheet-overlay {
       align-items: flex-start;
       padding: calc(var(--safe-top) + 10px) 8px calc(var(--safe-bot) + 10px);
+    }
+    .sheet-overlay.is-creation-overlay {
+      padding-top: calc(var(--safe-top) + 58px);
     }
     #privy-overlay {
       padding: calc(var(--safe-top) + 8px) 8px calc(var(--safe-bot) + 8px);
@@ -4946,6 +4980,29 @@ export const VIEWER_CSS = `
     font-size: 14px;
     line-height: 1.48;
   }
+  .sheet-card.is-creation-sheet .is-creation-control-card .creation-edit-input {
+    appearance: none;
+    width: 100%;
+    min-width: 0;
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 8px;
+    background: rgba(0,0,0,0.18);
+    color: var(--text);
+    padding: 8px 10px;
+    font: inherit;
+    line-height: 1.3;
+  }
+  .sheet-card.is-creation-sheet .is-creation-control-card .creation-edit-input:focus {
+    border-color: var(--accent);
+    outline: 2px solid color-mix(in srgb, var(--accent) 32%, transparent);
+    outline-offset: 1px;
+  }
+  .sheet-card.is-creation-sheet .is-creation-control-card .creation-edit-input:disabled {
+    opacity: 0.55;
+  }
+  .sheet-card.is-creation-sheet .is-creation-control-card .creation-playbook-select {
+    cursor: pointer;
+  }
   .sheet-card.is-creation-sheet .is-creation-control-card .creation-reroll {
     grid-column: 2;
     grid-row: 1;
@@ -4967,6 +5024,14 @@ export const VIEWER_CSS = `
     justify-content: flex-end;
     gap: 6px;
     margin-top: 6px;
+  }
+  .is-creation-candidate-card .ccg-card-actions,
+  .is-creation-control-card .ccg-card-actions {
+    align-items: center;
+  }
+  .is-creation-candidate-card .creation-customize-btn,
+  .is-creation-control-card .creation-done-btn {
+    margin-right: auto;
   }
   .ccg-card-actions button {
     appearance: none;
