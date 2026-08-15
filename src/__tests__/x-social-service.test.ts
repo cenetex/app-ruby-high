@@ -1082,6 +1082,57 @@ describe("XSocialService", () => {
       expect(String((imageCall![1] as RequestInit).body)).toContain("STORY BEAT");
     });
 
+    it("asks the social editor agent for a varied seven-day plan", async () => {
+      await connectRuby(svc);
+      vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "test-key");
+      const pillars = [
+        "school-pulse",
+        "student-question",
+        "teacher-take",
+        "progress-story",
+        "school-pulse",
+        "student-question",
+        "teacher-take",
+      ];
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                items: pillars.map((pillar, index) => ({
+                  publishDate: `2026-07-${String(22 + index).padStart(2, "0")}`,
+                  pillar,
+                  angle: `A distinct planned angle for day ${index}`,
+                  brief: `Adapt this distinct direction to live school facts on day ${index}.`,
+                  callToAction: index % 3 === 0 ? "take-class" : index % 3 === 1 ? "reply" : "none",
+                })),
+              }),
+            },
+          }],
+        }),
+      });
+
+      const plan = await svc.planScheduledSchoolUpdates(
+        RUBY_TEACHER,
+        SCHOOL_UPDATE_CONTEXT,
+        [{
+          publishDate: "2026-07-21",
+          pillar: "teacher-take",
+          angle: "Yesterday's angle",
+          text: "Yesterday's post. #RubyHigh",
+        }],
+        123,
+      );
+
+      expect(plan).toMatchObject({ teacherId: "ruby", createdAt: 123, startsOn: "2026-07-22" });
+      expect(plan?.slots).toHaveLength(7);
+      const request = JSON.parse(String(mockFetch.mock.calls[0]?.[1]?.body ?? "{}"));
+      expect(request.response_format?.json_schema?.name).toBe("ruby_high_tweet_plan");
+      expect(request.messages?.[0]?.content).toContain("Yesterday's post");
+      expect(request.messages?.[0]?.content).toContain("at least four different pillars");
+    });
+
     it("grounds featured-guest insight copy in the guest's recent X posts", async () => {
       await connectRuby(svc);
       vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "test-key");
