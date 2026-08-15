@@ -2,6 +2,7 @@ export interface CreationControlCardRefs {
   card: HTMLElement;
   fields: HTMLElement;
   rollBtn: HTMLButtonElement;
+  doneBtn: HTMLButtonElement;
   status: HTMLElement;
 }
 
@@ -54,6 +55,11 @@ export function createCreationControlCardRenderer(
       rollBtn.type = "button";
       rollBtn.className = "primary creation-full-roll";
       rollBtn.textContent = "Roll a student";
+      const doneBtn = deps.document.createElement("button");
+      doneBtn.type = "button";
+      doneBtn.className = "secondary creation-done-btn";
+      doneBtn.textContent = "Done customizing";
+      actions.appendChild(doneBtn);
       actions.appendChild(rollBtn);
       body.appendChild(actions);
 
@@ -61,7 +67,13 @@ export function createCreationControlCardRenderer(
       status.className = "stat-budget";
       body.appendChild(status);
 
-      return { card, fields, rollBtn: rollBtn as HTMLButtonElement, status };
+      return {
+        card,
+        fields,
+        rollBtn: rollBtn as HTMLButtonElement,
+        doneBtn: doneBtn as HTMLButtonElement,
+        status,
+      };
     },
   };
 }

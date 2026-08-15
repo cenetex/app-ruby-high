@@ -95,12 +95,12 @@ export async function dismissAnnouncements(page: Page) {
 /**
  * Trigger character creation by clicking whichever affordance is visible.
  * Quick Roll and Customize both stage a complete student in the creation
- * sheet; enrollment commits when the player starts Freshman Year.
+ * sheet; enrollment commits when the player takes their seat.
  */
 export async function createCharacter(page: Page) {
   const rollAStudent = page.getByRole("button", { name: /quick roll student|roll a student/i });
   const saveCharacter = page.locator("#sheet-card").getByRole("button", { name: "Save Character" });
-  const startFreshmanYear = page.locator("#sheet-card").getByRole("button", { name: "Start Freshman Year" });
+  const takeSeat = page.locator("#sheet-card").getByRole("button", { name: /take my seat/i });
 
   // Capture console errors for debugging.
   const errors: string[] = [];
@@ -122,8 +122,8 @@ export async function createCharacter(page: Page) {
     await saveCharacter.click();
   } catch {
     try {
-      await expect(startFreshmanYear).toBeEnabled({ timeout: 5000 });
-      await startFreshmanYear.click();
+      await expect(takeSeat).toBeEnabled({ timeout: 5000 });
+      await takeSeat.click();
     } catch {
       // No creation commit button — the test may already have a character.
     }

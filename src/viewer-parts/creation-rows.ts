@@ -1,6 +1,8 @@
 export interface CreationRowRefs {
   val: HTMLElement;
   reroll: HTMLButtonElement;
+  input?: HTMLInputElement;
+  select?: HTMLSelectElement;
 }
 
 export interface CreationRowsRendererDeps {

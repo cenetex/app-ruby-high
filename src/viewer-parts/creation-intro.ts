@@ -19,15 +19,14 @@ export function createCreationIntroRenderer(deps: CreationIntroRendererDeps): Cr
       const explanation = deps.document.createElement("div");
       explanation.className = "creation-explanation";
       explanation.innerHTML =
-        '<p>You are about to enroll at Ruby High as a student.</p>'
-        + '<p>Your character gets a <strong>playbook</strong> \u2014 a personality template with stats (HEAD, HEART, HUSTLE, HONOR) and a unique move. Think of it as your role in the school story.</p>'
-        + "<p>You can reroll anything you don't like. Your character sticks with you for all four years.</p>";
+        '<p><strong>Meet your student.</strong> Change their name or student style, or reroll anything you like.</p>'
+        + '<p>Nothing is enrolled until you take your seat. Your first class starts immediately.</p>';
       parent.appendChild(explanation);
 
       loading.innerHTML =
         '<div class="creation-loading-spinner" aria-hidden="true"></div>'
-        + '<div class="creation-loading-title">Rolling your student\u2026</div>'
-        + '<div class="creation-loading-sub">Ruby is looking up your file. One moment.</div>';
+        + '<div class="creation-loading-title">Getting your student ready\u2026</div>'
+        + '<div class="creation-loading-sub">This should only take a moment.</div>';
       parent.appendChild(loading);
       return { explanation, loading };
     },
