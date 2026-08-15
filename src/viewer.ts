@@ -60,7 +60,8 @@ export function renderViewerHtml(opts: ViewerRenderOptions): string {
 <meta name="apple-mobile-web-app-title" content="Ruby High" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <link rel="manifest" href="${safeApiBase}/manifest.webmanifest" />
-<link rel="apple-touch-icon" href="${safeApiBase}/assets/ruby.png" />
+<link rel="icon" type="image/png" href="${safeApiBase}/assets/brand/ruby-high-app-icon.png?v=brand-face-20260815" />
+<link rel="apple-touch-icon" href="${safeApiBase}/assets/brand/ruby-high-app-icon.png?v=brand-face-20260815" />
 <title>Ruby High — ${safeAgent}</title>
 <style>${VIEWER_CSS}</style>
 </head>

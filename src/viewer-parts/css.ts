@@ -207,13 +207,13 @@ export const VIEWER_CSS = `
     transform: translateY(-50%);
   }
   .server-btn.is-home {
-    background: var(--bg-elev-2);
+    background: transparent;
     border-radius: 14px;
     overflow: hidden;
   }
   .server-btn.is-home img {
-    width: 32px;
-    height: 32px;
+    width: 40px;
+    height: 40px;
     object-fit: contain;
   }
   .server-btn .check {
@@ -7434,7 +7434,7 @@ export const VIEWER_CSS = `
   }
   .announcements-logo {
     width: 36px;
-    height: 30px;
+    height: 36px;
     object-fit: contain;
   }
   .announcements-date {

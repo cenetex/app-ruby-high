@@ -12,7 +12,7 @@ import {
   VIEWER_PATH,
 } from "./constants.js";
 
-const SERVICE_WORKER_CACHE = "ruby-high-pwa-v4";
+const SERVICE_WORKER_CACHE = "ruby-high-pwa-v5";
 const VIEWER_SECURITY_CSP_DIRECTIVES = [
   "default-src 'self'",
   "base-uri 'none'",
@@ -102,6 +102,7 @@ const ASSET_FILES: Record<string, { file: string; mime: string; source?: "assets
   "privy-client.global.js": { file: "viewer-privy-client.global.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-cache", versionedCacheControl: VERSIONED_ASSET_CACHE_CONTROL },
   "logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
   "ruby-high-logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
+  "brand/ruby-high-app-icon.png": { file: "brand/ruby-high-app-icon.png", mime: "image/png" },
   "nft/ruby-high-pack.png": { file: "nft/ruby-high-pack.png", mime: "image/png" },
   "nft/ruby-high-pack-opened.png": { file: "nft/ruby-high-pack-opened.png", mime: "image/png" },
   "nft/ruby-high-card-back.png": { file: "nft/ruby-high-card-back.png", mime: "image/png" },
@@ -165,6 +166,7 @@ const ASSET_FILES: Record<string, { file: string; mime: string; source?: "assets
 
 const PWA_CORE_ASSET_NAMES = [
   "logo.png",
+  "brand/ruby-high-app-icon.png",
   "ruby.png",
   "fonts/caveat-regular.ttf",
   "fonts/crafty-girls-regular.ttf",
@@ -375,8 +377,8 @@ function renderPwaManifest(): Record<string, unknown> {
     categories: ["education", "games"],
     icons: [
       {
-        src: `${ASSETS_PREFIX}ruby.png`,
-        sizes: "1280x1280",
+        src: `${ASSETS_PREFIX}brand/ruby-high-app-icon.png?v=brand-face-20260815`,
+        sizes: "512x512",
         type: "image/png",
         purpose: "any",
       },
@@ -388,8 +390,8 @@ function renderPwaManifest(): Record<string, unknown> {
         url: VIEWER_PATH,
         icons: [
           {
-            src: `${ASSETS_PREFIX}ruby.png`,
-            sizes: "1280x1280",
+            src: `${ASSETS_PREFIX}brand/ruby-high-app-icon.png?v=brand-face-20260815`,
+            sizes: "512x512",
             type: "image/png",
           },
         ],
