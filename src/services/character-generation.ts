@@ -24,6 +24,10 @@ import {
 const PORTRAIT_MODEL = process.env.RUBY_HIGH_PORTRAIT_MODEL ?? "google/gemini-3.1-flash-image-preview";
 const PORTRAIT_MAX_TOKENS = Number(process.env.RUBY_HIGH_PORTRAIT_MAX_TOKENS ?? 4000);
 const PORTRAIT_TIMEOUT_MS = 60_000;
+const CHARACTER_ROLL_TIMEOUT_MS = Math.max(
+  3_000,
+  Number(process.env.RUBY_HIGH_CHARACTER_ROLL_TIMEOUT_MS ?? 8_000) || 8_000,
+);
 const PHOTO_DIRECTION_MODEL = process.env.RUBY_HIGH_PHOTO_DIRECTION_MODEL?.trim() || DEFAULT_STUDENT_MODEL;
 const PHOTO_DIRECTION_MAX_TOKENS = Math.max(80, Number(process.env.RUBY_HIGH_PHOTO_DIRECTION_MAX_TOKENS ?? 180) || 180);
 const PHOTO_DIRECTION_TIMEOUT_MS = Math.max(5_000, Number(process.env.RUBY_HIGH_PHOTO_DIRECTION_TIMEOUT_MS ?? 20_000) || 20_000);
@@ -750,6 +754,8 @@ export async function rollRandomCharacter(args: {
 
   const r = await fetchLlmChatCompletions({
     apiKey: args.apiKey,
+    timeoutMs: CHARACTER_ROLL_TIMEOUT_MS,
+    label: "character-roll",
     body: {
       model: resolveStudentModel(),
       messages: [
