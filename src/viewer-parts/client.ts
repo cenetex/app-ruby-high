@@ -283,7 +283,7 @@ export function runViewerClient(bootstrap) {
   const WELCOME_HALL_PASS_GRANT_ID = "system:welcome-hall-passes:v1";
   const WELCOME_HALL_PASS_POPUP_KEY_PREFIX = "rh_welcome_hall_passes_seen:";
   const ANNOUNCEMENTS_LAST_KEY = "ruby-high:announcements-last-date";
-  const ANNOUNCEMENTS_LOGO_URL = apiBase + "/assets/logo.png?v=baby-blue-20260504";
+  const ANNOUNCEMENTS_LOGO_URL = apiBase + "/assets/brand/ruby-high-app-icon.png?v=brand-face-20260815";
   let announcementsOverlay = null;
   let announcementsPreviousFocus = null;
   let announcementsBackgroundLocked = false;

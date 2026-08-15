@@ -105,7 +105,9 @@ describe("PWA surface", () => {
     });
 
     expect(html).toContain('rel="manifest" href="/api/apps/ruby-high/manifest.webmanifest"');
-    expect(html).toContain('rel="apple-touch-icon" href="/api/apps/ruby-high/assets/ruby.png"');
+    expect(html).toContain('rel="apple-touch-icon" href="/api/apps/ruby-high/assets/brand/ruby-high-app-icon.png?v=brand-face-20260815"');
+    expect(html).toContain('/api/apps/ruby-high/assets/brand/ruby-high-app-icon.png?v=brand-face-20260815');
+    expect(html).toContain('/api/apps/ruby-high/assets/logo.png?v=brand-face-20260815');
     expect(compactScript(html)).toContain(compactScript('["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)'));
     expect(html).toContain("navigator.serviceWorker.getRegistrations()");
     expect(compactScript(html)).toContain(compactScript('navigator.serviceWorker.register(apiBase + "/service-worker.js", { scope: apiBase + "/" })'));
@@ -124,7 +126,23 @@ describe("PWA surface", () => {
     expect(manifest.start_url).toBe("/api/apps/ruby-high/viewer");
     expect(manifest.scope).toBe("/api/apps/ruby-high/");
     expect(manifest.display).toBe("standalone");
-    expect(manifest.icons[0].src).toBe("/api/apps/ruby-high/assets/ruby.png");
+    expect(manifest.icons[0].src).toBe("/api/apps/ruby-high/assets/brand/ruby-high-app-icon.png?v=brand-face-20260815");
+    expect(manifest.icons[0].sizes).toBe("512x512");
+  });
+
+  it("serves the Ruby-face crest as a square app icon", async () => {
+    const iconResponse = makeResponse();
+    const iconHandled = await handleAppRoutes(makeCtx(
+      "/api/apps/ruby-high/assets/brand/ruby-high-app-icon.png",
+      iconResponse,
+    ));
+
+    expect(iconHandled).toBe(true);
+    expect(iconResponse.res.statusCode).toBe(200);
+    expect(iconResponse.headers.get("content-type")).toMatch(/image\/png/);
+    const icon = iconResponse.raw as Buffer;
+    expect(icon.readUInt32BE(16)).toBe(512);
+    expect(icon.readUInt32BE(20)).toBe(512);
   });
 
   it("gzips the viewer shell when the browser accepts gzip", async () => {
@@ -238,9 +256,10 @@ describe("PWA surface", () => {
     expect(response.res.statusCode).toBe(200);
     expect(response.headers.get("content-type")).toMatch(/text\/javascript/);
     expect(response.headers.get("service-worker-allowed")).toBe("/api/apps/ruby-high/");
-    expect(response.text).toContain('const CACHE_NAME = "ruby-high-pwa-v4";');
+    expect(response.text).toContain('const CACHE_NAME = "ruby-high-pwa-v5";');
     expect(response.text).toContain('const APP_BASE = "/api/apps/ruby-high/";');
     expect(response.text).toContain('"/api/apps/ruby-high/assets/logo.png"');
+    expect(response.text).toContain('"/api/apps/ruby-high/assets/brand/ruby-high-app-icon.png"');
     expect(response.text).toContain("url.pathname === VIEWER_PATH");
     expect(response.text).toContain('url.pathname.startsWith(APP_BASE + "session/")');
     expect(response.text).toContain('url.pathname === ASSET_PREFIX + "privy-client.global.js"');

@@ -1562,13 +1562,15 @@ function manifestJson() {
     background_color: "#15171f",
     theme_color: "#1a1c25",
     categories: ["education", "games"],
-    icons: [{ src: `${appBase}/assets/ruby.png`, sizes: "1280x1280", type: "image/png", purpose: "any" }],
+    icons: [
+      { src: `${appBase}/assets/brand/ruby-high-app-icon.png?v=brand-face-20260815`, sizes: "512x512", type: "image/png", purpose: "any" },
+    ],
   };
 }
 
 function serviceWorkerJs() {
-  return `const CACHE_NAME = "ruby-high-spa-v1";
-const CORE = ["/", "/index.html", "${appBase}/manifest.webmanifest", "${appBase}/assets/logo.png", "${appBase}/assets/ruby.png"];
+  return `const CACHE_NAME = "ruby-high-spa-v2";
+const CORE = ["/", "/index.html", "${appBase}/manifest.webmanifest", "${appBase}/assets/logo.png", "${appBase}/assets/brand/ruby-high-app-icon.png", "${appBase}/assets/ruby.png"];
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE)).then(() => self.skipWaiting()));
 });

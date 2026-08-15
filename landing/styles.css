@@ -57,6 +57,16 @@ a {
   color: inherit;
 }
 
+.visually-hidden {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
 .skip-link {
   background: var(--yellow);
   border: var(--blackline);
@@ -94,16 +104,27 @@ a:focus-visible {
 .brand {
   align-items: center;
   display: inline-flex;
-  gap: 10px;
-  font-family: Schoolbell, ui-sans-serif, system-ui, sans-serif;
-  font-size: 1.45rem;
   text-decoration: none;
 }
 
-.brand img {
-  height: 44px;
+.brand-art {
+  align-items: center;
+  display: inline-flex;
+  height: 52px;
+}
+
+.brand-art img {
   object-fit: contain;
-  width: 52px;
+  width: auto;
+}
+
+.brand-wordmark {
+  height: 52px;
+}
+
+.brand-crest {
+  display: none;
+  height: 46px;
 }
 
 nav {
@@ -219,12 +240,14 @@ nav a:not(.nav-play):hover {
 }
 
 .hero h1 {
-  font-family: Schoolbell, ui-sans-serif, system-ui, sans-serif;
-  font-size: clamp(5.2rem, 12vw, 10rem);
-  font-weight: 400;
-  line-height: 0.82;
   margin: 16px 0 0;
-  max-width: 720px;
+  width: min(480px, 52vw);
+}
+
+.hero h1 img {
+  filter: drop-shadow(8px 9px 0 rgba(25, 22, 18, 0.78));
+  height: auto;
+  width: 100%;
 }
 
 .hero-copy {
@@ -1250,7 +1273,7 @@ nav a:not(.nav-play):hover {
   }
 
   .hero h1 {
-    font-size: clamp(4.5rem, 22vw, 8rem);
+    width: min(430px, 58vw);
   }
 
   .hero-faculty {
@@ -1336,8 +1359,16 @@ nav a:not(.nav-play):hover {
     font-size: 15px;
   }
 
-  .brand span {
-    font-size: 1.25rem;
+  .brand-art {
+    height: 46px;
+  }
+
+  .brand-wordmark {
+    display: none;
+  }
+
+  .brand-crest {
+    display: block;
   }
 
   nav {
@@ -1354,6 +1385,10 @@ nav a:not(.nav-play):hover {
 
   .hero-content {
     padding-inline: 18px;
+  }
+
+  .hero h1 {
+    width: min(330px, 82vw);
   }
 
   .hero-copy {
