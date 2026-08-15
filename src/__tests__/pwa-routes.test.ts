@@ -187,6 +187,22 @@ describe("PWA surface", () => {
     expect(body[25]).toBe(6);
   });
 
+  it("serves Seraph's transparent Project 89 guest lecturer portrait", async () => {
+    const response = makeResponse();
+    const handled = await handleAppRoutes(makeCtx(
+      "/api/apps/ruby-high/assets/teachers/seraph-full-sticker.png",
+      response,
+    ));
+
+    expect(handled).toBe(true);
+    expect(response.res.statusCode).toBe(200);
+    expect(response.headers.get("content-type")).toMatch(/image\/png/);
+    const body = response.raw as Buffer;
+    expect(body.readUInt32BE(16)).toBe(1024);
+    expect(body.readUInt32BE(20)).toBe(1536);
+    expect(body[25]).toBe(6);
+  });
+
   it("keeps built-in student face portraits square PNGs", async () => {
     const studentIds = ["lyra", "sami", "ravi", "indra", "mika", "noor"] as const;
     const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);

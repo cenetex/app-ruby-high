@@ -100,7 +100,11 @@ test("keeps a specific Class Result after refresh with one truthful next step", 
   await createCharacter(page);
   const continueUntilVisible = async (target: ReturnType<typeof page.locator>) => {
     const next = page.locator("#next-btn");
+    const rewardComic = page.locator(".comic-reader.is-reward").first();
     for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (await rewardComic.isVisible().catch(() => false)) {
+        await closeRewardComicIfVisible(page);
+      }
       const ready = await target.isVisible().catch(() => false)
         && !(await page.locator("#board-reveal").isVisible().catch(() => false));
       if (ready) return;
@@ -137,7 +141,9 @@ test("keeps a specific Class Result after refresh with one truthful next step", 
   await expect(report.locator(".class-result-section.observation")).toContainText(finalResponse);
   await expect(report.locator(".class-result-section.consequence")).toContainText(/class recorded|mark recorded/i);
   await expect(report.locator(".class-result-section.progress")).toContainText("Course progress");
-  await expect(page.locator(".class-report-next")).toContainText(/return tomorrow for the next graded class/i);
+  const nextStep = page.locator(".class-report-next");
+  await expect(nextStep).toContainText("Sign up to continue");
+  await expect(nextStep).toContainText(/guest lesson is complete/i);
   const resultText = await report.textContent();
 
   await page.setViewportSize({ width: 375, height: 812 });
