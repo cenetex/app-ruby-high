@@ -18,6 +18,7 @@ import {
 } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
 import { ELIZAOS_SYSTEMS_LAB_PACK_ID } from "../content/packs/elizaos-systems-lab.js";
+import { PROJECT89_SIGNAL_TIMELINE_LAB_PACK_ID } from "../content/packs/project89-signal-timeline-lab.js";
 import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 
 // Multi-pack registry tests. Built-in pack is owned by null and pinned;
@@ -69,14 +70,28 @@ describe("registerPack — ownership + visibility", () => {
 
     // Alice sees the built-ins + her own pack, NOT Bob's.
     expect(aliceSees).toEqual(
-      ["agent:alice-1", ORIGINAL_PACK_ID, ELIZAOS_SYSTEMS_LAB_PACK_ID].sort(),
+      [
+        "agent:alice-1",
+        ORIGINAL_PACK_ID,
+        ELIZAOS_SYSTEMS_LAB_PACK_ID,
+        PROJECT89_SIGNAL_TIMELINE_LAB_PACK_ID,
+      ].sort(),
     );
     expect(bobSees).toEqual(
-      ["agent:bob-1", ORIGINAL_PACK_ID, ELIZAOS_SYSTEMS_LAB_PACK_ID].sort(),
+      [
+        "agent:bob-1",
+        ORIGINAL_PACK_ID,
+        ELIZAOS_SYSTEMS_LAB_PACK_ID,
+        PROJECT89_SIGNAL_TIMELINE_LAB_PACK_ID,
+      ].sort(),
     );
     // Unauthed (no session) sees only built-ins.
     expect(guestSees).toEqual(
-      [ORIGINAL_PACK_ID, ELIZAOS_SYSTEMS_LAB_PACK_ID].sort(),
+      [
+        ORIGINAL_PACK_ID,
+        ELIZAOS_SYSTEMS_LAB_PACK_ID,
+        PROJECT89_SIGNAL_TIMELINE_LAB_PACK_ID,
+      ].sort(),
     );
   });
 
@@ -93,6 +108,8 @@ describe("registerPack — ownership + visibility", () => {
     expect(getPackByIdForSession(ORIGINAL_PACK_ID, "session:bob")?.id).toBe(ORIGINAL_PACK_ID);
     expect(getPackByIdForSession(ELIZAOS_SYSTEMS_LAB_PACK_ID, "session:bob")?.id)
       .toBe(ELIZAOS_SYSTEMS_LAB_PACK_ID);
+    expect(getPackByIdForSession(PROJECT89_SIGNAL_TIMELINE_LAB_PACK_ID, "session:bob")?.id)
+      .toBe(PROJECT89_SIGNAL_TIMELINE_LAB_PACK_ID);
   });
 
   it("registerPack refuses to overwrite a pinned built-in pack id", async () => {

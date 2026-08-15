@@ -147,8 +147,9 @@ describe("class report renderer", () => {
     expect(textTree(report)).toContain("0 of 3 passing Sally class days are recorded for Freshman. 3 more days to clear the course.");
   });
 
-  it("renders next-step copy for signup, social, practice, and complete states", () => {
+  it("renders next-step copy for signup, essay, social, practice, and complete states", () => {
     const signup = renderer({ guestSignupRequired: () => true }).buildNextStep({});
+    const essay = renderer({ postClassState: () => ({ essayReady: true }) }).buildNextStep({});
     const social = renderer({ postClassState: () => ({ socialReady: true }) }).buildNextStep({});
     const practice = renderer({ postClassState: () => ({ practiceReady: true }) }).buildNextStep({});
     const complete = renderer().buildNextStep({});
@@ -159,6 +160,11 @@ describe("class report renderer", () => {
       "Your guest lesson is complete. Keep your student and unlock the rest of Ruby High.",
     ]);
     expect((social as unknown as FakeElement).className).toBe("class-report-next is-social");
+    expect((essay as unknown as FakeElement).className).toBe("class-report-next is-essay");
+    expect(textTree(essay as unknown as FakeElement)).toEqual([
+      "Your graded essay is ready",
+      "Write it next to complete this year's requirements and unlock the ceremony.",
+    ]);
     expect(textTree(social as unknown as FakeElement)).toEqual([
       "Finish today’s reflection",
       "Then practice stays open; return tomorrow for the next graded class.",

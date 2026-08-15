@@ -1769,6 +1769,13 @@ function describeQuestionBankForModel(status: QuestionBankStatus): string {
   const standing = status.courseGrade
     ? `Subject standing: ${status.courseGrade} (${status.completedClasses ?? 0}/${status.requiredClasses ?? 0} daily classes passed).`
     : `Subject standing: no course grade yet (${status.completedClasses ?? 0}/${status.requiredClasses ?? 0} daily classes passed).`;
+  if (status.nextOpinionPurpose === "grade-essay") {
+    return [
+      `SUBJECT STATUS for ${status.displayName}. ${standing} ${classLine}`,
+      "Scheduler detail: the student's assigned graded essay is ready.",
+      "Use pick_from_bank for the next board; it will post the assigned essay exactly once.",
+    ].join("\n");
+  }
   if (status.mode === "srs") {
     const mastered = status.masteredCount ?? 0;
     const shaky = status.shakyCount ?? 0;

@@ -63,13 +63,15 @@ export function runViewerClient(bootstrap) {
     const progress = t && t.active_course_progress;
     const report = !!(t && activeDailyClassIsComplete(t) && !t.current && !t.graduation_ready);
     const nextRole = (progress && progress.nextCardRole) || "";
+    const nextOpinionPurpose = (progress && progress.nextOpinionPurpose) || "";
     const canPick = scheduledCanPick(t);
     const hasBank = Number(progress && progress.total || 0) > 0;
     return {
       report,
       nextRole,
       canPick,
-      socialReady: report && canPick && nextRole === "social",
+      essayReady: report && canPick && nextOpinionPurpose === "grade-essay",
+      socialReady: report && canPick && nextRole === "social" && nextOpinionPurpose !== "grade-essay",
       practiceReady: report && nextRole !== "social" && (canPick || hasBank),
     };
   }
@@ -104,8 +106,10 @@ export function runViewerClient(bootstrap) {
       const progressView = dailyClassProgressView(t);
       return progressView.visible ? progressView.continuationLabel : "Continue";
     }
+    if (t && t.graduation_gate && t.graduation_gate.stage === "essay" && !cur) return "Essay";
     const postClass = postClassState(t);
     if (postClass.report && guestSignupRequired(t)) return "Sign up";
+    if (postClass.essayReady) return "Essay";
     if (postClass.socialReady) return "Reflect";
     if (postClass.report) return "Practice";
     return offlineClassroom ? "Continue" : chatActionLabel(t);
@@ -138,8 +142,12 @@ export function runViewerClient(bootstrap) {
         ? "Sign up to continue past today's class"
       : cur && currentRevealCompletedClass(t)
         ? "Show the class report"
-        : cur
+      : cur
         ? "Continue"
+      : t && t.graduation_gate && t.graduation_gate.stage === "essay"
+        ? "Start your graded essay"
+      : postClass.essayReady
+        ? "Start your graded essay"
       : postClass.socialReady
         ? "Start a short homeroom reflection"
         : postClass.report
@@ -466,6 +474,8 @@ export function runViewerClient(bootstrap) {
     arcYear: $("arc-year"),
     arcStreak: $("arc-streak"),
     arcXp: $("arc-xp"),
+    arcEssaySep: $("arc-essay-sep"),
+    arcEssay: $("arc-essay"),
     stream: $("stream"),
     blackboardPanel: $("blackboard-panel"),
     loungeStage: $("lounge-stage"),
@@ -978,7 +988,7 @@ export function runViewerClient(bootstrap) {
     const questionCount = Number(today.questionCount || 0);
     const todayKey = (t.daily && t.daily.dailyKey) || today.dailyKey || "";
     const phaseToken = t.phaseToken == null ? "legacy" : t.phaseToken;
-    const key = (t.faculty || "") + "|" + (t.current_grade || "") + "|" + todayKey + "|" + phaseToken + "|" + questionCount + "|" + ready + "|" + canPick + "|" + (progress.nextCardRole || "");
+    const key = (t.faculty || "") + "|" + (t.current_grade || "") + "|" + todayKey + "|" + phaseToken + "|" + questionCount + "|" + ready + "|" + canPick + "|" + (progress.nextCardRole || "") + "|" + (progress.nextOpinionPurpose || "");
     if (key === autoPickLastKey) return;
     // Scheduler state: the deterministic path can post banked cards and
     // generated Ruby social cards. When it cannot post, auto-pick would only
@@ -1634,6 +1644,8 @@ export function runViewerClient(bootstrap) {
     year: els.arcYear,
     streak: els.arcStreak,
     subject: els.arcXp,
+    essaySeparator: els.arcEssaySep,
+    essay: els.arcEssay,
     viewFor: arcIndicatorView,
   });
   const guestSpotlightRenderer = createGuestSpotlightRenderer({
@@ -3680,26 +3692,41 @@ export function runViewerClient(bootstrap) {
         // the room's status, the hint is the actionable detail.
         const hint = lastTelemetry && lastTelemetry.character ? buildNextStepHint(lastTelemetry.character) : "";
         const progress = lastTelemetry && lastTelemetry.active_course_progress;
+        const gate = (lastTelemetry && lastTelemetry.graduation_gate) || {};
+        const essayReady = gate.stage === "essay";
+        const practiceOnly = !!progress && Number(progress.requiredClasses || 0) === 0;
         const todayDone = progress && progress.today && progress.today.status === "complete";
         const todayActive = progress && progress.today && progress.today.status === "active";
         const teacherName = faculty ? teacherShortName(faculty, "today's teacher") : "today's teacher";
         const advanceLabel = teacherChatEnabled() ? chatActionLabel(lastTelemetry) : "Continue";
-        const lead = todayDone
-          ? "Today's graded class is complete. Review is open."
+        const lead = essayReady
+          ? "Your graded essay is ready — tap " + advanceLabel + " to put it on the blackboard."
+          : practiceOnly
+            ? "This is a practice room — tap " + advanceLabel + " to review."
+          : todayDone
+            ? "Today's graded class is complete. Review is open."
           : todayActive
             ? "Continue today's class — tap " + advanceLabel + " to start."
             : "Start today's graded class — tap " + advanceLabel + " to start.";
         const welcome = showWelcomeBackCopy ? "Welcome back — " + teacherName + " is ready. " : "";
         const infoText = hint ? welcome + lead + " " + hint : welcome + lead;
-        const statusText = todayDone
-          ? "Class complete · review open"
+        const statusText = essayReady
+          ? "Graded essay ready"
+          : practiceOnly
+            ? "Practice room"
+          : todayDone
+            ? "Class complete · review open"
           : todayActive
             ? "Class in progress"
             : "Today's class ready";
         els.blackboardEmptyText.replaceChildren(buildBoardClassStartHeader(statusText, infoText));
         if (els.blackboardEmptyAction) {
-          els.blackboardEmptyAction.textContent = todayActive ? "Continue today's class" : "Start today's class";
-          els.blackboardEmptyAction.hidden = !!todayDone;
+          els.blackboardEmptyAction.textContent = essayReady
+            ? "Start graded essay"
+            : practiceOnly
+              ? "Start practice"
+              : todayActive ? "Continue today's class" : "Start today's class";
+          els.blackboardEmptyAction.hidden = !essayReady && !practiceOnly && !!todayDone;
         }
       }
       // Drop any previous lounge/card extras; classroom status now lives in
@@ -5807,11 +5834,17 @@ export function runViewerClient(bootstrap) {
     if (!c) return "";
     if (graduatedFor(c)) return "You graduated. Keep playing if you want; the arc is done.";
     const t = lastTelemetry || {};
-    if (t.graduation_ready || c.pendingGraduation) {
+    const gate = t.graduation_gate || {};
+    if (gate.stage === "ceremony" || t.graduation_ready || c.pendingGraduation) {
       return "Requirements complete — the graduation ceremony is on the blackboard.";
     }
+    if (gate.stage === "essay") {
+      const essayOnBoard = t.current && t.current.opinionPurpose === "grade-essay";
+      return essayOnBoard
+        ? "Class requirements complete — your graded essay is on the blackboard."
+        : "Class requirements complete — write your graded essay to finish the year.";
+    }
     const grade = String(t.current_grade ?? "9");
-    const gate = t.graduation_gate || {};
     const streakReq = Number(gate.requiredDays || STREAK_REQUIRED[grade] || 1);
     const streakHere = c.streak && c.streak.grade === grade ? c.streak.count : 0;
     const streakLastDate = c.streak && c.streak.grade === grade ? c.streak.lastDate : "";
@@ -5834,11 +5867,12 @@ export function runViewerClient(bootstrap) {
       const segs = subjectGaps.map((cg) => subjectDisplayName(cg.facultyId, cg.progress) + " (" + subjectProgressShortLabel(cg.progress) + ")");
       parts.push("Clear each subject at C or better: " + segs.join(", "));
     }
+    if (gate.essayRequired && !gate.essayCompleted) {
+      parts.push("Your graded essay unlocks when the class requirements are complete");
+    }
 
     if (parts.length === 0) {
-      return grade === "12"
-        ? "Ready to graduate — your diploma is available now."
-        : "Ready to advance — your year is complete.";
+      return "Keep working through this year's requirements.";
     }
     let hint = parts.join(" · ");
     return hint;

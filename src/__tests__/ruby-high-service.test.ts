@@ -4750,6 +4750,11 @@ describe("RubyHighService Phase 1", () => {
     ruby.clearBoard(sid);
     state = ruby.pickAndPose(sid, { faculty: "professor-edward" });
     expect(state.activeRound?.classSession?.mode).toBe("practice");
+    expect(state.character?.dailyClasses?.[`10:professor-edward:${dailyKey()}`]).toBeUndefined();
+    expect(ruby.courseProgress(sid, "professor-edward")).toMatchObject({
+      requiredClasses: 0,
+      today: { mode: "practice", status: "available", questionCount: 0 },
+    });
   });
 
   it("keeps successful class mastery credit normal while carrying a one-day streak", async () => {
@@ -5412,6 +5417,23 @@ describe("RubyHighService Phase 1", () => {
     state.character!.essayPrompt = "What did you learn from a mistake?";
     state.character!.essayCompleted = false;
 
+    expect(() => ruby.poseOpinion(sid, {
+      faculty: "ruby",
+      prompt: state.character!.essayPrompt!,
+      purpose: "grade-essay",
+    })).toThrow(/unlocks after the class requirements/i);
+
+    state.character!.streak = { grade: "9", count: 1, lastDate: "2026-05-04" };
+    state.character!.dailyClasses = {
+      "9:ruby:2026-05-04": completedClassRecord("9", "ruby", "2026-05-04", "B", 240),
+    };
+    expect(ruby.graduationGate(sid)).toMatchObject({
+      stage: "essay",
+      classRequirementsMet: true,
+      essayReady: true,
+      ceremonyReady: false,
+    });
+
     ruby.poseOpinion(sid, {
       faculty: "ruby",
       questionId: "grade-essay-q1",
@@ -5425,6 +5447,59 @@ describe("RubyHighService Phase 1", () => {
     ], "player");
 
     expect(after.character?.essayCompleted).toBe(true);
+  });
+
+  it("schedules the unlocked grade essay and advances to ceremony after it is graded", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:deterministic-grade-essay";
+    const state = attachTestCharacter(ruby, sid);
+    ruby.selectGrade(sid, "10");
+    state.character!.essayPrompt = "How should a community respond when its rules cause harm?";
+    state.character!.essayCompleted = false;
+    state.character!.streak = { grade: "10", count: 1, lastDate: "2026-05-04" };
+    state.character!.graduationClassrooms = { "10": ["ruby", "professor-edward"] };
+    state.character!.dailyClasses = {
+      "10:ruby:2026-05-04": completedClassRecord("10", "ruby", "2026-05-04", "B", 240),
+      "10:professor-edward:2026-05-04": completedClassRecord("10", "professor-edward", "2026-05-04", "C", 210),
+    };
+
+    expect(ruby.graduationGate(sid)).toMatchObject({
+      grade: "10",
+      stage: "essay",
+      classRequirementsMet: true,
+      essayRequired: true,
+      essayCompleted: false,
+      essayReady: true,
+      ceremonyReady: false,
+      ready: false,
+    });
+    expect(state.character!.pendingGraduation).toBeFalsy();
+
+    const posed = ruby.pickAndPose(sid, { faculty: "sally-science" });
+    expect(posed.current).toMatchObject({
+      type: "opinion",
+      opinionPurpose: "grade-essay",
+      prompt: state.character!.essayPrompt,
+      faculty: "sally-science",
+    });
+    expect(posed.activeRound).toMatchObject({
+      cardRole: "social",
+      classSession: { mode: "practice", facultyId: "sally-science" },
+    });
+
+    ruby.recordOpinion(sid, "player", "The community should name the harm, change the rule, and repair what it caused.");
+    const completed = ruby.recordGrades(sid, [
+      { responder: "player", score: 8, comment: "Clear position and concrete repair." },
+    ], "player");
+
+    expect(ruby.graduationGate(sid)).toMatchObject({
+      stage: "ceremony",
+      essayCompleted: true,
+      essayReady: false,
+      ceremonyReady: true,
+      ready: true,
+    });
+    expect(completed.character?.pendingGraduation).toMatchObject({ grade: "10" });
   });
 
   it("forceAdvanceRound resolves an idle-triggered open round as a forfeit", async () => {

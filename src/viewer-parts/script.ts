@@ -100,6 +100,7 @@ const PURE_HELPER_NAMES = [
   "escapeHtml",
   "escape",
   "safeMarkdownHref",
+  "normalizeScientificNotationForDisplay",
   "sanitizeVisibleChatText",
   "markdownInlineHtml",
   "appendMarkdownInline",

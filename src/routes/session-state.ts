@@ -103,6 +103,7 @@ interface SessionTelemetry extends Record<string, unknown> {
     stat: keyof CharacterStats | null;
     difficulty: Difficulty | null;
     sourceCardId: string | null;
+    opinionPurpose: "daily-take" | "grade-essay" | null;
     canGenerateMc: boolean;
     media: Array<{ name: string; mimeType: string; dataUrl: string }>;
   } | null;
@@ -377,6 +378,7 @@ export function buildSessionState(args: {
           stat: state.current.stat ?? null,
           difficulty: state.current.difficulty ?? null,
           sourceCardId: state.current.sourceCardId ?? null,
+          opinionPurpose: state.current.opinionPurpose ?? null,
           canGenerateMc: !!state.current.canGenerateMc,
           media: state.current.media ?? [],
         }

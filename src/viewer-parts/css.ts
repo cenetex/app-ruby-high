@@ -825,13 +825,16 @@ export const VIEWER_CSS = `
   .arc-indicator .arc-sep { color: var(--text-mute); font-weight: 400; }
   .arc-indicator .arc-streak.is-met { color: var(--accent); }
   .arc-indicator .arc-xp.is-met { color: var(--accent); }
+  .arc-indicator .arc-essay { color: #f0b441; }
+  .arc-indicator .arc-essay.is-met { color: var(--accent); }
   .arc-indicator.is-graduated .arc-year { color: #f0b441; }
   /* Mobile: hide the daily/subject detail, keep just the year tag. The full
    * progress is one tap away on the character sheet. */
   @media (max-width: 540px) {
     .arc-indicator .arc-sep,
     .arc-indicator .arc-streak,
-    .arc-indicator .arc-xp { display: none; }
+    .arc-indicator .arc-xp,
+    .arc-indicator .arc-essay { display: none; }
   }
   /* Pack library sections and draft teacher editor rail. */
   .pack-section-title {

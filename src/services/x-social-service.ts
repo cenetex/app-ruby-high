@@ -176,7 +176,13 @@ function scheduledSchoolUpdateActivationUrl(mode: ScheduledSchoolUpdateEditorial
 const X_OAUTH_SCOPES = ["tweet.read", "tweet.write", "users.read", "offline.access", "media.write"].join(" ");
 
 function defaultTeacherPostImageUrl(teacherId: string): string | null {
-  if (teacherId === "ruby" || teacherId === "sally-science" || teacherId === "professor-edward") {
+  if (
+    teacherId === "ruby"
+    || teacherId === "sally-science"
+    || teacherId === "professor-edward"
+    || teacherId === "eliza"
+    || teacherId === "seraph"
+  ) {
     return `${RUBY_HIGH_ASSET_PREFIX}/teachers/${teacherId}-full.png`;
   }
   return null;

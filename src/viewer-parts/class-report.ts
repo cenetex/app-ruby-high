@@ -6,7 +6,7 @@ export interface ClassReportRendererDeps {
   letterGradePasses(grade: unknown): boolean;
   todayCorrectSummary(today: unknown): { value: string; detail: string };
   formatClassScore(score: unknown): string;
-  postClassState(telemetry: unknown): { socialReady?: boolean; practiceReady?: boolean };
+  postClassState(telemetry: unknown): { essayReady?: boolean; socialReady?: boolean; practiceReady?: boolean };
   guestSignupRequired(telemetry: unknown): boolean;
   knownTeacherAssetId(faculty: unknown): string | null;
   teacherAssetUrl(facultyOrId: unknown, variant: string): string | null;
@@ -185,7 +185,7 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
       const state = deps.postClassState(telemetry);
       const signupRequired = deps.guestSignupRequired(telemetry);
       const wrap = deps.document.createElement("div");
-      wrap.className = "class-report-next" + (signupRequired ? " is-signup" : state.socialReady ? " is-social" : state.practiceReady ? " is-practice" : "");
+      wrap.className = "class-report-next" + (signupRequired ? " is-signup" : state.essayReady ? " is-essay" : state.socialReady ? " is-social" : state.practiceReady ? " is-practice" : "");
       const mark = deps.document.createElement("span");
       mark.className = "class-report-next-mark";
       wrap.appendChild(mark);
@@ -198,6 +198,9 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
       if (signupRequired) {
         title.textContent = "Sign up to continue";
         body.textContent = "Your guest lesson is complete. Keep your student and unlock the rest of Ruby High.";
+      } else if (state.essayReady) {
+        title.textContent = "Your graded essay is ready";
+        body.textContent = "Write it next to complete this year's requirements and unlock the ceremony.";
       } else if (state.socialReady) {
         title.textContent = "Finish today’s reflection";
         body.textContent = "Then practice stays open; return tomorrow for the next graded class.";

@@ -81,6 +81,8 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="arc-streak" id="arc-streak" title="Passed daily classes needed for this year">📚 —</span>
         <span class="arc-sep">·</span>
         <span class="arc-xp" id="arc-xp" title="Subjects cleared with a C or better this year">✅ —</span>
+        <span class="arc-sep" id="arc-essay-sep" hidden>·</span>
+        <span class="arc-essay" id="arc-essay" title="Graded essay required before graduation" hidden>✍️ due</span>
       </div>
     </header>
 

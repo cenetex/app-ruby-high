@@ -5,6 +5,7 @@ function telemetry(questionCount: number, status: "active" | "complete" = "activ
   return {
     character: { name: "Iris" },
     active_course_progress: {
+      requiredClasses: 1,
       today: { status, questionCount },
     },
     active_round: status === "active"
@@ -50,5 +51,20 @@ describe("daily class progress view", () => {
 
   it("stays hidden without a character-backed class context", () => {
     expect(dailyClassProgressView({})).toMatchObject({ visible: false });
+  });
+
+  it("hides stale class progress in practice-only rooms and during the grade essay", () => {
+    expect(dailyClassProgressView({
+      ...telemetry(0),
+      active_course_progress: {
+        requiredClasses: 0,
+        today: { status: "active", questionCount: 0 },
+      },
+    })).toMatchObject({ visible: false });
+
+    expect(dailyClassProgressView({
+      ...telemetry(3, "complete"),
+      current: { opinionPurpose: "grade-essay" },
+    })).toMatchObject({ visible: false });
   });
 });

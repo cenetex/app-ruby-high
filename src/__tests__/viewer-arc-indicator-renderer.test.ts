@@ -32,6 +32,9 @@ function view(overrides?: Partial<ArcIndicatorView>): ArcIndicatorView {
     streakMet: true,
     subjectText: "✅ 3/3",
     subjectMet: true,
+    essayVisible: true,
+    essayText: "✍️ due",
+    essayMet: false,
     ...overrides,
   };
 }
@@ -42,12 +45,16 @@ describe("arc indicator renderer", () => {
     const year = new FakeElement();
     const streak = new FakeElement();
     const subject = new FakeElement();
+    const essaySeparator = new FakeElement();
+    const essay = new FakeElement();
     const calls: unknown[] = [];
     const renderer = createArcIndicatorRenderer({
       root: root as unknown as HTMLElement,
       year: year as unknown as HTMLElement,
       streak: streak as unknown as HTMLElement,
       subject: subject as unknown as HTMLElement,
+      essaySeparator: essaySeparator as unknown as HTMLElement,
+      essay: essay as unknown as HTMLElement,
       viewFor(telemetry, subjects) {
         calls.push(telemetry, subjects);
         return view({ graduated: true });
@@ -66,6 +73,9 @@ describe("arc indicator renderer", () => {
     expect([...streak.classList.values]).toEqual(["is-met"]);
     expect(subject.textContent).toBe("✅ 3/3");
     expect([...subject.classList.values]).toEqual(["is-met"]);
+    expect(essaySeparator.hidden).toBe(false);
+    expect(essay.hidden).toBe(false);
+    expect(essay.textContent).toBe("✍️ due");
   });
 
   it("hides the root without mutating stale child text when the view is hidden", () => {
@@ -91,16 +101,24 @@ describe("arc indicator renderer", () => {
     streak.classList.add("is-met");
     const subject = new FakeElement();
     subject.classList.add("is-met");
+    const essay = new FakeElement();
+    essay.classList.add("is-met");
+    const essaySeparator = new FakeElement();
     const renderer = createArcIndicatorRenderer({
       root: root as unknown as HTMLElement,
       streak: streak as unknown as HTMLElement,
       subject: subject as unknown as HTMLElement,
+      essaySeparator: essaySeparator as unknown as HTMLElement,
+      essay: essay as unknown as HTMLElement,
       viewFor: () => view({
         graduated: false,
         streakMet: false,
         subjectMet: false,
         streakText: "📚 1/3",
         subjectText: "✅ 1/3",
+        essayVisible: false,
+        essayText: "",
+        essayMet: false,
       }),
     });
 
@@ -111,5 +129,8 @@ describe("arc indicator renderer", () => {
     expect([...streak.classList.values]).toEqual([]);
     expect(subject.textContent).toBe("✅ 1/3");
     expect([...subject.classList.values]).toEqual([]);
+    expect([...essay.classList.values]).toEqual([]);
+    expect(essaySeparator.hidden).toBe(true);
+    expect(essay.hidden).toBe(true);
   });
 });

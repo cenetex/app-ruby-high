@@ -312,6 +312,7 @@ export interface QuestionBankStatus {
   remaining: number;
   canPick: boolean;
   nextCardRole?: DeckCardRole;
+  nextOpinionPurpose?: "daily-take" | "grade-essay";
   grade?: string;
   readyCount?: number;
   masteredCount?: number;
@@ -465,7 +466,13 @@ function gradeDiplomaCollectibleFor(parts: {
 function teacherPortraitUrl(facultyId: string, assetTeacherId?: string, profileImageUrl?: string): string | undefined {
   if (profileImageUrl) return profileImageUrl;
   const assetId = assetTeacherId || facultyId;
-  if (assetId === RUBY_FACULTY.id || assetId === "sally-science" || assetId === "professor-edward") {
+  if (
+    assetId === RUBY_FACULTY.id
+    || assetId === "sally-science"
+    || assetId === "professor-edward"
+    || assetId === "eliza"
+    || assetId === "seraph"
+  ) {
     return `${RUBY_HIGH_ASSET_PREFIX}/teachers/${assetId}-face.png`;
   }
   return undefined;
@@ -474,7 +481,13 @@ function teacherPortraitUrl(facultyId: string, assetTeacherId?: string, profileI
 function teacherFullPortraitUrl(facultyId: string, assetTeacherId?: string, profileImageUrl?: string): string | undefined {
   if (profileImageUrl) return profileImageUrl;
   const assetId = assetTeacherId || facultyId;
-  if (assetId === RUBY_FACULTY.id || assetId === "sally-science" || assetId === "professor-edward") {
+  if (
+    assetId === RUBY_FACULTY.id
+    || assetId === "sally-science"
+    || assetId === "professor-edward"
+    || assetId === "eliza"
+    || assetId === "seraph"
+  ) {
     return `${RUBY_HIGH_ASSET_PREFIX}/teachers/${assetId}-full.png`;
   }
   return undefined;
@@ -540,6 +553,7 @@ export interface CourseProgress {
   ready: number;
   canPick: boolean;
   nextCardRole?: DeckCardRole;
+  nextOpinionPurpose?: "daily-take" | "grade-essay";
   grade?: string;
   completedClasses: number;
   requiredClasses: number;
@@ -563,8 +577,11 @@ export interface CourseProgress {
   new: number;
 }
 
+export type GraduationStage = "classwork" | "essay" | "ceremony";
+
 export interface GraduationGateProgress {
   grade: Grade | null;
+  stage: GraduationStage;
   requiredDays: number;
   dailyClasses: number;
   requiredRooms: number;
@@ -573,6 +590,12 @@ export interface GraduationGateProgress {
   requiredFacultyIds: string[];
   eligibleFacultyIds: string[];
   classGrades: Record<string, string>;
+  classRequirementsMet: boolean;
+  essayRequired: boolean;
+  essayCompleted: boolean;
+  essayReady: boolean;
+  ceremonyReady: boolean;
+  /** Backwards-compatible alias for ceremonyReady. */
   ready: boolean;
 }
 
@@ -590,6 +613,7 @@ interface CourseStanding {
 interface ScheduledPickPlan {
   facultyId: string;
   cardRole: DeckCardRole;
+  opinionPurpose?: "daily-take" | "grade-essay";
   importedReviewCourse: boolean;
   difficulty?: Difficulty;
   question?: BankedQuestion;
@@ -6605,6 +6629,7 @@ export class RubyHighService extends Service {
     if (!selection.grade) {
       return {
         grade: null,
+        stage: "classwork",
         requiredDays: 0,
         dailyClasses: 0,
         requiredRooms: 0,
@@ -6613,6 +6638,11 @@ export class RubyHighService extends Service {
         requiredFacultyIds: [],
         eligibleFacultyIds: [],
         classGrades: {},
+        classRequirementsMet: false,
+        essayRequired: false,
+        essayCompleted: false,
+        essayReady: false,
+        ceremonyReady: false,
         ready: false,
       };
     }
@@ -6626,12 +6656,22 @@ export class RubyHighService extends Service {
     }
     const ch = state.character;
     const streakCount = ch?.streak && ch.streak.grade === selection.grade ? ch.streak.count : 0;
-    const ready = selection.requiredRooms > 0 &&
+    const classRequirementsMet = selection.requiredRooms > 0 &&
       selection.selected.length >= selection.requiredRooms &&
       completedRooms >= selection.requiredRooms &&
       streakCount >= selection.requiredDays;
+    const essayPrompt = ch?.essayPrompt?.trim();
+    const essayRequired = !!essayPrompt;
+    const reportCompletesEssay = !!essayPrompt && (state.essayReports ?? []).some((report) =>
+      report.grade === selection.grade && report.prompt.trim() === essayPrompt
+    );
+    const essayCompleted = !essayRequired || ch?.essayCompleted === true || reportCompletesEssay;
+    const essayReady = classRequirementsMet && essayRequired && !essayCompleted;
+    const ceremonyReady = classRequirementsMet && essayCompleted;
+    const stage: GraduationStage = ceremonyReady ? "ceremony" : essayReady ? "essay" : "classwork";
     return {
       grade: selection.grade,
+      stage,
       requiredDays: selection.requiredDays,
       dailyClasses: streakCount,
       requiredRooms: selection.requiredRooms,
@@ -6640,7 +6680,12 @@ export class RubyHighService extends Service {
       requiredFacultyIds: selection.selected,
       eligibleFacultyIds: selection.eligible,
       classGrades,
-      ready,
+      classRequirementsMet,
+      essayRequired,
+      essayCompleted,
+      essayReady,
+      ceremonyReady,
+      ready: ceremonyReady,
     };
   }
 
@@ -6690,6 +6735,7 @@ export class RubyHighService extends Service {
       && !requestedMode
       && !!state.character
       && !!state.currentGrade
+      && this.isGraduationFacultyForState(state, facultyId)
       && facultyId !== LOUNGE_FACULTY.id;
   }
 
@@ -6752,7 +6798,18 @@ export class RubyHighService extends Service {
     const required = grade && selection.selected.includes(facultyId) ? selection.requiredDays : 0;
     const todayKey = dailyKey();
     const todayRecord = grade ? this.dailyClassRecord(state, facultyId, todayKey) : null;
-    const today: CourseProgress["today"] = todayRecord?.status === "complete"
+    const today: CourseProgress["today"] = required === 0
+      ? {
+          mode: "practice",
+          status: "available",
+          date: todayKey,
+          questionCount: 0,
+          correctCount: 0,
+          totalQuestions: CLASS_QUESTIONS_PER_DAY,
+          ...(todayRecord?.practiceCount ? { practiceCount: todayRecord.practiceCount } : {}),
+          ...(todayRecord?.socialCount ? { socialCount: todayRecord.socialCount } : {}),
+        }
+      : todayRecord?.status === "complete"
       ? {
           mode: "practice",
           status: "complete",
@@ -6786,8 +6843,8 @@ export class RubyHighService extends Service {
             totalQuestions: CLASS_QUESTIONS_PER_DAY,
           };
 
-    if (!ch || !grade) {
-      return { facultyId, grade: null, completed: 0, required, passed: false, today };
+    if (!ch || !grade || required === 0) {
+      return { facultyId, grade: grade ?? null, completed: 0, required, passed: false, today };
     }
 
     const completed = characterDailyClassRecords(ch)
@@ -7894,7 +7951,7 @@ export class RubyHighService extends Service {
     const classCount = plan.requiredRooms;
     const classGrades = plan.classGrades;
     const streakMet = streakCount >= requiredStreak;
-    const classesMetAll = classCount > 0 && classesMet >= classCount && plan.openElectiveSlots === 0;
+    const classesMetAll = plan.classRequirementsMet;
     return {
       grade,
       requiredStreak,
@@ -7904,17 +7961,34 @@ export class RubyHighService extends Service {
       classCount,
       classesMetAll,
       classGrades,
-      ready: streakMet && classesMetAll && (ch.essayCompleted !== false || !ch.essayPrompt),
+      ready: plan.ceremonyReady,
     };
   }
 
   private maybeMarkGradeReady(state: QuizState): boolean {
     const status = this.gradeCompletionStatus(state);
     const ch = state.character;
-    if (!status || !ch || !status.ready) return false;
+    if (!status || !ch) return false;
+    let changed = false;
+    const gate = this.graduationClassPlanForState(state);
+    if (gate.essayCompleted && ch.essayPrompt && ch.essayCompleted !== true) {
+      ch.essayCompleted = true;
+      changed = true;
+    }
+    if (!status.ready) {
+      if (ch.pendingGraduation) {
+        ch.pendingGraduation = null;
+        changed = true;
+      }
+      return changed;
+    }
     const grade = status.grade;
-    if (characterYearbookEntries(ch).some((y) => y.grade === grade) || state.completedGrades.includes(grade)) return false;
-    if (ch.pendingGraduation?.grade === grade) return false;
+    if (ch.pendingGraduation && ch.pendingGraduation.grade !== grade) {
+      ch.pendingGraduation = null;
+      changed = true;
+    }
+    if (characterYearbookEntries(ch).some((y) => y.grade === grade) || state.completedGrades.includes(grade)) return changed;
+    if (ch.pendingGraduation?.grade === grade) return changed;
     ch.pendingGraduation = {
       grade,
       readyAt: Date.now(),
@@ -7927,10 +8001,12 @@ export class RubyHighService extends Service {
   }
 
   completeGraduation(sessionId: string, reward: GraduationReward): QuizState {
+    const hadPendingCeremony = !!this.sessions.get(sessionId)?.character?.pendingGraduation;
     const state = this.getOrCreate(sessionId);
     const ch = state.character;
     const pending = ch?.pendingGraduation;
     if (!ch || !pending || !state.currentGrade || pending.grade !== state.currentGrade) {
+      if (hadPendingCeremony && ch) throw new Error("Graduation requirements are not complete.");
       throw new Error("No graduation ceremony is ready.");
     }
     const status = this.gradeCompletionStatus(state);
@@ -8686,6 +8762,17 @@ export class RubyHighService extends Service {
     const assignedEssay = state.character?.essayPrompt?.trim();
     const opinionPurpose = input.purpose
       ?? (assignedEssay && input.prompt.trim() === assignedEssay ? "grade-essay" : undefined);
+    if (opinionPurpose === "grade-essay") {
+      if (!assignedEssay || input.prompt.trim() !== assignedEssay) {
+        throw new Error("The graded essay must use the student's assigned prompt.");
+      }
+      const gate = this.graduationClassPlanForState(state);
+      if (!gate.essayReady) {
+        throw new Error(gate.essayCompleted
+          ? "The graded essay is already complete."
+          : "The graded essay unlocks after the class requirements are complete.");
+      }
+    }
     const question: Question = {
       id,
       prompt: input.prompt.trim(),
@@ -8976,8 +9063,30 @@ export class RubyHighService extends Service {
     return next;
   }
 
+  private poseAssignedGradeEssay(sessionId: string, state: QuizState, facultyId: string): QuizState {
+    const prompt = state.character?.essayPrompt?.trim();
+    if (!prompt) throw new Error("No graded essay is assigned for this year.");
+    return this.poseOpinion(sessionId, {
+      faculty: facultyId,
+      subject: this.normalizeQuestionSubject(state, facultyId),
+      questionId: `essay_${state.currentGrade ?? DEFAULT_GRADE}_${Date.now().toString(36)}`,
+      prompt,
+      rubric: "Take a clear position, support it with concrete reasoning or evidence, and address the strongest counterargument.",
+      purpose: "grade-essay",
+    });
+  }
+
   private scheduledPickPlanForState(state: QuizState, filter: PickAndPoseInput = {}): ScheduledPickPlan {
     const facultyId = this.resolveQuestionFaculty(state, filter.faculty);
+    const graduationGate = this.graduationClassPlanForState(state);
+    if (graduationGate.essayReady) {
+      return {
+        facultyId,
+        cardRole: "social",
+        opinionPurpose: "grade-essay",
+        importedReviewCourse: this.isImportedReviewCourse(state, facultyId),
+      };
+    }
     const cardRole = this.peekCardRoleForPose(state, facultyId, filter.mode);
     const importedReviewCourse = this.isImportedReviewCourse(state, facultyId);
     const explicitDifficulty = filter.difficulty;
@@ -8999,7 +9108,14 @@ export class RubyHighService extends Service {
           difficultyWeights,
           allowUndue: filter.mode === "practice",
         }) ?? undefined;
-    return { facultyId, cardRole, importedReviewCourse, difficulty: displayDifficulty, question };
+    return {
+      facultyId,
+      cardRole,
+      ...(cardRole === "social" ? { opinionPurpose: "daily-take" as const } : {}),
+      importedReviewCourse,
+      difficulty: displayDifficulty,
+      question,
+    };
   }
 
   pickAndPose(sessionId: string, filter: PickAndPoseInput = {}): QuizState {
@@ -9010,6 +9126,9 @@ export class RubyHighService extends Service {
     this.assertBoardMutationAllowed(state, "post");
     const plan = this.scheduledPickPlanForState(state, filter);
     if (plan.cardRole === "social") {
+      if (plan.opinionPurpose === "grade-essay") {
+        return this.poseAssignedGradeEssay(sessionId, state, plan.facultyId);
+      }
       return this.poseDailyClassTake(sessionId, state, plan.facultyId);
     }
     if (!plan.question) {
@@ -9047,6 +9166,7 @@ export class RubyHighService extends Service {
       remaining: counts.ready,
       canPick,
       nextCardRole: pickPlan.cardRole,
+      nextOpinionPurpose: pickPlan.opinionPurpose,
       grade: standing.letterGrade,
       courseGrade: standing.letterGrade,
       completedClasses: standing.completed,
@@ -9075,6 +9195,7 @@ export class RubyHighService extends Service {
       ready: status.readyCount ?? status.remaining,
       canPick: status.canPick,
       nextCardRole: status.nextCardRole,
+      nextOpinionPurpose: status.nextOpinionPurpose,
       grade: status.grade,
       completedClasses: status.completedClasses ?? 0,
       requiredClasses: status.requiredClasses ?? 0,

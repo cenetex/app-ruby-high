@@ -106,7 +106,7 @@ No hosted account or OpenRouter key is needed for these:
 
 ## Service Wiring
 
-The standalone server starts the school, faculty, auth, chat, agent-access, and configured social services backed by the content-pack registry under `src/content/`. Ruby High Original is always the base school; public creator packs rotate into one Guest Faculty course automatically each week. Eliza's built-in 96-question ElizaOS Systems Lab is the first curated guest course, and Eliza remains available as a collectible teacher card.
+The standalone server starts the school, faculty, auth, chat, agent-access, and configured social services backed by the content-pack registry under `src/content/`. Ruby High Original is always the base school; public creator packs rotate into one Guest Faculty course automatically each week. The curated roster includes Eliza's 96-question ElizaOS Systems Lab and Seraph's 24-question Project 89 Signal & Timeline Lab. Seraph's course teaches story-world literacy, source verification, memetic systems, human-AI agency, coordination, and bounded intervention while explicitly separating immersive lore from verified real-world claims. Eliza remains available as a collectible teacher card.
 
 All hosted text/agent paths default to `openai/gpt-5.6-luna` through OpenRouter, including faculty dialogue and tool use, NPC opinion chimes, guest faculty, character text, social posts, creator drafts, and voice evaluation. Course and question-bank generation use `openai/gpt-5.6-terra`. Image generation keeps its dedicated image-capable models.
 

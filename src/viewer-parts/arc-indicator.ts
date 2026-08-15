@@ -5,6 +5,8 @@ export interface ArcIndicatorRendererDeps {
   year?: HTMLElement | null;
   streak?: HTMLElement | null;
   subject?: HTMLElement | null;
+  essaySeparator?: HTMLElement | null;
+  essay?: HTMLElement | null;
   viewFor(telemetry: unknown, subjects: unknown): ArcIndicatorView;
 }
 
@@ -36,6 +38,12 @@ export function createArcIndicatorRenderer(deps: ArcIndicatorRendererDeps): ArcI
       if (deps.subject) {
         deps.subject.textContent = view.subjectText;
         deps.subject.classList.toggle("is-met", view.subjectMet);
+      }
+      if (deps.essaySeparator) deps.essaySeparator.hidden = !view.essayVisible;
+      if (deps.essay) {
+        deps.essay.hidden = !view.essayVisible;
+        deps.essay.textContent = view.essayText;
+        deps.essay.classList.toggle("is-met", view.essayMet);
       }
     },
   };

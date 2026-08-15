@@ -42,6 +42,9 @@ export type ArcIndicatorView = {
   streakMet: boolean;
   subjectText: string;
   subjectMet: boolean;
+  essayVisible: boolean;
+  essayText: string;
+  essayMet: boolean;
 };
 export type GuestSpotlightView = {
   visible: boolean;
@@ -76,6 +79,8 @@ export function dailyClassProgressView(telemetry: NullableRecord): DailyClassPro
   const hasContext = !!(
     telemetry
     && telemetry.character
+    && Number(progress && progress.requiredClasses) > 0
+    && !(telemetry.current && telemetry.current.opinionPurpose === "grade-essay")
     && today
     && (
       today.status === "active"
@@ -1865,6 +1870,9 @@ export function arcIndicatorView(t: unknown, subjects: unknown): ArcIndicatorVie
       streakMet: false,
       subjectText: "",
       subjectMet: false,
+      essayVisible: false,
+      essayText: "",
+      essayMet: false,
     };
   }
   const graduated = Array.isArray(character.yearbook) && character.yearbook.length >= 4;
@@ -1877,14 +1885,25 @@ export function arcIndicatorView(t: unknown, subjects: unknown): ArcIndicatorVie
       streakMet: false,
       subjectText: "✅",
       subjectMet: false,
+      essayVisible: false,
+      essayText: "",
+      essayMet: false,
     };
   }
   const streak = character.streak && typeof character.streak === "object" ? character.streak as LooseRecord : {};
   const streakCount = streak.grade === grade ? Math.max(0, Math.floor(Number(streak.count || 0))) : 0;
-  const streakReq = (VIEWER_CONSTANTS.STREAK_REQUIRED as Record<string, number>)[grade] || 1;
+  const gate = telemetry.graduation_gate && typeof telemetry.graduation_gate === "object"
+    ? telemetry.graduation_gate as LooseRecord
+    : {};
+  const gateRequiredDays = Math.floor(Number(gate.requiredDays) || 0);
+  const streakReq = gateRequiredDays > 0
+    ? gateRequiredDays
+    : (VIEWER_CONSTANTS.STREAK_REQUIRED as Record<string, number>)[grade] || 1;
   const subjectRecord = subjects && typeof subjects === "object" ? subjects as LooseRecord : {};
   const subjectMet = Math.max(0, Math.floor(Number(subjectRecord.met || 0)));
   const subjectTotal = Math.max(0, Math.floor(Number(subjectRecord.total || 0)));
+  const essayVisible = gate.essayRequired === true;
+  const essayMet = gate.essayCompleted === true;
   return {
     hidden: false,
     graduated: false,
@@ -1893,6 +1912,9 @@ export function arcIndicatorView(t: unknown, subjects: unknown): ArcIndicatorVie
     streakMet: streakCount >= streakReq,
     subjectText: "✅ " + subjectMet + "/" + subjectTotal,
     subjectMet: subjectTotal > 0 && subjectMet >= subjectTotal,
+    essayVisible,
+    essayText: essayVisible ? (essayMet ? "✍️ ✓" : "✍️ due") : "",
+    essayMet,
   };
 }
 
@@ -2154,8 +2176,51 @@ export function safeMarkdownHref(href: unknown): string | null {
     return null;
   }
 }
+export function normalizeScientificNotationForDisplay(value: unknown): string {
+  const text = String(value == null ? "" : value);
+  const superscript: Record<string, string> = {
+    "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
+    "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
+    "+": "⁺", "-": "⁻", "−": "⁻",
+  };
+  const subscript: Record<string, string> = {
+    "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄",
+    "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉",
+    "+": "₊", "-": "₋", "−": "₋",
+  };
+  const scriptText = (raw: string, chars: Record<string, string>, fallback: string): string => {
+    const compact = raw.replace(/\s+/g, "");
+    if (!compact || Array.from(compact).some((char) => !chars[char])) return fallback;
+    return Array.from(compact).map((char) => chars[char]).join("");
+  };
+  const readableMath = (raw: string): string => {
+    let math = raw.trim();
+    math = math.replace(/\^\s*\\circ(?![A-Za-z])/g, "°");
+    math = math.replace(/\\(?:text|mathrm|operatorname)\{([^{}]*)\}/g, "$1");
+    math = math.replace(/\\(?:times|cdot)(?![A-Za-z])/g, " × ");
+    math = math.replace(/\\pm(?![A-Za-z])/g, "±").replace(/\\(?:leq|le)(?![A-Za-z])/g, "≤").replace(/\\(?:geq|ge)(?![A-Za-z])/g, "≥");
+    math = math.replace(/\\(?:left|right)(?![A-Za-z])/g, "");
+    math = math.replace(/\\[,;:]\s*/g, " ").replace(/\\!\s*/g, "");
+    math = math.replace(/\^\{([^{}]+)\}/g, (match, exponent) => scriptText(exponent, superscript, match));
+    math = math.replace(/\^([+\-−0-9])/g, (match, exponent) => scriptText(exponent, superscript, match));
+    math = math.replace(/_\{([^{}]+)\}/g, (match, index) => scriptText(index, subscript, match));
+    math = math.replace(/_([+\-−0-9])/g, (match, index) => scriptText(index, subscript, match));
+    math = math.replace(/\s*=\s*/g, " = ").replace(/\s*×\s*/g, " × ");
+    return math.replace(/\s+/g, " ").trim();
+  };
+
+  // Leave examples inside Markdown code spans/fences untouched. Generated
+  // teacher prose commonly uses TeX delimiters, while code samples may be
+  // intentionally showing that syntax to the student.
+  return text.split(/(```[\s\S]*?```|`[^`\n]*`)/g).map((part, index) => {
+    if (index % 2 === 1) return part;
+    return part.replace(/\\\(([\s\S]*?)\\\)|\\\[([\s\S]*?)\\\]/g, (_match, inline, block) => {
+      return readableMath(inline ?? block ?? "");
+    });
+  }).join("");
+}
 export function sanitizeVisibleChatText(value: unknown): string {
-  let text = String(value == null ? "" : value);
+  let text = normalizeScientificNotationForDisplay(value);
   const tags = "pick_from_bank|pose_question|pose_opinion|clear_board|handoff_faculty";
   text = text.replace(new RegExp("<\\s*(" + tags + ")\\b[^>]*>[\\s\\S]*?<\\s*/\\s*\\1\\s*>", "gi"), "");
   text = text.replace(new RegExp("<\\s*/?\\s*(?:" + tags + ")\\b[^>]*\\/?>", "gi"), "");

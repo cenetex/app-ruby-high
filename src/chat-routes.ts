@@ -417,11 +417,13 @@ function gradeLabel(grade: string | undefined | null): string {
   return (GRADE_LABELS as Record<string, string>)[grade] ?? grade;
 }
 
-function buildEssayContext(state: { character?: { essayPrompt?: string; essayCompleted?: boolean; pendingGraduation?: unknown } | null }): string | null {
+function buildEssayContext(
+  state: { character?: { essayPrompt?: string; essayCompleted?: boolean } | null },
+  gate: { essayReady?: boolean } | null | undefined,
+): string | null {
   const ch = state.character;
   if (!ch?.essayPrompt || ch.essayCompleted) return null;
-  const ready = !!ch.pendingGraduation;
-  if (ready) {
+  if (gate?.essayReady) {
     return `ESSAY TIME. The student has completed their class requirements and is ready to write their graded essay. The essay question you assigned is: "${ch.essayPrompt}". Tell them it's time, then pose the essay with pose_opinion. Do not put another MCQ on the board — this is the moment.`;
   }
   return `REMINDER: The student's essay question for this grade is: "${ch.essayPrompt}". They have not written it yet. Reference it naturally during lessons — it's due before graduation. Do NOT pose it yet — wait until the student has completed their class work.`;
@@ -463,7 +465,7 @@ function schedulerOwnsBoard(bank: { remaining: number; canPick?: boolean; todayC
   return scheduledPickAvailable(bank);
 }
 
-function schedulerBoundaryInstruction(bank: { mode?: string; remaining: number; canPick?: boolean; nextCardRole?: string; todayClass?: { status?: string; questionCount?: number; totalQuestions?: number } }): string {
+function schedulerBoundaryInstruction(bank: { mode?: string; remaining: number; canPick?: boolean; nextCardRole?: string; nextOpinionPurpose?: string; todayClass?: { status?: string; questionCount?: number; totalQuestions?: number } }): string {
   if (!schedulerOwnsBoard(bank)) {
     return nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh scheduled card, or pose_question for a custom practice challenge.");
   }
@@ -473,8 +475,10 @@ function schedulerBoundaryInstruction(bank: { mode?: string; remaining: number; 
     : today?.status === "active"
       ? `today's graded class is in progress (${today.questionCount ?? 0}/${today.totalQuestions ?? 3})`
       : "today's graded class is available";
-  const readyLine = bank.remaining > 0
-    ? `${bank.remaining} scheduled card${bank.remaining === 1 ? "" : "s"} ready`
+  const readyLine = bank.nextOpinionPurpose === "grade-essay"
+    ? "the assigned graded essay ready"
+    : bank.remaining > 0
+      ? `${bank.remaining} scheduled card${bank.remaining === 1 ? "" : "s"} ready`
     : bank.nextCardRole === "social"
       ? "a Ruby High reflection prompt ready"
     : "no scheduled cards ready";
@@ -3054,7 +3058,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     if (trigger === "channel-enter") {
       const state = ruby.getOrCreate(sessionId);
       const playerName = state.character?.name ?? "the player";
-      extraSystemContext = buildEssayContext(state) ?? undefined;
+      extraSystemContext = buildEssayContext(state, ruby.graduationGate(sessionId)) ?? undefined;
       chat.appendEvent(
         { sessionToken: token, faculty },
         {
@@ -3081,7 +3085,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const correctAns = resolved.correctChoice;
       extraSystemContext = resolved.extraSystemContext;
       // Layer essay context on top.
-      const essayCtx2 = buildEssayContext(state);
+      const essayCtx2 = buildEssayContext(state, ruby.graduationGate(sessionId));
       if (essayCtx2) extraSystemContext = extraSystemContext
         ? extraSystemContext + "\n" + essayCtx2
         : essayCtx2;
@@ -3127,7 +3131,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const idle = buildOpenRoundIdleBriefing({ state, playerName });
       extraSystemContext = idle.extraSystemContext;
       // Layer essay context on top.
-      const essayCtx2 = buildEssayContext(state);
+      const essayCtx2 = buildEssayContext(state, ruby.graduationGate(sessionId));
       if (essayCtx2) extraSystemContext = extraSystemContext
         ? extraSystemContext + "\n" + essayCtx2
         : essayCtx2;
