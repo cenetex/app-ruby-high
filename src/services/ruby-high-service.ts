@@ -465,7 +465,13 @@ function gradeDiplomaCollectibleFor(parts: {
 function teacherPortraitUrl(facultyId: string, assetTeacherId?: string, profileImageUrl?: string): string | undefined {
   if (profileImageUrl) return profileImageUrl;
   const assetId = assetTeacherId || facultyId;
-  if (assetId === RUBY_FACULTY.id || assetId === "sally-science" || assetId === "professor-edward") {
+  if (
+    assetId === RUBY_FACULTY.id
+    || assetId === "sally-science"
+    || assetId === "professor-edward"
+    || assetId === "eliza"
+    || assetId === "seraph"
+  ) {
     return `${RUBY_HIGH_ASSET_PREFIX}/teachers/${assetId}-face.png`;
   }
   return undefined;
@@ -474,7 +480,13 @@ function teacherPortraitUrl(facultyId: string, assetTeacherId?: string, profileI
 function teacherFullPortraitUrl(facultyId: string, assetTeacherId?: string, profileImageUrl?: string): string | undefined {
   if (profileImageUrl) return profileImageUrl;
   const assetId = assetTeacherId || facultyId;
-  if (assetId === RUBY_FACULTY.id || assetId === "sally-science" || assetId === "professor-edward") {
+  if (
+    assetId === RUBY_FACULTY.id
+    || assetId === "sally-science"
+    || assetId === "professor-edward"
+    || assetId === "eliza"
+    || assetId === "seraph"
+  ) {
     return `${RUBY_HIGH_ASSET_PREFIX}/teachers/${assetId}-full.png`;
   }
   return undefined;

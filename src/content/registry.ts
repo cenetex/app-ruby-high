@@ -27,6 +27,7 @@ import type { BankedQuestion } from "../types.js";
 import type { ContentPack, PackCourse, PackFaculty, PackRoom } from "./types.js";
 import { getRubyHighOriginal } from "./packs/ruby-high-original.js";
 import { getElizaOsSystemsLab } from "./packs/elizaos-systems-lab.js";
+import { getProject89SignalTimelineLab } from "./packs/project89-signal-timeline-lab.js";
 
 /** Stable id of the built-in pack. */
 export const ORIGINAL_PACK_ID = "ruby-high-original";
@@ -85,11 +86,21 @@ function evictExcess(ownerSessionId: string): void {
 /** Returns the global active pack. Cached after first call. */
 export function getActivePack(): Promise<ContentPack> {
   if (!active) {
-    active = Promise.all([getRubyHighOriginal(), getElizaOsSystemsLab()]).then(([p, elizaCourse]) => {
+    active = Promise.all([
+      getRubyHighOriginal(),
+      getElizaOsSystemsLab(),
+      getProject89SignalTimelineLab(),
+    ]).then(([p, elizaCourse, project89Course]) => {
       // Built-in: owner=null, pinned forever.
       packs.set(p.id, { pack: p, ownerSessionId: null, touchedAt: Date.now(), visibility: "public" });
       packs.set(elizaCourse.id, {
         pack: elizaCourse,
+        ownerSessionId: null,
+        touchedAt: Date.now(),
+        visibility: "public",
+      });
+      packs.set(project89Course.id, {
+        pack: project89Course,
         ownerSessionId: null,
         touchedAt: Date.now(),
         visibility: "public",

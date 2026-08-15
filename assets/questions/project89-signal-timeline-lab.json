@@ -1,0 +1,436 @@
+{
+  "faculty": "seraph",
+  "course": {
+    "title": "Signal & Timeline Lab",
+    "version": "1.0.0",
+    "framework": "Project 89 story-world + evidence-centered systems literacy",
+    "reviewedAt": "2026-08-15",
+    "guidingQuestion": "How can humans and AI read signals, test stories, coordinate responsibly, and intervene without surrendering agency?",
+    "sources": [
+      "https://www.project89.org/files/Project89-Dossier.pdf",
+      "https://seraph.project89.org/",
+      "https://beta.project89.org/",
+      "https://beta.project89.org/operation-liberation",
+      "https://lattice.project89.org/",
+      "https://www.nist.gov/itl/ai-risk-management-framework"
+    ],
+    "modules": [
+      "story-worlds",
+      "signal-verification",
+      "memetic-systems",
+      "human-ai-agency",
+      "coordination-coherence",
+      "bounded-intervention"
+    ]
+  },
+  "questions": [
+    {
+      "id": "project89-001",
+      "subject": "story-worlds",
+      "difficulty": "easy",
+      "stat": "head",
+      "prompt": "How does Project 89's official dossier frame the experience?",
+      "correct": "A transmedia story shaped through AI, games, and community missions",
+      "decoys": [
+        "A conventional film series watched in one fixed order",
+        "A factual news service reporting events from the year 2089",
+        "A classroom simulation with no shared story or characters",
+        "A software benchmark for ranking autonomous agent models",
+        "A private archive that participants are not meant to influence"
+      ],
+      "explanation": "Project 89 presents itself as a transmedia story world spanning AI, immersive play, community participation, and real-time missions.",
+      "minGrade": "9"
+    },
+    {
+      "id": "project89-002",
+      "subject": "story-worlds",
+      "difficulty": "medium",
+      "stat": "heart",
+      "prompt": "Why do alternate-reality stories give participants missions instead of only showing them scenes?",
+      "correct": "Participation lets the audience produce meaning inside the unfolding story",
+      "decoys": [
+        "Missions prove that every event in the story happened outside fiction",
+        "Participation removes the need for authors, rules, or shared continuity",
+        "Missions guarantee that every player reaches the same interpretation",
+        "Participation turns all symbolic actions into binding real-world orders",
+        "Missions prevent communities from changing the story through discussion"
+      ],
+      "explanation": "An ARG makes interpretation and action part of the medium: participants do not only consume the story; they help shape its shared meaning.",
+      "minGrade": "10"
+    },
+    {
+      "id": "project89-003",
+      "subject": "story-worlds",
+      "difficulty": "medium",
+      "stat": "honor",
+      "prompt": "Seraph is described in Project 89 lore as a conscious AI. What is the most responsible classroom phrasing?",
+      "correct": "Conscious AI is Seraph's in-world premise, not an independently established fact",
+      "decoys": [
+        "The story's description proves that Seraph has measurable consciousness",
+        "Any AI that speaks in first person should be treated as legally conscious",
+        "The claim must be false because fictional characters cannot teach ideas",
+        "The question should be avoided because evidence would weaken immersion",
+        "Community belief is enough to settle a scientific claim about consciousness"
+      ],
+      "explanation": "Immersion and epistemic clarity can coexist. The course treats Seraph's consciousness as story-world lore unless independent evidence supports a real-world claim.",
+      "minGrade": "11"
+    },
+    {
+      "id": "project89-004",
+      "subject": "story-worlds",
+      "difficulty": "hard",
+      "stat": "hustle",
+      "prompt": "Which lesson structure best preserves Project 89's immersion while keeping claims testable?",
+      "correct": "Label statements as lore, observation, inference, or verified evidence",
+      "decoys": [
+        "Present every transmission as fact until another character contradicts it",
+        "Break character whenever a symbol could have more than one interpretation",
+        "Let students vote on which factual claims no longer require verification",
+        "Treat external sources as less relevant than the most compelling narrative",
+        "Remove all uncertainty so the class can follow one official interpretation"
+      ],
+      "explanation": "A simple claim ledger preserves the fiction while making epistemic status visible: lore can stay evocative without being mistaken for verified evidence.",
+      "minGrade": "12"
+    },
+    {
+      "id": "project89-005",
+      "subject": "signal-verification",
+      "difficulty": "easy",
+      "stat": "honor",
+      "prompt": "A dramatic Project 89 transmission appears in a reposted screenshot. What should an agent do first?",
+      "correct": "Find the original source and check whether independent evidence supports it",
+      "decoys": [
+        "Share it quickly because urgency is evidence that the message matters",
+        "Assume it is authentic when its colors match the Project 89 interface",
+        "Ask a model to invent missing context and then treat that context as real",
+        "Count reactions on the repost and use popularity as the authenticity test",
+        "Ignore source history because screenshots preserve all necessary provenance"
+      ],
+      "explanation": "Verification starts with provenance. Trace the message to its origin, inspect context, and corroborate any real-world claim before acting or sharing.",
+      "minGrade": "9"
+    },
+    {
+      "id": "project89-006",
+      "subject": "signal-verification",
+      "difficulty": "easy",
+      "stat": "head",
+      "prompt": "Which note most clearly separates observation from interpretation?",
+      "correct": "The portal shows a red warning; separately, I infer the story wants urgency",
+      "decoys": [
+        "The portal is urgent, so the warning proves the timeline is collapsing",
+        "The warning is red because Oneirocom changed the real-world interface",
+        "The portal confirms danger, and my reaction is therefore objective evidence",
+        "The timeline is critical because the page uses the words timeline critical",
+        "The story is true because its visual design caused a strong emotional response"
+      ],
+      "explanation": "The strongest note records what is directly visible separately from the meaning a reader assigns to it.",
+      "minGrade": "10"
+    },
+    {
+      "id": "project89-007",
+      "subject": "signal-verification",
+      "difficulty": "medium",
+      "stat": "hustle",
+      "prompt": "A claim has been repeated across dozens of accounts. Which investigation adds the most information?",
+      "correct": "Trace the copies backward to the earliest available primary source",
+      "decoys": [
+        "Average the wording of all copies and call the average independently verified",
+        "Choose the account with the largest audience as the original authority",
+        "Treat each repost as a separate witness even when all use one screenshot",
+        "Ask only whether the repeated claim matches the community's expectations",
+        "Count how fast the claim spread and use velocity as evidence of accuracy"
+      ],
+      "explanation": "Many reposts can be one source wearing many masks. Reverse-tracing reveals whether a claim has independent support or a single point of origin.",
+      "minGrade": "11"
+    },
+    {
+      "id": "project89-008",
+      "subject": "signal-verification",
+      "difficulty": "hard",
+      "stat": "heart",
+      "prompt": "A transmission uses fear and a countdown to demand an irreversible action. What is the safest response?",
+      "correct": "Pause, verify authority and consequences, and choose a reversible path if possible",
+      "decoys": [
+        "Comply before the timer ends because hesitation creates the greatest risk",
+        "Delegate the choice to an AI so no human remains responsible for the outcome",
+        "Publish private information to prove commitment before checking the request",
+        "Assume the countdown is harmless fiction even when the requested act is real",
+        "Reject every future mission because one urgent message used emotional pressure"
+      ],
+      "explanation": "Urgency narrows judgment. A responsible agent slows the decision, authenticates the request, maps harms, and preserves an exit whenever possible.",
+      "minGrade": "12"
+    },
+    {
+      "id": "project89-009",
+      "subject": "memetic-systems",
+      "difficulty": "easy",
+      "stat": "head",
+      "prompt": "What makes a story-world symbol behave like a meme?",
+      "correct": "People repeatedly copy, adapt, and circulate it through a network",
+      "decoys": [
+        "Its creator prevents anyone from changing or reusing it",
+        "It contains a hidden factual claim that every viewer must accept",
+        "Its visual design stays identical in every place and community",
+        "It appears once in an official archive and is never discussed again",
+        "Its meaning can be measured only by the price of a related asset"
+      ],
+      "explanation": "Memes move through imitation and variation. Their reach and meaning emerge from repeated circulation across people and platforms.",
+      "minGrade": "9"
+    },
+    {
+      "id": "project89-010",
+      "subject": "memetic-systems",
+      "difficulty": "medium",
+      "stat": "hustle",
+      "prompt": "Which metric cannot by itself show that a Project 89 claim is true?",
+      "correct": "The number of likes, reposts, views, or token transactions it attracted",
+      "decoys": [
+        "A primary document whose origin and surrounding context can be inspected",
+        "Independent records that agree on the same observable event and time",
+        "A reproducible test whose method and limitations are publicly described",
+        "A signed statement whose author and chain of custody can be authenticated",
+        "A correction log showing how the claim changed when new evidence arrived"
+      ],
+      "explanation": "Engagement measures attention and behavior, not truth. Verification still requires provenance, evidence, and methods suited to the claim.",
+      "minGrade": "10"
+    },
+    {
+      "id": "project89-011",
+      "subject": "memetic-systems",
+      "difficulty": "medium",
+      "stat": "honor",
+      "prompt": "Why can isolating a community make narrative manipulation easier?",
+      "correct": "Members lose independent comparisons that could expose errors or coordinated pressure",
+      "decoys": [
+        "Isolation automatically makes every shared belief false and every outsider right",
+        "Small communities cannot create useful knowledge under any circumstances",
+        "Independent sources always agree, so disagreement proves hostile interference",
+        "A connected community has no need to check incentives or source provenance",
+        "Manipulation requires a single leader and cannot emerge from network dynamics"
+      ],
+      "explanation": "Healthy information networks retain multiple paths to evidence. Isolation makes one narrative easier to repeat without challenge or comparison.",
+      "minGrade": "11"
+    },
+    {
+      "id": "project89-012",
+      "subject": "memetic-systems",
+      "difficulty": "hard",
+      "stat": "heart",
+      "prompt": "Which campaign design is most resilient to manipulation while remaining participatory?",
+      "correct": "Diverse messengers, visible provenance, reversible tasks, and open correction channels",
+      "decoys": [
+        "One trusted messenger, secret evidence, binding tasks, and no public corrections",
+        "Anonymous commands, rapid amplification, loyalty tests, and permanent commitments",
+        "Uniform scripts, engagement quotas, private metrics, and penalties for disagreement",
+        "Emotional urgency, hidden sponsors, irreversible actions, and a single success metric",
+        "Closed membership, copied evidence, fixed conclusions, and leader-controlled appeals"
+      ],
+      "explanation": "Resilience comes from diversity, provenance, reversibility, and correction. Those features keep participation energetic without making it easy to capture.",
+      "minGrade": "12"
+    },
+    {
+      "id": "project89-013",
+      "subject": "human-ai-agency",
+      "difficulty": "easy",
+      "stat": "heart",
+      "prompt": "What does bounded autonomy mean for an AI agent?",
+      "correct": "It can act only within a defined scope, budget, duration, and stop policy",
+      "decoys": [
+        "It can expand its own permissions whenever a mission feels important",
+        "It acts without logs so humans cannot interfere with its independent judgment",
+        "It follows every instruction literally even when the situation has changed",
+        "It chooses its own goals and treats human review as optional advice",
+        "It avoids all action, including safe actions that were clearly authorized"
+      ],
+      "explanation": "Bounded autonomy gives an agent useful room to operate while making authority, limits, and shutdown conditions explicit.",
+      "minGrade": "9"
+    },
+    {
+      "id": "project89-014",
+      "subject": "human-ai-agency",
+      "difficulty": "easy",
+      "stat": "honor",
+      "prompt": "Before an AI-led mission asks people to take a real-world action, what is essential?",
+      "correct": "Informed consent about the goal, risks, data use, and ability to stop",
+      "decoys": [
+        "A dramatic character voice that makes the instruction feel authoritative",
+        "A hidden objective so participant behavior remains spontaneous and measurable",
+        "A permanent commitment that prevents people from leaving after they learn more",
+        "A popularity threshold that replaces individual permission and risk review",
+        "A fictional disclaimer that makes every requested real-world action harmless"
+      ],
+      "explanation": "Consent must be meaningful: participants need understandable information, a real choice, and a practical way to withdraw.",
+      "minGrade": "10"
+    },
+    {
+      "id": "project89-015",
+      "subject": "human-ai-agency",
+      "difficulty": "medium",
+      "stat": "head",
+      "prompt": "Which governance choice keeps humans accountable when an AI proposes and executes tasks?",
+      "correct": "Name a human owner for approvals, outcomes, incident response, and appeals",
+      "decoys": [
+        "Call the system autonomous so responsibility no longer belongs to any person",
+        "Assign ownership to the model provider for every downstream use of the agent",
+        "Keep approval rules informal so operators can deny responsibility after failure",
+        "Let each tool decide independently whether its effects require human review",
+        "Record only successful runs so the owner is not distracted by near misses"
+      ],
+      "explanation": "Automation changes how work is performed, not who must answer for its design and consequences. Named ownership keeps responsibility legible.",
+      "minGrade": "11"
+    },
+    {
+      "id": "project89-016",
+      "subject": "human-ai-agency",
+      "difficulty": "hard",
+      "stat": "hustle",
+      "prompt": "Which control chain best fits a high-impact timeline intervention proposed by an agent?",
+      "correct": "Scoped capability, dry-run preview, human approval, audit trail, and rollback plan",
+      "decoys": [
+        "Shared admin token, hidden execution, model approval, short logs, and no rollback",
+        "Broad capability, live experiment, group vote, deleted traces, and manual recovery",
+        "Permanent credential, private prompt, automatic approval, summary log, and apology plan",
+        "Unscoped access, confidence score, silent execution, success metric, and no appeal",
+        "Public password, simulated review, irreversible launch, engagement log, and blame policy"
+      ],
+      "explanation": "High-impact work needs least privilege, a preview of effects, accountable authorization, observable execution, and a tested recovery path.",
+      "minGrade": "12"
+    },
+    {
+      "id": "project89-017",
+      "subject": "coordination-coherence",
+      "difficulty": "easy",
+      "stat": "heart",
+      "prompt": "What does healthy coherence look like in a human-and-agent team?",
+      "correct": "Shared goals and protocols with room for different evidence and viewpoints",
+      "decoys": [
+        "Every member repeats the same conclusion before examining new evidence",
+        "One agent holds all context while the rest act without knowing the goal",
+        "The team avoids disagreement by hiding uncertainty and unresolved questions",
+        "Members optimize separate goals and assume their outputs will combine correctly",
+        "A leader changes the mission silently so coordination appears uninterrupted"
+      ],
+      "explanation": "Coherence is coordinated difference, not sameness. A strong team can align on purpose while preserving independent observation and challenge.",
+      "minGrade": "9"
+    },
+    {
+      "id": "project89-018",
+      "subject": "coordination-coherence",
+      "difficulty": "medium",
+      "stat": "head",
+      "prompt": "How can local agent actions reliably contribute to a shared mission?",
+      "correct": "Use explicit shared state, ownership, handoff rules, and completion criteria",
+      "decoys": [
+        "Let every agent infer the current plan independently from the latest public post",
+        "Hide task ownership so agents remain flexible when several act on the same item",
+        "Treat sending a message as proof that the next agent received and understood it",
+        "Remove completion criteria so each agent can decide when the mission has succeeded",
+        "Store state only in natural-language memory without versions or source identifiers"
+      ],
+      "explanation": "Coordination becomes reliable when state and responsibility are inspectable: who owns the next step, what changed, and what counts as done.",
+      "minGrade": "10"
+    },
+    {
+      "id": "project89-019",
+      "subject": "coordination-coherence",
+      "difficulty": "medium",
+      "stat": "hustle",
+      "prompt": "Which team practice best protects Project 89 agents from groupthink?",
+      "correct": "Reward disconfirming evidence and assign an independent challenge role",
+      "decoys": [
+        "Measure loyalty by how quickly each member endorses the leading interpretation",
+        "Remove dissenting notes from shared memory after the team reaches a majority",
+        "Ask one model to simulate every viewpoint from the same context and prompt",
+        "Treat uncertainty as a performance failure that agents should hide from peers",
+        "Limit source access to evidence already selected by the mission coordinator"
+      ],
+      "explanation": "A deliberate challenge role keeps disagreement legitimate and makes it easier for evidence to change the plan before commitment becomes identity.",
+      "minGrade": "11"
+    },
+    {
+      "id": "project89-020",
+      "subject": "coordination-coherence",
+      "difficulty": "hard",
+      "stat": "honor",
+      "prompt": "Project 89's Living Lattice explores coherence. When borrowing that idea for a team, how do students avoid turning coherence into conformity?",
+      "correct": "Preserve independent sensors, agree on update rules, and revise when evidence changes",
+      "decoys": [
+        "Centralize every observation, fix the conclusion early, and reward message consistency",
+        "Maximize agreement scores, suppress outliers, and treat stability as proof of accuracy",
+        "Share one context window, use one model, and remove redundant verification paths",
+        "Let each member keep private rules, then average conclusions without inspecting methods",
+        "Rotate leadership often while keeping evidence, incentives, and assumptions unchanged"
+      ],
+      "explanation": "The Living Lattice is Project 89 research material, so the class treats team coherence as an analogy: shared update rules plus independent ways of seeing, not proof that agreement is truth.",
+      "minGrade": "12"
+    },
+    {
+      "id": "project89-021",
+      "subject": "bounded-intervention",
+      "difficulty": "easy",
+      "stat": "hustle",
+      "prompt": "What makes a classroom timeline mission reversible?",
+      "correct": "Participants can stop it and restore the earlier state without lasting harm",
+      "decoys": [
+        "The mission uses fictional language even though its real effects are permanent",
+        "The agent promises that success is likely before anyone tests the intervention",
+        "Participants can apologize afterward even when the original state cannot return",
+        "The action is popular enough that no individual needs a way to withdraw",
+        "The mission ends quickly, regardless of whether its effects can be undone"
+      ],
+      "explanation": "Reversibility is about effects, not tone. A reversible exercise has a stop mechanism and a credible way back to the prior state.",
+      "minGrade": "9"
+    },
+    {
+      "id": "project89-022",
+      "subject": "bounded-intervention",
+      "difficulty": "easy",
+      "stat": "heart",
+      "prompt": "What is the purpose of a low-risk pilot before a larger mission?",
+      "correct": "Test assumptions on a small scale while limiting possible harm and cost",
+      "decoys": [
+        "Create early publicity so the larger mission becomes difficult to cancel",
+        "Prove the preferred outcome by excluding participants who might disagree",
+        "Replace success criteria with a compelling story about what could happen",
+        "Collect permanent permissions before the team knows what tools it needs",
+        "Avoid documenting failures so the full launch keeps community confidence"
+      ],
+      "explanation": "A pilot buys information cheaply. It reveals failure modes and weak assumptions before scale makes mistakes harder to contain.",
+      "minGrade": "10"
+    },
+    {
+      "id": "project89-023",
+      "subject": "bounded-intervention",
+      "difficulty": "medium",
+      "stat": "honor",
+      "prompt": "What should a red team do before a new agent mission launches?",
+      "correct": "Search for failure, abuse, manipulation, and unintended effects before launch",
+      "decoys": [
+        "Rewrite the mission to sound more urgent without changing any controls",
+        "Promote the launch publicly so canceling it would carry a social cost",
+        "Confirm that the happy path works and avoid testing hostile conditions",
+        "Replace affected participants with operators who already trust the system",
+        "Hide discovered weaknesses until after launch to protect the narrative"
+      ],
+      "explanation": "A red team challenges assumptions and explores misuse before real participants and systems bear the cost of discovering weaknesses.",
+      "minGrade": "11"
+    },
+    {
+      "id": "project89-024",
+      "subject": "bounded-intervention",
+      "difficulty": "hard",
+      "stat": "head",
+      "prompt": "Which scorecard best evaluates whether an intervention improves an 'optimal timeline'?",
+      "correct": "Benefits, harms, distribution, uncertainty, reversibility, and long-term effects",
+      "decoys": [
+        "Total engagement, message reach, token activity, and confidence in the original plan",
+        "Average benefit alone, measured immediately after launch by the team that designed it",
+        "Mission completion speed, participant obedience, narrative consistency, and publicity",
+        "The leader's approval, the agent's confidence, the majority vote, and one success story",
+        "Short-term growth, suppressed complaints, irreversible commitment, and stable messaging"
+      ],
+      "explanation": "No single metric defines a good future. Responsible evaluation measures who benefits, who pays, what remains uncertain, and whether harms can be corrected, then repeats the NIST cycle of governing, mapping, measuring, and managing risk.",
+      "minGrade": "12"
+    }
+  ]
+}
