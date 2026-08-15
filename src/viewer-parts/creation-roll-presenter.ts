@@ -12,6 +12,8 @@ export interface CreationRollCandidateRefs {
 
 export interface CreationRollRowRefs {
   val: HTMLElement;
+  input?: HTMLInputElement;
+  select?: HTMLSelectElement;
 }
 
 export interface CreationRollRows {
@@ -67,6 +69,18 @@ export function createCreationRollPresenter(deps: CreationRollPresenterDeps): Cr
     return c.flavorQuote ? "\u201c" + c.flavorQuote + "\u201d" : (c.arcAnswer ? "\u201c" + c.arcAnswer + "\u201d" : "\u2014");
   }
 
+  function setRowText(row: CreationRollRowRefs, value: string): void {
+    if (row.input) {
+      row.input.value = value;
+      return;
+    }
+    if (row.select) {
+      row.select.value = value;
+      return;
+    }
+    row.val.textContent = value;
+  }
+
   return {
     renderRolled(c, playbooks, candidate, rows, hasAiPortrait): void {
       const pb = playbooks.find((p) => p.id === c.playbookId)
@@ -81,8 +95,8 @@ export function createCreationRollPresenter(deps: CreationRollPresenterDeps): Cr
       deps.renderMarkdownInto(candidate.quote, quoteText(c), { inline: true });
       candidate.moveTitle.textContent = pb.startingMove && pb.startingMove.name ? pb.startingMove.name : "Starting Move";
       deps.renderMarkdownInto(candidate.moveContent, pb.startingMove && pb.startingMove.description ? pb.startingMove.description : "No move text yet.", { inline: true });
-      rows.nameRow.val.textContent = c.name || "";
-      rows.playbookRow.val.textContent = pb.name || "";
+      setRowText(rows.nameRow, c.name || "");
+      setRowText(rows.playbookRow, rows.playbookRow.select ? (c.playbookId || "") : (pb.name || ""));
       const stats = c.stats || {};
       rows.statsRow.val.textContent = "HEAD " + fmt(stats.head) + " \u00b7 HEART " + fmt(stats.heart) + " \u00b7 HUSTLE " + fmt(stats.hustle) + " \u00b7 HONOR " + fmt(stats.honor);
       rows.personalityRow.val.textContent = c.personality || "";

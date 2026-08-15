@@ -45,11 +45,11 @@ describe("creation intro renderer", () => {
     const explanation = refs.explanation as unknown as FakeElement;
     const loading = refs.loading as unknown as FakeElement;
 
-    expect(explanation.innerHTML).toContain("You are about to enroll at Ruby High as a student.");
-    expect(explanation.innerHTML).toContain("<strong>playbook</strong>");
-    expect(explanation.innerHTML).toContain("Your character sticks with you for all four years.");
+    expect(explanation.innerHTML).toContain("<strong>Meet your student.</strong>");
+    expect(explanation.innerHTML).toContain("Change their name or student style");
+    expect(explanation.innerHTML).toContain("Nothing is enrolled until you take your seat.");
     expect(loading.innerHTML).toContain("creation-loading-spinner");
-    expect(loading.innerHTML).toContain("Rolling your student");
-    expect(loading.innerHTML).toContain("Ruby is looking up your file. One moment.");
+    expect(loading.innerHTML).toContain("Getting your student ready");
+    expect(loading.innerHTML).toContain("This should only take a moment.");
   });
 });
