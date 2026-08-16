@@ -21,6 +21,11 @@ import type {
   StateStoreLike,
   StoredServiceStateRecord,
 } from "./state-store.js";
+import {
+  TeacherPersonaMemory,
+  type TeacherPersonaOverlay,
+  type TeacherPersonaProfileSnapshot,
+} from "./teacher-persona-memory.js";
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -209,12 +214,19 @@ export class ChatService extends Service {
   private hydratedStore: StateStoreLike | null = null;
   private hydrateStoreInFlight: StateStoreLike | null = null;
   private persistPromise: Promise<void> = Promise.resolve();
+  private readonly personaMemory: TeacherPersonaMemory;
+
+  constructor(runtime?: IAgentRuntime | null, personaMemory = new TeacherPersonaMemory()) {
+    super(runtime);
+    this.personaMemory = personaMemory;
+  }
 
   static async start(runtime: IAgentRuntime): Promise<ChatService> {
     return new ChatService(runtime);
   }
 
   async stop(): Promise<void> {
+    await this.personaMemory.stop();
     await this.flushPersistence();
     this.histories.clear();
     this.summaries.clear();
@@ -225,19 +237,35 @@ export class ChatService extends Service {
   setRubyHighService(ruby: RubyHighService): void {
     this.ruby = ruby;
     this.store = ruby.chatPersistenceStore();
+    this.personaMemory.setStore(this.store);
   }
 
   async ready(): Promise<void> {
     const store = this.store;
-    if (!store || this.hydratedStore === store) return;
-    if (this.hydrateStoreInFlight !== store) {
-      this.hydrateStoreInFlight = store;
-      this.hydratePromise = this.hydrateFromStore(store).finally(() => {
-        if (this.hydrateStoreInFlight === store) this.hydrateStoreInFlight = null;
-      });
+    if (!store) return;
+    if (this.hydratedStore !== store) {
+      if (this.hydrateStoreInFlight !== store) {
+        this.hydrateStoreInFlight = store;
+        this.hydratePromise = this.hydrateFromStore(store).finally(() => {
+          if (this.hydrateStoreInFlight === store) this.hydrateStoreInFlight = null;
+        });
+      }
+      await this.hydratePromise;
+      this.hydratedStore = store;
     }
-    await this.hydratePromise;
-    this.hydratedStore = store;
+    await this.personaMemory.ready();
+  }
+
+  teacherPersonaSnapshot(teacherId: string): TeacherPersonaProfileSnapshot | null {
+    return this.personaMemory.snapshot(teacherId);
+  }
+
+  reflectTeacherPersonaNow(teacherId: string): Promise<TeacherPersonaOverlay | null> {
+    return this.personaMemory.reflectTeacherNow(teacherId);
+  }
+
+  rollbackTeacherPersona(teacherId: string, targetVersion?: number | null): boolean {
+    return this.personaMemory.rollback(teacherId, targetVersion);
   }
 
   requiresBrowserApiKey(agentSessionId: string, faculty: string): boolean {
@@ -529,6 +557,13 @@ export class ChatService extends Service {
       history.push(assistantMessage);
 
       if (assistantToolCalls.length === 0) {
+        this.rememberTeacherTurn({
+          teacher: effectiveTeacher,
+          key,
+          opts,
+          text: visibleAssistantText,
+          toolNames: [],
+        });
         this.trim(key);
         this.persistSoon();
         yield { type: "done", finishReason };
@@ -629,6 +664,13 @@ export class ChatService extends Service {
         yield { type: "done", finishReason: "stale-turn" };
         return;
       }
+      this.rememberTeacherTurn({
+        teacher: effectiveTeacher,
+        key,
+        opts,
+        text: visibleAssistantText,
+        toolNames: assistantToolCalls.map((call) => call.function.name),
+      });
       this.trim(key);
       this.persistSoon();
       for (const ev of toolEvents) yield ev;
@@ -654,14 +696,15 @@ export class ChatService extends Service {
    * Tier-A/B separation:
    *
    *   1. WHO YOU ARE        — teacher.systemPrompt (static character card)
-   *   2. WHO'S IN THE ROOM  — describeRoomForTeacher(state)  [recomputed]
-   *   3. WHAT'S ON THE BOARD— describeBoardForModel(state)   [recomputed]
-   *   4. RECENT EVENTS      — synopsis of room events since this speaker
+   *   2. WHAT EXPERIENCE HAS REINFORCED — bounded persona overlay
+   *   3. WHO'S IN THE ROOM  — describeRoomForTeacher(state)  [recomputed]
+   *   4. WHAT'S ON THE BOARD— describeBoardForModel(state)   [recomputed]
+   *   5. RECENT EVENTS      — synopsis of room events since this speaker
    *                           last spoke. Replaces the ad-hoc system-notes
    *                           that used to litter history.
-   *   5. THIS TURN          — the per-turn directive. Last thing the model
+   *   6. THIS TURN          — the per-turn directive. Last thing the model
    *                           reads before its conversational context.
-   *   6. ...history         — user / assistant / tool ONLY. System messages
+   *   7. ...history         — user / assistant / tool ONLY. System messages
    *                           are filtered out: under the new architecture
    *                           they should never have been there, but legacy
    *                           in-memory state from before the switchover
@@ -679,8 +722,12 @@ export class ChatService extends Service {
   }): unknown[] {
     const { teacher, history, agentSessionId, bucketKey, speakerId, turnDirective, extraSystemContext, disableTools } = args;
     const messages: unknown[] = [{ role: "system", content: teacher.systemPrompt }];
+    const personaOverlay = this.personaMemory.activeOverlayPrompt(teacher.id, teacher.systemPrompt);
+    if (personaOverlay) {
+      messages.push({ role: "system", content: personaOverlay });
+    }
     const state = this.ruby!.getOrCreate(agentSessionId);
-    // 2. Room.
+    // 3. Room.
     const groupBlock = describeRoomForTeacher(state);
     if (groupBlock) {
       messages.push({ role: "system", content: groupBlock });
@@ -959,7 +1006,27 @@ export class ChatService extends Service {
   private async flushPersistence(): Promise<void> {
     await this.hydratePromise.catch(() => undefined);
     await this.persistPromise.catch(() => undefined);
+    await this.personaMemory.flush();
     await this.store?.flush?.().catch(() => undefined);
+  }
+
+  private rememberTeacherTurn(args: {
+    teacher: TeacherCharacter;
+    key: ChatHistoryKey;
+    opts: SendOpts;
+    text: string;
+    toolNames: string[];
+  }): void {
+    const state = this.ruby?.getOrCreate(args.opts.agentSessionId);
+    this.personaMemory.rememberTeacherTurn({
+      teacher: args.teacher,
+      roomId: args.key.faculty,
+      sessionToken: args.opts.sessionToken,
+      authorName: args.opts.authorName ?? state?.character?.name,
+      text: args.text,
+      subject: state?.current?.subject ?? state?.subject ?? undefined,
+      toolNames: args.toolNames,
+    });
   }
 
   private persistenceRecord(): StoredServiceStateRecord {
