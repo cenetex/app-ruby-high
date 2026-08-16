@@ -56,8 +56,8 @@ test("enrolls a first student through the creation sheet into First Bell", async
 
   await expect(page.getByRole("button", { name: "Lock it in" })).toHaveCount(0);
   await expect(sheet).not.toHaveClass(/is-open/);
-  await expect(page.locator("#daily-class-progress")).toContainText("Evidence 1");
-  await expect(page.locator("#daily-class-progress")).toContainText("Your Take");
+  await expect(page.locator("#daily-class-progress")).toContainText("Question 1");
+  await expect(page.locator("#daily-class-progress")).toContainText("Your View");
   await expect(page.locator("#daily-class-progress")).toContainText("Result");
   await expect(page.locator(".answer:not([disabled])").first()).toBeVisible({ timeout: 15_000 });
   await expect(page.locator("#stream")).not.toContainText("Make your first student");
@@ -87,7 +87,7 @@ test("keeps creator editing and the start-class action reachable on a small phon
   await expect(page.locator(".is-creation-candidate-card .ccg-name")).toHaveText("Mina");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
-  await page.getByRole("button", { name: "Done customizing" }).click();
+  await page.getByRole("button", { name: "Done editing" }).click();
   await expect(page.getByRole("button", { name: /take my seat/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /take my seat/i })).toBeEnabled();
   expect(errors).toEqual([]);
