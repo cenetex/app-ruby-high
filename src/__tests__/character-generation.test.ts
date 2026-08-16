@@ -232,6 +232,8 @@ describe("graduation photo prompts", () => {
     expect(prompt).toContain("REFERENCE IMAGE 2: Sally Science - the teacher of Science Lab");
     expect(prompt).toContain("ACTUAL CLASS: Science Lab");
     expect(prompt).toContain("SUBJECTS: physics, chemistry, biology");
+    expect(prompt).toContain("LOCATION: Ruby High science lab");
+    expect(prompt).toContain("source portraits are identity references only");
     expect(prompt).toContain("immediately after Theo passed Science Lab with a C");
     expect(prompt).toContain("wide horizontal editorial school photo, 16:9");
     expect(prompt).toContain("AVOID: solo portraits");
@@ -282,6 +284,58 @@ describe("graduation photo prompts", () => {
     expect(prompt).toContain("wide horizontal editorial school photo, 16:9");
     expect(prompt).toContain("not a graduation ceremony");
     expect(prompt).toContain("No text, no logos, no captions");
+  });
+
+  it("turns social reference art into a new named Ruby High location scene", async () => {
+    vi.stubEnv("RUBY_HIGH_PUBLIC_BASE", "https://ruby-high.ai");
+    const requests: any[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: unknown, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body || "{}")));
+      return imageResponse("data:image/png;base64,GENERATEDLOCATION");
+    }));
+
+    const { renderRubyHighSocialPhoto } = await import("../services/character-generation.js");
+    const result = await renderRubyHighSocialPhoto({
+      apiKey: "sk-test",
+      kind: "grade-advanced",
+      storyBeat: "Tariq advanced from grade 10 to grade 11.",
+      grade: "11",
+      references: [
+        { role: "student", id: "tariq", name: "Tariq", imageUrl: "/api/apps/ruby-high/assets/portrait/tariq.png" },
+        { role: "teacher", id: "ruby", name: "Ruby", imageUrl: "/api/apps/ruby-high/assets/teachers/ruby-full.png" },
+      ],
+    });
+
+    expect(result).toEqual({
+      imageUrl: "data:image/png;base64,GENERATEDLOCATION",
+      sceneId: "library",
+      roomName: "Ruby High library",
+    });
+    const content = requests[0]?.messages?.[0]?.content;
+    const prompt = Array.isArray(content)
+      ? content.filter((part: any) => part.type === "text").map((part: any) => String(part.text ?? "")).join("\n")
+      : "";
+    expect(prompt).toContain("REFERENCE IMAGE 1: Tariq - student");
+    expect(prompt).toContain("REFERENCE-ONLY RULE");
+    expect(prompt).toContain("LOCATION: Ruby High library");
+    expect(prompt).toContain("plain, gradient, transparent, or portrait-studio background is a failed result");
+    expect(prompt).toContain("Do not copy, crop, frame, or return a source image unchanged");
+  });
+
+  it("rejects an image model response that echoes a reference unchanged", async () => {
+    const referenceUrl = "https://ruby.test/tariq.png";
+    vi.stubGlobal("fetch", vi.fn(async () => imageResponse(referenceUrl)));
+    const { renderRubyHighSocialPhoto } = await import("../services/character-generation.js");
+
+    await expect(renderRubyHighSocialPhoto({
+      apiKey: "sk-test",
+      kind: "grade-advanced",
+      storyBeat: "Tariq advanced a grade.",
+      grade: "11",
+      references: [
+        { role: "student", id: "tariq", name: "Tariq", imageUrl: referenceUrl },
+      ],
+    })).rejects.toThrow("unchanged reference image");
   });
 
   it("uses the dedicated teacher lounge scene for lounge updates", async () => {

@@ -49,6 +49,20 @@ function imageReferenceUrl(rawUrl: string): string {
   return new URL(url, publicBaseUrl() + "/").toString();
 }
 
+function assertNewGeneratedImage(
+  imageUrl: string,
+  referenceUrls: string[],
+  label: string,
+): void {
+  const normalizedReferences = new Set(referenceUrls.flatMap((referenceUrl) => [
+    referenceUrl,
+    imageReferenceUrl(referenceUrl),
+  ]));
+  if (normalizedReferences.has(imageUrl)) {
+    throw new Error(`${label} returned an unchanged reference image.`);
+  }
+}
+
 function characterResponseFormat(fields: CharacterTextComponent[]) {
   const descriptions: Record<CharacterTextComponent, string> = {
     name: "One first name for the student.",
@@ -379,6 +393,11 @@ export async function renderScheduledSchoolUpdatePhoto(args: {
   });
   const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
   if (!url) throw new Error("Scheduled school update photo generation returned no image.");
+  assertNewGeneratedImage(
+    url,
+    args.participants.map((participant) => participant.imageUrl),
+    "Scheduled school update photo generation",
+  );
   return url;
 }
 
@@ -398,6 +417,10 @@ export async function renderClassPassedPhoto(args: {
   const className = args.className.trim();
   if (!className) throw new Error("Passed-class photos require a class name.");
   const subjects = args.subjects.map((subject) => subject.trim()).filter(Boolean);
+  const scene = rubyHighPhotoSceneForGrade(
+    args.grade,
+    ["class-passed", args.student.name, args.teacher.name, className, ...subjects].join(":"),
+  );
   const contentParts: Array<Record<string, unknown>> = [
     {
       type: "text",
@@ -426,9 +449,12 @@ export async function renderClassPassedPhoto(args: {
           ? `SUBJECTS: ${subjects.join(", ")}. The room, teaching materials, and activity must unmistakably belong to these subjects.`
           : "The room, teaching materials, and activity must unmistakably belong to this named class.",
         args.grade ? `STUDENT YEAR: Grade ${args.grade}.` : "",
+        `LOCATION: ${scene.roomName}. ${scene.setting}.`,
+        `LOCATION DETAILS: ${scene.props}.`,
+        `CAMERA: ${scene.camera}.`,
         `MOMENT: The lesson has just ended. ${args.student.name} is reacting to the result while ${args.teacher.name} responds in character beside the evidence of the completed class.`,
         "COMPOSITION: wide horizontal editorial school photo, 16:9. Show both people from head to at least knees, at different depths and angles, naturally interacting with each other and the classroom. Keep both faces clear.",
-        "ENVIRONMENT: a specific, lived-in Ruby High classroom for the named class—not a generic portrait backdrop. Include relevant desks, tools, books, experiments, screens, notes, or class materials, but no readable text.",
+        "LOCATION REQUIREMENT: the final image must visibly show this named Ruby High location and its architecture or room details. The source portraits are identity references only; never return either source image unchanged.",
         "AVOID: solo portraits, character sheets, plain or gradient backgrounds, formal lineup, generic empty classroom, graduation imagery, trophies, extra people, character redesigns, outfit swaps, visible grades, captions, speech bubbles, logos, and watermarks.",
         "STYLE: JRPG/anime-influenced school editorial, bold black outlines, vibrant flat colors, subtle cel shading, polished yearbook-quality finish.",
       ].filter(Boolean).join("\n"),
@@ -448,7 +474,104 @@ export async function renderClassPassedPhoto(args: {
   });
   const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
   if (!url) throw new Error("Passed-class photo generation returned no image.");
+  assertNewGeneratedImage(
+    url,
+    [args.student.imageUrl, args.teacher.imageUrl],
+    "Passed-class photo generation",
+  );
   return url;
+}
+
+export interface RubyHighSocialPhotoReference {
+  role: "teacher" | "student" | "group";
+  id: string;
+  name: string;
+  imageUrl: string;
+}
+
+export interface RubyHighSocialPhotoResult {
+  imageUrl: string;
+  sceneId: string;
+  roomName: string;
+}
+
+/** Turn canonical portrait, collectible, or group references into a new
+ *  public social image set inside a named Ruby High campus location. Raw
+ *  references are inputs only and must never be used as the final post media. */
+export async function renderRubyHighSocialPhoto(args: {
+  apiKey: string;
+  kind: string;
+  storyBeat: string;
+  grade?: string;
+  area?: "classroom" | "teacher-lounge";
+  references: RubyHighSocialPhotoReference[];
+}): Promise<RubyHighSocialPhotoResult> {
+  if (args.references.length < 1 || args.references.length > 4) {
+    throw new Error("Ruby High social photos require one to four visual references.");
+  }
+  const references = args.references.filter((reference) => reference.imageUrl.trim());
+  if (references.length < 1) {
+    throw new Error("Ruby High social photos require at least one usable visual reference.");
+  }
+  const scene = rubyHighPhotoSceneForSchoolUpdate(
+    args.area ?? "classroom",
+    args.grade,
+    [args.kind, args.grade ?? "", ...references.map((reference) => reference.id)].join(":"),
+  );
+  const contentParts: Array<Record<string, unknown>> = [];
+  references.forEach((reference, index) => {
+    contentParts.push({
+      type: "text",
+      text: `REFERENCE IMAGE ${index + 1}: ${reference.name} - ${reference.role}. This is identity/source material only; preserve the people shown but do not reuse the image as the final composition.`,
+    });
+    contentParts.push({
+      type: "image_url",
+      image_url: { url: imageReferenceUrl(reference.imageUrl) },
+    });
+  });
+  const graduationMoment = /graduat|diploma/i.test(args.kind);
+  contentParts.push({
+    type: "text",
+    text: [
+      `Create a brand-new Ruby High editorial social photo for this event: ${args.kind}.`,
+      `CAST REFERENCES: ${references.map((reference) => `${reference.name} (${reference.role})`).join(", ")}.`,
+      "IDENTITY LOCK: Preserve the hair, face, skin tone, outfit, silhouette, proportions, age, and art style of every person visible in the reference material. Adapt pose and expression only. Do not add unreferenced people.",
+      "REFERENCE-ONLY RULE: Every supplied image is input material, never publishable media. Do not copy, crop, frame, or return a source image unchanged.",
+      "",
+      `LOCATION: ${scene.roomName}. ${scene.setting}.`,
+      `STORY BEAT: ${args.storyBeat}`,
+      `PHOTO DIRECTION: ${scene.action}`,
+      `CAMERA: ${scene.camera}.`,
+      `ROOM DETAILS: ${scene.props}.`,
+      "LOCATION REQUIREMENT: the final image must clearly and unmistakably show the named Ruby High location through architecture, furniture, and room props. A plain, gradient, transparent, or portrait-studio background is a failed result.",
+      "COMPOSITION: wide horizontal editorial school photo, 16:9. Use environmental depth, natural interaction, expressive hands, and clear faces. Show people from head to at least knees when the references allow it.",
+      graduationMoment
+        ? "Graduation details may appear as subtle props, but the scene must remain candid and grounded in the location."
+        : "This is an ordinary school-day moment: no graduation caps, gowns, diplomas, confetti, trophies, or formal lineup.",
+      "AVOID: source-image reuse, solo character sheet, plain backdrop, tight portrait crop, formal lineup, generic empty room, character redesign, outfit swap, extra people, readable text, captions, speech bubbles, logos, and watermarks.",
+      "STYLE: JRPG/anime-influenced school editorial, bold black outlines, vibrant flat colors, subtle cel shading, polished yearbook-quality finish.",
+    ].join("\n"),
+  });
+
+  const body = await openRouterJson<PortraitResponse>({
+    apiKey: args.apiKey,
+    label: "ruby-high-social-location-photo",
+    timeoutMs: PORTRAIT_TIMEOUT_MS * 2,
+    body: {
+      model: PORTRAIT_MODEL,
+      modalities: ["image", "text"],
+      messages: [{ role: "user", content: contentParts }],
+      max_tokens: PORTRAIT_MAX_TOKENS,
+    },
+  });
+  const imageUrl = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+  if (!imageUrl) throw new Error("Ruby High social location photo generation returned no image.");
+  assertNewGeneratedImage(
+    imageUrl,
+    references.map((reference) => reference.imageUrl),
+    "Ruby High social location photo generation",
+  );
+  return { imageUrl, sceneId: scene.id, roomName: scene.roomName };
 }
 
 function scheduledSchoolUpdatePhotoFacts(context: ScheduledSchoolUpdateContext): string[] {

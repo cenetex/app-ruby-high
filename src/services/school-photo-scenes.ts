@@ -7,7 +7,7 @@ export interface RubyHighPhotoScene {
   props: string;
 }
 
-export const RUBY_HIGH_PHOTO_PROMPT_VERSION = "ruby-high-dynamic-campus-photo-v2";
+export const RUBY_HIGH_PHOTO_PROMPT_VERSION = "ruby-high-location-social-photo-v3";
 
 const TEACHER_LOUNGE_SCENE: RubyHighPhotoScene = {
   id: "teacher-lounge",

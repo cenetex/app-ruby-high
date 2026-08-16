@@ -13,6 +13,7 @@ import { fetchSafeImageBuffer } from "../services/safe-url.js";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
+let locationPhotoSpy: ReturnType<typeof vi.spyOn>;
 
 const TEST_STATE_DIR = "/tmp/ruby-high-x-test";
 
@@ -38,6 +39,11 @@ beforeEach(async () => {
   vi.stubEnv("RUBY_HIGH_LOCAL_LLM_API_KEY", "");
   vi.stubEnv("RUBY_HIGH_LLM_BASE_URL", "");
   mockFetch.mockReset();
+  locationPhotoSpy?.mockRestore();
+  locationPhotoSpy = vi.spyOn(
+    XSocialService.prototype as any,
+    "generateRubyHighLocationPhoto",
+  ).mockResolvedValue(PNG_URL);
 });
 
 const RUBY_TEACHER: TeacherCharacter = {
@@ -399,6 +405,7 @@ describe("XSocialService", () => {
     });
 
     it("does not fall back to a standalone portrait when class composition is unavailable", async () => {
+      vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "");
       await connectRuby(svc);
 
       const result = await svc.maybePostMilestone(RUBY_TEACHER, {
@@ -416,6 +423,55 @@ describe("XSocialService", () => {
 
       expect(result).toBeNull();
       expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("uploads a generated campus scene instead of the grade-advance reference portrait", async () => {
+      await connectRuby(svc);
+      locationPhotoSpy.mockResolvedValueOnce("data:image/png;base64,R0VORVJBVEVE");
+      mockMediaUpload("media-generated-grade-advance");
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { id: "tweet-generated-grade-advance" } }),
+      });
+
+      await expect(svc.maybePostMilestone(RUBY_TEACHER, {
+        kind: "grade-advanced",
+        characterName: "Tariq",
+        fromGrade: "10",
+        toGrade: "11",
+        imageUrl: PNG_URL,
+      })).resolves.toBe("tweet-generated-grade-advance");
+
+      expect(locationPhotoSpy).toHaveBeenCalledWith(expect.objectContaining({
+        kind: "grade-advanced",
+        grade: "11",
+        sourceImageUrl: PNG_URL,
+        sourceName: "Tariq",
+        sourceRole: "student",
+      }));
+      const mediaCall = mockFetch.mock.calls.find(
+        (call: unknown[]) => String((call as string[])[0]).includes("media/upload"),
+      );
+      const uploadBody = JSON.parse(String((mediaCall?.[1] as RequestInit)?.body ?? "{}"));
+      expect(uploadBody.media).toBe("R0VORVJBVEVE");
+    });
+
+    it("skips the tweet when campus-scene generation fails instead of uploading the reference", async () => {
+      await connectRuby(svc);
+      locationPhotoSpy.mockResolvedValueOnce(null);
+
+      await expect(svc.maybePostMilestone(RUBY_TEACHER, {
+        kind: "grade-advanced",
+        characterName: "Tariq",
+        fromGrade: "10",
+        toGrade: "11",
+        imageUrl: PNG_URL,
+      })).resolves.toBeNull();
+
+      expect(mockFetch.mock.calls.some(
+        (call: unknown[]) => String((call as string[])[0]).includes("media/upload")
+          || String((call as string[])[0]).includes("/tweets"),
+      )).toBe(false);
     });
 
     it("pauses future posts after X rejects a teacher token", async () => {
@@ -965,7 +1021,7 @@ describe("XSocialService", () => {
       expect(tweetCall).toBeUndefined();
     });
 
-    it("does not tweet when no image URL is provided", async () => {
+    it("generates a campus scene from the teacher reference when no student image is provided", async () => {
       const { state } = svc.beginConnect("ruby");
       mockFetch
         .mockResolvedValueOnce({
@@ -981,22 +1037,32 @@ describe("XSocialService", () => {
         });
       await svc.handleCallback("code", state);
 
+      mockMediaUpload("media-teacher-location");
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { id: "tweet-teacher-location" } }),
+      });
+
       const result = await svc.maybePostMilestone(RUBY_TEACHER, {
         kind: "class-passed",
         characterName: "No Pic",
         teacherName: "Ruby",
         letterGrade: "B",
       });
-      expect(result).toBeNull();
+      expect(result).toBe("tweet-teacher-location");
+      expect(locationPhotoSpy).toHaveBeenCalledWith(expect.objectContaining({
+        teacher: RUBY_TEACHER,
+        kind: "class-passed",
+      }));
 
       const mediaCalls = mockFetch.mock.calls.filter(
         (c: unknown[]) => String((c as string[])[0]).includes("media/upload"),
       );
-      expect(mediaCalls).toHaveLength(0);
+      expect(mediaCalls).toHaveLength(1);
       const tweetCall = mockFetch.mock.calls.find(
         (c: unknown[]) => String((c as string[])[0]).includes("/tweets"),
       );
-      expect(tweetCall).toBeUndefined();
+      expect(tweetCall).toBeDefined();
     });
 
     it("attaches media to reflection posts", async () => {
@@ -1055,7 +1121,6 @@ describe("XSocialService", () => {
       const result = await svc.postScheduledSchoolUpdate(
         RUBY_TEACHER,
         SCHOOL_UPDATE_CONTEXT,
-        { imageUrl: PNG_URL },
       );
       expect(result).toBe("tweet-school-update");
 
@@ -1177,7 +1242,7 @@ describe("XSocialService", () => {
       await expect(svc.postScheduledSchoolUpdate(
         RUBY_TEACHER,
         FEATURED_GUEST_CONTEXT,
-        { imageUrl: PNG_URL, editorialMode: "guest-insights" },
+        { editorialMode: "guest-insights" },
       )).resolves.toBe("tweet-guest-insight");
 
       const llmCall = mockFetch.mock.calls.find((call: unknown[]) => {
@@ -1203,7 +1268,7 @@ describe("XSocialService", () => {
       expect(body.media.media_ids).toEqual(["media-guest-insight"]);
     });
 
-    it("falls back to the configured static image when scheduled composition fails", async () => {
+    it("skips scheduled posts when campus-scene generation fails", async () => {
       await connectRuby(svc);
       vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "test-key");
       mockFetch
@@ -1214,29 +1279,24 @@ describe("XSocialService", () => {
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ choices: [{ message: {} }] }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ data: { id: "media-static-fallback" } }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ data: { id: "tweet-static-fallback" } }),
         });
 
       await expect(svc.postScheduledSchoolUpdate(
         RUBY_TEACHER,
         SCHOOL_UPDATE_CONTEXT,
-        { imageUrl: PNG_URL },
-      )).resolves.toBe("tweet-static-fallback");
+      )).resolves.toBeNull();
+      expect(mockFetch.mock.calls.some(
+        (call: unknown[]) => String((call as string[])[0]).includes("media/upload")
+          || String((call as string[])[0]).includes("/tweets"),
+      )).toBe(false);
     });
 
     it("skips scheduled school updates when no LLM credential is configured", async () => {
+      vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "");
       await connectRuby(svc);
       await expect(svc.postScheduledSchoolUpdate(
         RUBY_TEACHER,
         SCHOOL_UPDATE_CONTEXT,
-        { imageUrl: PNG_URL },
       )).resolves.toBeNull();
       expect(mockFetch).not.toHaveBeenCalled();
     });

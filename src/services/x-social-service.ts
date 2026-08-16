@@ -37,6 +37,15 @@ import {
 
 const MAX_REMOTE_IMAGE_BYTES = 10 * 1024 * 1024;
 
+declare const generatedRubyHighLocationImage: unique symbol;
+type GeneratedRubyHighLocationImageUrl = string & {
+  readonly [generatedRubyHighLocationImage]: true;
+};
+
+function generatedLocationImageUrl(imageUrl: string): GeneratedRubyHighLocationImageUrl {
+  return imageUrl as GeneratedRubyHighLocationImageUrl;
+}
+
 // ── Types ───────────────────────────────────────────────────────────────────
 
 export interface XTokenRecord {
@@ -110,7 +119,6 @@ interface XPostFailureClassification {
 
 interface ScheduledSchoolUpdatePostOptions {
   dryRun?: boolean;
-  imageUrl?: string;
   editorialMode?: ScheduledSchoolUpdateEditorialMode;
   plannedSlot?: PlannedTweetSlot;
   recentPosts?: RecentPlannedPost[];
@@ -761,8 +769,8 @@ export class XSocialService extends Service {
     const token = this.tokens.get(teacher.id);
     if (!token) return null;
 
-    let imageUrl = ctx.imageUrl ?? ctx.portraitUrl ?? ctx.diplomaUrl ?? null;
-    const reserveDailyPhotoSlot = !!imageUrl && (ctx.reserveDailyPhotoSlot ?? milestoneUsesDailyPhotoSlot(ctx.kind));
+    const referenceImageUrl = ctx.imageUrl ?? ctx.portraitUrl ?? ctx.diplomaUrl ?? null;
+    const reserveDailyPhotoSlot = !!referenceImageUrl && (ctx.reserveDailyPhotoSlot ?? milestoneUsesDailyPhotoSlot(ctx.kind));
     let reservedPhotoSlot = false;
     if (reserveDailyPhotoSlot) {
       if (this.photoAlreadyPostedToday(teacher.id)) {
@@ -826,30 +834,31 @@ export class XSocialService extends Service {
       return null;
     }
 
-    if (
-      !isDryRun
-      && ctx.kind === "class-passed"
-      && ctx.className
-      && ctx.studentImageUrl
-      && ctx.teacherImageUrl
-    ) {
-      const composition = await this.generateClassPassedPhoto(ctx);
-      if (!composition) {
-        log.event("x-social.class-passed-composition-required", {
-          teacherId: teacher.id,
-          className: ctx.className,
-        });
+    // Public X media is fail-closed: raw portraits, diplomas, class photos,
+    // and configured fallback art may be identity references, but never the
+    // final upload. Every real post must first render a new campus scene.
+    let mediaId: string | null = null;
+    if (!isDryRun) {
+      const locationImage = ctx.kind === "class-passed"
+        && ctx.className
+        && ctx.studentImageUrl
+        && ctx.teacherImageUrl
+        ? await this.generateClassPassedPhoto(ctx)
+        : await this.generateRubyHighLocationPhoto({
+            teacher,
+            kind: ctx.kind,
+            storyBeat: text,
+            grade: ctx.grade ?? ctx.toGrade,
+            sourceImageUrl: referenceImageUrl ?? ctx.studentImageUrl,
+            sourceName: ctx.kind === "class-photo" ? `${ctx.characterName}'s class` : ctx.characterName,
+            sourceRole: ctx.kind === "class-photo" ? "group" : "student",
+          });
+      if (!locationImage) {
+        log.event("x-social.location-photo-required", { teacherId: teacher.id, kind: ctx.kind });
         await releasePhotoSlot();
         return null;
       }
-      imageUrl = composition;
-    }
-
-    // Every real X post must carry media. The daily photo slot, when relevant,
-    // was reserved before text generation to prevent concurrency.
-    let mediaId: string | null = null;
-    if (!isDryRun) {
-      mediaId = await this.uploadRequiredMedia(postToken, imageUrl, ctx.kind);
+      mediaId = await this.uploadRequiredMedia(postToken, locationImage, ctx.kind);
       if (!mediaId) {
         await releasePhotoSlot();
         return null;
@@ -889,7 +898,7 @@ export class XSocialService extends Service {
 
   // ── Media upload ────────────────────────────────────────────────────────
 
-  private async uploadRequiredMedia(token: XTokenRecord, imageUrl: string | null | undefined, kind: string): Promise<string | null> {
+  private async uploadRequiredMedia(token: XTokenRecord, imageUrl: GeneratedRubyHighLocationImageUrl | null | undefined, kind: string): Promise<string | null> {
     if (!imageUrl) {
       log.event("x-social.media-required", { teacherId: token.teacherId, kind });
       return null;
@@ -903,7 +912,7 @@ export class XSocialService extends Service {
     }
   }
 
-  private async generateClassPassedPhoto(ctx: XMilestoneContext): Promise<string | null> {
+  private async generateClassPassedPhoto(ctx: XMilestoneContext): Promise<GeneratedRubyHighLocationImageUrl | null> {
     const apiKey = process.env.RUBY_HIGH_OPENROUTER_API_KEY ?? process.env.OPENROUTER_KEY ?? "";
     if (!apiKey || !ctx.className || !ctx.studentImageUrl || !ctx.teacherImageUrl) {
       log.event("x-social.class-passed-composition-unavailable", {
@@ -916,7 +925,7 @@ export class XSocialService extends Service {
     }
     const { renderClassPassedPhoto } = await import("./character-generation.js");
     try {
-      return await renderClassPassedPhoto({
+      const imageUrl = await renderClassPassedPhoto({
         apiKey,
         student: {
           name: ctx.characterName,
@@ -931,10 +940,87 @@ export class XSocialService extends Service {
         grade: ctx.grade,
         letterGrade: ctx.letterGrade,
       });
+      return generatedLocationImageUrl(imageUrl);
     } catch (err) {
       log.error("x-social.class-passed-composition-failed", err, {
         className: ctx.className,
         teacherFacultyId: ctx.teacherFacultyId,
+      });
+      return null;
+    }
+  }
+
+  private async generateRubyHighLocationPhoto(args: {
+    teacher: TeacherCharacter;
+    kind: string;
+    storyBeat: string;
+    grade?: string;
+    area?: "classroom" | "teacher-lounge";
+    sourceImageUrl?: string | null;
+    sourceName?: string;
+    sourceRole?: "student" | "group";
+  }): Promise<GeneratedRubyHighLocationImageUrl | null> {
+    const apiKey = process.env.RUBY_HIGH_OPENROUTER_API_KEY ?? process.env.OPENROUTER_KEY ?? "";
+    if (!apiKey) {
+      log.event("x-social.location-photo-skipped", {
+        teacherId: args.teacher.id,
+        kind: args.kind,
+        reason: "no-image-credential",
+      });
+      return null;
+    }
+    const references: Array<{
+      role: "teacher" | "student" | "group";
+      id: string;
+      name: string;
+      imageUrl: string;
+    }> = [];
+    if (args.sourceImageUrl) {
+      references.push({
+        role: args.sourceRole ?? "student",
+        id: `source:${args.sourceName ?? args.kind}`,
+        name: args.sourceName ?? "Featured Ruby High student",
+        imageUrl: args.sourceImageUrl,
+      });
+    }
+    const teacherImageUrl = defaultTeacherPostImageUrl(args.teacher.id);
+    if (teacherImageUrl && !references.some((reference) => reference.imageUrl === teacherImageUrl)) {
+      references.push({
+        role: "teacher",
+        id: args.teacher.id,
+        name: args.teacher.displayName,
+        imageUrl: teacherImageUrl,
+      });
+    }
+    if (references.length === 0) {
+      log.event("x-social.location-photo-skipped", {
+        teacherId: args.teacher.id,
+        kind: args.kind,
+        reason: "no-visual-reference",
+      });
+      return null;
+    }
+    const { renderRubyHighSocialPhoto } = await import("./character-generation.js");
+    try {
+      const result = await renderRubyHighSocialPhoto({
+        apiKey,
+        kind: args.kind,
+        storyBeat: args.storyBeat,
+        grade: args.grade,
+        area: args.area,
+        references: references.slice(0, 4),
+      });
+      log.event("x-social.location-photo-generated", {
+        teacherId: args.teacher.id,
+        kind: args.kind,
+        sceneId: result.sceneId,
+        roomName: result.roomName,
+      });
+      return generatedLocationImageUrl(result.imageUrl);
+    } catch (err) {
+      log.error("x-social.location-photo-failed", err, {
+        teacherId: args.teacher.id,
+        kind: args.kind,
       });
       return null;
     }
@@ -1523,16 +1609,11 @@ export class XSocialService extends Service {
       sourcedContext,
       generatedText,
     );
-    const imageCandidates = Array.from(new Set([
-      generatedImageUrl,
-      opts?.imageUrl,
-      defaultTeacherPostImageUrl(teacher.id),
-    ].filter((value): value is string => !!value)));
-    let mediaId: string | null = null;
-    for (const imageUrl of imageCandidates) {
-      mediaId = await this.uploadRequiredMedia(postToken, imageUrl, postKind);
-      if (mediaId) break;
+    if (!generatedImageUrl) {
+      log.event("x-social.location-photo-required", { teacherId: teacher.id, kind: postKind });
+      return null;
     }
+    const mediaId = await this.uploadRequiredMedia(postToken, generatedImageUrl, postKind);
     if (!mediaId) return null;
 
     const tweetId = await this.postTweet(postToken, text, mediaId);
@@ -1636,7 +1717,7 @@ export class XSocialService extends Service {
     teacher: TeacherCharacter,
     context: ScheduledSchoolUpdateContext,
     postText: string,
-  ): Promise<string | null> {
+  ): Promise<GeneratedRubyHighLocationImageUrl | null> {
     const apiKey = process.env.RUBY_HIGH_OPENROUTER_API_KEY ?? process.env.OPENROUTER_KEY ?? "";
     if (!apiKey) {
       log.event("x-social.scheduled-photo-skipped", { teacherId: teacher.id, reason: "no-image-credential" });
@@ -1662,7 +1743,7 @@ export class XSocialService extends Service {
           ? "teacher-lounge"
           : "classroom",
       });
-      return imageUrl;
+      return generatedLocationImageUrl(imageUrl);
     } catch (err) {
       log.error("x-social.scheduled-photo-failed", err, { teacherId: teacher.id });
       return null;
@@ -1725,11 +1806,17 @@ export class XSocialService extends Service {
       return "dry-run:reflection";
     }
 
-    const mediaId = await this.uploadRequiredMedia(
-      freshToken,
-      opts?.imageUrl ?? defaultTeacherPostImageUrl(teacher.id),
-      "reflection",
-    );
+    const locationImage = await this.generateRubyHighLocationPhoto({
+      teacher,
+      kind: "reflection",
+      storyBeat: text,
+      area: "teacher-lounge",
+      sourceImageUrl: opts?.imageUrl,
+      sourceName: "Featured Ruby High school moment",
+      sourceRole: "group",
+    });
+    if (!locationImage) return null;
+    const mediaId = await this.uploadRequiredMedia(freshToken, locationImage, "reflection");
     if (!mediaId) return null;
 
     const tweetId = await this.postTweet(freshToken, text, mediaId);
@@ -1875,11 +1962,17 @@ export class XSocialService extends Service {
       if (text.length > 280) text = text.slice(0, 277) + "...";
     }
 
-    const mediaId = await this.uploadRequiredMedia(
-      freshToken,
-      student.portraitUrl ?? defaultStudentPostImageUrl(student.playbookId),
-      "report-card",
-    );
+    const locationImage = await this.generateRubyHighLocationPhoto({
+      teacher,
+      kind: "report-card",
+      storyBeat: text,
+      grade: student.grade,
+      sourceImageUrl: student.portraitUrl ?? defaultStudentPostImageUrl(student.playbookId),
+      sourceName: student.name,
+      sourceRole: "student",
+    });
+    if (!locationImage) return null;
+    const mediaId = await this.uploadRequiredMedia(freshToken, locationImage, "report-card");
     if (!mediaId) return null;
 
     const tweetId = await this.postTweet(freshToken, text, mediaId);
