@@ -193,6 +193,6 @@ describe("race strip renderer", () => {
 
     expect(timerLabel.textContent).toBe("open");
     expect([...timerPill.classList.values]).toEqual(["is-soft"]);
-    expect(timerPill.title).toBe("Timer is soft: answer when ready. Classmates may already be locked in.");
+    expect(timerPill.title).toBe("The timer ended, but you can still answer. Some classmates may have answered already.");
   });
 });

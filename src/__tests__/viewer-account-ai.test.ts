@@ -13,12 +13,12 @@ describe("account AI panel view", () => {
     });
 
     expect(view).toMatchObject({
-      status: "Offline mode",
-      meta: "Server AI is sponsored when configured; chat still spends Merit Stars.",
-      primaryLabel: "Use Hall Pass",
-      primaryTitle: "Hall Passes are used for images, cards, and creator tools.",
+      status: "AI is off",
+      meta: "Ruby High AI is included when available. Teacher chat still uses Merit Stars.",
+      primaryLabel: "Use Ruby High AI",
+      primaryTitle: "Hall Passes are used for images, collectible cards, and course tools.",
       primaryDisabled: false,
-      secondaryLabel: "Connect AI key",
+      secondaryLabel: "Use my AI key",
       secondaryDisabled: false,
     });
   });
@@ -32,13 +32,13 @@ describe("account AI panel view", () => {
       authed: true,
       canUseHallPass: false,
     })).toMatchObject({
-      primaryTitle: "Need 3 Hall Passes. Buy Hall Passes or burn a Card first.",
+      primaryTitle: "Need 3 Hall Passes. Buy Hall Passes or permanently destroy a collectible card first.",
       primaryDisabled: true,
     });
 
     expect(accountAiPanelView({ configured: false }, { authed: true, canUseHallPass: true })).toMatchObject({
-      meta: "Server AI is not configured here. Connect your own AI key.",
-      primaryTitle: "Server AI is not configured on this server.",
+      meta: "Ruby High AI is not available here. Use your own AI key instead.",
+      primaryTitle: "Ruby High AI is not available here.",
       primaryDisabled: true,
     });
   });
@@ -51,9 +51,9 @@ describe("account AI panel view", () => {
       aiEnabled: true,
       canUseHallPass: true,
     })).toMatchObject({
-      status: "Local AI active",
-      primaryLabel: "Local AI",
-      secondaryLabel: "Connect AI key",
+      status: "On-device AI is ready",
+      primaryLabel: "On-device AI",
+      secondaryLabel: "Use my AI key",
       primaryDisabled: true,
       secondaryDisabled: true,
     });
@@ -64,16 +64,16 @@ describe("account AI panel view", () => {
       aiEnabled: true,
       canUseHallPass: true,
     })).toMatchObject({
-      status: "AI key connected",
-      secondaryLabel: "Disconnect",
+      status: "Your AI key is connected",
+      secondaryLabel: "Disconnect my AI key",
     });
 
     expect(accountAiPanelView({ configured: true, active: true, expiresAt: Date.now() + 3600_000 }, {
       authed: true,
       canUseHallPass: true,
     })).toMatchObject({
-      status: "Sponsored AI active",
-      meta: "Server AI is available. Chat messages spend Merit Stars.",
+      status: "Ruby High AI is ready",
+      meta: "Ruby High provides the AI. Teacher chat uses Merit Stars.",
       primaryLabel: "Active",
       primaryTitle: "",
       primaryDisabled: true,
@@ -84,8 +84,8 @@ describe("account AI panel view", () => {
       canUseHallPass: true,
       teacherServerAi: true,
     })).toMatchObject({
-      status: "Teacher AI connected",
-      meta: "This server can speak for teachers. Connect your own AI key for browser-owned AI features.",
+      status: "Teacher AI is ready",
+      meta: "Teachers can reply. Use your own AI key for personal AI features.",
     });
   });
 });

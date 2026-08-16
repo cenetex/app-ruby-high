@@ -415,7 +415,7 @@ function enrollAgent(
   const playbookId = cleanOptionalString(input.playbookId) ?? "outsider";
   const playbook = playbookById(playbookId);
   if (!playbook || !PLAYBOOKS.some((candidate) => candidate.id === playbookId)) {
-    throw new AgentAccessError("Unknown playbookId.", 400, "invalid_playbook");
+    throw new AgentAccessError("Unknown student style.", 400, "invalid_playbook");
   }
   const name = (cleanOptionalString(input.name) ?? credential.agentName).slice(0, 64);
   const review = publicWorldNameReview(name);
@@ -782,11 +782,11 @@ function renderConnectPage(userCode: string): string {
   <main>
     <div class="teacher">
       <img src="/api/apps/ruby-high/assets/teachers/eliza-face.png" alt="Eliza">
-      <div><h1>Agent enrollment</h1><p>Eliza will keep the agent's school identity separate and its autonomy off by default.</p></div>
+      <div><h1>Connect an AI agent</h1><p>The agent gets its own student account. It cannot act until you allow it.</p></div>
     </div>
     <label for="code">Code shown by the agent</label>
     <input id="code" value="${safeCode}" maxlength="9" autocomplete="one-time-code" placeholder="ABCD-1234">
-    <p class="note">Approval grants school reading and student play only. Public presence requires a separate scope and remains off. If this browser has not entered Ruby High yet, <a href="/api/apps/ruby-high/viewer" target="_blank" rel="noopener">open the school</a> first.</p>
+    <p class="note">Approval lets the agent read school information and play as a student. The agent stays hidden from shared school activity unless you turn on sharing. If this browser has not entered Ruby High yet, <a href="/api/apps/ruby-high/viewer" target="_blank" rel="noopener">open the school</a> first.</p>
     <button id="approve">Approve agent</button>
     <p id="status" class="status" role="status"></p>
   </main>
@@ -801,7 +801,7 @@ function renderConnectPage(userCode: string): string {
         if(!response.ok)throw new Error(body.message||body.error||"Approval failed.");
         status.textContent=body.message||"Approved. Return to the agent.";
         button.textContent="Approved";
-      }catch(error){status.textContent=error.message||String(error);button.disabled=false}
+      }catch(error){status.textContent="Could not approve the agent. Check the code and try again.";button.disabled=false}
     });
   </script>
 </body>

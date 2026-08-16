@@ -109,11 +109,11 @@ function nftRequestLooksLikeJson(ctx: RouteContext): boolean {
 function rejectBadNftMutationRequest(ctx: RouteContext): boolean {
   if (ctx.method === "GET" || ctx.method === "HEAD") return false;
   if (!nftRequestLooksLikeJson(ctx)) {
-    ctx.error(ctx.res, "NFT requests must be sent as JSON.", 415);
+    ctx.error(ctx.res, "Collectible requests must be sent as JSON.", 415);
     return true;
   }
   if (!nftOriginAllowed(ctx)) {
-    ctx.error(ctx.res, "NFT request origin is not allowed.", 403);
+    ctx.error(ctx.res, "Collectible request origin is not allowed.", 403);
     return true;
   }
   return false;
@@ -131,7 +131,7 @@ function takeNftMutationToken(ctx: RouteContext, deps: NftDeps): boolean {
   const retryAfter = NFT_MUTATION_LIMITER.retryAfterSeconds(key);
   const res = ctx.res as { setHeader?: (name: string, value: string) => void };
   res.setHeader?.("Retry-After", String(Math.max(1, retryAfter)));
-  ctx.error(ctx.res, "Too many NFT requests. Try again shortly.", 429);
+  ctx.error(ctx.res, "Too many collectible requests. Try again shortly.", 429);
   return false;
 }
 
@@ -260,7 +260,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         publicBaseUrl: publicBaseUrlForRequest(ctx),
       });
       if (!metadata) {
-        ctx.error(ctx.res, "Unknown Ruby High card character.", 404);
+        ctx.error(ctx.res, "Unknown Ruby High collectible card.", 404);
         return true;
       }
       ctx.json(ctx.res, metadata);
@@ -282,7 +282,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     const characterId = decodePathSegment(metadataMatch[1] ?? "ruby");
     const serial = decodePathSegment(metadataMatch[2] ?? "1");
     if (!characterId || !serial) {
-      ctx.error(ctx.res, "Unknown Ruby High card character.", 404);
+      ctx.error(ctx.res, "Unknown Ruby High collectible card.", 404);
       return true;
     }
     const knownCard = deps.ruby.findHallPassCardByMetadata(characterId, Math.max(1, Math.floor(Number(serial || 1))));
@@ -298,7 +298,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       })
       : null);
     if (!metadata) {
-      ctx.error(ctx.res, "Unknown Ruby High card character.", 404);
+      ctx.error(ctx.res, "Unknown Ruby High collectible card.", 404);
       return true;
     }
     setNftMetadataCacheHeaders(ctx.res);
@@ -332,7 +332,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     );
     const characterId = typeof body.characterId === "string" ? body.characterId.trim().slice(0, 96) : "";
     if (!characterId) {
-      ctx.error(ctx.res, "Cast character id is required.", 400);
+      ctx.error(ctx.res, "Collectible card id is required.", 400);
       return true;
     }
     try {
@@ -569,7 +569,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     }
     const status = publicCorePackNftStatus();
     if (!status.configured) {
-      ctx.error(ctx.res, status.reason || "Pack opening is not configured.", 503);
+      ctx.error(ctx.res, status.reason || "Collectible-pack opening is not available.", 503);
       return true;
     }
     if (!ownerWalletAddress) {
@@ -606,7 +606,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         ownerWalletAddress,
       });
       const message = publicNftErrorMessage(err);
-      ctx.error(ctx.res, message, /ownership|owned|already opened on-chain/i.test(message) ? 409 : 400);
+      ctx.error(ctx.res, message, /ownership|owned|already open|opened again/i.test(message) ? 409 : 400);
     }
     return true;
   }
@@ -614,7 +614,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
   if (ctx.method === "POST" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/mint-card-prepare`) {
     const status = hallPassNftStatus();
     if (!status.configured) {
-      ctx.error(ctx.res, status.reason || "Card minting is not configured.", 503);
+      ctx.error(ctx.res, status.reason || "Creating collectible cards on Solana is not available.", 503);
       return true;
     }
     const token = deps.auth.parseSessionToken(ctx.cookieHeader);
@@ -648,12 +648,12 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       return true;
     }
     if (!ownerWalletAddress) {
-      ctx.error(ctx.res, "Connect a Solana wallet before minting cards.", 400);
+      ctx.error(ctx.res, "Connect a Solana wallet before creating collectible cards.", 400);
       return true;
     }
     const card = deps.ruby.mintableHallPassCards(stateKey).find((candidate) => candidate.id === cardId);
     if (!card) {
-      ctx.error(ctx.res, "No face-down card is available to mint.", 404);
+      ctx.error(ctx.res, "No face-down collectible card is ready to reveal.", 404);
       return true;
     }
     if (card.ownerWalletAddress && card.ownerWalletAddress !== ownerWalletAddress) {
@@ -739,7 +739,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
   if (ctx.method === "POST" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/mint-card-submit`) {
     const status = hallPassNftStatus();
     if (!status.configured) {
-      ctx.error(ctx.res, status.reason || "Card minting is not configured.", 503);
+      ctx.error(ctx.res, status.reason || "Creating collectible cards on Solana is not available.", 503);
       return true;
     }
     const token = deps.auth.parseSessionToken(ctx.cookieHeader);
@@ -769,12 +769,12 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       userAgent: clipLogValue(headerString(ctx.userAgentHeader), 96),
     });
     if (!cardId || !ownerWalletAddress || !mintAddress || !metadataUri || !signedTransactionBase64) {
-      ctx.error(ctx.res, "Card mint submission is incomplete.", 400);
+      ctx.error(ctx.res, "The collectible-card request is incomplete.", 400);
       return true;
     }
     const card = deps.ruby.mintableHallPassCards(stateKey).find((candidate) => candidate.id === cardId);
     if (!card) {
-      ctx.error(ctx.res, "No face-down card matches this mint.", 404);
+      ctx.error(ctx.res, "No face-down collectible card matches this request.", 404);
       return true;
     }
     if (card.ownerWalletAddress && card.ownerWalletAddress !== ownerWalletAddress) {
@@ -782,14 +782,14 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       return true;
     }
     if (!hallPassCardPendingMintMatches(card, { ownerWalletAddress, mintAddress, metadataUri })) {
-      ctx.error(ctx.res, "Card mint metadata does not match this card.", 400);
+      ctx.error(ctx.res, "The collectible-card details do not match this card.", 400);
       return true;
     }
     const transactionMessageHash = typeof card.pendingMintTransactionHash === "string"
       ? card.pendingMintTransactionHash.trim()
       : "";
     if (!transactionMessageHash) {
-      ctx.error(ctx.res, "Card mint transaction was not prepared. Refresh and try again.", 400);
+      ctx.error(ctx.res, "The collectible-card request was not prepared. Refresh and try again.", 400);
       return true;
     }
     try {
@@ -816,7 +816,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         },
       });
       if (!expectedMintSignature || mintSignature !== expectedMintSignature) {
-        throw new Error("Solana RPC returned a different card mint signature.");
+        throw new Error("Solana returned a different collectible-card receipt.");
       }
       const verified = await verifyHallPassCardMint({
         ownerWalletAddress,
@@ -875,7 +875,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
   if (ctx.method === "POST" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/mint-card-confirm`) {
     const status = hallPassNftStatus();
     if (!status.configured) {
-      ctx.error(ctx.res, status.reason || "Card minting is not configured.", 503);
+      ctx.error(ctx.res, status.reason || "Creating collectible cards on Solana is not available.", 503);
       return true;
     }
     const token = deps.auth.parseSessionToken(ctx.cookieHeader);
@@ -892,12 +892,12 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     const mintSignature = typeof body.mintSignature === "string" ? body.mintSignature.trim() : "";
     const metadataUri = typeof body.metadataUri === "string" ? body.metadataUri.trim() : "";
     if (!cardId || !ownerWalletAddress || !mintAddress || !mintSignature || !metadataUri) {
-      ctx.error(ctx.res, "Card mint confirmation is incomplete.", 400);
+      ctx.error(ctx.res, "The collectible-card confirmation is incomplete.", 400);
       return true;
     }
     const card = deps.ruby.mintableHallPassCards(stateKey).find((candidate) => candidate.id === cardId);
     if (!card) {
-      ctx.error(ctx.res, "No face-down card matches this mint.", 404);
+      ctx.error(ctx.res, "No face-down collectible card matches this request.", 404);
       return true;
     }
     if (card.ownerWalletAddress && card.ownerWalletAddress !== ownerWalletAddress) {
@@ -905,7 +905,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       return true;
     }
     if (!hallPassCardMintMetadataMatches(card, { ownerWalletAddress, mintAddress, metadataUri })) {
-      ctx.error(ctx.res, "Card mint metadata does not match this card.", 400);
+      ctx.error(ctx.res, "The collectible-card details do not match this card.", 400);
       return true;
     }
     try {
@@ -954,7 +954,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
   if (ctx.method === "POST" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/mint-pack`) {
     const status = hallPassNftStatus();
     if (!status.configured) {
-      ctx.error(ctx.res, status.reason || "Card minting is not configured.", 503);
+      ctx.error(ctx.res, status.reason || "Creating collectible cards on Solana is not available.", 503);
       return true;
     }
     const token = deps.auth.parseSessionToken(ctx.cookieHeader);
@@ -973,7 +973,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
           : "",
     );
     if (!ownerWalletAddress) {
-      ctx.error(ctx.res, "Connect a Solana wallet before minting cards.", 400);
+      ctx.error(ctx.res, "Connect a Solana wallet before creating collectible cards.", 400);
       return true;
     }
     try {
@@ -1033,7 +1033,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
   if (ctx.method === "POST" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/burn-prepare`) {
     const status = hallPassNftStatus();
     if (!status.configured) {
-      ctx.error(ctx.res, status.reason || "Card burning is not configured.", 503);
+      ctx.error(ctx.res, status.reason || "Collectible-card exchange is not available.", 503);
       return true;
     }
     const token = deps.auth.parseSessionToken(ctx.cookieHeader);
@@ -1052,7 +1052,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
           : "",
     );
     if (!ownerWalletAddress) {
-      ctx.error(ctx.res, "Connect a Solana wallet before burning a card.", 400);
+      ctx.error(ctx.res, "Connect a Solana wallet before permanently destroying a collectible card.", 400);
       return true;
     }
     const cardIds = readCardIds(body);
@@ -1064,11 +1064,11 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       })
       : burnable.slice(0, 1);
     if (cards.length <= 0 || (cardIds.length > 0 && cards.length !== cardIds.length)) {
-      ctx.error(ctx.res, "No minted card is available to burn from this wallet.", 404);
+      ctx.error(ctx.res, "No collectible card is available to exchange from this wallet.", 404);
       return true;
     }
     if (cards.length > MAX_BURNS_PER_REQUEST) {
-      ctx.error(ctx.res, `Burn at most ${MAX_BURNS_PER_REQUEST} card${MAX_BURNS_PER_REQUEST === 1 ? "" : "s"} at once.`, 400);
+      ctx.error(ctx.res, `Exchange at most ${MAX_BURNS_PER_REQUEST} collectible card${MAX_BURNS_PER_REQUEST === 1 ? "" : "s"} at once.`, 400);
       return true;
     }
     try {
@@ -1105,7 +1105,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
   if (ctx.method === "POST" && ctx.pathname === `${HALL_PASS_NFT_PREFIX}/burn-confirm`) {
     const status = hallPassNftStatus();
     if (!status.configured) {
-      ctx.error(ctx.res, status.reason || "Card burning is not configured.", 503);
+      ctx.error(ctx.res, status.reason || "Collectible-card exchange is not available.", 503);
       return true;
     }
     const token = deps.auth.parseSessionToken(ctx.cookieHeader);
@@ -1117,7 +1117,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
     const burn = readBurnInput(body);
     if (!burn) {
-      ctx.error(ctx.res, "Burn confirmation is incomplete.", 400);
+      ctx.error(ctx.res, "The collectible-card exchange confirmation is incomplete.", 400);
       return true;
     }
     const stateKey = deps.auth.stateKeyForRecord(record);
@@ -1151,7 +1151,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         });
         return true;
       }
-      ctx.error(ctx.res, "No active minted card matches this burn.", 404);
+      ctx.error(ctx.res, "No active collectible card matches this exchange.", 404);
       return true;
     }
     try {
@@ -1160,7 +1160,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         burns: [burn],
         idempotencyKey: hallPassBurnConversionKey([burn]),
         source: "hall-pass-card",
-        description: `1 Card burned for ${HALL_PASS_CARD_BURN_HALL_PASS_VALUE} Hall Passes`,
+        description: `1 collectible card exchanged for ${HALL_PASS_CARD_BURN_HALL_PASS_VALUE} Hall Passes`,
       });
       await deps.ruby.flushSession(stateKey);
       ctx.json(ctx.res, {
@@ -1218,7 +1218,7 @@ function boundSolanaWalletAddress(
     : authenticated;
   if (!requested) return { address: "", error: "Solana wallet address is invalid." };
   if (requested !== authenticated) {
-    return { address: "", error: "Pack wallet does not match the authenticated Solana wallet." };
+    return { address: "", error: "This pack wallet does not match your connected Solana wallet." };
   }
   return { address: authenticated };
 }
@@ -1288,7 +1288,7 @@ async function recoverPendingCardMint(
     const stillFresh = submittedAt > 0 && Date.now() - submittedAt < PENDING_MINT_RETRY_AFTER_MS;
     if (/not found|not confirmed|not indexed|try again after confirmation/i.test(message)) {
       if (stillFresh) {
-        throw new Error("The previous card mint is still confirming on Solana. Try again shortly.");
+        throw new Error("The previous collectible card is still being created on Solana. Try again shortly.");
       }
       return null;
     }
@@ -1365,13 +1365,13 @@ async function openHallPassPackTransaction(
   if (!recordedPack) throw new Error("Pack not found.");
   const currentOwnership = await fetchCorePackCurrentOwnershipOrNull(recordedPack.assetAddress);
   if (!currentOwnership) {
-    throw new Error("Could not verify current on-chain pack ownership. Try syncing your wallet, then try again.");
+    throw new Error("Could not confirm that this wallet owns the collectible pack. Sync your wallet, then try again.");
   }
   if (currentOwnership.ownerWalletAddress !== ownerWalletAddress) {
     throw new Error("Pack is no longer owned by this wallet. Sync your wallet packs before opening.");
   }
   if (currentOwnership.opened == null) {
-    throw new Error("Could not verify current on-chain pack ownership and opened state. Try syncing your wallet, then try again.");
+    throw new Error("Could not confirm who owns this collectible pack or whether it is open. Sync your wallet, then try again.");
   }
   if (currentOwnership.opened && recordedPack.status !== "opened") {
     deps.ruby.recordHallPassPackOnChainOpened(
@@ -1380,7 +1380,7 @@ async function openHallPassPackTransaction(
       currentOwnership.metadataUri,
     );
     await deps.ruby.flushSession(stateKey);
-    throw new Error("Pack is already opened on-chain and cannot be redeemed again.");
+    throw new Error("This collectible pack is already open and cannot be opened again.");
   }
 
   const walletSnapshot = structuredClone(state.wallet);
@@ -1460,7 +1460,7 @@ async function updateOpenedCorePackNft(
 ): Promise<Record<string, unknown> | null> {
   if (!pack?.assetAddress) return null;
   if (!publicCorePackNftStatus().configured) {
-    throw new Error("Pack NFT updates are not configured. Your pack was not opened; try again in a minute.");
+    throw new Error("Ruby High cannot update collectible packs on Solana right now. Your pack was not opened; try again in a minute.");
   }
   try {
     const updated = await updateCorePackNftToOpened({
@@ -1484,7 +1484,7 @@ async function updateOpenedCorePackNft(
       packId: pack.id,
       assetAddress: pack.assetAddress,
     });
-    throw new Error("Pack NFT update failed. Your pack was not opened; try again in a minute.");
+    throw new Error("Ruby High could not update the collectible pack on Solana. Your pack was not opened; try again in a minute.");
   }
 }
 
@@ -1570,7 +1570,7 @@ function hiddenCardPayload(card: RubyHighHallPassCard): Record<string, unknown> 
     setCode: FIRST_BELL_SET_CODE,
     role: "special",
     rarity: "common",
-    blurb: "Mint this Card to reveal it.",
+    blurb: "Create this collectible card on Solana to reveal it.",
     color: "#8f1d1d",
     status: card.status,
     issuedAt: card.issuedAt,
@@ -1641,9 +1641,9 @@ function packPayload(pack: RubyHighHallPassPack): Record<string, unknown> {
 function publicPackSyncErrorMessage(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   if (/getProgramAccounts|410|forbidden|rpc/i.test(raw)) {
-    return "Solana RPC could not sync wallet packs. Check the configured Ruby High Solana RPC.";
+    return "Solana could not sync your collectible packs. Check the Ruby High Solana connection settings.";
   }
-  return raw || "Solana pack sync failed.";
+  return raw || "Could not sync collectible packs from Solana.";
 }
 
 function cleanClientBuild(value: unknown): string {
@@ -1675,19 +1675,19 @@ function previewUri(value: string): string {
 function publicNftErrorMessage(err: unknown): string {
   const raw = solanaErrorMessages(err).join(" ") || (err instanceof Error ? err.message : String(err));
   if (/needs more SOL|insufficient funds|insufficient lamports|Attempt to debit|0x1\b|needs at least|balance is .*needs/i.test(raw)) {
-    return "This card mint needs more SOL for Solana rent and fees. Your card was not changed.";
+    return "Creating this collectible card needs more SOL for the Solana network fee. Your card was not changed.";
   }
   if (/Solana RPC failed with (?:429|5\d\d)|429|too many requests|rate.?limit/i.test(raw)) {
-    return "Solana RPC is temporarily unavailable. Your NFT was not changed; try again in a minute.";
+    return "Solana is temporarily unavailable. Your collectible was not changed; try again in a minute.";
   }
   if (/fetch failed|network|timed out|timeout|ECONN|ENOTFOUND|ETIMEDOUT|EAI_AGAIN/i.test(raw)) {
-    return "Solana RPC did not answer. Your NFT was not changed; try again in a minute.";
+    return "Solana did not answer. Your collectible was not changed; try again in a minute.";
   }
   if (/blockhash|recent blockhash/i.test(raw)) {
-    return "Solana could not provide a recent blockhash. Your NFT was not changed; try again in a minute.";
+    return "Solana could not prepare the transaction. Your collectible was not changed; try again in a minute.";
   }
   if (/403|forbidden/i.test(raw)) {
-    return "Solana RPC rejected the request. Check the configured Helius/Solana RPC key.";
+    return "Solana rejected the request. Check the Ruby High Solana connection settings.";
   }
   if (/preflight|simulation/i.test(raw)) {
     return "Solana rejected the transaction preview. Your NFT was not changed; try again in a minute.";

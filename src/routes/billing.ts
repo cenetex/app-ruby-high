@@ -521,7 +521,7 @@ async function verifySolanaPayment(
   if (!isSolanaSignature(cleanSignature)) throw new Error("Invalid Solana transaction signature.");
   const transaction = await fetchSolanaTransaction(config, cleanSignature);
   if (!transaction) throw new Error("Solana transaction was not found yet. Try again after confirmation.");
-  if (transaction.meta?.err != null) throw new Error("Solana transaction failed on-chain.");
+  if (transaction.meta?.err != null) throw new Error("Solana could not complete the transaction.");
   const signatures = transaction.transaction?.signatures;
   if (Array.isArray(signatures) && signatures.length > 0 && !signatures.includes(cleanSignature)) {
     throw new Error("Solana RPC returned a different transaction.");
@@ -1501,7 +1501,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     }
     const packNfts = publicCorePackNftStatus();
     if (!packNfts.configured) {
-      ctx.error(ctx.res, packNfts.reason || "Solana pack creation is not configured.", 503);
+      ctx.error(ctx.res, packNfts.reason || "Collectible-pack checkout is not available.", 503);
       return true;
     }
     const stateKey = authenticatedStateKey(ctx, deps);
@@ -1519,11 +1519,11 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       ? body.ownerWalletAddress.trim()
       : "";
     if (!ownerWalletAddress) {
-      ctx.error(ctx.res, "Connect a Solana wallet before minting a pack.", 400);
+      ctx.error(ctx.res, "Connect a Solana wallet before creating a collectible pack.", 400);
       return true;
     }
     if (ownerWalletAddress === solana.recipient) {
-      ctx.error(ctx.res, "Use a buyer wallet, not the Ruby High treasury wallet, to mint a pack.", 400);
+      ctx.error(ctx.res, "Use your own wallet, not the Ruby High wallet, to create a collectible pack.", 400);
       return true;
     }
     const reference = solanaPaymentReference(stateKey, product.id);
@@ -1571,7 +1571,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     }
     const packNfts = publicCorePackNftStatus();
     if (!packNfts.configured) {
-      ctx.error(ctx.res, packNfts.reason || "Solana pack creation is not configured.", 503);
+      ctx.error(ctx.res, packNfts.reason || "Collectible-pack checkout is not available.", 503);
       return true;
     }
     const stateKey = authenticatedStateKey(ctx, deps);
@@ -1597,7 +1597,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       return true;
     }
     if (ownerWalletAddress === solana.recipient) {
-      ctx.error(ctx.res, "Use a buyer wallet, not the Ruby High treasury wallet, to mint a pack.", 400);
+      ctx.error(ctx.res, "Use your own wallet, not the Ruby High wallet, to create a collectible pack.", 400);
       return true;
     }
     try {
@@ -1638,7 +1638,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     }
     const packNfts = publicCorePackNftStatus();
     if (!packNfts.configured) {
-      ctx.error(ctx.res, packNfts.reason || "Solana pack creation is not configured.", 503);
+      ctx.error(ctx.res, packNfts.reason || "Collectible-pack checkout is not available.", 503);
       return true;
     }
     const stateKey = authenticatedStateKey(ctx, deps);
@@ -1661,7 +1661,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
       return true;
     }
     if (!signature) {
-      ctx.error(ctx.res, "Solana transaction signature is required.", 400);
+      ctx.error(ctx.res, "A Solana payment receipt is required.", 400);
       return true;
     }
     if (!ownerWalletAddress) {
@@ -1854,7 +1854,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
   }
 
   if (ctx.method === "POST" && ctx.pathname === `${BILLING_PREFIX}/ai-pass`) {
-    ctx.error(ctx.res, "AI is sponsored on this server when configured; chat spends Merit Stars instead.", 410);
+    ctx.error(ctx.res, "Ruby High AI is included when available. Teacher chat uses Merit Stars.", 410);
     return true;
   }
 
@@ -1868,7 +1868,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
     const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown>;
     const burns = hallPassBurnsFromBody(body);
     if (burns.length <= 0) {
-      ctx.error(ctx.res, "Burn at least one minted card for Hall Passes.", 400);
+      ctx.error(ctx.res, "Choose at least one collectible card to permanently destroy for Hall Passes.", 400);
       return true;
     }
     const idempotencyKey = typeof body.idempotencyKey === "string" && body.idempotencyKey.trim()
@@ -1882,7 +1882,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
         burns,
         idempotencyKey,
         source: "hall-pass-card",
-        description: `${burns.length} Card${burns.length === 1 ? "" : "s"} burned for ${hallPassCredit} Hall Pass${hallPassCredit === 1 ? "" : "es"}`,
+        description: `${burns.length} collectible card${burns.length === 1 ? "" : "s"} exchanged for ${hallPassCredit} Hall Pass${hallPassCredit === 1 ? "" : "es"}`,
       });
       await deps.ruby.flushSession(stateKey);
       const entitlements = hostedEntitlementStatus({ ruby: deps.ruby, sessionId: stateKey });
@@ -1911,7 +1911,7 @@ export async function handleBillingRoutes(ctx: RouteContext, deps: BillingDeps):
   if (ctx.method === "POST" && ctx.pathname === `${BILLING_PREFIX}/checkout`) {
     const stripeKey = envTrim("RUBY_HIGH_STRIPE_SECRET_KEY");
     if (!stripeKey) {
-      ctx.error(ctx.res, "Stripe billing is not configured.", 503);
+      ctx.error(ctx.res, "Card payment is not available.", 503);
       return true;
     }
     const token = deps.auth.parseSessionToken(ctx.cookieHeader);

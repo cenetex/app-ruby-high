@@ -90,10 +90,10 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
     const prompt = String(recordValue(result, "prompt") || "").trim();
     const finalOutcome = result
       ? recordValue(result, "forfeit")
-        ? "final response unanswered"
+        ? "final answer missing"
         : recordValue(result, "wasCorrect")
-          ? "final response met"
-          : "final response missed"
+          ? "final answer passed"
+          : "final answer needs work"
       : "";
     const completedClasses = positiveWhole(recordValue(result, "completedClasses") ?? recordValue(progress, "completedClasses"));
     const requiredClasses = positiveWhole(recordValue(result, "requiredClasses") ?? recordValue(progress, "requiredClasses"));
@@ -101,18 +101,18 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
     const progressCopy = requiredClasses <= 0
       ? `Today’s ${teacherName} class is recorded.`
       : remainingClasses === 0
-        ? `${teacherName}’s ${grade} course requirement is cleared: ${completedClasses} of ${requiredClasses} passing class days recorded.`
-        : `${completedClasses} of ${requiredClasses} passing ${teacherName} class days are recorded for ${grade}. ${remainingClasses} more ${remainingClasses === 1 ? "day" : "days"} to clear the course.`;
+        ? `You passed ${teacherName}’s ${grade} course. You completed ${completedClasses} of ${requiredClasses} required class days.`
+        : `You completed ${completedClasses} of ${requiredClasses} required ${teacherName} class days for ${grade}. Pass ${remainingClasses} more ${remainingClasses === 1 ? "day" : "days"} to finish the course.`;
     return {
       classLetter,
       passedToday,
       teacherName,
       title: `${teacherName} class result`,
-      outcomeLine: `${passedToday ? "Class passed" : "Class needs review"}${finalOutcome ? ` · ${finalOutcome}` : ""} · ${grade} · ${correctSummary.value}`,
+      outcomeLine: `${passedToday ? "Class passed" : "Class needs work"}${finalOutcome ? ` · ${finalOutcome}` : ""} · ${grade} · ${correctSummary.value}`,
       promptLine: prompt ? `Final prompt: ${prompt}` : "Today’s graded class is complete.",
       observationLabel: `What ${teacherName} noticed`,
-      observation: String(recordValue(result, "teacherObservation") || `${teacherName} recorded ${correctSummary.value} on today’s graded cards.`),
-      consequenceLabel: String(recordValue(result, "consequenceLabel") || (passedToday ? "Passing class recorded" : "Review mark recorded")),
+      observation: String(recordValue(result, "teacherObservation") || `${teacherName} recorded ${correctSummary.value} for today’s class.`),
+      consequenceLabel: String(recordValue(result, "consequenceLabel") || (passedToday ? "Class saved" : "Saved for review")),
       consequence: String(recordValue(result, "consequenceDetail") || `${grade} with ${teacherName}: ${classLetter}, ${correctSummary.value}.`),
       progressLabel: "Course progress",
       progress: progressCopy,
@@ -177,7 +177,7 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
       const metrics = deps.document.createElement("div");
       metrics.className = "class-report-metrics";
       addMetric(metrics, "correct", view.correctValue, view.correctDetail);
-      addMetric(metrics, "score", view.scoreValue, "grade score");
+      addMetric(metrics, "score", view.scoreValue, "class score");
       wrap.appendChild(metrics);
       return wrap;
     },
@@ -200,10 +200,10 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
         body.textContent = "Your guest lesson is complete. Keep your student and unlock the rest of Ruby High.";
       } else if (state.essayReady) {
         title.textContent = "Your graded essay is ready";
-        body.textContent = "Write it next to complete this year's requirements and unlock the ceremony.";
+        body.textContent = "Write it next to finish this year's requirements and start the ceremony.";
       } else if (state.socialReady) {
         title.textContent = "Finish today’s reflection";
-        body.textContent = "Then practice stays open; return tomorrow for the next graded class.";
+        body.textContent = "After that, you can keep practising. Return tomorrow for the next graded class.";
       } else if (state.practiceReady) {
         title.textContent = "Practice is open now";
         body.textContent = "It will not change today’s class record. Return tomorrow for the next graded class.";

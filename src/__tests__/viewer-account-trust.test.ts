@@ -53,7 +53,7 @@ describe("account trust panel view", () => {
         href: "https://solscan.io/account/CardCollection3333333333333333333333333333",
       },
     ]);
-    expect(view.note).toContain("never asks for a seed phrase");
+    expect(view.note).toContain("never asks for your seed phrase");
   });
 
   it("falls back before wallet payment configuration is loaded", () => {

@@ -111,7 +111,7 @@ export function createAccountHallPassCardsPanelRenderer(
   function appendEmpty(parent: HTMLElement): void {
     const empty = deps.document.createElement("div");
     empty.className = "account-empty";
-    empty.textContent = "No packs or Cards in this wallet yet.";
+    empty.textContent = "No collectible packs or cards in this wallet yet.";
     parent.appendChild(empty);
   }
 

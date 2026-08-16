@@ -65,7 +65,7 @@ export function createPaperCardRenderer(deps: PaperCardRendererDeps): PaperCardR
         || deps.defaultPortraitFor(playbookId);
       const quote = entry.flavorQuote || entry.arcAnswer || "";
       const summary = entry.summary || { correct: 0, total: 0 };
-      const sealedSubtitle = "\u2713 " + gradeLabel + " \u00b7 sealed " + deps.formatSealedDate(entry.completedAt)
+      const sealedSubtitle = "\u2713 " + gradeLabel + " \u00b7 completed " + deps.formatSealedDate(entry.completedAt)
         + " \u00b7 " + summary.correct + "/" + summary.total + " correct";
 
       const card = deps.buildCharacterCard({

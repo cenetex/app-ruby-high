@@ -40,11 +40,11 @@ describe("creation control card renderer", () => {
 
     expect(card.className).toBe("ccg-card is-career-card is-creation-control-card");
     expect(textTree(card)).toEqual([
-      "roll",
-      "Character Roll",
+      "setup",
+      "Create a Student",
       "Reroll any field. AI can refresh the voice and portrait.",
-      "Done customizing",
-      "Roll a student",
+      "Done editing",
+      "Make a student",
     ]);
     const body = card.children[1] as FakeElement;
     expect(body.className).toBe("ccg-body");
@@ -61,6 +61,6 @@ describe("creation control card renderer", () => {
 
     const card = renderer.build({}).card as unknown as FakeElement;
 
-    expect(textTree(card)).toEqual(["roll", "Character Roll", "Done customizing", "Roll a student"]);
+    expect(textTree(card)).toEqual(["setup", "Create a Student", "Done editing", "Make a student"]);
   });
 });

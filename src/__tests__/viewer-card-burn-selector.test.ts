@@ -159,14 +159,14 @@ describe("card burn selector", () => {
 
     expect(overlay.className).toBe("card-burn-overlay");
     expect(overlay.attributes).toMatchObject({ role: "dialog", "aria-modal": "true" });
-    expect(panel.children[0]!.textContent).toBe("Choose card burn");
-    expect(panel.children[1]!.textContent).toBe("Pick a card to burn");
-    expect(panel.children[2]!.textContent).toBe("Each selected card leaves your wallet and credits 5 Hall Passes.");
+    expect(panel.children[0]!.textContent).toBe("Permanent action");
+    expect(panel.children[1]!.textContent).toBe("Choose a collectible card");
+    expect(panel.children[2]!.textContent).toBe("Each selected collectible card will be permanently destroyed. You will get 5 Hall Passes for each card.");
     expect(grid.children.map((button) => button.dataset.cardId)).toEqual(["card-a", "card-b"]);
     expect(grid.children[0]!.children[0]!.children[0]!.src).toBe("/cards/card-a.png");
     expect(grid.children[0]!.children[1]!.children.map((child) => child.textContent)).toEqual(["Ruby", "Teacher Card"]);
     expect(cancel.textContent).toBe("Cancel");
-    expect(confirm.textContent).toBe("Burn Card");
+    expect(confirm.textContent).toBe("Permanently Destroy Card");
     expect(confirm.disabled).toBe(true);
     expect(grid.children[0]!.focused).toBe(true);
 
@@ -194,7 +194,7 @@ describe("card burn selector", () => {
     const promise = selector.select(cards, 2);
     const { grid, confirm } = parts(doc.body);
 
-    expect(confirm.textContent).toBe("Burn 2 Cards");
+    expect(confirm.textContent).toBe("Permanently Destroy 2 Cards");
     grid.children[0]!.click();
     grid.children[1]!.click();
     expect(confirm.disabled).toBe(false);

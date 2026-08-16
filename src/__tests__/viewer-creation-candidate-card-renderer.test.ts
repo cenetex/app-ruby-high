@@ -42,9 +42,9 @@ describe("creation candidate card renderer", () => {
 
     expect(card.className).toBe("ccg-card is-character-card is-creation-candidate-card");
     expect(textTree(card)).toEqual([
-      "player",
-      "Free · no signup · your first class starts immediately.",
-      "\u2728 Generate AI portrait",
+      "student",
+      "Free · no sign-up needed · your first class starts now.",
+      "\u2728 Create AI portrait",
       "Customize",
       "Take my seat · start class",
     ]);
@@ -73,7 +73,7 @@ describe("creation candidate card renderer", () => {
 
     expect(portraitBtn.className).toBe("secondary");
     expect(portraitBtn.type).toBe("button");
-    expect(portraitBtn.textContent).toBe("\u2728 Generate AI portrait");
+    expect(portraitBtn.textContent).toBe("\u2728 Create AI portrait");
     expect(customizeBtn.className).toBe("secondary creation-customize-btn");
     expect(customizeBtn.type).toBe("button");
     expect(customizeBtn.textContent).toBe("Customize");

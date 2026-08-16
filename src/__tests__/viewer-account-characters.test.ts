@@ -25,9 +25,9 @@ describe("account character card views", () => {
       summaryText: "Create your first student to start class.",
       createHidden: false,
       createDisabled: false,
-      unlockText: "Unlock Slot (2 Cards)",
+      unlockText: "Add Student Slot (2 Hall Passes)",
       unlockDisabled: true,
-      unlockTitle: "Need 2 Cards",
+      unlockTitle: "Need 2 Hall Passes",
     });
   });
 
@@ -51,7 +51,7 @@ describe("account character card views", () => {
       summaryText: "3 unlocked slots · 1 Photo Day credit",
       createHidden: true,
       createDisabled: true,
-      unlockText: "Unlock Slot (1 Card)",
+      unlockText: "Add Student Slot (1 Hall Pass)",
       unlockDisabled: false,
       unlockTitle: "Adds one student slot and 2 Photo Day credit",
     });
@@ -127,7 +127,7 @@ describe("account character card views", () => {
       tagName: "button",
       type: "button",
       className: "account-character-card is-empty is-create",
-      name: "Create Character",
+      name: "Create Student",
       meta: "Slot 3 · start today's class",
       canCreate: true,
     });

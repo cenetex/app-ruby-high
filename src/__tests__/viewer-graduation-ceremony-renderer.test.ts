@@ -64,7 +64,7 @@ describe("graduation ceremony renderer", () => {
       "A",
       "Freshman complete",
       "Final grade A · 92% · next: Sophomore",
-      "Choose one yearbook reward.",
+      "Choose one reward for your yearbook.",
       "Photo",
       "Snap with your top teacher.",
       "Extra Advantage",
@@ -91,7 +91,7 @@ describe("graduation ceremony renderer", () => {
     expect(card.className).toBe("graduation-ceremony");
     expect(textTree(card)).toEqual([
       "Graduation Ceremony",
-      "Pick one keepsake or reward to seal the yearbook.",
+      "Pick one keepsake or reward to save this year in your yearbook.",
       "Photo",
       "Snap.",
     ]);

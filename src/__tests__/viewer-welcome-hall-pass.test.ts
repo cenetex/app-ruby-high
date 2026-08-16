@@ -9,9 +9,9 @@ describe("welcomeHallPassPopupView", () => {
       hasCharacter: false,
     })).toEqual({
       titleText: "5 Hall Passes added",
-      bodyText: "Roll your first student now, or save your Hall Passes for images, cards, and extra character slots.",
+      bodyText: "Create your first student now, or save your Hall Passes for images, collectible cards, and extra student slots.",
       showLater: true,
-      primaryText: "Create Character",
+      primaryText: "Create Student",
     });
   });
 
@@ -21,9 +21,9 @@ describe("welcomeHallPassPopupView", () => {
       hasCharacter: false,
     })).toEqual({
       titleText: "12 Hall Passes added",
-      bodyText: "Roll your first student and try a custom portrait, or save your Hall Passes for extra character slots.",
+      bodyText: "Create your first student and try a custom portrait, or save your Hall Passes for an extra student slot.",
       showLater: true,
-      primaryText: "Create Character",
+      primaryText: "Create Student",
     });
   });
 
@@ -41,7 +41,7 @@ describe("welcomeHallPassPopupView", () => {
       portraitConfigured: true,
     })).toEqual({
       titleText: "5 Hall Passes added",
-      bodyText: "The front office stamped your starter passes. Spend them on images, slots, and cards, or keep playing classes free.",
+      bodyText: "Your starter Hall Passes are ready. Use them for images, extra students, and collectible cards, or keep playing classes for free.",
       showLater: false,
       primaryText: "Continue",
     });

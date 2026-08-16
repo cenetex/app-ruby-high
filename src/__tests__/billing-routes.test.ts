@@ -433,7 +433,7 @@ describe("Sponsored AI", () => {
     }), deps());
 
     expect(lastResponse?.status).toBe(410);
-    expect(lastResponse?.body.error).toContain("AI is sponsored");
+    expect(lastResponse?.body.error).toContain("Ruby High AI is included");
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(2);
   });
 
@@ -480,7 +480,7 @@ describe("Sponsored AI", () => {
     }), deps());
 
     expect(lastResponse?.status).toBe(410);
-    expect(lastResponse?.body.error).toContain("AI is sponsored");
+    expect(lastResponse?.body.error).toContain("Ruby High AI is included");
     expect(ruby.getOrCreate(stateKey).wallet.hallPasses).toBe(0);
   });
 });
@@ -1059,7 +1059,7 @@ describe("Solana Hall Pass billing", () => {
     }), deps());
 
     expect(lastResponse?.status).toBe(400);
-    expect(lastResponse?.body.error).toContain("buyer wallet");
+    expect(lastResponse?.body.error).toContain("Use your own wallet");
   });
 
   it("returns a wallet-funding error when the buyer does not have enough SOL", async () => {

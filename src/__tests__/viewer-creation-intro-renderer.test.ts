@@ -47,7 +47,7 @@ describe("creation intro renderer", () => {
 
     expect(explanation.innerHTML).toContain("<strong>Meet your student.</strong>");
     expect(explanation.innerHTML).toContain("Change their name or student style");
-    expect(explanation.innerHTML).toContain("Nothing is enrolled until you take your seat.");
+    expect(explanation.innerHTML).toContain("Your student is not saved until you take your seat.");
     expect(loading.innerHTML).toContain("creation-loading-spinner");
     expect(loading.innerHTML).toContain("Getting your student ready");
     expect(loading.innerHTML).toContain("This should only take a moment.");

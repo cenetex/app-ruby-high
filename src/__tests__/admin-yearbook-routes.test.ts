@@ -1521,7 +1521,7 @@ describe("admin metrics route", () => {
     expect(response.body).toContain("Activity streams");
     expect(response.body).toContain("worldStreamMetricValue");
     expect(response.body).toContain("Identity records");
-    expect(response.body).toContain("guest / BYOK OpenRouter / Privy");
+    expect(response.body).toContain("guest / own AI key / account sign-in");
     expect(response.body).toContain("sessionStorage");
     expect(response.body).not.toContain("localStorage.getItem(tokenKey)");
     expect(response.body).not.toContain("admin-test-token");
@@ -2426,7 +2426,7 @@ describe("admin metrics route", () => {
         action: "monitor-coverage",
         draftId: persistedDrafts[0]!.id,
         autoEligible: false,
-        autoReason: "Reviewed questions were promoted; monitor coverage before creating another draft.",
+        autoReason: "Reviewed questions were added. Wait before creating another draft.",
         teacherAgenda: expect.objectContaining({
           draftStatus: "questions-promoted",
           promotedQuestionCount: 6,
@@ -2642,7 +2642,7 @@ describe("admin metrics route", () => {
         action: "create-draft",
         exhaustedSessions: 1,
         autoEligible: true,
-        autoReason: "Coverage exhaustion can auto-create a review draft.",
+        autoReason: "Some active students need more questions. Ruby High can create a review draft.",
       }),
     ]));
 
@@ -2683,7 +2683,7 @@ describe("admin metrics route", () => {
         status: "queued",
         action: "review-draft",
         autoEligible: false,
-        autoReason: "A replenishment draft is already queued for review.",
+        autoReason: "A draft is already waiting for review.",
         draftId: persistedDrafts[0]!.id,
       }),
     ]));
@@ -2796,7 +2796,7 @@ describe("admin metrics route", () => {
         action: "create-draft",
         exhaustedSessions: 0,
         autoEligible: true,
-        autoReason: "Teacher agenda is ready from Term Rally.",
+        autoReason: "The teacher plan is ready from Term Rally.",
         teacherAgenda: expect.objectContaining({
           executionStatus: "ready",
           executionReason: "term-rule-pressure",

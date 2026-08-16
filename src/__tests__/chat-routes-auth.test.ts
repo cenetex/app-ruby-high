@@ -797,7 +797,7 @@ describe("hosted image Hall Passes", () => {
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(402);
-    expect(JSON.parse(res.body).error).toContain("Need 1 Hall Pass or 1 burned Card");
+    expect(JSON.parse(res.body).error).toContain("You need 1 Hall Pass or must permanently destroy 1 collectible card");
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
@@ -1359,7 +1359,7 @@ describe("hosted image Hall Passes", () => {
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(409);
-    expect(JSON.parse(res.body).error).toContain("timed out");
+    expect(JSON.parse(res.body).error).toContain("took too long");
     expect(globalThis.fetch).not.toHaveBeenCalled();
     expect(ruby.hallPassBalance(stateKey)).toBe(5);
     const transactions = ruby.getOrCreate(stateKey).wallet.transactions ?? [];

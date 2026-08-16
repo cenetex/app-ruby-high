@@ -20,11 +20,11 @@ describe("pack library card view", () => {
       className: "pack-card-item is-active",
       interactive: false,
       tabIndex: 0,
-      ariaLabel: "Guest Ruby High Original",
+      ariaLabel: "Current guest: Ruby High Original",
       name: "Ruby High Original",
-      description: "Ruby High content pack.",
-      chips: ["official", "3 teachers", "600 cards"],
-      stateText: "Always on",
+      description: "Ruby High course.",
+      chips: ["official", "3 teachers", "600 questions"],
+      stateText: "Always available",
       actions: [],
     });
   });
@@ -42,11 +42,11 @@ describe("pack library card view", () => {
       className: "pack-card-item is-clickable",
       interactive: true,
       tabIndex: 0,
-      ariaLabel: "Set guest Guest Seminar",
+      ariaLabel: "Choose as guest: Guest Seminar",
       name: "Guest Seminar",
-      description: "Ruby High content pack.",
-      chips: ["creator", "yours", "1 teachers", "42 cards"],
-      stateText: "Set guest",
+      description: "Ruby High course.",
+      chips: ["community", "yours", "1 teachers", "42 questions"],
+      stateText: "Choose guest",
       actions: [
         { kind: "edit", className: "pack-action", text: "Edit", disabled: false },
         { kind: "uninstall", className: "pack-action", text: "Uninstall", disabled: false },
@@ -64,10 +64,10 @@ describe("pack library card view", () => {
     }, { search: true })).toMatchObject({
       className: "pack-card-item",
       interactive: false,
-      chips: ["creator", "2 teachers", "12 cards"],
-      stateText: "Not installed",
+      chips: ["community", "2 teachers", "12 questions"],
+      stateText: "Not added",
       actions: [
-        { kind: "search-primary", className: "pack-action", text: "Install", disabled: false },
+        { kind: "search-primary", className: "pack-action", text: "Add Course", disabled: false },
       ],
     });
 
@@ -79,10 +79,10 @@ describe("pack library card view", () => {
       teacherCount: 1,
       questionCount: 10,
     }, { search: true, busy: true })).toMatchObject({
-      chips: ["creator", "installed", "1 teachers", "10 cards"],
-      stateText: "Installed",
+      chips: ["community", "installed", "1 teachers", "10 questions"],
+      stateText: "Added",
       actions: [
-        { kind: "search-primary", className: "pack-action", text: "Set Guest", disabled: true },
+        { kind: "search-primary", className: "pack-action", text: "Choose Guest", disabled: true },
       ],
     });
   });
@@ -98,10 +98,10 @@ describe("pack library card view", () => {
       className: "pack-card-item",
       interactive: false,
       tabIndex: 0,
-      ariaLabel: "Set guest Untitled Pack",
-      name: "Untitled Pack",
-      description: "Draft content pack.",
-      chips: ["draft", "0 teachers", "0 cards"],
+      ariaLabel: "Choose as guest: Untitled Course",
+      name: "Untitled Course",
+      description: "Draft course.",
+      chips: ["draft", "0 teachers", "0 questions"],
       stateText: "",
       actions: [
         { kind: "edit", className: "pack-action", text: "Edit", disabled: false },
@@ -129,7 +129,7 @@ describe("pack teacher row view", () => {
       avatarUrl: "/assets/ruby-face.png",
       avatarText: "R",
       titleText: "Ruby",
-      subtitleText: "1 card · homeroom",
+      subtitleText: "1 question · homeroom",
       editDisabled: false,
       deleteDisabled: false,
     });
@@ -150,7 +150,7 @@ describe("pack teacher row view", () => {
       avatarUrl: "",
       avatarText: "T",
       titleText: "teacher-logic",
-      subtitleText: "0 cards",
+      subtitleText: "0 questions",
       editDisabled: true,
       deleteDisabled: true,
     });
@@ -161,7 +161,7 @@ describe("pack teacher row view", () => {
       className: "pack-teacher-row",
       avatarText: "?",
       titleText: "Untitled teacher",
-      subtitleText: "0 cards",
+      subtitleText: "0 questions",
     });
   });
 });
@@ -176,7 +176,7 @@ describe("pack teacher detail view", () => {
       description: "Homeroom ethics and school-world systems.",
     })).toEqual({
       nameText: "Ruby",
-      metaText: "7 cards · linked source",
+      metaText: "7 questions · linked materials",
       descriptionText: "Homeroom ethics and school-world systems.",
     });
   });
@@ -184,7 +184,7 @@ describe("pack teacher detail view", () => {
   it("uses a safe empty detail state when no teacher is selected", () => {
     expect(packTeacherDetailView(null)).toEqual({
       nameText: "No teacher selected",
-      metaText: "Add a teacher to configure this pack.",
+      metaText: "Add a teacher to set up this course.",
       descriptionText: "",
     });
   });

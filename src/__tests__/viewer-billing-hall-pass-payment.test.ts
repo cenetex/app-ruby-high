@@ -16,7 +16,7 @@ describe("billingHallPassPaymentChoiceView", () => {
       metaText: "$9.99",
       buttonText: "Checkout",
       buttonDisabled: false,
-      buttonTitle: "Pay by card with Stripe.",
+      buttonTitle: "Pay by card.",
     });
   });
 
@@ -30,7 +30,7 @@ describe("billingHallPassPaymentChoiceView", () => {
     })).toMatchObject({
       titleText: "Buy 10 Hall Passes",
       buttonDisabled: true,
-      buttonTitle: "Stripe checkout is not configured.",
+      buttonTitle: "Card payment is not available.",
     });
   });
 
@@ -47,7 +47,7 @@ describe("billingHallPassPaymentChoiceView", () => {
       titleText: "Buy 1 Hall Pass",
       buttonText: "Checkout",
       buttonDisabled: true,
-      buttonTitle: "Pay by card with Stripe.",
+      buttonTitle: "Pay by card.",
     });
   });
 

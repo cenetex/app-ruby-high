@@ -59,7 +59,7 @@ export function createMashGridRenderer(deps: MashGridRendererDeps): MashGridRend
 
       const heading = deps.document.createElement("div");
       heading.className = "mash-grid-heading";
-      heading.textContent = graduated ? "Social Card · sealed" : "Social Card";
+      heading.textContent = graduated ? "Social Card · completed" : "Social Card";
       wrap.appendChild(heading);
 
       const grid = deps.document.createElement("div");

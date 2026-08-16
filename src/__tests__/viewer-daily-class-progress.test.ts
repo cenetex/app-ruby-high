@@ -18,7 +18,7 @@ describe("daily class progress view", () => {
   it("shows the four-card sequence and advances its deterministic CTA", () => {
     expect(dailyClassProgressView(telemetry(0))).toMatchObject({
       visible: true,
-      continuationLabel: "Start Evidence 1",
+      continuationLabel: "Start Question 1",
       steps: [
         { key: "evidence-1", state: "current" },
         { key: "evidence-2", state: "upcoming" },
@@ -27,11 +27,11 @@ describe("daily class progress view", () => {
       ],
     });
     const evidence2 = dailyClassProgressView(telemetry(1));
-    expect(evidence2.continuationLabel).toBe("Next: Evidence 2");
+    expect(evidence2.continuationLabel).toBe("Next: Question 2");
     expect(evidence2.steps.map((step) => step.state)).toEqual(["complete", "current", "upcoming", "upcoming"]);
 
     const take = dailyClassProgressView(telemetry(2));
-    expect(take.continuationLabel).toBe("Next: Your Take");
+    expect(take.continuationLabel).toBe("Next: Your View");
     expect(take.steps.map((step) => step.state)).toEqual(["complete", "complete", "current", "upcoming"]);
 
     const result = dailyClassProgressView(telemetry(3, "complete"));
@@ -45,8 +45,8 @@ describe("daily class progress view", () => {
       store_path: "localStorage",
     });
 
-    expect(view.steps[2]).toMatchObject({ label: "Evidence 3", state: "current" });
-    expect(view.continuationLabel).toBe("Next: Evidence 3");
+    expect(view.steps[2]).toMatchObject({ label: "Question 3", state: "current" });
+    expect(view.continuationLabel).toBe("Next: Question 3");
   });
 
   it("stays hidden without a character-backed class context", () => {

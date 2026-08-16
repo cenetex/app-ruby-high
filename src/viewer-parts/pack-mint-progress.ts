@@ -30,7 +30,7 @@ export function createPackMintProgressController(deps: PackMintProgressControlle
   let lineIndex = 0;
 
   function defaultStatusLines(): string[] {
-    return deps.defaultLines.length > 0 ? deps.defaultLines : ["Preparing the mint..."];
+    return deps.defaultLines.length > 0 ? deps.defaultLines : ["Preparing your collectible pack..."];
   }
 
   function ensureOverlay(): HTMLElement {
@@ -50,7 +50,7 @@ export function createPackMintProgressController(deps: PackMintProgressControlle
     copy.className = "pack-mint-copy";
     const title = deps.document.createElement("div");
     title.className = "pack-mint-title";
-    title.textContent = "Please wait: minting pack";
+    title.textContent = "Creating your collectible pack";
     const status = deps.document.createElement("div");
     status.className = "pack-mint-status";
     status.setAttribute("aria-live", "polite");
@@ -98,7 +98,7 @@ export function createPackMintProgressController(deps: PackMintProgressControlle
     show(message?: string, options?: PackMintProgressShowOptions): void {
       const overlay = ensureOverlay();
       clearCloseTimer();
-      const title = options?.title ? String(options.title) : "Please wait: minting pack";
+      const title = options?.title ? String(options.title) : "Creating your collectible pack";
       const rotate = !options || options.rotate !== false;
       const lines = Array.isArray(options?.lines) && options.lines.length > 0
         ? options.lines

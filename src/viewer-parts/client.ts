@@ -83,7 +83,7 @@ export function runViewerClient(bootstrap) {
     const access = t && t.guest_access;
     return access && access.message
       ? access.message
-      : "Today's class is done. Sign up to keep your character, earn Merit Stars, and unlock all classrooms. It just takes a moment.";
+      : "Today's class is done. Sign up to keep your student, earn Merit Stars, and open every classroom. It only takes a moment.";
   }
   function nextChatCost(t) {
     const value = Number(t && t.next_chat_cost);
@@ -137,7 +137,7 @@ export function runViewerClient(bootstrap) {
     els.nextBtn.textContent = nextQuestionButtonLabel(t);
     const postClass = postClassState(t);
     els.nextBtn.title = live
-      ? (teacherChatEnabled() ? chatCostTitle(t, "Ask for a hint.") : "Answer the board to continue")
+      ? (teacherChatEnabled() ? chatCostTitle(t, "Ask for a hint.") : "Answer the question to continue")
       : postClass.report && guestSignupRequired(t)
         ? "Sign up to continue past today's class"
       : cur && currentRevealCompletedClass(t)
@@ -155,8 +155,8 @@ export function runViewerClient(bootstrap) {
       : t && t.graduation_ready && !cur
         ? "Open the graduation ceremony"
         : teacherChatEnabled()
-          ? chatCostTitle(t, "Advance the room when it starts a chat.")
-          : "Advance the room";
+          ? chatCostTitle(t, "Continue when the class starts a chat.")
+          : "Continue";
   }
   function teachingFacultyIdsForSummary() {
     const gateIds = lastTelemetry && lastTelemetry.graduation_gate && Array.isArray(lastTelemetry.graduation_gate.requiredFacultyIds)
@@ -273,7 +273,7 @@ export function runViewerClient(bootstrap) {
       renderDraftPackList();
       await fetchSession();
     } catch (_err) {
-      appendSystem("guest faculty unavailable");
+      appendSystem("The guest teacher is unavailable.");
     }
   }
 
@@ -313,17 +313,17 @@ export function runViewerClient(bootstrap) {
   // HALL_PASS_CARDS_PER_PACK is in VIEWER_CONSTANTS.
   const HALL_PASS_CARD_BURN_HALL_PASS_VALUE = 5;
   const PACK_MINT_STATUS_LINES = [
-    "Checking the attendance ledger...",
-    "Stamping the front-office receipt...",
-    "Printing the Ruby High wrapper...",
-    "Asking Solana for a hallway pass...",
-    "Filing the pack in your locker...",
+    "Checking your wallet...",
+    "Confirming your payment...",
+    "Creating your collectible pack...",
+    "Waiting for Solana...",
+    "Adding the pack to your account...",
   ];
   const CARD_MINT_STATUS_LINES = [
-    "Preparing the card mint...",
-    "Checking the card metadata...",
+    "Preparing your collectible card...",
+    "Checking the card details...",
     "Waiting for wallet approval...",
-    "Submitting the signed mint...",
+    "Sending the approved transaction...",
     "Revealing the card...",
   ];
   function authStorage(kind) {
@@ -813,7 +813,7 @@ export function runViewerClient(bootstrap) {
     return !!authed && (!!getStoredApiKey() || (!!aiEnabled && !localAiEnabled && hostedAiActive));
   }
   function openRouterGenerationMessage(action) {
-    return "Connect AI before " + action + ".";
+    return "Use an AI key before " + action + ".";
   }
   const teacherImageStatusView = createTeacherImageStatusView({
     openRouterGenerationMessage,
@@ -925,7 +925,7 @@ export function runViewerClient(bootstrap) {
   }
   function showNoScheduledQuestionReadyHint() {
     if (emptyBoardHintShown) return;
-    appendSystem("No scheduled question is ready. Connect AI to continue with custom questions, or come back tomorrow.");
+    appendSystem("Today's scheduled question is not ready. Use an AI key for an extra question, or come back tomorrow.");
     emptyBoardHintShown = true;
   }
   // Reset the guards above whenever the player walks into a new context
@@ -1136,9 +1136,9 @@ export function runViewerClient(bootstrap) {
     }
     const progress = t.active_course_progress && t.active_course_progress.today;
     if (progress && progress.status === "active") {
-      return "I'm ready for the next " + facultyName + " card. " + questionsLeftSentence(progress) + " in today's class.";
+      return "I'm ready for the next " + facultyName + " question. " + questionsLeftSentence(progress) + " in today's class.";
     }
-    return "I'm ready for the next " + facultyName + " card.";
+    return "I'm ready for the next " + facultyName + " question.";
   }
   function playerChatLine(intent) {
     return intent === "lounge" ? playerLoungeLine() : playerClassLine(intent);
@@ -1166,7 +1166,7 @@ export function runViewerClient(bootstrap) {
       if (!teacherChatEnabled()) {
         const playerLine = playerChatLine(intent);
         appendMsg({ kind: "you", name: playerDisplayName(), body: playerLine, color: "var(--accent)" });
-        appendSystem(intent === "hint" ? "Answer the board to continue. Connect AI for teacher hints." : "Connect AI for teacher replies.");
+        appendSystem(intent === "hint" ? "Answer the question to continue. Use an AI key for teacher hints." : "Use an AI key for teacher replies.");
         return;
       }
       setPaidChatPendingFeedback();
@@ -1304,7 +1304,7 @@ export function runViewerClient(bootstrap) {
       appendSystem("error · " + message);
     },
     onCommandFailed(message) {
-      appendSystem("submit failed · " + message);
+      appendSystem("Could not submit your answer · " + message);
     },
     onNoScheduledQuestion() {
       autoPickLastKey = null;
@@ -2032,10 +2032,10 @@ export function runViewerClient(bootstrap) {
       walletPreviewLine("Wallet", walletPreviewAddress(walletAddress)),
       options.cost ? walletPreviewLine("Cost", options.cost) : "",
       options.credit ? walletPreviewLine("Credit", options.credit) : "",
-      options.pack ? walletPreviewLine("Pack", options.pack) : "",
-      options.card ? walletPreviewLine("Card", options.card) : "",
+      options.pack ? walletPreviewLine("Collectible pack", options.pack) : "",
+      options.card ? walletPreviewLine("Collectible card", options.card) : "",
       options.recipient ? walletPreviewLine("Recipient", walletPreviewAddress(options.recipient)) : "",
-      options.mint ? walletPreviewLine("Token", walletPreviewAddress(options.mint)) : "",
+      options.mint ? walletPreviewLine("Collectible ID", walletPreviewAddress(options.mint)) : "",
       options.reference ? walletPreviewLine("Reference", walletPreviewAddress(options.reference)) : "",
       walletPreviewLine("Wallet prompt", options.prompt || "Review the wallet prompt before signing."),
       "Ruby High never asks for a seed phrase.",
@@ -2070,7 +2070,7 @@ export function runViewerClient(bootstrap) {
     const safeState = unchanged || "Try again in a minute.";
     if (status === 401) return "Sign in again before continuing.";
     if (status === 402) return action + " needs a funded wallet before it can continue.";
-    if (status === 404) return action + " could not find that card or pack. Refresh Ruby High and try again.";
+    if (status === 404) return action + " could not find that collectible card or pack. Refresh Ruby High and try again.";
     if (status === 502 || status === 503 || status === 504) {
       return action + " is temporarily unavailable. " + safeState;
     }
@@ -2081,16 +2081,16 @@ export function runViewerClient(bootstrap) {
     const message = err && err.message ? String(err.message) : String(err || "error");
     if (/user rejected|rejected|canceled|cancelled/i.test(message)) return "Wallet request canceled.";
     if (/needs more SOL|insufficient funds|insufficient lamports|Attempt to debit|0x1\b|needs at least|balance is .*needs/i.test(message)) {
-      return "This checkout needs more SOL for the pack payment, rent, and network fees. Nothing was charged.";
+      return "This purchase needs more SOL for the pack price and Solana network fees. Nothing was charged.";
     }
     if (/403|forbidden|Helius|RPC rejected/i.test(message)) {
-      return "Ruby High's Solana RPC rejected the request. We need to refresh the RPC key; your NFT was not changed.";
+      return "Ruby High could not send this request to Solana. Your collectible did not change. Try again later.";
     }
     if (/429|too many requests|rate.?limit/i.test(message)) {
-      return "Privy is rate limiting wallet requests. Wait a minute, then try again.";
+      return "The wallet service is busy. Wait a minute, then try again.";
     }
     if (/not found yet|not found on-chain|confirmation/i.test(message)) {
-      return "Solana has not indexed the transaction yet. Wait a few seconds and try again.";
+      return "Solana is still processing the transaction. Wait a few seconds, then try again.";
     }
     if (/502|503|504|bad gateway|temporar|rpc|blockhash|preflight|simulation|timed out|timeout|failed to fetch|network/i.test(message)) {
       return "Ruby High could not reach Solana reliably. " + (unchanged || "Try again in a minute.");
@@ -2150,14 +2150,14 @@ export function runViewerClient(bootstrap) {
     if (!usePhotoDayCredit && !usesHallPass) {
       await promptForHallPasses({
         title: "No Hall Passes yet",
-        copy: action + " needs " + hallPassCostLabel(cost) + ". Buy Hall Passes or burn a Card first.",
-        detail: "Class questions and default character art still work for free.",
+        copy: action + " needs " + hallPassCostLabel(cost) + ". Buy Hall Passes or permanently destroy a collectible card first.",
+        detail: "Class questions and the included student art still work for free.",
       });
       return false;
     }
     const spendLabel = usePhotoDayCredit ? "1 Photo Day credit" : hallPassCostLabel(cost);
     const spendKind = usePhotoDayCredit ? "photo-day credit" : "Hall Pass";
-    const isCharacterPortrait = action === "Custom character portrait";
+    const isCharacterPortrait = action === "Custom student portrait";
     const isGraduationPhoto = action === "Take graduation photo";
     const detail = isCharacterPortrait
       ? "Keep editing while it runs. Ruby saves the student after the request finishes."
@@ -2167,7 +2167,7 @@ export function runViewerClient(bootstrap) {
     const confirmText = isCharacterPortrait ? "Generate portrait" : isGraduationPhoto ? "Take photo" : "Generate image";
     if (usePhotoDayCredit) {
       return confirmInApp({
-        kicker: "Hosted image",
+        kicker: "Ruby High image",
         title: action + "?",
         copy: "If the image completes, Ruby High will spend " + spendLabel + ".",
         detail,
@@ -2189,8 +2189,8 @@ export function runViewerClient(bootstrap) {
     const open = await confirmInApp({
       kicker: "Hall Passes",
       title: opts && opts.title ? opts.title : "No Hall Passes yet",
-      copy: opts && opts.copy ? opts.copy : "This action needs Hall Passes. Buy Hall Passes or burn a Card first.",
-      detail: opts && opts.detail ? opts.detail : "The classroom loop still works while you keep playing.",
+      copy: opts && opts.copy ? opts.copy : "This action needs Hall Passes. Buy more or permanently destroy a collectible card first.",
+      detail: opts && opts.detail ? opts.detail : "You can keep playing classes for free.",
       confirmText: "Open Hall Passes",
       cancelText: "Keep playing",
       focus: "confirm",
@@ -2262,8 +2262,8 @@ export function runViewerClient(bootstrap) {
     const packCount = walletPackCount(t || lastTelemetry);
     const hallPasses = walletNumbers(t || lastTelemetry).hallPasses;
     els.billingWallet.textContent = formatWholeNumber(hallPasses) + " Hall Pass" + (hallPasses === 1 ? "" : "es")
-      + " · " + formatWholeNumber(packCount) + " Pack" + (packCount === 1 ? "" : "s")
-      + " · " + formatWholeNumber(cardCount) + " Card" + (cardCount === 1 ? "" : "s");
+      + " · " + formatWholeNumber(packCount) + " Collectible Pack" + (packCount === 1 ? "" : "s")
+      + " · " + formatWholeNumber(cardCount) + " Collectible Card" + (cardCount === 1 ? "" : "s");
     renderAccountWallet();
   }
 
@@ -2282,7 +2282,7 @@ export function runViewerClient(bootstrap) {
       ? billingProductsCache.solana
       : null;
     if (!solana) return { loaded: false, ready: true, reason: "" };
-    if (!solana.configured) return { loaded: true, ready: false, reason: "Solana pack checkout is not configured on this server." };
+    if (!solana.configured) return { loaded: true, ready: false, reason: "Collectible-pack checkout is not available here." };
     return { loaded: true, ready: true, reason: "" };
   }
 
@@ -2369,7 +2369,7 @@ export function runViewerClient(bootstrap) {
     packSyncBusy = true;
     packSyncWalletAddress = ownerWalletAddress;
     packSyncAt = now;
-    if (!quiet && els.accountCardSummary) els.accountCardSummary.textContent = "Checking wallet for Solana packs...";
+    if (!quiet && els.accountCardSummary) els.accountCardSummary.textContent = "Checking your wallet for collectible packs...";
     try {
       const r = await apiFetch(apiBase + "/nft/sync-packs", {
         method: "POST",
@@ -2388,7 +2388,7 @@ export function runViewerClient(bootstrap) {
           if (importedCount > 0) pieces.push("imported " + formatWholeNumber(importedCount));
           if (restoredCount > 0) pieces.push("restored " + formatWholeNumber(restoredCount));
           if (removedCount > 0) pieces.push("removed " + formatWholeNumber(removedCount));
-          setPrivyStatus("Wallet pack sync " + pieces.join(", ") + " Solana pack" + (importedCount + removedCount + restoredCount === 1 ? "" : "s") + ".", false);
+          setPrivyStatus("Updated " + pieces.join(", ") + " collectible pack" + (importedCount + removedCount + restoredCount === 1 ? "" : "s") + " from your wallet.", false);
         }
         await fetchSession();
         renderAccountPage();
@@ -2663,14 +2663,14 @@ export function runViewerClient(bootstrap) {
     if (!authed || billingBusy) return;
     billingBusy = true;
     renderAccountCharacters();
-    setPrivyStatus("Unlocking character slot...", false);
+    setPrivyStatus("Adding a student slot...", false);
     try {
       const data = await command({ type: "unlock-character-slot", requestId: imageRequestId("character-slot") });
       if (data && data.session) {
-        setPrivyStatus("Character slot unlocked. Photo Day credit added.", false);
+        setPrivyStatus("Student slot added. You also received one Photo Day credit.", false);
         renderAccountPage();
       } else {
-        setPrivyStatus("Could not unlock slot.", true);
+        setPrivyStatus("Could not add a student slot.", true);
       }
     } finally {
       billingBusy = false;
@@ -2685,7 +2685,7 @@ export function runViewerClient(bootstrap) {
   async function ensureSolanaWalletFromAccount() {
     if (knownSolanaOwnerWalletAddress()) return true;
     if (!privyConfig) {
-      setPrivyStatus("Wallet connection is not configured.", true);
+      setPrivyStatus("Wallet connection is not available here.", true);
       return false;
     }
     if (billingBusy) return false;
@@ -2703,11 +2703,11 @@ export function runViewerClient(bootstrap) {
       }
       setPrivyStatus("Connect a Solana wallet to continue.", false);
       const approved = await confirmWalletTransactionPreview({
-        title: "Connect Solana wallet?",
+        title: "Connect your Solana wallet?",
         action: "Connect wallet",
         cost: "None",
         prompt: "Your wallet should ask to connect an address only.",
-        copy: "Ruby High will ask Privy for a Solana wallet address. This is not a transaction.",
+        copy: "Ruby High will ask for your Solana wallet address. This will not send a transaction or charge you.",
         confirmText: "Connect wallet",
       });
       if (!approved) {
@@ -2739,10 +2739,10 @@ export function runViewerClient(bootstrap) {
       title: "Open this pack?",
       action: "Open pack",
       walletAddress: ownerWalletAddress,
-      cost: "No wallet spend",
+      cost: "No payment",
       pack: "Ruby High Pack",
-      prompt: "No wallet signature is expected for pack opening.",
-      copy: "Ruby High will open an owned pack and create five face-down cards in your locker.",
+      prompt: "You should not need to sign a wallet transaction to open this pack.",
+      copy: "Ruby High will open a pack you own and add five face-down collectible cards to your account.",
       confirmText: "Open pack",
     });
     if (!approved) {
@@ -2751,7 +2751,7 @@ export function runViewerClient(bootstrap) {
     }
     billingBusy = true;
     renderAccountHallPassCards();
-    showPackMintProgress("Opening pack. Laying out five face-down cards...");
+    showPackMintProgress("Opening your pack and adding five face-down collectible cards...");
     setPrivyStatus("Opening pack...", false);
     try {
       const r = await apiFetch(apiBase + "/nft/open-pack", {
@@ -2790,15 +2790,15 @@ export function runViewerClient(bootstrap) {
     }
     billingBusy = true;
     renderAccountHallPassCards();
-    showPackMintProgress("Minting card on Solana...", {
-      title: "Please wait: minting card",
+    showPackMintProgress("Creating your collectible card on Solana...", {
+      title: "Revealing your collectible card",
       lines: CARD_MINT_STATUS_LINES,
       rotate: false,
     });
-    setPrivyStatus("Minting Card reveal...", false);
+    setPrivyStatus("Creating your collectible card on Solana...", false);
     try {
       const ownerWalletAddress = knownSolanaOwnerWalletAddress();
-      if (!ownerWalletAddress) throw new Error("Connect a Solana wallet before revealing Cards.");
+      if (!ownerWalletAddress) throw new Error("Connect a Solana wallet before revealing collectible cards.");
       updatePackMintProgress("Preparing wallet transaction...");
       const prepared = await apiFetch(apiBase + "/nft/mint-card-prepare", {
         method: "POST",
@@ -2808,11 +2808,11 @@ export function runViewerClient(bootstrap) {
       });
       const preparedData = await prepared.json().catch(() => ({}));
       if (!prepared.ok || !preparedData || !preparedData.ok || !preparedData.mint) {
-        throw new Error(nftHttpErrorMessage("Card mint", prepared, preparedData, "Your card is still face-down; try again in a minute."));
+        throw new Error(nftHttpErrorMessage("Creating the collectible card", prepared, preparedData, "Your card is still face-down; try again in a minute."));
       }
       if (preparedData.mint.serverMinted || !preparedData.mint.transactionBase64) {
-        const name = preparedData.card && preparedData.card.characterName ? preparedData.card.characterName : "Card";
-        updatePackMintProgress("Mint confirmed. Revealing card...");
+        const name = preparedData.card && preparedData.card.characterName ? preparedData.card.characterName : "Collectible card";
+        updatePackMintProgress("Card created. Revealing it...");
         setPrivyStatus(name + " revealed.", false);
         await fetchSession();
         renderAccountPage();
@@ -2821,15 +2821,15 @@ export function runViewerClient(bootstrap) {
       }
       const client = await getPrivyClient();
       if (!client || typeof client.signSolanaTransaction !== "function") {
-        throw new Error("Solana card mint is unavailable.");
+        throw new Error("Creating collectible cards on Solana is unavailable.");
       }
-      updatePackMintProgress("Review the mint transaction in your wallet...");
-      setPrivyStatus("Review the card mint transaction in your wallet.", false);
+      updatePackMintProgress("Review the card-creation transaction in your wallet...");
+      setPrivyStatus("Review the collectible-card transaction in your wallet.", false);
       const signed = await withWalletActionTimeout(
         client.signSolanaTransaction(preparedData.mint),
         "Wallet approval timed out. Your card is still face-down; try again when your wallet is ready.",
       );
-      updatePackMintProgress("Submitting mint to Solana...");
+      updatePackMintProgress("Sending the card transaction to Solana...");
       const confirmed = await apiFetch(apiBase + "/nft/mint-card-submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2845,9 +2845,9 @@ export function runViewerClient(bootstrap) {
       });
       const data = await confirmed.json().catch(() => ({}));
       if (!confirmed.ok || !data || !data.ok) {
-        throw new Error(nftHttpErrorMessage("Card mint confirmation", confirmed, data, "Your card reveal is not recorded yet; try again in a minute."));
+        throw new Error(nftHttpErrorMessage("Confirming the collectible card", confirmed, data, "Your card reveal is not recorded yet; try again in a minute."));
       }
-      const name = data.card && data.card.characterName ? data.card.characterName : "Card";
+      const name = data.card && data.card.characterName ? data.card.characterName : "Collectible card";
       setPrivyStatus(name + " revealed.", false);
       await fetchSession();
       renderAccountPage();
@@ -2890,7 +2890,7 @@ export function runViewerClient(bootstrap) {
       });
       const data = await confirmed.json().catch(() => ({}));
       if (confirmed.ok && data && data.ok) return data;
-      const errorMessage = nftHttpErrorMessage("Card mint confirmation", confirmed, data, "Your card reveal is not recorded yet; try again in a minute.");
+      const errorMessage = nftHttpErrorMessage("Confirming the collectible card", confirmed, data, "Your card reveal is not recorded yet; try again in a minute.");
       if (confirmed.status === 404 && /No face-down card matches this mint\./i.test(errorMessage)) {
         await fetchSession();
         const alreadyRevealed = hallPassCardById(input.cardId);
@@ -2901,7 +2901,7 @@ export function runViewerClient(bootstrap) {
       lastError = new Error(errorMessage);
       if (!isRetryableSolanaMintConfirm(confirmed.status, errorMessage) || attempt + 1 >= maxAttempts) break;
     }
-    throw lastError || new Error("Card mint confirmation failed.");
+    throw lastError || new Error("Could not confirm the collectible card.");
   }
 
   function renderBillingProducts(payload) {
@@ -2931,7 +2931,7 @@ export function runViewerClient(bootstrap) {
       [
         ["Portrait", costs.portrait],
         ["Diploma art", costs.diploma],
-        ["Course publish", creator.courseSlotCost],
+        ["Publish a course", creator.courseSlotCost],
         ["More questions", creator.questionGenerationCost],
       ].forEach(([label, cost]) => {
         const chip = document.createElement("span");
@@ -3027,10 +3027,10 @@ export function runViewerClient(bootstrap) {
     } catch (err) {
       const message = err && err.message ? err.message : "error";
       if (/canceled/i.test(message)) {
-        setBillingStatus("Card burn canceled.", false);
+        setBillingStatus("Card exchange canceled.", false);
         return;
       }
-      setBillingStatus("Card burn failed · " + friendlySolanaActionError(err, "Your card was not burned; try again in a minute."), true);
+      setBillingStatus("Could not exchange the collectible card · " + friendlySolanaActionError(err, "Your card was not changed; try again in a minute."), true);
     } finally {
       billingBusy = false;
       renderAccountPage();
@@ -3039,7 +3039,7 @@ export function runViewerClient(bootstrap) {
   }
 
   async function loadBillingProducts() {
-    setBillingStatus(billingMode === "card-packs" ? "Loading card packs..." : "Loading Hall Passes...", false);
+    setBillingStatus(billingMode === "card-packs" ? "Loading collectible packs..." : "Loading Hall Passes...", false);
     try {
       const r = await apiFetch(apiBase + "/billing/products", { timeoutMs: 8000 });
       const data = await r.json().catch(() => ({}));
@@ -3047,7 +3047,7 @@ export function runViewerClient(bootstrap) {
       billingProductsCache = data;
       renderBillingProducts(data);
     } catch (err) {
-      setBillingStatus((billingMode === "card-packs" ? "Couldn't load packs" : "Couldn't load Hall Passes") + " · " + (err && err.message ? err.message : "error"), true);
+      setBillingStatus((billingMode === "card-packs" ? "Could not load collectible packs" : "Could not load Hall Passes") + " · " + (err && err.message ? err.message : "Please try again."), true);
     }
   }
 
@@ -3073,7 +3073,7 @@ export function runViewerClient(bootstrap) {
       }
       if (billingProductsCache) renderBillingProducts(billingProductsCache);
     } catch (err) {
-      setBillingStatus("Starter Hall Passes unavailable · " + (err && err.message ? err.message : "error"), true);
+      setBillingStatus("Starter Hall Passes are unavailable · " + (err && err.message ? err.message : "Please try again."), true);
     } finally {
       welcomeHallPassClaimInFlight = false;
     }
@@ -3120,7 +3120,7 @@ export function runViewerClient(bootstrap) {
     } catch (err) {
       billingBusy = false;
       if (billingProductsCache) renderBillingProducts(billingProductsCache);
-      setBillingStatus("Checkout failed · " + (err && err.message ? err.message : "error"), true);
+      setBillingStatus("Checkout failed · " + (err && err.message ? err.message : "Please try again."), true);
     }
   }
 
@@ -3129,17 +3129,17 @@ export function runViewerClient(bootstrap) {
     billingBusy = true;
     let finalBillingStatus = null;
     if (billingProductsCache) renderBillingProducts(billingProductsCache);
-    setBillingStatus("Starting card pack checkout...", false);
+    setBillingStatus("Starting collectible-pack checkout...", false);
     try {
       if (!connectedSolanaWalletAddress()) {
         const connected = await ensureSolanaWalletForBilling();
         if (!connected) {
-          finalBillingStatus = ["Card pack checkout canceled.", false];
+          finalBillingStatus = ["Collectible-pack checkout canceled.", false];
           setBillingStatus(finalBillingStatus[0], finalBillingStatus[1]);
           return;
         }
       }
-      setBillingStatus("Preparing card pack payment...", false);
+      setBillingStatus("Preparing collectible-pack payment...", false);
       const ownerWalletAddress = connectedSolanaWalletAddress();
       const r = await apiFetch(apiBase + "/billing/solana/quote", {
         method: "POST",
@@ -3149,13 +3149,13 @@ export function runViewerClient(bootstrap) {
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data || !data.ok) {
-        throw new Error(nftHttpErrorMessage("Card pack checkout", r, data, "No Ruby High pack was minted; try again in a minute."));
+        throw new Error(nftHttpErrorMessage("Collectible-pack checkout", r, data, "No Ruby High pack was created; try again in a minute."));
       }
       const client = await getPrivyClient();
       if (!client || typeof client.paySolanaQuote !== "function") throw new Error("Solana wallet checkout is unavailable.");
       const product = data.product || {};
       const approved = await confirmWalletTransactionPreview({
-        title: "Confirm card pack payment?",
+        title: "Pay for this collectible pack?",
         action: "Buy " + cardPackProductLabel(product),
         walletAddress: ownerWalletAddress,
         cost: cardPackDebitLabel(product, data),
@@ -3163,24 +3163,24 @@ export function runViewerClient(bootstrap) {
         pack: cardPackProductLabel(product) + " · " + formatWholeNumber(product.cardCount || HALL_PASS_CARDS_PER_PACK) + " cards",
         recipient: data.recipient,
         reference: data.reference,
-        prompt: "Your wallet should show a Solana pack payment and Ruby High pack creation. The network fee is paid by this wallet.",
-        copy: "Ruby High will ask your wallet to confirm one Solana pack purchase and create one authorized pack. This should not ask for broad approvals.",
+        prompt: "Your wallet should show the pack price and a small Solana network fee.",
+        copy: "Ruby High will ask your wallet to approve one collectible-pack purchase. It should not ask for permission to use other assets.",
         confirmText: "Open wallet",
       });
       if (!approved) {
-        finalBillingStatus = ["Card pack checkout canceled.", false];
+        finalBillingStatus = ["Collectible-pack checkout canceled.", false];
         setBillingStatus(finalBillingStatus[0], finalBillingStatus[1]);
         return;
       }
-      setBillingStatus("Confirm the card pack payment in your wallet...", false);
+      setBillingStatus("Confirm the collectible-pack payment in your wallet...", false);
       const payment = await client.paySolanaQuote(data);
       const signature = payment && payment.signature ? payment.signature : "";
-      showPackMintProgress("Payment signed. Confirming your Ruby High pack...");
+      showPackMintProgress("Payment approved. Confirming your Ruby High pack...");
       setBillingStatus("Payment sent. Confirming pack...", false);
       await confirmSolanaPayment(productId, signature, payment && payment.walletAddress, data);
     } catch (err) {
       hidePackMintProgress();
-      finalBillingStatus = ["Card pack checkout failed · " + friendlySolanaActionError(err, "If your wallet already signed, keep this wallet connected and try again in a minute."), true];
+      finalBillingStatus = ["Collectible-pack checkout failed · " + friendlySolanaActionError(err, "If your wallet already approved the payment, keep it connected and try again in a minute."), true];
       setBillingStatus(finalBillingStatus[0], finalBillingStatus[1]);
       setPrivyStatus(finalBillingStatus[0], finalBillingStatus[1]);
     } finally {
@@ -3193,7 +3193,7 @@ export function runViewerClient(bootstrap) {
 
   async function ensureSolanaWalletForBilling(opts) {
     if (connectedSolanaWalletAddress()) return true;
-    const actionLabel = opts && opts.actionLabel ? String(opts.actionLabel) : "card pack checkout";
+    const actionLabel = opts && opts.actionLabel ? String(opts.actionLabel) : "collectible-pack checkout";
     if (!privyConfig) throw new Error(actionLabel + " is not configured.");
     if (!privyState.authenticated) {
       setBillingStatus("Opening sign-in for " + actionLabel + "...", false);
@@ -3203,11 +3203,11 @@ export function runViewerClient(bootstrap) {
     if (connectedSolanaWalletAddress()) return true;
     setBillingStatus("Opening wallet connection for " + actionLabel + "...", false);
     const approved = await confirmWalletTransactionPreview({
-      title: "Connect Solana wallet?",
+      title: "Connect your Solana wallet?",
       action: "Connect wallet",
       cost: "None",
       prompt: "Your wallet should ask to connect an address only.",
-      copy: "Ruby High will ask Privy for a Solana wallet address. This is not a transaction.",
+      copy: "Ruby High will ask for your Solana wallet address. This will not send a transaction or charge you.",
       confirmText: "Connect wallet",
     });
     if (!approved) return false;
@@ -3223,7 +3223,7 @@ export function runViewerClient(bootstrap) {
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       if (attempt > 0) await waitForSolanaConfirmation(1500 + attempt * 500);
       const statusText = attempt === 0 ? "Checking Solana payment..." : "Waiting for Solana confirmation...";
-      updatePackMintProgress(attempt === 0 ? "Checking the Solana receipt..." : "Waiting for block confirmation...");
+      updatePackMintProgress(attempt === 0 ? "Checking the Solana receipt..." : "Waiting for payment confirmation...");
       setBillingStatus(statusText, false);
       const r = await apiFetch(apiBase + "/billing/solana/confirm", {
         method: "POST",
@@ -3239,7 +3239,7 @@ export function runViewerClient(bootstrap) {
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data || !data.ok) {
-        lastError = new Error(nftHttpErrorMessage("Card pack confirmation", r, data, "If your wallet already signed, keep this wallet connected and try again in a minute."));
+        lastError = new Error(nftHttpErrorMessage("Collectible-pack confirmation", r, data, "If your wallet already approved the payment, keep it connected and try again in a minute."));
         if ([400, 425, 502, 503].includes(r.status) && /not found yet|not found on-chain|try again|rpc|temporar|confirmation/i.test(lastError.message) && attempt + 1 < maxAttempts) continue;
         throw lastError;
       }
@@ -3254,10 +3254,10 @@ export function runViewerClient(bootstrap) {
         symbol: data.symbol || (quote && quote.product && quote.product.symbol) || (quote && quote.symbol) || "SOL",
       };
       setBillingStatus(
-        (data.applied ? packText + " minted · " : packText + " already minted · ") + cardPackPaymentDeltaLabel(paidProduct, quote),
+        (data.applied ? packText + " created · " : packText + " already created · ") + cardPackPaymentDeltaLabel(paidProduct, quote),
         false,
       );
-      updatePackMintProgress(data.applied ? "Pack minted. Filing it in your locker..." : "Pack already minted. Updating your locker...");
+      updatePackMintProgress(data.applied ? "Pack created. Adding it to your account..." : "Pack already created. Updating your account...");
       hidePackMintProgress(900);
       await fetchSession();
       await deriveAuth();
@@ -3265,7 +3265,7 @@ export function runViewerClient(bootstrap) {
       if (billingProductsCache) await loadBillingProducts();
       return;
     }
-    throw lastError || new Error("Solana verification failed.");
+    throw lastError || new Error("Could not confirm the Solana payment.");
   }
 
   function waitForSolanaConfirmation(ms) {
@@ -3294,28 +3294,28 @@ export function runViewerClient(bootstrap) {
     if (needed <= 0) return [];
     if (!connectedSolanaWalletAddress()) {
       const connected = await ensureSolanaWalletForBilling();
-      if (!connected) throw new Error("Connect a Solana wallet before burning a card.");
+      if (!connected) throw new Error("Connect a Solana wallet before permanently destroying a collectible card.");
     }
     const ownerWalletAddress = connectedSolanaWalletAddress();
     const cards = activeMintedHallPassCardsForWallet(ownerWalletAddress);
     if (cards.length < needed) {
-      throw new Error("No minted card is available to burn from this wallet.");
+      throw new Error("No collectible card on Solana is available to exchange from this wallet.");
     }
     const client = await getPrivyClient();
     if (!client || typeof client.signAndSendSolanaTransaction !== "function") {
-      throw new Error("Solana card burn is unavailable.");
+      throw new Error("This collectible-card exchange is unavailable.");
     }
     if (opts && typeof opts.status === "function") {
-      opts.status("Choose " + (needed === 1 ? "a card" : needed + " cards") + " to burn...", false);
+      opts.status("Choose " + (needed === 1 ? "a collectible card" : needed + " collectible cards") + " to permanently destroy...", false);
     }
     const presetCards = opts && Array.isArray(opts.presetCards) ? opts.presetCards.filter(Boolean).slice(0, needed) : [];
     const selectedCards = presetCards.length === needed
       ? presetCards
       : await selectHallPassCardsForBurn(cards, needed);
-    if (!selectedCards) throw new Error("Card burn canceled.");
+    if (!selectedCards) throw new Error("Card exchange canceled.");
     if (opts && typeof opts.status === "function") {
       opts.status(
-        "Opening wallet to burn " + needed + " card" + (needed === 1 ? "" : "s") + "...",
+        "Opening your wallet to permanently destroy " + needed + " collectible card" + (needed === 1 ? "" : "s") + "...",
         false,
       );
     }
@@ -3324,7 +3324,7 @@ export function runViewerClient(bootstrap) {
       const selectedCard = selectedCards[index];
       if (opts && typeof opts.status === "function") {
         opts.status(
-          "Opening wallet to burn card " + (index + 1) + " of " + selectedCards.length + "...",
+          "Opening your wallet for card " + (index + 1) + " of " + selectedCards.length + "...",
           false,
         );
       }
@@ -3336,7 +3336,7 @@ export function runViewerClient(bootstrap) {
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data || !data.ok || !data.burn) {
-        throw new Error(nftHttpErrorMessage("Card burn", r, data, "Your card was not burned; try again in a minute."));
+        throw new Error(nftHttpErrorMessage("The collectible-card exchange", r, data, "Your card was not changed; try again in a minute."));
       }
       const preparedCard = Array.isArray(data.cards) && data.cards.length > 0
         ? data.cards[0]
@@ -3347,24 +3347,24 @@ export function runViewerClient(bootstrap) {
           mintAddress: data.mintAddress || data.burn.mintAddress,
         };
       if (!preparedCard || !preparedCard.cardId || !preparedCard.mintAddress) {
-        throw new Error("Card burn changed before signing.");
+        throw new Error("The selected collectible card changed. Please choose it again.");
       }
       const approved = await confirmWalletTransactionPreview({
-        title: selectedCards.length === 1 ? "Burn this card?" : "Burn card " + (index + 1) + " of " + selectedCards.length + "?",
-        action: "Burn card for Hall Passes",
+        title: selectedCards.length === 1 ? "Permanently destroy this card?" : "Permanently destroy card " + (index + 1) + " of " + selectedCards.length + "?",
+        action: "Permanently destroy a collectible card for Hall Passes",
         walletAddress: ownerWalletAddress,
-        cost: "Burn 1 minted card",
+        cost: "Permanently destroy 1 collectible card",
         credit: hallPassCostLabel(hallPassBurnCreditForCards(1)),
         card: preparedCard.characterName || selectedCard.characterName || "Ruby High Card",
         reference: preparedCard.mintAddress,
-        prompt: "Your wallet should show one card-burn transaction.",
-        copy: "This permanently burns the NFT card. Ruby High credits Hall Passes after the burn confirms.",
+        prompt: "Your wallet should show one transaction that permanently destroys this collectible card.",
+        copy: "This cannot be undone. Ruby High will add Hall Passes after Solana confirms the transaction.",
         confirmText: "Open wallet",
         tone: "danger",
       });
       if (!approved) {
-        if (opts && typeof opts.status === "function") opts.status("Card burn canceled.", false);
-        throw new Error("Card burn canceled.");
+        if (opts && typeof opts.status === "function") opts.status("Card exchange canceled.", false);
+        throw new Error("Card exchange canceled.");
       }
       const payment = await client.signAndSendSolanaTransaction(data.burn);
       const burn = {
@@ -3384,7 +3384,7 @@ export function runViewerClient(bootstrap) {
     const needed = hallPassBurnCardsRequired(hallPassesNeeded);
     const expectedCredit = hallPassBurnCreditForCards(needed);
     const status = opts && typeof opts.status === "function" ? opts.status : setBillingStatus;
-    status("Burning " + needed + " card" + (needed === 1 ? "" : "s") + " for " + hallPassCostLabel(expectedCredit) + "...", false);
+    status("Permanently destroying " + needed + " collectible card" + (needed === 1 ? "" : "s") + " for " + hallPassCostLabel(expectedCredit) + "...", false);
     const burns = await burnHallPassCardsForSpend(needed, opts);
     let data = null;
     let lastError = null;
@@ -3399,18 +3399,18 @@ export function runViewerClient(bootstrap) {
       data = await r.json().catch(() => ({}));
       if (r.ok && data && data.ok) {
         const amount = Math.max(0, Math.floor(Number(data.amount || expectedCredit)));
-        status("Added " + hallPassCostLabel(amount) + " from " + needed + " burned card" + (needed === 1 ? "" : "s") + ".", false);
+        status("Added " + hallPassCostLabel(amount) + " from " + needed + " permanently destroyed collectible card" + (needed === 1 ? "" : "s") + ".", false);
         await fetchSession();
         await deriveAuth();
         renderAccountPage();
         if (billingProductsCache) renderBillingProducts(billingProductsCache);
         return data;
       }
-      lastError = new Error(nftHttpErrorMessage("Card burn credit", r, data, "If your wallet already signed, keep this wallet connected and try again in a minute."));
+      lastError = new Error(nftHttpErrorMessage("Adding Hall Passes", r, data, "If your wallet already approved the exchange, keep it connected and try again in a minute."));
       if (!/not found yet|confirmation|try again|rpc/i.test(lastError.message) || attempt === 3) throw lastError;
-      status("Waiting for card burn confirmation...", false);
+      status("Waiting for the card exchange to finish...", false);
     }
-    throw lastError || new Error("Card burn could not be credited.");
+    throw lastError || new Error("Could not add Hall Passes from the collectible card.");
   }
 
   async function confirmHallPassCardBurn(burn) {
@@ -3425,10 +3425,10 @@ export function runViewerClient(bootstrap) {
       });
       const data = await r.json().catch(() => ({}));
       if (r.ok && data && data.ok) return data;
-      lastError = new Error(nftHttpErrorMessage("Card burn confirmation", r, data, "If your wallet already signed, keep this wallet connected and try again in a minute."));
+      lastError = new Error(nftHttpErrorMessage("Confirming the card exchange", r, data, "If your wallet already approved the exchange, keep it connected and try again in a minute."));
       if (!/not found yet|confirmation|try again|rpc/i.test(lastError.message)) break;
     }
-    throw lastError || new Error("Card burn could not be confirmed.");
+    throw lastError || new Error("Could not confirm the collectible-card exchange.");
   }
 
 
@@ -3466,9 +3466,9 @@ export function runViewerClient(bootstrap) {
         const subtitle = document.querySelector("#blackboard-empty-text .onboarding-sub");
         const detail = document.querySelector("#blackboard-empty-text .onboarding-detail");
         const create = document.getElementById("onboarding-create-btn");
-        if (subtitle) subtitle.textContent = "Roll a student. Complete one class. Get your report.";
-        if (detail) detail.textContent = "Quick Roll gives you a ready student; customize any field before you enroll.";
-        if (create) create.textContent = "Quick Roll or customize";
+        if (subtitle) subtitle.textContent = "Create a student. Complete one class. Get your report.";
+        if (detail) detail.textContent = "Start with a ready student, then change anything you like before saving.";
+        if (create) create.textContent = "Create or edit my student";
       }
       keys.forEach((key) => url.searchParams.delete(key));
       window.history.replaceState({}, "", url.pathname + url.search + url.hash);
@@ -3677,7 +3677,7 @@ export function runViewerClient(bootstrap) {
         els.blackboardEmptyText.textContent = "Create your first Ruby High student.";
         if (els.blackboardEmptyAction) els.blackboardEmptyAction.hidden = true;
       } else if (lastTelemetry && lastTelemetry.graduation_ready) {
-        els.blackboardEmptyText.textContent = "Requirements complete. Pick a level-up reward to seal the year.";
+        els.blackboardEmptyText.textContent = "You finished this year's requirements. Pick a reward to save the year in your yearbook.";
         if (els.blackboardEmptyAction) els.blackboardEmptyAction.hidden = true;
       } else if (guestSignupRequired(lastTelemetry)) {
         els.blackboardEmptyText.textContent = guestSignupMessage(lastTelemetry);
@@ -3840,8 +3840,8 @@ export function runViewerClient(bootstrap) {
     els.generateMcBtn.hidden = !(isTypedAnswer && question.canGenerateMc);
     els.generateMcBtn.disabled = role === "agent" || playerLocked || !!(round && round.resolved) || generatingMc || !aiEnabled;
     els.generateMcBtn.title = aiEnabled
-      ? "Generate multiple-choice distractors for this card"
-      : "Connect AI to generate multiple-choice distractors";
+      ? "Create answer choices for this question"
+      : "Use an AI key to create answer choices";
     // Long-answer mode flips the grid to single-column on narrow
     // viewports (handled in CSS). Threshold tuned so a 4-line
     // explanation-style answer triggers it but a regular MC option
@@ -3947,7 +3947,7 @@ export function runViewerClient(bootstrap) {
       if (reveal.answerJudge && Number.isFinite(Number(reveal.answerJudge.score))) {
         const judge = document.createElement("div");
         judge.className = "typed-judge";
-        judge.textContent = Math.round(Number(reveal.answerJudge.score) * 100) + "% word match";
+        judge.textContent = "Answer match: " + Math.round(Number(reveal.answerJudge.score) * 100) + "%";
         answerBlock.appendChild(judge);
       }
       els.boardReveal.appendChild(answerBlock);
@@ -4619,7 +4619,7 @@ export function runViewerClient(bootstrap) {
       if (aiEnabled) {
         runAgentTurn("lounge-enter", { }, { force: true });
       } else {
-        appendSystem("Connect AI to eavesdrop on the faculty.");
+        appendSystem("Use an AI key to hear the teachers' conversation.");
       }
     }
     closeRails();
@@ -4717,7 +4717,7 @@ export function runViewerClient(bootstrap) {
     // When the round clock expired but the room-idle DM turn hasn't resolved
     // the board yet, suppress extra chat turns — the teacher is already on it.
     if (lastTelemetry && lastTelemetry.active_round && lastTelemetry.active_round.idleTriggered && !lastTelemetry.active_round.resolved) {
-      appendSystem("Teacher is already resolving this board.");
+      appendSystem("The teacher is checking this answer now.");
       return;
     }
     if (turnController.isBusy()) {
@@ -4743,7 +4743,7 @@ export function runViewerClient(bootstrap) {
               detail: "Free play does not spend Hall Passes.",
             });
           } else {
-            appendSystem("Answer the board to continue. Connect AI for hints.");
+            appendSystem("Answer the question to continue. Use an AI key for hints.");
           }
           return;
         }
@@ -4755,7 +4755,7 @@ export function runViewerClient(bootstrap) {
               detail: "The classroom loop stays available without AI chat.",
             });
           } else {
-            appendSystem("Connect AI to hear the lounge conversation continue.");
+            appendSystem("Use an AI key to continue the lounge conversation.");
           }
           return;
         }
@@ -4969,8 +4969,8 @@ export function runViewerClient(bootstrap) {
       const exhausted = budget.remaining <= 0;
       els.advantageBtn.disabled = playerLocked || rollingAdvantage || exhausted;
       els.advantageBtn.textContent = exhausted
-        ? "🎲 Out of rolls this grade"
-        : "🎲 Roll for advantage (" + budget.remaining + "/" + budget.cap + " left)";
+        ? "🎲 No help rolls left this grade"
+        : "🎲 Roll for help (" + budget.remaining + "/" + budget.cap + " left)";
       els.advantageResult.hidden = true;
       els.answers.forEach((btn) => btn.classList.remove("is-eliminated"));
     }
@@ -5086,7 +5086,7 @@ export function runViewerClient(bootstrap) {
     var notes = [];
     var guestPack = t && t.guest_pack && t.guest_pack.auto;
     if (guestPack && guestPack.teacher_name) {
-      notes.push({ icon: "📚", text: "<strong>Guest Faculty:</strong> " + escapeHtml(guestPack.teacher_name) + " — " + escapeHtml(guestPack.name || guestPack.subject || "guest class") });
+      notes.push({ icon: "📚", text: "<strong>Guest teacher:</strong> " + escapeHtml(guestPack.teacher_name) + " — " + escapeHtml(guestPack.name || guestPack.subject || "guest class") });
     }
     if (hasCharacter) {
       notes.push({ icon: "📖", text: "<strong>Books:</strong> <em>Qiao</em> and <em>Egregoregramming 101</em> on Gumroad" });
@@ -5251,7 +5251,7 @@ export function runViewerClient(bootstrap) {
         // First completed class — guide them.
         lastPostClassToastShown = true;
         const msg = nextFaculty
-          ? "Class dismissed. " + facultyName + " graded your work. " + nextFaculty + " teaches tomorrow at 17:00 UTC. Come back for your streak."
+          ? "Class dismissed. " + facultyName + " graded your work. " + nextFaculty + " teaches tomorrow at 17:00 UTC. Come back to keep your daily progress."
           : "Class dismissed. " + facultyName + " graded your work. Come back tomorrow at 17:00 UTC.";
         showCongrats(msg, true, 9000);
       }
@@ -5340,7 +5340,7 @@ export function runViewerClient(bootstrap) {
     }
 
     if (!t.character) {
-      if (els.youName) els.youName.textContent = "Create character";
+      if (els.youName) els.youName.textContent = "Create student";
       if (els.youProfile) els.youProfile.setAttribute("aria-label", "Create student");
       if (els.youAvatar) {
         els.youAvatar.innerHTML = "";
@@ -5840,7 +5840,7 @@ export function runViewerClient(bootstrap) {
   // The hint surfaces the most-blocking gate as one short sentence.
   function buildNextStepHint(c) {
     if (!c) return "";
-    if (graduatedFor(c)) return "You graduated. Keep playing if you want; the arc is done.";
+    if (graduatedFor(c)) return "You graduated. You finished all four years, but you can keep playing.";
     const t = lastTelemetry || {};
     const gate = t.graduation_gate || {};
     if (gate.stage === "ceremony" || t.graduation_ready || c.pendingGraduation) {
@@ -5873,10 +5873,10 @@ export function runViewerClient(bootstrap) {
     }
     if (subjectGaps.length > 0) {
       const segs = subjectGaps.map((cg) => subjectDisplayName(cg.facultyId, cg.progress) + " (" + subjectProgressShortLabel(cg.progress) + ")");
-      parts.push("Clear each subject at C or better: " + segs.join(", "));
+      parts.push("Pass each subject with a C or better: " + segs.join(", "));
     }
     if (gate.essayRequired && !gate.essayCompleted) {
-      parts.push("Your graded essay unlocks when the class requirements are complete");
+      parts.push("You can write your graded essay after you finish the class requirements");
     }
 
     if (parts.length === 0) {
@@ -6071,7 +6071,7 @@ export function runViewerClient(bootstrap) {
     const portraitUrl = (graduated && c.diplomaImageDataUrl) || c.portraitDataUrl || portraitFallback;
     const subtitle = graduated
       ? "Graduated · " + pb.name
-      : pb.name + " · " + gradeLabel + " character";
+      : pb.name + " · " + gradeLabel + " student";
 
     const actions = [];
     if (graduated) {
@@ -6232,8 +6232,8 @@ export function runViewerClient(bootstrap) {
       .join(" ");
     const metrics = [];
     if (graduated) {
-      metrics.push({ label: "status", value: "graduated", detail: "four-year arc complete", met: true });
-      metrics.push({ label: "yearbook", value: yearbookCount + "/4", detail: "paper cards sealed", met: yearbookCount >= 4 });
+      metrics.push({ label: "status", value: "graduated", detail: "all four years complete", met: true });
+      metrics.push({ label: "yearbook", value: yearbookCount + "/4", detail: "years saved", met: yearbookCount >= 4 });
     } else {
       metrics.push({ label: "today", value: todaySummary.value, detail: activeSubject + " · " + todaySummary.detail, met: todaySummary.met });
     }
@@ -6438,7 +6438,7 @@ export function runViewerClient(bootstrap) {
     const metaParts = [
       report.facultyName || report.facultyId || "Ruby High",
       firstBellGradeLabel(report.grade),
-      report.wasCorrect ? "Marked correct" : "Needs a review",
+      report.wasCorrect ? "Correct" : "Needs more work",
     ].filter(Boolean);
     meta.textContent = metaParts.join(" / ");
     titleBlock.append(kicker, title, meta);
@@ -6731,14 +6731,14 @@ export function runViewerClient(bootstrap) {
     const hasPhotoDayCredit = characterSlotTelemetry().photoDayCredits > 0;
     const portraitCost = hostedPortrait && hostedPortrait.cost || 1;
     const controlsSubtitle = quickRollExperimentLanding
-      ? "Edit the name and student style. Reroll the rest, then complete one class to get your report."
+      ? "Edit the name and student style. Try another version if you want, then complete one class to get your report."
       : hostedPortrait && hostedPortrait.configured && (hasPhotoDayCredit || canSpendHallPasses(portraitCost))
-      ? "Edit the name and student style. Reroll the rest; Photo Day credits or Hall Passes can make a custom portrait."
+      ? "Edit the name and student style. Try another version if you want. Photo Day credits or Hall Passes can make a custom portrait."
       : localAiEnabled
-        ? "Edit the name and student style. Local AI can refresh the voice."
+        ? "Edit the name and student style. On-device AI can refresh the voice."
         : aiEnabled
           ? "Edit the name and student style. AI can refresh the voice and portrait."
-          : "Edit the name and student style. Reroll the rest; connect AI later for a custom portrait.";
+          : "Edit the name and student style. Try another version if you want. You can use an AI key later for a custom portrait.";
     const controlsCardRefs = creationControlCardRenderer.build({
       subtitle: controlsSubtitle,
     });
@@ -6754,7 +6754,7 @@ export function runViewerClient(bootstrap) {
       return creationRowsRenderer.buildRow(fields, label, key);
     }
     const nameRow = makeRow("Name", "name");
-    const playbookRow = makeRow("Playbook", "playbook");
+    const playbookRow = makeRow("Student style", "playbook");
     const statsRow = makeRow("Stats", "stats");
     const personalityRow = makeRow("Voice", "personality");
     const quoteRow = makeRow("Quote", "flavorQuote");
@@ -6878,7 +6878,7 @@ export function runViewerClient(bootstrap) {
       let lastMessage = "";
       for (let attempt = 0; attempt < waits.length; attempt += 1) {
         if (waits[attempt] > 0) {
-          setStatus("Ruby is rerolling after a gateway hiccup...");
+          setStatus("Ruby is trying again after a connection problem...");
           await sleep(waits[attempt]);
         }
         const r = await apiFetch("/api/apps/ruby-high/chat/character/generate", {
@@ -6894,17 +6894,17 @@ export function runViewerClient(bootstrap) {
           throw new Error(lastMessage);
         }
       }
-      throw new Error(lastMessage || "Roll failed - try again.");
+      throw new Error(lastMessage || "Could not create a student. Try again.");
     }
     function applyDisabled() {
       rollBtn.disabled = inFlight.all || inFlight.saving;
       rollBtn.textContent = inFlight.all
-        ? "Rolling..."
+        ? "Creating..."
         : rolled
           ? aiEnabled
             ? "AI remix student"
-            : "Reroll student"
-          : "Roll a student";
+            : "Try another student"
+          : "Make a student";
       saveBtn.hidden = !rolled;
       saveBtn.disabled = !rolled || !String(rolled.name || "").trim() || inFlight.all || inFlight.saving;
       nameInput.disabled = !rolled || inFlight.all || inFlight.saving || inFlight.name;
@@ -6942,7 +6942,7 @@ export function runViewerClient(bootstrap) {
       if (entitlement && entitlement.configured) {
         return "";
       }
-      return "Connect AI for a custom portrait.";
+      return "Use an AI key for a custom portrait.";
     }
 
     function renderRolled(c) {
@@ -6976,7 +6976,7 @@ export function runViewerClient(bootstrap) {
         for (const c of components) inFlight[c] = true;
       }
       applyDisabled();
-      setStatus(isFullRoll ? "Rolling…" : "Rerolling " + components.join(", ") + "…");
+      setStatus(isFullRoll ? "Creating…" : "Trying another " + components.join(", ") + "…");
       try {
         // If the player reroll-cycles the playbook OR the name AFTER
         // generating an AI portrait, the AI image no longer matches —
@@ -6992,8 +6992,8 @@ export function runViewerClient(bootstrap) {
           renderRolled(rolled);
           revealForm();
           setStatus(aiEnabled
-            ? "Ready instantly. Use a reroll for an AI remix, or take your seat now."
-            : "Ready instantly. Connect AI later for a custom voice or portrait.");
+            ? "Your student is ready. Try another AI version, or take your seat now."
+            : "Your student is ready. You can use an AI key later for a custom voice or portrait.");
           return;
         }
         const body = isFullRoll
@@ -7012,7 +7012,7 @@ export function runViewerClient(bootstrap) {
         rolled = offlineCharacterRoll(components);
         renderRolled(rolled);
         revealForm();
-        setStatus("AI took too long, so Ruby used a quick local roll instead.");
+        setStatus("AI took too long, so Ruby created a student on this device instead.");
       } finally {
         if (isFullRoll) {
           inFlight.all = false;
@@ -7087,7 +7087,7 @@ export function runViewerClient(bootstrap) {
         const cost = Math.max(1, Math.floor(Number(entitlement.cost || 1)));
         await promptForHallPasses({
           title: "Hall Pass needed",
-          copy: "Custom character portrait needs " + hallPassCostLabel(cost) + ". Claim your free starter Hall Passes or add more.",
+          copy: "A custom student portrait needs " + hallPassCostLabel(cost) + ". Claim your free starter Hall Passes or add more.",
           detail: "Creating your student stays free.",
         });
         return;
@@ -7102,7 +7102,7 @@ export function runViewerClient(bootstrap) {
       const usePhotoDayCredit = !getStoredApiKey() &&
         !!(hostedImageEntitlement("portrait") && hostedImageEntitlement("portrait").configured) &&
         characterSlotTelemetry().photoDayCredits > 0;
-      if (!(await confirmHostedCreditSpend("Custom character portrait", "portrait", usePhotoDayCredit))) return;
+      if (!(await confirmHostedCreditSpend("Custom student portrait", "portrait", usePhotoDayCredit))) return;
       inFlight.portrait = true;
       portraitBtn.textContent = "✨ Generating…";
       portraitStatus.textContent = "";
@@ -7174,10 +7174,10 @@ export function runViewerClient(bootstrap) {
         ...(error && Number.isFinite(Number(error.status)) ? { statusCode: Number(error.status) } : {}),
       });
       const message = failureKind === "timeout"
-        ? "Enrollment took too long. Your student is still here — tap Take my seat to retry."
+        ? "Saving took too long. Your student is still here — tap Take my seat to try again."
         : failureKind === "network"
-          ? "Enrollment lost its connection. Your student is still here — reconnect and retry."
-          : "Could not start Freshman year. Your student is still here — try again.";
+          ? "Saving lost its connection. Your student is still here — reconnect and try again."
+          : "Could not start Grade 9. Your student is still here — try again.";
       setStatus(message, true);
     }
 
@@ -7188,7 +7188,7 @@ export function runViewerClient(bootstrap) {
       inFlight.saving = true;
       postOnboardingFunnelStep("onboarding_enrollment_started");
       applyDisabled();
-      setStatus("Enrolling...");
+      setStatus("Saving your student...");
       try {
         const data = await command({
           type: "create-character",
@@ -7197,7 +7197,7 @@ export function runViewerClient(bootstrap) {
         });
         if (!data || !data.session) {
           const commandError = apiClient.lastCommandError();
-          setStatus("Checking enrollment...");
+          setStatus("Checking your student...");
           await fetchSession({ timeoutMs: SESSION_REFRESH_TIMEOUT_MS });
           if (lastTelemetry && lastTelemetry.character) {
             finishCharacterEnrollment();
@@ -7332,17 +7332,17 @@ export function runViewerClient(bootstrap) {
     { head: 3, heart: 0, hustle: 2, honor: -1 },
   ];
   const PACK_IMPORT_STEPS = [
-    { pct: 18, title: "Saving draft", detail: "Persisting the content pack." },
+    { pct: 18, title: "Saving draft", detail: "Saving the course." },
     { pct: 42, title: "Preparing materials", detail: "Checking markdown and size limits." },
-    { pct: 68, title: "Generating cards", detail: "Building the teacher question set." },
-    { pct: 88, title: "Updating library", detail: "Refreshing pack availability." },
+    { pct: 68, title: "Writing questions", detail: "Building the teacher's question set." },
+    { pct: 88, title: "Updating library", detail: "Refreshing your courses." },
   ];
   const COURSE_GENERATION_STEPS = [
     { key: "materials", pct: 12, label: "Read course materials" },
     { key: "teacher", pct: 34, label: "Create teacher name and voice" },
     { key: "portrait", pct: 58, label: "Generate teacher portrait" },
     { key: "questions", pct: 78, label: "Write class questions" },
-    { key: "saving", pct: 94, label: "Save the pack" },
+    { key: "saving", pct: 94, label: "Save the course" },
   ];
   const INITIAL_COURSE_QUESTION_COUNT = 6;
 
@@ -7363,7 +7363,7 @@ export function runViewerClient(bootstrap) {
       const r = await apiFetch("/api/apps/ruby-high/pack-drafts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(Object.assign({ name: "Untitled Content Pack" }, payload || {})),
+        body: JSON.stringify(Object.assign({ name: "Untitled Course" }, payload || {})),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || "create draft " + r.status);
@@ -7639,7 +7639,7 @@ export function runViewerClient(bootstrap) {
   function startPackImportProgress(teacherName) {
     clearInterval(packImportTimer);
     setPackBusy(true);
-    packStatusEl.textContent = "Do not close this panel while Ruby High imports the teacher.";
+    packStatusEl.textContent = "Keep this window open while Ruby High adds the teacher.";
     packStatusEl.classList.remove("is-invalid");
     const startedAt = Date.now();
     updatePackImportProgress(4, "Starting import", "Ruby High is preparing " + (teacherName || "this teacher") + ".", false);
@@ -7878,7 +7878,7 @@ export function runViewerClient(bootstrap) {
       : "Auto";
     packAutoBtn.disabled = packImportBusy || mode === "auto";
     packAutoBtn.title = active
-      ? "This week's automatic guest is " + (active.name || "Guest Faculty") + "."
+      ? "This week's automatic guest is " + (active.name || "Guest teacher") + "."
       : "Use Ruby High's weekly automatic guest teacher.";
   }
 
@@ -7887,11 +7887,11 @@ export function runViewerClient(bootstrap) {
     const packs = packSearchState && Array.isArray(packSearchState.packs) ? packSearchState.packs : [];
     packSearchListEl.innerHTML = "";
     if (!packSearchState.searched) {
-      packSearchListEl.innerHTML = '<div class="sub">Search or press Search to browse public creator packs.</div>';
+      packSearchListEl.innerHTML = '<div class="sub">Search or press Search to browse public courses.</div>';
       return;
     }
     if (packs.length === 0) {
-      packSearchListEl.innerHTML = '<div class="sub">No public creator packs are available yet.</div>';
+      packSearchListEl.innerHTML = '<div class="sub">No public courses are available yet.</div>';
       return;
     }
     packs.forEach((pack) => {
@@ -7903,7 +7903,7 @@ export function runViewerClient(bootstrap) {
     const drafts = packLibraryState && Array.isArray(packLibraryState.drafts) ? packLibraryState.drafts : [];
     packDraftListEl.innerHTML = "";
     if (drafts.length === 0) {
-      packDraftListEl.innerHTML = '<div class="sub">No draft packs yet.</div>';
+      packDraftListEl.innerHTML = '<div class="sub">No draft courses yet.</div>';
       return;
     }
     drafts.forEach((draft) => {
@@ -8000,8 +8000,8 @@ export function runViewerClient(bootstrap) {
 
   async function deleteLibraryPack(pack, opts) {
     if (!pack || packImportBusy) return;
-    const name = pack.name || "Untitled Pack";
-    const kind = opts && opts.draft ? "draft pack" : "pack";
+    const name = pack.name || "Untitled Course";
+    const kind = opts && opts.draft ? "draft course" : "course";
     if (!(await confirmInApp({
       kicker: "Delete " + kind,
       title: "Delete " + name + "?",
@@ -8010,7 +8010,7 @@ export function runViewerClient(bootstrap) {
       tone: "danger",
     }))) return;
     setPackBusy(true);
-    packStatusEl.textContent = "Deleting pack...";
+    packStatusEl.textContent = "Deleting course...";
     packStatusEl.classList.remove("is-invalid");
     try {
       const deleteResult = opts && opts.draft
@@ -8019,9 +8019,9 @@ export function runViewerClient(bootstrap) {
       applyPackDeletionResult(pack, opts, deleteResult);
       renderPackList();
       renderDraftPackList();
-      packStatusEl.textContent = "Pack deleted.";
+      packStatusEl.textContent = "Course deleted.";
     } catch (err) {
-      packStatusEl.textContent = "Could not delete pack · " + (err && err.message ? err.message : "error");
+      packStatusEl.textContent = "Could not delete course · " + (err && err.message ? err.message : "error");
       packStatusEl.classList.add("is-invalid");
     } finally {
       setPackBusy(false);
@@ -8054,25 +8054,25 @@ export function runViewerClient(bootstrap) {
 
   async function uninstallLibraryPack(pack) {
     if (!pack || packImportBusy) return;
-    const name = pack.name || "Untitled Pack";
+    const name = pack.name || "Untitled Course";
     if (!(await confirmInApp({
-      kicker: "Uninstall pack",
+      kicker: "Remove course",
       title: "Uninstall " + name + "?",
       copy: "You can install it again from search or keep editing it if you own it.",
       confirmText: "Uninstall",
     }))) return;
     setPackBusy(true);
-    packStatusEl.textContent = "Uninstalling pack...";
+    packStatusEl.textContent = "Removing course...";
     packStatusEl.classList.remove("is-invalid");
     try {
       packLibraryState = await packStudioClient.uninstallPack(pack.id);
       renderPackList();
       renderDraftPackList();
       await refreshPackSearchResults();
-      packStatusEl.textContent = "Pack uninstalled.";
+      packStatusEl.textContent = "Course removed.";
       await fetchSession();
     } catch (err) {
-      packStatusEl.textContent = "Could not uninstall pack · " + (err && err.message ? err.message : "error");
+      packStatusEl.textContent = "Could not remove course · " + (err && err.message ? err.message : "error");
       packStatusEl.classList.add("is-invalid");
     } finally {
       setPackBusy(false);
@@ -8104,7 +8104,7 @@ export function runViewerClient(bootstrap) {
     const query = packSearchInputEl.value.trim();
     const runId = ++packSearchRunId;
     packSearchState = { query, packs: [], searched: true };
-    packSearchListEl.innerHTML = '<div class="sub">' + (query ? "Searching creator packs..." : "Loading creator packs...") + '</div>';
+    packSearchListEl.innerHTML = '<div class="sub">' + (query ? "Searching public courses..." : "Loading public courses...") + '</div>';
     packStatusEl.textContent = "";
     packStatusEl.classList.remove("is-invalid");
     try {
@@ -8119,7 +8119,7 @@ export function runViewerClient(bootstrap) {
     } catch (err) {
       if (runId !== packSearchRunId) return;
       packSearchListEl.innerHTML = "";
-      packStatusEl.textContent = "Could not search packs · " + (err && err.message ? err.message : "error");
+      packStatusEl.textContent = "Could not search courses · " + (err && err.message ? err.message : "error");
       packStatusEl.classList.add("is-invalid");
     }
   }
@@ -8144,7 +8144,7 @@ export function runViewerClient(bootstrap) {
   async function installCreatorPack(pack) {
     if (!pack || packImportBusy) return;
     setPackBusy(true);
-    packStatusEl.textContent = "Installing pack...";
+    packStatusEl.textContent = "Adding course...";
     packStatusEl.classList.remove("is-invalid");
     try {
       packLibraryState = await packStudioClient.installPack(pack.id, true);
@@ -8152,9 +8152,9 @@ export function runViewerClient(bootstrap) {
       renderPackList();
       renderDraftPackList();
       await refreshPackSearchResults();
-      packStatusEl.textContent = "Pack installed.";
+      packStatusEl.textContent = "Course added.";
     } catch (err) {
-      packStatusEl.textContent = "Could not install pack · " + (err && err.message ? err.message : "error");
+      packStatusEl.textContent = "Could not add course · " + (err && err.message ? err.message : "error");
       packStatusEl.classList.add("is-invalid");
     } finally {
       setPackBusy(false);
@@ -8254,7 +8254,7 @@ export function runViewerClient(bootstrap) {
     return {
       id: "",
       localDraft: true,
-      name: "Untitled Content Pack",
+      name: "Untitled Course",
       description: "",
       visibility: "private",
       status: "draft",
@@ -8276,7 +8276,7 @@ export function runViewerClient(bootstrap) {
   }
   function currentDraftCreatePayload() {
     return {
-      name: currentDraft && currentDraft.name ? currentDraft.name : "Untitled Content Pack",
+      name: currentDraft && currentDraft.name ? currentDraft.name : "Untitled Course",
       description: currentDraft && currentDraft.description ? currentDraft.description : "",
       visibility: currentDraft && currentDraft.visibility ? currentDraft.visibility : "private",
     };
@@ -8734,8 +8734,8 @@ export function runViewerClient(bootstrap) {
     if (!authed) return "Sign in before generating a course.";
     if (!hostedCourseGenerationConfigured()) {
       return localAiEnabled
-        ? "Hosted image generation is required for course portraits."
-        : "Connect AI before generating a course.";
+        ? "Course portraits need Ruby High image creation."
+        : "Use an AI key before generating a course.";
     }
     return "";
   }
@@ -8747,7 +8747,7 @@ export function runViewerClient(bootstrap) {
     const hostedAi = entitlements && entitlements.hosted_ai && typeof entitlements.hosted_ai === "object"
       ? entitlements.hosted_ai
       : null;
-    if (!hostedAi || !hostedAi.configured) return "Connect AI before generating more questions.";
+    if (!hostedAi || !hostedAi.configured) return "Use an AI key before generating more questions.";
     const wallet = walletNumbers(lastTelemetry);
     const cost = creatorPricing().questionGenerationCost;
     return wallet.hallPasses >= cost ? "" : "Need " + hallPassCostLabel(cost) + " to generate more questions.";
@@ -8828,8 +8828,8 @@ export function runViewerClient(bootstrap) {
   function renderPackEditor() {
     if (!currentDraft) return;
     const emptyDraft = Array.isArray(currentDraft.teachers) && currentDraft.teachers.length === 0;
-    if (packEditTitleEl) packEditTitleEl.textContent = emptyDraft ? "Create content pack" : "Edit pack";
-    if (packEditSubtitleEl) packEditSubtitleEl.textContent = emptyDraft ? "Add course materials here." : (currentDraft.name || "Draft content pack");
+    if (packEditTitleEl) packEditTitleEl.textContent = emptyDraft ? "Create Course" : "Edit Course";
+    if (packEditSubtitleEl) packEditSubtitleEl.textContent = emptyDraft ? "Add course materials here." : (currentDraft.name || "Draft course");
     if (packNameInputEl) packNameInputEl.value = currentDraft.name || "";
     if (packDescriptionInputEl) packDescriptionInputEl.value = currentDraft.description || "";
     renderPackTeacherEditor();
@@ -9231,7 +9231,7 @@ export function runViewerClient(bootstrap) {
     if (!(await confirmInApp({
       kicker: "Delete teacher",
       title: "Delete " + name + "?",
-      copy: "This removes the teacher and their cards from the draft.",
+      copy: "This removes the teacher and their questions from the draft course.",
       confirmText: "Delete",
       tone: "danger",
     }))) return;
@@ -9295,7 +9295,7 @@ export function runViewerClient(bootstrap) {
     }
     await saveSelectedTeacher();
     setPackBusy(true);
-    if (packEditStatusEl) packEditStatusEl.textContent = "Publishing pack...";
+    if (packEditStatusEl) packEditStatusEl.textContent = "Publishing course...";
     try {
       const data = await packStudioClient.publishDraft(currentDraft.id);
       if (data && data.draft) currentDraft = data.draft;
@@ -9512,15 +9512,15 @@ export function runViewerClient(bootstrap) {
   function friendlyPrivyAccountError(err, fallback) {
     const message = err && err.message ? String(err.message) : String(err || "");
     if (/429|too many requests|rate.?limit/i.test(message)) {
-      return "Privy is rate limiting wallet requests. Wait a minute, then try again.";
+      return "The wallet service is busy. Wait a minute, then try again.";
     }
     if (/disallowed_login_method/i.test(message)) {
-      return "Privy blocked wallet sign-in. Enable wallet login in the Privy dashboard, then refresh Ruby High.";
+      return "Wallet sign-in is not available. Contact Ruby High support.";
     }
     if (/popup|modal|did not open/i.test(message)) {
-      return "Privy sign-in did not open. Refresh Ruby High and try again.";
+      return "Sign-in did not open. Refresh Ruby High and try again.";
     }
-    return message || fallback || "Privy sign-in failed";
+    return message || fallback || "Sign-in failed";
   }
   function applyPrivyState(next) {
     if (next && typeof next === "object") {
@@ -9551,18 +9551,18 @@ export function runViewerClient(bootstrap) {
         : privyState.walletAddress
         ? shortWallet(privyState.walletAddress) + " · " + (privyState.walletChainType || "wallet")
         : privyState.authenticated
-          ? "Privy account · no Solana wallet"
+          ? "Signed in · no Solana wallet"
           : privyState.configured
             ? "Not connected"
-            : "Privy not configured";
+            : "Sign-in unavailable";
     }
     if (els.privyLoginWidget) {
       const needsWalletConnect = privyState.authenticated && !solanaAddress;
       els.privyLoginWidget.hidden = !privyState.configured || (privyState.authenticated && !needsWalletConnect);
-      els.privyLoginWidget.textContent = needsWalletConnect ? "Connect Wallet" : "Sign in with Privy";
+      els.privyLoginWidget.textContent = needsWalletConnect ? "Connect Wallet" : "Sign in";
       els.privyLoginWidget.title = needsWalletConnect
-        ? "Connect a Solana wallet to open packs and reveal Cards."
-        : "Sign in with Privy";
+        ? "Connect a Solana wallet to open packs and reveal collectible cards."
+        : "Sign in";
     }
     if (els.privySignout) els.privySignout.hidden = !privyState.authenticated;
     if (els.signinPrivy) els.signinPrivy.hidden = !privyState.configured;
@@ -9637,7 +9637,7 @@ export function runViewerClient(bootstrap) {
       }),
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok || !data.session) throw new Error(data.error || "Privy sign-in failed");
+    if (!r.ok || !data.session) throw new Error(data.error || "Sign-in failed");
     if (data.privy) applyPrivyState({ ...data.privy, ready: true });
     setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai, hosted_ai: data.hosted_ai, entitlements: data.entitlements, privy: data.privy });
     return data;
@@ -9666,7 +9666,7 @@ export function runViewerClient(bootstrap) {
         }
         if (!privyState.authenticated) applyPrivyState({ configured: true, authenticated: false, ready: true });
         if (els.privyOverlay && els.privyOverlay.classList.contains("is-open")) {
-          setPrivyStatus("Privy unavailable · " + friendlyPrivyAccountError(err, "error"), true);
+          setPrivyStatus("Sign-in unavailable · " + friendlyPrivyAccountError(err, "error"), true);
         }
       } finally {
         privyRefreshPromise = null;
@@ -9679,13 +9679,13 @@ export function runViewerClient(bootstrap) {
     const fromBilling = opts && opts.source === "billing";
     const reportStatus = fromBilling ? setBillingStatus : setPrivyStatus;
     setPrivyBusy(true);
-    reportStatus("Opening Privy sign-in...", false);
+    reportStatus("Opening sign-in...", false);
     try {
       const client = await getPrivyClient();
-      if (!client) throw new Error("Privy is not configured.");
+      if (!client) throw new Error("Sign-in is not available.");
       const snapshot = await client.login();
       if (!snapshot) {
-        reportStatus("Privy sign-in closed.", false);
+        reportStatus("Sign-in closed.", false);
         return null;
       }
       await handlePrivySession(snapshot, { source: fromBilling ? "billing-login" : "login" });
@@ -9693,7 +9693,7 @@ export function runViewerClient(bootstrap) {
       return snapshot;
     } catch (err) {
       if (!fromBilling) showPrivyAccountModal();
-      reportStatus(friendlyPrivyAccountError(err, "Privy sign-in failed"), true);
+      reportStatus(friendlyPrivyAccountError(err, "Sign-in failed"), true);
       return null;
     } finally {
       setPrivyBusy(false);
@@ -9747,7 +9747,7 @@ export function runViewerClient(bootstrap) {
       void syncWalletPackNftsFromAccount({ force: true });
     } catch (err) {
       showPrivyAccountModal();
-      setPrivyStatus(friendlyPrivyAccountError(err, "Privy error"), true);
+      setPrivyStatus(friendlyPrivyAccountError(err, "Sign-in error"), true);
     }
   }
   function closePrivyAccount() {
@@ -9783,7 +9783,7 @@ export function runViewerClient(bootstrap) {
     const confirmed = await confirmInApp({
       kicker: "Delete account",
       title: "Delete this account?",
-      copy: "This permanently removes this account, students, progress, wallet ledger, receipts, and school activity.",
+      copy: "This permanently removes this account, students, progress, purchase history, receipts, and school activity.",
       detail: "This cannot be undone.",
       confirmText: "Delete account",
       tone: "danger",
@@ -9941,7 +9941,7 @@ export function runViewerClient(bootstrap) {
       els.youState.textContent = privyState.authenticated && privyState.walletAddress
         ? shortWallet(privyState.walletAddress)
         : aiEnabled
-          ? (localAiEnabled ? "local AI" : "AI enabled")
+          ? (localAiEnabled ? "on-device AI" : "AI enabled")
           : activeTeacherUsesServerAi() ? "teacher connected" : "offline mode";
       els.footerAction.hidden = true;
       if (els.privyAction) {

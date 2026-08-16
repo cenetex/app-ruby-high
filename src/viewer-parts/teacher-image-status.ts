@@ -37,9 +37,9 @@ export function createTeacherImageStatusView(
       const reason = generationReason(input);
       if (reason) return reason;
       if (!input.hasApiKey) return input.canSpendHallPasses
-        ? "Hosted image generation spends a Hall Pass when it completes."
-        : "No Hall Passes yet. Buy Hall Passes or burn a Card first.";
-      return "Uses your AI key. No cards are burned.";
+        ? "Ruby High image creation uses a Hall Pass when the image is ready."
+        : "No Hall Passes yet. Buy Hall Passes or permanently destroy a collectible card first.";
+      return "Uses your AI key. It does not use Hall Passes.";
     },
   };
 }

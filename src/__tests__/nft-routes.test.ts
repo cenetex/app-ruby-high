@@ -794,7 +794,7 @@ describe("Hall Pass NFT routes", () => {
 
     expect(lastResponse).toMatchObject({
       status: 404,
-      body: { error: "Unknown Ruby High card character." },
+      body: { error: "Unknown Ruby High collectible card." },
     });
 
     await handleNftRoutes(makeCtx({
@@ -804,7 +804,7 @@ describe("Hall Pass NFT routes", () => {
 
     expect(lastResponse).toMatchObject({
       status: 404,
-      body: { error: "Unknown Ruby High card character." },
+      body: { error: "Unknown Ruby High collectible card." },
     });
 
     await handleNftRoutes(makeCtx({
@@ -1431,7 +1431,7 @@ describe("Hall Pass NFT routes", () => {
 
     expect(lastResponse).toEqual({
       status: 409,
-      body: { error: "Pack is already opened on-chain and cannot be redeemed again." },
+      body: { error: "This collectible pack is already open and cannot be opened again." },
     });
     expect(updateOpenedPack).not.toHaveBeenCalled();
     expect(ruby.getOrCreate(stateKey).wallet.hallPassPacks?.[0]).toMatchObject({
@@ -1470,7 +1470,7 @@ describe("Hall Pass NFT routes", () => {
 
     expect(lastResponse).toEqual({
       status: 400,
-      body: { error: "Pack wallet does not match the authenticated Solana wallet." },
+      body: { error: "This pack wallet does not match your connected Solana wallet." },
     });
     expect(updateOpenedPack).not.toHaveBeenCalled();
     expect(ruby.getOrCreate(stateKey).wallet.hallPassPacks?.[0]?.status).toBe("active");
@@ -1507,7 +1507,7 @@ describe("Hall Pass NFT routes", () => {
     expect(handled).toBe(true);
     expect(lastResponse).toMatchObject({
       status: 400,
-      body: { error: "Pack NFT update failed. Your pack was not opened; try again in a minute." },
+      body: { error: "Ruby High could not update the collectible pack on Solana. Your pack was not opened; try again in a minute." },
     });
     expect(updateOpenedPack).toHaveBeenCalledWith(expect.objectContaining({
       assetAddress: pack.assetAddress,
@@ -1607,7 +1607,7 @@ describe("Hall Pass NFT routes", () => {
     expect(handled).toBe(true);
     expect(lastResponse).toMatchObject({
       status: 403,
-      body: { error: "NFT request origin is not allowed." },
+      body: { error: "Collectible request origin is not allowed." },
     });
     expect(updateOpenedPack).not.toHaveBeenCalled();
     expect(ruby.getOrCreate(stateKey).wallet.hallPassPacks?.[0]).toMatchObject({
@@ -1858,7 +1858,7 @@ describe("Hall Pass NFT routes", () => {
 
     expect(lastResponse).toEqual({
       status: 429,
-      body: { error: "Too many NFT requests. Try again shortly." },
+      body: { error: "Too many collectible requests. Try again shortly." },
     });
     expect(lastHeaders["retry-after"]).toBe("10");
     expect(fetchOwned).toHaveBeenCalledTimes(30);
@@ -1934,7 +1934,7 @@ describe("Hall Pass NFT routes", () => {
     expect(handled).toBe(true);
     expect(lastResponse).toMatchObject({
       status: 415,
-      body: { error: "NFT requests must be sent as JSON." },
+      body: { error: "Collectible requests must be sent as JSON." },
     });
     const recorded = ruby.getOrCreate(stateKey).wallet.hallPassCards?.[0];
     expect(recorded).toMatchObject({ id: card.id });
@@ -2270,7 +2270,7 @@ describe("Hall Pass NFT routes", () => {
     expect(handled).toBe(true);
     expect(lastResponse).toMatchObject({
       status: 502,
-      body: { error: "This card mint needs more SOL for Solana rent and fees. Your card was not changed." },
+      body: { error: "Creating this collectible card needs more SOL for the Solana network fee. Your card was not changed." },
     });
     expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.mintAddress)).toHaveLength(0);
   });
@@ -2298,7 +2298,7 @@ describe("Hall Pass NFT routes", () => {
     expect(handled).toBe(true);
     expect(lastResponse).toMatchObject({
       status: 502,
-      body: { error: "This card mint needs more SOL for Solana rent and fees. Your card was not changed." },
+      body: { error: "Creating this collectible card needs more SOL for the Solana network fee. Your card was not changed." },
     });
     expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((candidate) => candidate.mintAddress)).toHaveLength(0);
   });
@@ -2326,7 +2326,7 @@ describe("Hall Pass NFT routes", () => {
     expect(handled).toBe(true);
     expect(lastResponse).toMatchObject({
       status: 502,
-      body: { error: "Solana RPC is temporarily unavailable. Your NFT was not changed; try again in a minute." },
+      body: { error: "Solana is temporarily unavailable. Your collectible was not changed; try again in a minute." },
     });
     expect(ruby.getOrCreate(stateKey).wallet.hallPassCards?.filter((card) => card.mintAddress)).toHaveLength(0);
   });
@@ -2445,7 +2445,7 @@ describe("Hall Pass NFT routes", () => {
 
     expect(lastResponse).toMatchObject({
       status: 400,
-      body: { error: "Burn at most 1 card at once." },
+      body: { error: "Exchange at most 1 collectible card at once." },
     });
   });
 

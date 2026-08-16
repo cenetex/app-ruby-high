@@ -66,7 +66,7 @@ export function createGraduationCeremonyRenderer(
 
         const prompt = deps.document.createElement("div");
         prompt.className = "graduation-board-prompt";
-        prompt.textContent = spec.photoLaterNote || "Choose one yearbook reward.";
+        prompt.textContent = spec.photoLaterNote || "Choose one reward for your yearbook.";
         wrap.appendChild(prompt);
 
         row = deps.document.createElement("div");
@@ -83,7 +83,7 @@ export function createGraduationCeremonyRenderer(
 
         const note = deps.document.createElement("div");
         note.className = "graduation-note";
-        note.textContent = spec.photoLaterNote || "Pick one keepsake or reward to seal the yearbook.";
+        note.textContent = spec.photoLaterNote || "Pick one keepsake or reward to save this year in your yearbook.";
         wrap.appendChild(note);
 
         wrap.appendChild(status);

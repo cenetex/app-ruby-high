@@ -32,14 +32,14 @@ describe("profile card view models", () => {
     }, "/sally.png")).toEqual({
       role: "teacher",
       name: "Sally Science",
-      subtitle: "Science Lab · physics, chem, bio, earth-sci",
+      subtitle: "Science Lab · physics, chemistry, biology, and Earth science",
       portraitUrl: "/sally.png",
       accent: "#4ba3ff",
       stats: { head: 3, heart: 0, hustle: 1, honor: 1 },
       quote: "I'd rather you be wrong with reasons than right by accident.",
       footer: {
         title: "Teaches",
-        content: "Science Lab · physics, chem, bio, earth-sci",
+        content: "Science Lab · physics, chemistry, biology, and Earth science",
       },
     });
 
@@ -48,13 +48,13 @@ describe("profile card view models", () => {
       subjects: ["physics"],
       questionCount: 200,
     })).toEqual({
-      badgeLabel: "faculty",
-      name: "Faculty Card",
-      subtitle: "Science Lab · physics, chem, bio, earth-sci",
+      badgeLabel: "teacher",
+      name: "Teacher Card",
+      subtitle: "Science Lab · physics, chemistry, biology, and Earth science",
       metrics: [
-        { label: "role", value: "Teacher", detail: "faculty", met: true },
-        { label: "subject", value: "Sally Science", detail: "room", met: true },
-        { label: "questions", value: "200", detail: "question bank", met: false },
+        { label: "role", value: "Teacher", detail: "teacher", met: true },
+        { label: "subject", value: "Sally Science", detail: "classroom", met: true },
+        { label: "questions", value: "200", detail: "available", met: false },
       ],
     });
   });
@@ -115,8 +115,8 @@ describe("profile card view models", () => {
       badgeLabel: "graduated",
       subtitle: "Graduated · classmate",
       metrics: [
-        { label: "status", value: "graduated", detail: "four-year arc complete", met: true },
-        { label: "yearbook", value: "4/4", detail: "paper cards sealed", met: true },
+        { label: "status", value: "graduated", detail: "all four years complete", met: true },
+        { label: "yearbook", value: "4/4", detail: "years saved", met: true },
         { label: "room", value: "lounge", detail: "last seen", met: false },
       ],
       progression: {

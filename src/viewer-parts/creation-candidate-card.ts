@@ -31,7 +31,7 @@ export function createCreationCandidateCardRenderer(
       card.className = "ccg-card is-character-card is-creation-candidate-card";
       const role = deps.document.createElement("span");
       role.className = "ccg-role player";
-      role.textContent = "player";
+      role.textContent = "student";
       card.appendChild(role);
 
       const art = deps.document.createElement("div");
@@ -54,7 +54,7 @@ export function createCreationCandidateCardRenderer(
 
       const hint = deps.document.createElement("div");
       hint.className = "ccg-next-step";
-      hint.textContent = "Free · no signup · your first class starts immediately.";
+      hint.textContent = "Free · no sign-up needed · your first class starts now.";
       body.appendChild(hint);
 
       // Put the decision immediately after the identity. On a small phone,
@@ -65,7 +65,7 @@ export function createCreationCandidateCardRenderer(
       const portraitBtn = deps.document.createElement("button");
       portraitBtn.type = "button";
       portraitBtn.className = "secondary";
-      portraitBtn.textContent = "\u2728 Generate AI portrait";
+      portraitBtn.textContent = "\u2728 Create AI portrait";
       const customizeBtn = deps.document.createElement("button");
       customizeBtn.type = "button";
       customizeBtn.className = "secondary creation-customize-btn";

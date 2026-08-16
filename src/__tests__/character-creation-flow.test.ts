@@ -94,7 +94,7 @@ describe("character creation flow", () => {
       // The initial rollComponents() call should still exist.
       expectScriptToContain(script, "rollComponents()");
       expectScriptToContain(script, "Take my seat · start class");
-      expectScriptToContain(script, 'setStatus("Enrolling...")');
+      expectScriptToContain(script, 'setStatus("Saving your student...")');
       expectScriptNotToContain(script, "scheduleCharacterAutosave");
       expectScriptNotToContain(script, "Save Character");
     });
@@ -128,7 +128,7 @@ describe("character creation flow", () => {
       expectScriptToContain(script, '"onboarding_enrollment_failed"');
       expectScriptToContain(script, "failureKind");
       expectScriptToContain(script, "Your student is still here");
-      expectScriptToContain(script, 'setStatus("Checking enrollment...")');
+      expectScriptToContain(script, 'setStatus("Checking your student...")');
     });
 
     it("does not leave a stale acceptBtn handler in the rendered viewer", () => {
@@ -159,8 +159,8 @@ describe("character creation flow", () => {
 
       expect(rollFn).toContain("(isFullRoll && !rolled) || !aiEnabled");
       expect(rollFn).toContain("rolled = offlineCharacterRoll(components)");
-      expect(rollFn).toContain("Ready instantly.");
-      expect(rollFn).toContain("AI took too long, so Ruby used a quick local roll instead.");
+      expect(rollFn).toContain("Your student is ready.");
+      expect(rollFn).toContain("AI took too long, so Ruby created a student on this device instead.");
       expect(CLIENT_SOURCE).toContain("timeoutMs: 6000");
     });
   });
@@ -174,14 +174,14 @@ describe("character creation flow", () => {
         script,
         "Meet your student",
       );
-      expectScriptToContain(script, "Nothing is enrolled until you take your seat");
+      expectScriptToContain(script, "Your student is not saved until you take your seat");
 
       // The loading spinner text for initial roll.
       expectScriptToContain(script, "Getting your student ready");
       expectScriptToContain(script, "This should only take a moment");
 
       // The character card with playbook stats.
-      expectScriptToContain(script, "Character Roll");
+      expectScriptToContain(script, "Create a Student");
     });
 
     it("renders one post-roll start action without the old confirmation copy", () => {
@@ -197,7 +197,7 @@ describe("character creation flow", () => {
     it("renders a low-commitment start-class button for the final student choice", () => {
       const script = renderedViewerScript();
       expectScriptToContain(script, "Take my seat · start class");
-      expectScriptToContain(script, "Free · no signup · your first class starts immediately.");
+      expectScriptToContain(script, "Free · no sign-up needed · your first class starts now.");
     });
 
     it("routes unaffordable AI portrait requests to the Hall Pass flow", () => {
@@ -205,8 +205,8 @@ describe("character creation flow", () => {
       expectScriptToContain(script, "function hostedPortraitHallPassNeeded()");
       expectScriptNotToContain(script, "Hall Pass needed.");
       expectScriptToContain(script, 'title: "Hall Pass needed"');
-      expectScriptToContain(script, "Custom character portrait needs");
-      expectScriptToContain(script, "Creating your student stays free.");
+      expectScriptToContain(script, "A custom student portrait needs");
+      expectScriptToContain(script, "Claim your free starter Hall Passes or add more.");
       expectScriptToContain(script, "openBilling({ mode: \"hall-passes\" })");
     });
 
@@ -216,7 +216,7 @@ describe("character creation flow", () => {
       // Each field has a reroll button.
       expectScriptToContain(script, '"↻"');
       // Name, playbook, stats, personality, quote should all have reroll buttons.
-      expectScriptToContain(script, '"Reroll"');
+      expectScriptToContain(script, '"Try another "');
     });
 
     it("offers direct name and student-style editing while preserving the explanation", () => {

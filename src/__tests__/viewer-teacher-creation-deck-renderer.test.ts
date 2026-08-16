@@ -96,7 +96,7 @@ describe("teacher creation deck renderer", () => {
     expect(specs).toEqual([{
       role: "teacher",
       name: "Ruby",
-      subtitle: "Homeroom · teacher candidate",
+      subtitle: "Homeroom · teacher preview",
       portraitUrl: "/teacher.png",
       accent: "#d22a2a",
       stats: { head: 1 },

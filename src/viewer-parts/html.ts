@@ -87,7 +87,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     </header>
 
     <section class="lounge-stage" id="lounge-stage">
-      <div class="lounge-title">Teachers' Lounge — listening in</div>
+      <div class="lounge-title">Teachers' Lounge — listen in</div>
       <div class="lounge-figures" id="lounge-figures">
         <!-- Populated by renderLoungeFigures() from the active pack's
              faculty roster. A pre-init dummy keeps the layout from
@@ -99,13 +99,13 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <div class="blackboard-empty" id="blackboard-empty">
         <div id="blackboard-empty-text">
           <div class="onboarding-title">Ruby High</div>
-          <div class="onboarding-sub">A daily AI school. Three teachers. Six classmates. Four years to graduate.</div>
-          <div class="onboarding-detail">Class starts 17:00 UTC. Ruby, Sally Science, and Professor Edward grade what you actually say — and every grade goes in the yearbook.</div>
+          <div class="onboarding-sub">One short class a day. Three teachers. Six classmates. Four years to graduate.</div>
+          <div class="onboarding-detail">A new class opens each day at 17:00 UTC. Your first class starts now. Every grade and teacher note goes in your yearbook.</div>
         </div>
-        <button class="blackboard-empty-action" id="blackboard-empty-action" type="button" hidden>Create Character</button>
+        <button class="blackboard-empty-action" id="blackboard-empty-action" type="button" hidden>Create Student</button>
         <div class="onboarding-actions" id="onboarding-actions" hidden>
           <button class="blackboard-empty-action" id="onboarding-create-btn" type="button">Create my student</button>
-          <div class="onboarding-reassurance">Free · no account or AI key needed · class starts immediately</div>
+          <div class="onboarding-reassurance">Free · no account or AI key needed · your first class starts now</div>
         </div>
       </div>
 
@@ -128,7 +128,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           <button class="answer D" data-pick="D" disabled><span class="badge">D</span><span class="label">—</span></button>
         </div>
         <div class="advantage-bar" id="advantage-bar" hidden>
-          <button class="advantage-btn" id="advantage-btn" type="button">🎲 Roll for advantage</button>
+          <button class="advantage-btn" id="advantage-btn" type="button" title="Use one roll for help with this question">🎲 Roll for help</button>
           <span class="advantage-result" id="advantage-result" hidden></span>
         </div>
       </div>
@@ -141,7 +141,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <form class="typed-answer-form" id="typed-answer-form">
           <input class="typed-answer-input" id="typed-answer-input" type="text" autocomplete="off" maxlength="320" placeholder="Type the answer" />
           <button class="typed-submit-btn" id="typed-submit-btn" type="submit">Check</button>
-          <button class="typed-mc-btn" id="generate-mc-btn" type="button">MC</button>
+          <button class="typed-mc-btn" id="generate-mc-btn" type="button">Choices</button>
         </form>
       </div>
       <div class="race-strip" id="race-strip" hidden>
@@ -223,11 +223,11 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <div class="sheet-overlay is-mandatory" id="signin-overlay" role="dialog" aria-modal="true" aria-labelledby="signin-title" aria-hidden="true">
   <div class="sheet-card signin-card">
     <h2 id="signin-title">Welcome to Ruby High</h2>
-    <p class="sub">Play free, spend Stars on chat, and use Hall Passes for images, slots, and cards.</p>
+    <p class="sub">Play classes for free. Merit Stars pay for teacher chat. Hall Passes pay for images, extra students, and collectible cards.</p>
     <div class="sheet-actions" style="justify-content: center;">
-      <button id="signin-guest" class="primary-link" type="button">Continue without AI</button>
+      <button id="signin-guest" class="primary-link" type="button">Continue free</button>
       <button id="signin-privy" class="secondary-link" type="button" hidden>Sign in</button>
-      <a id="signin-cta" class="secondary-link" href="/api/apps/ruby-high/auth/start">Use AI key</a>
+      <a id="signin-cta" class="secondary-link" href="/api/apps/ruby-high/auth/start">Use my AI key</a>
     </div>
     <div id="signin-status" class="stat-budget" aria-live="polite"></div>
   </div>
@@ -242,7 +242,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <div class="account-identity-inline">
         <div class="wallet-panel" id="privy-wallet">Guest session</div>
         <div class="sheet-actions">
-          <button type="button" id="privy-login-widget">Sign in with Privy</button>
+          <button type="button" id="privy-login-widget">Sign in</button>
           <button type="button" class="secondary" id="privy-signout" hidden>Sign out</button>
         </div>
       </div>
@@ -250,7 +250,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     <div class="account-tabs" role="tablist" aria-label="Account areas">
       <button type="button" class="account-tab is-active" id="account-tab-account" data-account-tab="account" role="tab" aria-selected="true" aria-controls="account-panel-account">Account</button>
       <button type="button" class="account-tab" id="account-tab-wallet" data-account-tab="wallet" role="tab" aria-selected="false" aria-controls="account-panel-wallet">Wallet</button>
-      <button type="button" class="account-tab" id="account-tab-cards" data-account-tab="cards" role="tab" aria-selected="false" aria-controls="account-panel-cards">Cards</button>
+      <button type="button" class="account-tab" id="account-tab-cards" data-account-tab="cards" role="tab" aria-selected="false" aria-controls="account-panel-cards">Collectibles</button>
       <button type="button" class="account-tab" id="account-tab-library" data-account-tab="library" role="tab" aria-selected="false" aria-controls="account-panel-library">Library</button>
       <button type="button" class="account-tab" id="account-tab-receipts" data-account-tab="receipts" role="tab" aria-selected="false" aria-controls="account-panel-receipts">Receipts</button>
       <button type="button" class="account-tab" id="account-tab-trust" data-account-tab="trust" role="tab" aria-selected="false" aria-controls="account-panel-trust">Trust</button>
@@ -260,12 +260,12 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <section class="account-section account-character-section">
           <div class="account-section-head">
             <div>
-              <div class="account-section-title">Characters</div>
+              <div class="account-section-title">Students</div>
               <div class="account-section-sub" id="account-character-summary"></div>
             </div>
             <div class="account-section-actions">
-              <button type="button" id="account-create-character">Create Character</button>
-              <button type="button" class="secondary" id="account-unlock-slot">Unlock Slot</button>
+              <button type="button" id="account-create-character">Create Student</button>
+              <button type="button" class="secondary" id="account-unlock-slot">Add Student Slot</button>
             </div>
           </div>
           <div class="account-character-grid" id="account-character-grid"></div>
@@ -273,11 +273,11 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <section class="account-section account-public-world-section">
           <div class="account-section-head">
             <div>
-              <div class="account-section-title">School Presence</div>
+              <div class="account-section-title">Show My Student</div>
               <div class="account-section-sub" id="account-public-world-summary"></div>
             </div>
             <div class="account-section-actions">
-              <button type="button" class="secondary" id="account-public-world-toggle">Join</button>
+              <button type="button" class="secondary" id="account-public-world-toggle">Show</button>
             </div>
           </div>
           <div class="account-public-world-status" id="account-public-world-status"></div>
@@ -286,7 +286,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           <div class="account-section-head">
             <div>
               <div class="account-section-title">Account Data</div>
-              <div class="account-section-sub">Delete this account, students, progress, wallet ledger, receipts, and school activity.</div>
+              <div class="account-section-sub">Permanently delete this account, its students, progress, purchase history, and school activity.</div>
             </div>
             <div class="account-section-actions">
               <button type="button" class="secondary danger" id="account-delete">Delete Account</button>
@@ -307,8 +307,8 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           <div class="account-wallet-balance" id="account-wallet-balance">0 Merit Stars · 0 Hall Passes</div>
           <div class="account-wallet-meta" id="account-wallet-meta"></div>
           <div class="account-wallet-rules">
-            <div><strong>Hall Passes</strong><span>Images, creator tools, and extra student slots.</span></div>
-            <div><strong>Wallet ledger</strong><span>Purchases and Solana card actions settle here.</span></div>
+            <div><strong>Hall Passes</strong><span>Use them for images, course tools, collectible cards, and extra student slots.</span></div>
+            <div><strong>Activity history</strong><span>Your purchases and collectible-card activity appear here.</span></div>
           </div>
         </section>
       </div>
@@ -320,8 +320,8 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
               <div class="account-section-sub" id="account-card-summary"></div>
             </div>
             <div class="account-section-actions">
-              <button type="button" id="account-buy-card-packs">Buy Card Packs</button>
-              <button type="button" class="secondary" id="account-mint-cards">Reveal Card</button>
+	              <button type="button" id="account-buy-card-packs">Buy Collectible Packs</button>
+              <button type="button" class="secondary" id="account-mint-cards">Reveal Collectible</button>
             </div>
           </div>
           <div class="account-hall-pass-cards" id="account-hall-pass-cards"></div>
@@ -341,14 +341,14 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <div class="account-panel" id="account-panel-receipts" data-account-panel="receipts" role="tabpanel" aria-labelledby="account-tab-receipts" hidden>
         <section class="account-section account-receipts-section">
           <div class="account-section-title">Receipts</div>
-          <div class="account-section-sub">Purchases, grants, burns, spends, mints, and refunds.</div>
+          <div class="account-section-sub">See purchases, rewards, Hall Pass use, collectible-card activity, and refunds.</div>
           <div class="account-history-list" id="account-history-list"></div>
         </section>
       </div>
       <div class="account-panel" id="account-panel-trust" data-account-panel="trust" role="tabpanel" aria-labelledby="account-tab-trust" hidden>
         <section class="account-section account-trust-section">
           <div class="account-section-title">Trust</div>
-          <div class="account-section-sub">Official links, wallet safety, and current on-chain configuration.</div>
+          <div class="account-section-sub">Check official links, wallet safety, and Ruby High's current blockchain details.</div>
           <div class="account-trust-list" id="account-trust-list"></div>
         </section>
       </div>
@@ -370,7 +370,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   <button class="sheet-close" id="billing-close" type="button" aria-label="Close">×</button>
   <div class="sheet-card billing-card">
     <h2 id="billing-title">Buy Hall Passes</h2>
-    <p class="sub" id="billing-sub">Buy Hall Passes or burn one Card for 5.</p>
+    <p class="sub" id="billing-sub">Buy Hall Passes or permanently destroy one collectible card to get 5.</p>
     <div class="wallet-panel" id="billing-wallet">0 Hall Passes · 0 Cards</div>
     <div class="billing-costs" id="billing-costs"></div>
     <div class="billing-products" id="billing-products"></div>
@@ -383,12 +383,12 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   <button class="sheet-close" id="bug-report-close" type="button" aria-label="Close">×</button>
   <form class="sheet-card is-bug-report-sheet" id="bug-report-form">
     <h2 id="bug-report-title">Report a bug</h2>
-    <p class="sub">Send the current Ruby High context to the private issue tracker.</p>
+    <p class="sub">Send details that can help us find and fix the problem.</p>
     <div class="field">
       <label for="bug-report-text">What broke?</label>
       <textarea id="bug-report-text" rows="5" maxlength="4000" placeholder="What happened, and what did you expect?"></textarea>
     </div>
-    <div class="bug-report-context">Recent console errors and classroom context will be included.</div>
+    <div class="bug-report-context">Recent app errors and classroom details will be attached.</div>
     <div class="stat-budget" id="bug-report-status" aria-live="polite"></div>
     <div class="sheet-actions">
       <button type="button" class="secondary" id="bug-report-cancel">Cancel</button>
@@ -400,26 +400,26 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 <!-- Pack editor overlay -->
 <div class="sheet-overlay" id="pack-overlay" role="dialog" aria-modal="true" aria-labelledby="pack-title" aria-hidden="true">
   <div class="sheet-card" id="pack-card">
-    <h2 id="pack-title">Guest Faculty</h2>
-    <p class="sub">Pick this week's guest teacher automatically, or set your own from creator packs.</p>
+    <h2 id="pack-title">Guest Teachers</h2>
+    <p class="sub">Let Ruby High choose this week's guest teacher, or choose one from your courses.</p>
     <div class="pack-library-actions">
-      <button type="button" class="pack-action" id="pack-auto-btn">Auto Guest</button>
-      <button type="button" class="pack-action" id="pack-create-btn">+ Create New Content Pack</button>
+      <button type="button" class="pack-action" id="pack-auto-btn">Choose Weekly Guest</button>
+      <button type="button" class="pack-action" id="pack-create-btn">+ Create Course</button>
     </div>
-    <div class="pack-section-title">Ruby High and guest</div>
+    <div class="pack-section-title">Ruby High courses and current guest</div>
     <div class="pack-grid" id="pack-list"></div>
-    <div class="pack-section-title">Find creator packs</div>
+    <div class="pack-section-title">Find courses</div>
     <div class="pack-search-row">
-      <input type="search" id="pack-search-input" placeholder="Search any course content" autocomplete="off" />
+      <input type="search" id="pack-search-input" placeholder="Search course titles or subjects" autocomplete="off" />
       <button type="button" class="pack-action" id="pack-search-btn">Search</button>
     </div>
     <div class="pack-grid" id="pack-search-list"></div>
-    <div class="pack-section-title">Draft packs</div>
+    <div class="pack-section-title">Draft courses</div>
     <div class="pack-grid" id="pack-draft-list"></div>
     <div class="pack-import-panel" id="pack-import-panel" hidden>
       <div class="pack-import-title" id="pack-import-title">Working</div>
-      <div class="pack-import-detail" id="pack-import-detail">Ruby High is updating your library.</div>
-      <div class="pack-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Pack update progress">
+      <div class="pack-import-detail" id="pack-import-detail">Ruby High is updating your courses.</div>
+      <div class="pack-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Course update progress">
         <div class="pack-progress-fill" id="pack-progress-fill"></div>
       </div>
     </div>
@@ -432,13 +432,13 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 
 <div class="sheet-overlay" id="pack-edit-overlay" role="dialog" aria-modal="true" aria-labelledby="pack-edit-title" aria-hidden="true">
   <div class="sheet-card pack-edit-card" id="pack-edit-card">
-    <h2 id="pack-edit-title">Edit pack</h2>
-    <p class="sub" id="pack-edit-subtitle">Draft content pack.</p>
+    <h2 id="pack-edit-title">Edit course</h2>
+    <p class="sub" id="pack-edit-subtitle">Draft course.</p>
     <div class="pack-editor">
       <section class="pack-course-generator" id="pack-course-generator" hidden>
         <textarea id="course-materials-input" rows="10" maxlength="80000" placeholder="Add course materials here"></textarea>
         <div class="pack-course-generator-actions">
-          <button type="button" class="pack-action" id="course-generate-btn">Generate Course</button>
+          <button type="button" class="pack-action" id="course-generate-btn">Generate course</button>
           <button type="button" class="pack-action danger" id="course-cancel-generation-btn" hidden>Cancel</button>
           <span class="pack-question-status" id="course-generation-status"></span>
         </div>
@@ -456,15 +456,15 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <section class="pack-editor-main">
         <div class="pack-teacher-detail" id="pack-teacher-detail"></div>
         <div class="pack-editor-tabs" role="tablist">
-          <button type="button" class="pack-editor-tab is-active" data-pack-tab="materials">Materials</button>
+          <button type="button" class="pack-editor-tab is-active" data-pack-tab="materials">Course materials</button>
           <button type="button" class="pack-editor-tab" data-pack-tab="questions">Questions</button>
           <button type="button" class="pack-editor-tab" data-pack-tab="settings">Settings</button>
         </div>
         <div class="pack-tab-panel is-active" id="pack-tab-materials">
           <div class="teacher-creator">
-            <input id="teacher-material-url-input" type="url" placeholder="GitHub markdown URL">
-            <button type="button" class="secondary" id="teacher-load-url-btn">Load URL</button>
-            <textarea id="teacher-materials-input" rows="8" maxlength="80000" placeholder="Paste markdown or course materials"></textarea>
+            <input id="teacher-material-url-input" type="url" placeholder="Link to a public Markdown file">
+            <button type="button" class="secondary" id="teacher-load-url-btn">Load link</button>
+            <textarea id="teacher-materials-input" rows="8" maxlength="80000" placeholder="Paste your course materials"></textarea>
           </div>
         </div>
         <div class="pack-tab-panel" id="pack-tab-questions">
@@ -479,10 +479,10 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           <div class="teacher-creator">
             <div class="teacher-creator-row">
               <input id="teacher-display-name-input" type="text" placeholder="Teacher display name">
-              <input id="teacher-socials-input" type="url" placeholder="Socials link">
+              <input id="teacher-socials-input" type="url" placeholder="Teacher's public profile link">
             </div>
             <input id="teacher-profile-image-input" type="url" placeholder="Profile image URL">
-            <textarea id="teacher-persona-input" rows="4" maxlength="2400" placeholder="Teaching style or persona"></textarea>
+            <textarea id="teacher-persona-input" rows="4" maxlength="2400" placeholder="Describe how this teacher speaks and teaches"></textarea>
           </div>
         </div>
       </section>
@@ -490,7 +490,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     <div id="pack-edit-status" class="stat-budget" style="margin-top: 8px; min-height: 16px;"></div>
     <div class="sheet-actions">
       <button type="button" class="secondary" id="pack-edit-close-btn">Close</button>
-      <button type="button" class="secondary" id="pack-publish-btn">Publish Course (3 Hall Passes)</button>
+      <button type="button" class="secondary" id="pack-publish-btn">Publish course (3 Hall Passes)</button>
     </div>
   </div>
 </div>

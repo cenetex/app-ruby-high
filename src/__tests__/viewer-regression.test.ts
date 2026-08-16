@@ -79,7 +79,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function consumeAcquisitionAttribution()");
     expectScriptToContain(script, '["rh_source", "rh_campaign", "rh_landing", "rh_entry"]');
     expectScriptToContain(script, 'quickRollExperimentLanding = acquisitionAttribution.landingVariant === "quick-roll-v1"');
-    expectScriptToContain(script, "Roll a student. Complete one class. Get your report.");
+    expectScriptToContain(script, "Create a student. Complete one class. Get your report.");
     expectScriptToContain(script, "t.current || t.active_round || quickRollExperimentLanding");
     expectScriptToContain(script, 'postViewerMetricEvent("app_open", acquisitionAttribution || {})');
     expectScriptToContain(script, 'keys.forEach((key) => url.searchParams.delete(key))');
@@ -138,7 +138,7 @@ describe("viewer regression guardrails", () => {
 
     expect(html).toContain('<button class="you-profile" id="you-profile" type="button" aria-label="Open student card">');
     expectScriptToContain(script, 'els.youProfile.setAttribute("aria-label", "Open " + t.character.name + "\'s student card")');
-    expectScriptToContain(script, 'reroll.setAttribute("aria-label", "Reroll " + label.toLowerCase())');
+    expectScriptToContain(script, 'reroll.setAttribute("aria-label", "Try another " + label.toLowerCase())');
     expectScriptToContain(script, 'button.className = "teacher-profile-button"');
     expectScriptToContain(script, 'roomButton.className = "room-row-button"');
   });
@@ -174,7 +174,7 @@ describe("viewer regression guardrails", () => {
     const script = inlineScript(html);
 
     expect(html).toContain(">Create my student</button>");
-    expect(html).toContain("Free · no account or AI key needed · class starts immediately");
+    expect(html).toContain("Free · no account or AI key needed · your first class starts now");
     expect(html).toContain('<svg aria-hidden="true"');
     expect(VIEWER_CSS).toContain("--text-dim:");
     expect(VIEWER_CSS).toContain("--border:");
@@ -408,7 +408,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(clientSource, "profileCardView.teacherCareerCard(fac)");
     expectScriptToContain(clientSource, "profileCardView.studentProfileCard({");
     expectScriptToContain(clientSource, "profileCardView.studentCareerCard({");
-    expectScriptToContain(script, "Science Lab · physics, chem, bio, earth-sci");
+    expectScriptToContain(script, "Science Lab · physics, chemistry, biology, and Earth science");
     expectScriptToContain(script, "Every wrong answer has a half-truth folded inside it. We start there.");
     expect(clientSource).not.toContain("const TEACHER_SUBJECT_LINE =");
     expect(clientSource).not.toContain("function studentVibe(id)");
@@ -701,8 +701,8 @@ describe("viewer regression guardrails", () => {
     expect(html).not.toContain('id="arc-score"');
     expect(html).not.toContain('id="account-get-ruby"');
     expect(html).not.toContain("Get $RUBY");
-    expect(html).toContain("School Presence");
-    expect(html).toContain("Burn Card");
+    expect(html).toContain("Show My Student");
+    expect(html).toContain("permanently destroy one collectible card");
     expect(html).toContain('id="account-create-character"');
     expect(html).toContain('id="account-history-list"');
     expect(html).toContain('id="account-comics"');
@@ -768,7 +768,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "startPrivyLogin");
     expectScriptToContain(script, "startSolanaWalletConnect");
     expectScriptToContain(script, "function friendlyPrivyAccountError(err, fallback)");
-    expectScriptToContain(script, "Privy blocked wallet sign-in. Enable wallet login in the Privy dashboard, then refresh Ruby High.");
+    expectScriptToContain(script, "Wallet sign-in is not available. Contact Ruby High support.");
     expect(script).not.toContain('reportStatus(err && err.message ? err.message : "Privy sign-in failed", true)');
     expect(script).not.toContain("client.loginWithPhantom()");
     expect(script).not.toContain("function phantomWalletAvailable()");
@@ -839,7 +839,7 @@ describe("viewer regression guardrails", () => {
     expect(clientSource).not.toContain('panel.className = "billing-payment-choice";');
     expect(clientSource).not.toContain('row.className = "billing-product";');
     expect(script).not.toContain("buildGetRubyLink");
-    expectScriptToContain(script, "Card pack checkout is not configured in this preview.");
+    expectScriptToContain(script, "Collectible-pack checkout is not available in this preview.");
     expect(VIEWER_CSS).toContain(".billing-payment-note");
     expect(VIEWER_CSS).not.toContain(".billing-costs .get-ruby-link");
     expect(VIEWER_CSS).not.toContain(".account-section-head .account-token-link");
@@ -854,28 +854,28 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(clientSource, "const accountTrustRenderer = createAccountTrustPanelRenderer({");
     expectScriptToContain(clientSource, "accountTrustRenderer.render(view);");
     expectScriptToContain(script, '"Connect a Solana wallet to open packs and reveal Cards."');
-    expectScriptToContain(script, '"Privy account · no Solana wallet"');
+    expectScriptToContain(script, '"Signed in · no Solana wallet"');
     expectScriptToContain(script, "function hallPassPacksForTelemetry(t)");
     expectScriptToContain(script, 'pack.status !== "void"');
     expectScriptToContain(script, "function buildPack(pack, opts)");
-    expectScriptToContain(script, "No packs or Cards in this wallet yet.");
+    expectScriptToContain(script, "No collectible packs or cards in this wallet yet.");
     expectScriptToContain(script, "async function openHallPassPackFromAccount(packId)");
     expectScriptToContain(script, 'apiBase + "/nft/open-pack"');
-    expectScriptToContain(script, 'prompt: "No wallet signature is expected for pack opening."');
+    expectScriptToContain(script, 'prompt: "You should not need to sign a wallet transaction to open this pack."');
     expectScriptToContain(script, "async function syncWalletPackNftsFromAccount(opts)");
     expectScriptToContain(script, 'apiBase + "/nft/sync-packs"');
     expectScriptToContain(script, "const removedCount = Math.max(0, Math.floor(Number(data.removedCount || 0)))");
     expectScriptToContain(script, 'void syncWalletPackNftsFromAccount({ force: true })');
     expectScriptToContain(script, 'return kind === "active" ? PACK_NFT_ART_URL : PACK_OPENED_NFT_ART_URL;');
     expectScriptToContain(script, "item.className = view.className");
-    expectScriptToContain(script, '"On-chain Solana pack"');
-    expectScriptToContain(script, '"Opened pack record"');
-    expectScriptToContain(script, '"View Solana pack"');
+    expectScriptToContain(script, '"These collectible packs are stored on Solana. Open one to get five face-down Ruby High cards."');
+    expectScriptToContain(script, '"Opened collectible pack"');
+    expectScriptToContain(script, '"View pack on Solscan"');
     expectScriptToContain(script, "item.className = view.className");
     expectScriptToContain(script, 'item.type = "button"');
     expectScriptToContain(script, 'item.addEventListener("click", () => deps.openCard(card));');
-    expectScriptToContain(script, '"Face-down Card · mint to reveal · #"');
-    expectScriptToContain(script, '"View Card on Solscan"');
+    expectScriptToContain(script, '"Face-down collectible · reveal on Solana · #"');
+    expectScriptToContain(script, '"View Collectible on Solscan"');
     expectScriptToContain(script, "function showHallPassCardReader(card)");
     expectScriptToContain(script, "mintCard: mintHallPassCardFromAccount");
     expectScriptToContain(script, "const render = (nextCard, opts)");
@@ -883,7 +883,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "render(revealedCard, { flip: true, revealed: true })");
     expectScriptToContain(script, "function hallPassCardById(cardId)");
     expectScriptToContain(script, "function hallPassCardNftImageUrl(card)");
-    expectScriptToContain(script, "Opening pack. Laying out five face-down cards...");
+    expectScriptToContain(script, "Opening your pack and adding five face-down collectible cards...");
     expectScriptToContain(script, 'const PACK_NFT_ART_URL = apiBase + "/assets/nft/ruby-high-pack.png?v=pack-nft-v2"');
     expectScriptToContain(script, 'const PACK_OPENED_NFT_ART_URL = apiBase + "/assets/nft/ruby-high-pack-opened.png?v=opened-v2"');
     expectScriptToContain(script, 'const CARD_BACK_ART_URL = apiBase + "/assets/nft/ruby-high-card-back.png?v=card-back-v1"');
@@ -900,11 +900,11 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "packMintProgressController.show(message, options)");
     expectScriptToContain(script, "packMintProgressController.update(message)");
     expectScriptToContain(script, "packMintProgressController.hide(delayMs)");
-    expectScriptToContain(script, "Please wait: minting pack");
-    expectScriptToContain(script, "Please wait: minting card");
+    expectScriptToContain(script, "Creating your collectible pack...");
+    expectScriptToContain(script, "Preparing your collectible card...");
     expectScriptToContain(script, "rotate: false");
-    expectScriptToContain(script, "updatePackMintProgress(\"Review the mint transaction in your wallet...\")");
-    expectScriptToContain(script, "setPrivyStatus(\"Review the card mint transaction in your wallet.\", false)");
+    expectScriptToContain(script, "updatePackMintProgress(\"Review the card-creation transaction in your wallet...\")");
+    expectScriptToContain(script, "setPrivyStatus(\"Review the collectible-card transaction in your wallet.\", false)");
     expect(script).not.toContain("Review the mint preview...");
     expect(script).not.toContain("Confirm the mint in your wallet...");
     expect(clientSource).not.toContain('overlay.className = "pack-mint-overlay";');
@@ -938,10 +938,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "client.signSolanaTransaction(preparedData.mint)");
     expectScriptToContain(script, "signedTransactionBase64: signed.signedTransactionBase64");
     expect(script).not.toContain('prompt: "Your wallet should show one card-mint transaction."');
-    expectScriptToContain(script, "Mint to Reveal");
+    expectScriptToContain(script, "Reveal Collectible");
     expectScriptToContain(script, "return hallPassCardById(cleanCardId) || data.card || null");
     expect(script).not.toContain("remove();\n        void mintHallPassCardFromAccount(card.id);");
-    expectScriptToContain(script, "Mint the next face-down Ruby High Card to reveal it.");
+    expectScriptToContain(script, "Create the next collectible card on Solana to reveal it.");
     expect(script).not.toContain("unmintedCardCount");
     expect(script).not.toContain("/nft/mint-pending");
     expect(script).not.toContain("Mint \" + mintableCount + \" Pending");
@@ -950,10 +950,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'await startPrivyLogin({ source: "billing" })');
     expectScriptToContain(script, 'await startSolanaWalletConnect({ source: "billing" })');
     expectScriptToContain(script, 'typeof client.paySolanaQuote !== "function"');
-    expectScriptToContain(script, 'title: "Connect Solana wallet?"');
-    expectScriptToContain(script, 'title: "Confirm card pack payment?"');
-    expectScriptToContain(script, "Your wallet should show a Solana pack payment and Ruby High pack creation. The network fee is paid by this wallet.");
-    expectScriptToContain(script, 'setBillingStatus("Starting card pack checkout...", false)');
+    expectScriptToContain(script, 'title: "Connect your Solana wallet?"');
+    expectScriptToContain(script, 'title: "Pay for this collectible pack?"');
+    expectScriptToContain(script, "Your wallet should show the pack price and a small Solana network fee.");
+    expectScriptToContain(script, 'setBillingStatus("Preparing collectible-pack payment...", false)');
     expectScriptToContain(script, "let finalBillingStatus = null");
     expectScriptToContain(script, "if (finalBillingStatus) setBillingStatus(finalBillingStatus[0], finalBillingStatus[1])");
     expectScriptToContain(script, "setPrivyStatus(finalBillingStatus[0], finalBillingStatus[1])");
@@ -996,9 +996,9 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "body: JSON.stringify({ hallPassBurns: burns })");
     expectScriptToContain(script, "async function convertHallPassCardsToHallPasses(count, opts)");
     expectScriptToContain(script, 'apiBase + "/billing/card-burn"');
-    expectScriptToContain(script, 'title: selectedCards.length === 1 ? "Burn this card?"');
+    expectScriptToContain(script, 'title: selectedCards.length === 1 ? "Permanently destroy this card?"');
     expectScriptToContain(script, "credit: hallPassCostLabel(hallPassBurnCreditForCards(1))");
-    expectScriptToContain(script, 'prompt: "Your wallet should show one card-burn transaction."');
+    expectScriptToContain(script, 'prompt: "Your wallet should show one transaction that permanently destroys this collectible card."');
     expect(VIEWER_CSS).toContain(".card-burn-overlay");
     expect(VIEWER_CSS).toContain(".card-burn-grid");
     expect(VIEWER_CSS).toContain(".card-burn-thumb img");
@@ -1109,7 +1109,7 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("Social card ready");
     expect(script).not.toContain("Social card: When a classmate");
     expect(script).not.toContain("social card ready");
-    expectScriptToContain(script, "Ruby High never asks for a seed phrase.");
+    expectScriptToContain(script, "Ruby High never asks for your seed phrase.");
     expect(VIEWER_CSS).toContain(".account-tabs");
     expect(VIEWER_CSS).toContain(".comic-reader.is-reward");
     expect(VIEWER_CSS).toContain(".first-bell-overlay");
@@ -1131,7 +1131,7 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("maybeShowWelcomeHallPassPopup(t);");
     expectScriptToContain(script, 'const WELCOME_HALL_PASS_ART_URL = apiBase + "/assets/welcome-hall-passes.png"');
     expect(VIEWER_CSS).toContain(".welcome-hall-pass-art");
-    expectScriptToContain(script, "Roll your first student and try a custom portrait");
+    expectScriptToContain(script, "Create your first student and try a custom portrait");
     expect(script).not.toContain("activateAiPass");
     expect(script).not.toContain('els.accountUsePass.addEventListener("click", () => activateAiPass({ source: "account" }))');
     expect(script).not.toContain("els.accountBuyPasses.disabled = !authed;");
@@ -1150,8 +1150,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function guestSignupRequired");
     expectScriptToContain(script, 'if (postClass.report && guestSignupRequired(t)) return "Sign up";');
     expectScriptToContain(script, "function promptGuestSignup");
-    expectScriptToContain(script, "Sign up to keep your character");
-    expectScriptToContain(script, "Sign up to keep your character");
+    expectScriptToContain(script, "Sign up to keep your student");
+    expectScriptToContain(script, "Sign up to keep your student");
   });
 
   it("labels offline classroom advance as Continue instead of Chat", () => {
@@ -1162,7 +1162,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'const advanceLabel = teacherChatEnabled() ? chatActionLabel(lastTelemetry) : "Continue";');
     expectScriptToContain(script, "const offlineLiveRound = live && !teacherChatEnabled();");
     expectScriptToContain(script, "ceremonyReady || offlineLiveRound");
-    expectScriptToContain(script, "Connect AI for hints.");
+    expectScriptToContain(script, "Use an AI key for hints.");
     expect(script).not.toContain("Connect OpenRouter for hints.");
   });
 
@@ -1388,7 +1388,7 @@ describe("viewer regression guardrails", () => {
     expect(html).not.toContain("Student name, grade, playbook, stats, completed class grades, yearbook count, and safe portrait URL.");
     expect(html).not.toContain("Answers, chat text, session id, wallets, AI keys, receipts, and account identity stay off shared school activity.");
     expect(html).toContain('id="account-delete"');
-    expect(html).toContain("Delete this account, students, progress, wallet ledger, receipts, and school activity.");
+    expect(html).toContain("Permanently delete this account, its students, progress, purchase history, and school activity.");
     expectScriptToContain(script, "function renderAccountPublicWorld()");
     expectScriptToContain(script, "function accountPublicWorldView(character, opts)");
     expectScriptToContain(script, "function createAccountPublicWorldController(deps)");
@@ -1406,11 +1406,11 @@ describe("viewer regression guardrails", () => {
     const html = renderedViewer();
     const script = inlineScript(html);
 
-    expect(html).toContain("Pick this week's guest teacher automatically, or set your own from creator packs.");
+    expect(html).toContain("Let Ruby High choose this week's guest teacher, or choose one from your courses.");
     expect(html).toContain('id="pack-search-input"');
     expect(html).toContain('id="pack-search-btn"');
     expect(html).toContain('id="pack-search-list"');
-    expect(html).toContain("Find creator packs");
+    expect(html).toContain("Find courses");
     expect(cssRule(".pack-grid")).toContain("display: flex");
     expect(cssRule(".pack-grid")).toContain("flex-direction: column");
     expect(cssRule(".pack-grid")).not.toContain("grid-template-columns");
@@ -1476,7 +1476,7 @@ describe("viewer regression guardrails", () => {
     expect(html).not.toContain('id="pack-add-teacher-btn"');
     expect(html).not.toContain('<span class="pack-teacher-title">New Teacher</span>');
     expect(html).not.toContain('<span class="pack-teacher-subtitle">Create manually</span>');
-    expectScriptToContain(script, 'packEditTitleEl.textContent = emptyDraft ? "Create content pack" : "Edit pack"');
+    expectScriptToContain(script, 'packEditTitleEl.textContent = emptyDraft ? "Create Course" : "Edit Course"');
     expectScriptToContain(script, 'packEditSubtitleEl.textContent = emptyDraft ? "Add course materials here."');
     expectScriptToContain(script, 'if (teacherSidebar) teacherSidebar.hidden = emptyDraft');
     expectScriptToContain(script, "if (Object.keys(patch).length === 0) return;");
@@ -1493,7 +1493,7 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="course-generation-checklist"');
     expect(html).toContain("Add course materials here");
     expect(html).toContain("Generate Course");
-    expect(html).toContain("Publish Course (3 Hall Passes)");
+    expect(html).toContain("Publish course (3 Hall Passes)");
     expect(html).toContain('id="course-generate-btn"');
     expect(html).not.toContain('class="pack-teacher-tab pack-new-teacher-tab"');
     expect(html).not.toContain('class="pack-teacher-avatar pack-new-teacher-avatar">+</span>');
@@ -1569,7 +1569,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "class-report-teacher-art");
     expectScriptToContain(script, 'teacherAssetUrl(artAssetId, "full-sticker")');
     expectScriptToContain(script, 'addMetric(metrics, "score"');
-    expectScriptToContain(script, '"grade score"');
+    expectScriptToContain(script, '"class score"');
     expect(clientSource).not.toContain('wrap.className = "class-report-card"');
     expect(clientSource).not.toContain('item.className = "class-report-metric"');
     expect(script).not.toContain('addMetric("score / grade"');

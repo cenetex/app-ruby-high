@@ -362,7 +362,7 @@ describe("command route persistence and scheduler misses", () => {
     await handleAppRoutes(retry.ctx);
 
     expect(retry.response?.status).toBe(200);
-    expect(retry.response?.body.message).toBe("Character already created");
+    expect(retry.response?.body.message).toBe("Student already created");
     expect(retry.response?.body.session.telemetry.character.name).toBe("Ari");
   });
 
@@ -385,7 +385,7 @@ describe("command route persistence and scheduler misses", () => {
       await handleAppRoutes(first.ctx);
 
       expect(first.response?.status).toBe(200);
-      expect(first.response?.body.message).toBe("Character created. First Bell ready.");
+      expect(first.response?.body.message).toBe("Student created. First Bell is ready.");
       expect(first.response?.body.session.telemetry.character.name).toBe("Ari");
       const questionId = first.response?.body.session.telemetry.current?.id;
       expect(questionId).toBe("route-test-q1");
@@ -415,7 +415,7 @@ describe("command route persistence and scheduler misses", () => {
       await handleAppRoutes(retry.ctx);
 
       expect(retry.response?.status).toBe(200);
-      expect(retry.response?.body.message).toBe("Character already created. First Bell ready.");
+      expect(retry.response?.body.message).toBe("Student already created. First Bell is ready.");
       expect(retry.response?.body.session.telemetry.character.name).toBe("Ari");
       expect(retry.response?.body.session.telemetry.current?.id).toBe(questionId);
     } finally {
@@ -715,7 +715,7 @@ describe("command route persistence and scheduler misses", () => {
       const hide = makeCommandCtx(ruby, { type: "set-public-presence", publicWorldVisible: false }, undefined, null, auth, cookie);
       expect(await handleAppRoutes(hide.ctx)).toBe(true);
       expect(hide.response?.status).toBe(200);
-      expect(hide.response?.body.message).toBe("Public world presence hidden");
+      expect(hide.response?.body.message).toBe("Student hidden from shared school activity");
       expect(state.character!.socialConsent).toBe(true);
       expect(state.character!.publicWorldVisible).toBe(false);
       const hiddenWorld = ruby.getSchoolWorldSnapshot(10, now);
@@ -725,7 +725,7 @@ describe("command route persistence and scheduler misses", () => {
       const show = makeCommandCtx(ruby, { type: "set-public-presence", publicWorldVisible: true }, undefined, null, auth, cookie);
       expect(await handleAppRoutes(show.ctx)).toBe(true);
       expect(show.response?.status).toBe(200);
-      expect(show.response?.body.message).toBe("Public world presence enabled");
+      expect(show.response?.body.message).toBe("Student shown in shared school activity");
       expect(state.character!.socialConsent).toBe(true);
       expect(state.character!.publicWorldVisible).toBe(true);
       expect(ruby.getSchoolWorldSnapshot(10, now).activeStudents).toBe(1);
@@ -777,7 +777,7 @@ describe("command route persistence and scheduler misses", () => {
       const show = makeCommandCtx(ruby, { type: "set-public-presence", publicWorldVisible: true }, undefined, null, auth, cookie);
       expect(await handleAppRoutes(show.ctx)).toBe(true);
       expect(show.response?.status).toBe(400);
-      expect(show.response?.body.error).toBe("Choose a student name that is not a reserved staff or system name before joining school rooms.");
+      expect(show.response?.body.error).toBe("Choose a student name that is not used by Ruby High staff before showing the student.");
       expect(state.character!.publicWorldVisible).toBe(false);
 
       const world = ruby.getSchoolWorldSnapshot(10, now);
@@ -1006,7 +1006,7 @@ describe("command route persistence and scheduler misses", () => {
 
     expect(handled).toBe(true);
     expect(harness.response?.status).toBe(200);
-    expect(harness.response?.body.message).toBe("Multiple choice generated");
+    expect(harness.response?.body.message).toBe("Answer choices created");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -1050,7 +1050,7 @@ describe("command route persistence and scheduler misses", () => {
 
     expect(handled).toBe(true);
     expect(harness.response?.status).toBe(200);
-    expect(harness.response?.body.message).toBe("Multiple choice generated");
+    expect(harness.response?.body.message).toBe("Answer choices created");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(harness.response?.body.session.telemetry.current).toMatchObject({
       type: "multiple-choice",
