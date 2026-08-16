@@ -1045,10 +1045,11 @@ nav a {
   }
 
   .hero-card {
+    bottom: 20px;
     left: 16px;
     padding: 24px;
     right: 16px;
-    top: 28px;
+    top: auto;
     transform: none;
     width: auto;
   }
@@ -1063,9 +1064,12 @@ nav a {
   }
 
   .hero-faculty {
+    bottom: 200px;
     height: 44%;
-    right: -8%;
-    width: 92%;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: min(92%, 460px);
   }
 
   .hero-ruby {
@@ -1078,14 +1082,7 @@ nav a {
   }
 
   .first-bell {
-    bottom: 31%;
-    padding: 10px 14px;
-    right: 14px;
-    top: auto;
-  }
-
-  .first-bell span {
-    font-size: 1.2rem;
+    display: none;
   }
 
   .signal-strip {
@@ -1293,9 +1290,26 @@ nav a {
     display: none;
   }
 
+  .hero-card {
+    padding: 20px;
+  }
+
+  .hero h1 {
+    margin-bottom: 12px;
+  }
+
+  .hero h1 img {
+    width: 160px;
+  }
+
+  .hero-line {
+    margin-bottom: 18px;
+  }
+
   .hero-actions {
     align-items: stretch;
     flex-direction: column;
+    gap: 12px;
   }
 
   .hero-actions .button {
