@@ -107,6 +107,18 @@ export { createStateStore, type CreateStateStoreOptions } from "./services/state
 export { AuthService } from "./services/auth-service.js";
 export { ChatService } from "./services/chat-service.js";
 export {
+  TeacherPersonaMemory,
+  TEACHER_PERSONA_MEMORY_STATE_ID,
+  TEACHER_PERSONA_MIN_NEW_MEMORIES,
+  TEACHER_PERSONA_REFLECTION_INTERVAL_MS,
+  type RememberTeacherTurnInput,
+  type TeacherMemoryRecord,
+  type TeacherPersonaDraft,
+  type TeacherPersonaOverlay,
+  type TeacherPersonaProfileSnapshot,
+  type TeacherPersonaReflector,
+} from "./services/teacher-persona-memory.js";
+export {
   AgentAccessService,
   AGENT_ACCESS_STATE_ID,
   AGENT_SCOPES,

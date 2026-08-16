@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ChatService } from "../services/chat-service.js";
+import { TeacherPersonaMemory } from "../services/teacher-persona-memory.js";
 import { publicChatHistory } from "../chat-routes.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { FacultyService } from "../services/faculty-service.js";
@@ -293,6 +294,54 @@ describe("ChatService.send — message composition", () => {
     // Ruby's persona prompt should be in the first system message.
     expect(typeof messages[0].content).toBe("string");
     expect(messages[0].content.length).toBeGreaterThan(20);
+  });
+
+  it("places the evolving persona overlay after the immutable core prompt", async () => {
+    const personaMemory = new TeacherPersonaMemory({
+      reflector: async () => ({
+        perspective: "Recent classes favor evidence before confidence.",
+        teachingApproaches: ["Asks for one concrete example before accepting a broad claim."],
+        evolvingInterests: ["AI literacy"],
+      }),
+      minNewMemories: 1,
+      schedulerEnabled: false,
+    });
+    const faculty = await FacultyService.start({} as never);
+    const ruby = new RubyHighService({} as never, new StateStore(storePath));
+    await ruby["hydrate"]();
+    ruby.setFacultyService(faculty);
+    const chat = new ChatService({} as never, personaMemory);
+    chat.setRubyHighService(ruby);
+    activeRuby = ruby;
+
+    mockOpenRouter(buildSseChunk([{ content: "Show me the evidence behind the claim.", finish: "stop" }]));
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "private-session",
+      agentSessionId: "session:persona-overlay",
+      faculty: "ruby",
+      authorName: "Ava",
+      userMessage: "What do you think?",
+    })) { /* consume */ }
+    await chat.reflectTeacherPersonaNow("ruby");
+
+    vi.restoreAllMocks();
+    mockOpenRouter(buildSseChunk([{ content: "One example first.", finish: "stop" }]));
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "private-session",
+      agentSessionId: "session:persona-overlay",
+      faculty: "ruby",
+      authorName: "Ava",
+      userMessage: "And now?",
+    })) { /* consume */ }
+
+    const systemMessages = captured!.body.messages.filter((message: any) => message.role === "system");
+    expect(systemMessages[0].content).toContain("You are Ruby");
+    expect(systemMessages[0].content).not.toContain("EVOLVING PERSONA OVERLAY");
+    expect(systemMessages[1].content).toContain("EVOLVING PERSONA OVERLAY — version 1");
+    expect(systemMessages[1].content).toContain("immutable core identity above remains authoritative");
+    expect(systemMessages[1].content).not.toContain("Ava");
   });
 
   it("uses the active pack faculty prompt/model for imported Anki teachers", async () => {
