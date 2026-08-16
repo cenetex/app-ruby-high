@@ -142,11 +142,11 @@ function packLibraryRequestLooksLikeJson(ctx: PackLibraryRouteContext): boolean 
 function rejectBadMutationRequest(ctx: PackLibraryRouteContext): boolean {
   if (ctx.method === "GET" || ctx.method === "HEAD") return false;
   if (!packLibraryRequestLooksLikeJson(ctx)) {
-    ctx.error(ctx.res, "Content pack requests must be sent as JSON.", 415);
+    ctx.error(ctx.res, "Course requests must be sent as JSON.", 415);
     return true;
   }
   if (!packLibraryOriginAllowed(ctx)) {
-    ctx.error(ctx.res, "Content pack request origin is not allowed.", 403);
+    ctx.error(ctx.res, "Course request origin is not allowed.", 403);
     return true;
   }
   return false;
@@ -225,7 +225,7 @@ export async function handlePackLibraryRoutes(
   const token = deps.auth.parseSessionToken(ctx.cookieHeader);
   const record = deps.auth.resolve(token);
   if (!record || !token) {
-    ctx.error(ctx.res, "Sign in to manage content packs.", 401);
+    ctx.error(ctx.res, "Sign in to manage courses.", 401);
     return true;
   }
   const sessionId = deps.sessionIdFor(ctx.cookieHeader);
@@ -338,7 +338,7 @@ export async function handlePackLibraryRoutes(
       id: newDraftId(),
       ownerUserId: record.userId,
       ownerSessionId: sessionId,
-      name: bodyString(body, "name") || "Untitled Content Pack",
+      name: bodyString(body, "name") || "Untitled Course",
       description: bodyString(body, "description"),
       visibility: visibilityFrom(bodyValue(body, "visibility"), "private"),
       teachers: [],
@@ -368,7 +368,7 @@ export async function handlePackLibraryRoutes(
     const body = await readBody(ctx);
     const updated: StoredDraftContentPackRecord = {
       ...draft,
-      ...(hasOwn(body, "name") ? { name: bodyString(body, "name") || "Untitled Content Pack" } : {}),
+      ...(hasOwn(body, "name") ? { name: bodyString(body, "name") || "Untitled Course" } : {}),
       ...(hasOwn(body, "description") ? { description: bodyString(body, "description") } : {}),
       visibility: visibilityFrom(bodyValue(body, "visibility"), draft.visibility),
       updatedAt: Date.now(),
@@ -474,7 +474,7 @@ export async function handlePackLibraryRoutes(
       return true;
     }
     if (!credential.imageApiKey) {
-      ctx.error(ctx.res, "Course generation needs hosted image generation for the teacher portrait.", 503);
+      ctx.error(ctx.res, "Creating a course needs Ruby High image creation for the teacher portrait.", 503);
       return true;
     }
     const targetTeacherId = bodyString(body, "teacherId");
@@ -1040,7 +1040,7 @@ async function setGuestOverride(args: {
     guestPackMode: "override",
     guestPackOverrideId: args.packId,
   });
-  if (!guestCandidate || guestCandidate.id !== args.packId) throw new Error("Unknown creator pack.");
+  if (!guestCandidate || guestCandidate.id !== args.packId) throw new Error("Course not found.");
   args.ruby.setGuestPackOverrideForSession(args.sessionId, args.packId);
   await args.ruby.flushSession(args.sessionId);
   const installs = await args.ruby.listPackInstallationRecords();
@@ -1342,7 +1342,7 @@ function isAbandonedEmptyDraft(draft: StoredDraftContentPackRecord, now = Date.n
   if (draft.derivedFrom || draft.courseSlot) return false;
   if (draft.visibility !== "private") return false;
   if (draft.description && draft.description.trim()) return false;
-  if (!/^Untitled Content Pack$/i.test((draft.name || "").trim())) return false;
+  if (!/^Untitled (?:Content Pack|Course)$/i.test((draft.name || "").trim())) return false;
   return draft.teachers.length === 0;
 }
 
@@ -1667,11 +1667,11 @@ async function requireDraft(
 ): Promise<StoredDraftContentPackRecord | null> {
   const draft = (await ruby.listDraftPackRecords()).find((entry) => entry.id === draftId);
   if (!draft) {
-    ctx.error(ctx.res, "Unknown draft pack.", 404);
+    ctx.error(ctx.res, "Draft course not found.", 404);
     return null;
   }
   if (draft.ownerUserId !== record.userId) {
-    ctx.error(ctx.res, "Only the owner can edit this draft pack.", 403);
+    ctx.error(ctx.res, "Only the owner can edit this draft course.", 403);
     return null;
   }
   return draft;
@@ -1845,7 +1845,7 @@ async function runCourseGenerationJob(args: CourseGenerationJobArgs): Promise<vo
     });
     updateCourseGenerationJob(job, "saving", 94, "Saving the pack.");
     const latestDraft = (await args.deps.ruby.listDraftPackRecords()).find((entry) => entry.id === args.draft.id) ?? args.draft;
-    if (latestDraft.ownerUserId !== args.record.userId) throw new Error("Only the owner can edit this draft pack.");
+    if (latestDraft.ownerUserId !== args.record.userId) throw new Error("Only the owner can edit this draft course.");
     const updated = applyGeneratedCourseSpec(latestDraft, {
       teacherId: args.teacherId,
       materials: args.materials,
@@ -2349,7 +2349,7 @@ function applyGeneratedCourseSpec(
   const teachers = existing
     ? draft.teachers.map((entry) => entry.id === existing.id ? generatedTeacher : entry)
     : [...draft.teachers, generatedTeacher];
-  const defaultDraftName = !draft.name || /^Untitled Content Pack$/i.test(draft.name.trim());
+  const defaultDraftName = !draft.name || /^Untitled (?:Content Pack|Course)$/i.test(draft.name.trim());
   return touchDraft({
     ...draft,
     name: defaultDraftName ? (args.generated.courseTitle || `${args.generated.displayName} Course`) : draft.name,
@@ -2450,7 +2450,7 @@ function packFromDraft(draft: StoredDraftContentPackRecord): ContentPack {
   return {
     id: draft.derivedFrom || `pack:${draft.id}`,
     name: draft.name,
-    description: cleanGeneratedText(draft.description || "Custom Ruby High content pack.", 500),
+    description: cleanGeneratedText(draft.description || "Custom Ruby High course.", 500),
     version: "1.0.0",
     faculty,
     courses: faculty.map((entry) => ({
@@ -2481,7 +2481,7 @@ function validateDraftForPublish(draft: StoredDraftContentPackRecord): void {
   const errors: string[] = [];
   const externallyVisible = draft.visibility !== "private";
   const title = draft.name.replace(/\s+/g, " ").trim();
-  if (!title || (externallyVisible && /^untitled content pack$/i.test(title))) {
+  if (!title || (externallyVisible && /^untitled (?:content pack|course)$/i.test(title))) {
     errors.push("give the course a specific title");
   }
   const ids = new Set<string>();

@@ -371,7 +371,7 @@ function buildAdminCurriculumReplenishmentSteps(deps: AdminDeps): AdminCurriculu
           ? "Freshman starter pools are intentionally hand-curated; review this row before adding cards."
           : canRunBuiltInGenerator
             ? "Built-in teacher pool can be expanded with the corpus-backed generator."
-            : "This low pool belongs to a non-built-in pack; replenish it through the pack editor.",
+            : "This small question group belongs to a community course. Add questions in the course editor.",
         teacherAgenda: adminCurriculumTeacherAgendaForStep({ grade: row.grade, facultyId: row.facultyId }, agendas),
       };
     })
@@ -493,20 +493,20 @@ function adminCurriculumAutoEnqueueReason(
   step: AdminCurriculumReplenishmentStep,
   status: AdminCurriculumGenerationProposal["status"],
 ): string {
-  if (status === "queued") return "A replenishment draft is already queued for review.";
-  if (status === "satisfied") return "Reviewed questions were promoted; monitor coverage before creating another draft.";
-  if (status === "manual-curation") return "Freshman starter pools require manual curation.";
-  if (status !== "ready") return "This pool is not ready for automatic replenishment.";
-  if (step.mode !== "generate") return "Only generated-mode pools can be auto-enqueued.";
-  if (!step.command) return "Only built-in teacher pools with a generator command can be auto-enqueued.";
-  if (step.exhaustedSessions > 0) return "Coverage exhaustion can auto-create a review draft.";
+  if (status === "queued") return "A draft is already waiting for review.";
+  if (status === "satisfied") return "Reviewed questions were added. Wait before creating another draft.";
+  if (status === "manual-curation") return "Grade 9 starter questions must be written by hand.";
+  if (status !== "ready") return "This question group is not ready for an automatic update.";
+  if (step.mode !== "generate") return "This question group can only be updated by hand.";
+  if (!step.command) return "Automatic question writing is not available for this teacher.";
+  if (step.exhaustedSessions > 0) return "Some active students need more questions. Ruby High can create a review draft.";
   if (adminCurriculumAgendaCanAutoEnqueue(step)) {
     return step.teacherAgenda?.termRuleLabel
-      ? `Teacher agenda is ready from ${step.teacherAgenda.termRuleLabel}.`
-      : "Teacher agenda is ready for draft generation.";
+      ? `The teacher plan is ready from ${step.teacherAgenda.termRuleLabel}.`
+      : "The teacher plan is ready for a new draft.";
   }
-  if (step.exhaustedSessions <= 0) return "Automatic replenishment waits for at least one exhausted active session.";
-  return "Coverage exhaustion can auto-create a review draft.";
+  if (step.exhaustedSessions <= 0) return "Ruby High waits until an active student runs out of questions.";
+  return "Some active students need more questions. Ruby High can create a review draft.";
 }
 
 function adminCurriculumAgendaCanAutoEnqueue(step: AdminCurriculumReplenishmentStep): boolean {
@@ -1386,7 +1386,7 @@ function buildAdminMetricsQuality(metrics: {
     issues.push({
       field: "ruby.completedGrades",
       severity: "info",
-      issue: "No completed grades among existing characters.",
+      issue: "No completed school years among existing students.",
       recommendedUse: "Prioritize progression funnel instrumentation and first-grade completion tuning.",
     });
   }
@@ -1427,7 +1427,7 @@ function buildAdminMetricsSchema(): {
     trustModel: [
       "Durable product-state metrics are authoritative for current state.",
       "Auth users are identity records. Visitor metrics use the browser-local visitor id after server-side hashing.",
-      "Scheduled smoke identities, sessions, characters, and events are retained operationally but excluded from product metrics.",
+      "Scheduled test accounts, sessions, students, and events are kept for operations but left out of product metrics.",
       "Daily buckets are UTC day buckets derived from current records unless a field explicitly says it is event-backed.",
       "In-process log counters are operational smoke signals only.",
     ],
@@ -1443,7 +1443,7 @@ function buildAdminMetricsSchema(): {
         path: "auth.users",
         label: "Identity records",
         source: "AuthUserRecord store",
-        semantics: "Total stored auth identity records across guest, BYOK OpenRouter, and Privy providers.",
+        semantics: "Saved sign-in records for guests, personal AI keys, and account sign-in.",
         reliability: "legacy",
         caveat: "Legacy guest records can be cookie-bound; v4 visitor metrics are the traffic source.",
       },
@@ -1474,7 +1474,7 @@ function buildAdminMetricsSchema(): {
         path: "auth.providers",
         label: "Provider mix",
         source: "AuthUserRecord.provider",
-        semantics: "Counts identity records by guest, BYOK OpenRouter, and Privy.",
+        semantics: "Number of sign-in records by guest, personal AI key, and account sign-in.",
         reliability: "authoritative",
         caveat: "Authoritative for records, not people.",
       },
@@ -1530,9 +1530,9 @@ function buildAdminMetricsSchema(): {
         path: "ruby.excludedSynthetic",
         label: "Excluded synthetic product state",
         source: "QuizState.synthetic, legacy smoke fingerprints, and StoredMetricEventRecord.clientSurface",
-        semantics: "Counts smoke sessions, characters, and durable events excluded from product-state and event metrics.",
+        semantics: "Counts test sessions, students, and saved events left out of product and event metrics.",
         reliability: "authoritative",
-        caveat: "Legacy detection is intentionally limited to the scheduled smoke test's exact character fingerprints.",
+        caveat: "Older test detection only recognises the scheduled test's exact student details.",
       },
       {
         path: "ruby.updatedLast24h",
@@ -1544,25 +1544,25 @@ function buildAdminMetricsSchema(): {
       },
       {
         path: "ruby.characterSessionsUpdatedLast24h",
-        label: "Active character sessions in 24h",
+        label: "Active student sessions in 24h",
         source: "QuizState.updatedAt plus PlayerCharacter presence",
-        semantics: "Saved game sessions with a character and an update in the last rolling 24 hours.",
+        semantics: "Saved sessions with a student and an update in the last 24 hours.",
         reliability: "proxy",
         caveat: "Use as a product-state proxy; prefer visitor-backed ruby.events.appOpen and ruby.events.sessionResume for traffic and return-visit claims after schema v4 deployment.",
       },
       {
         path: "ruby.characterD1Retention",
-        label: "Character-session D1 retention",
+        label: "Student-session D1 retention",
         source: "PlayerCharacter.createdAt and QuizState.updatedAt",
-        semantics: "Character sessions older than 24h whose saved game was updated at least 24h after character creation.",
+        semantics: "Student sessions that were used again at least 24 hours after the student was created.",
         reliability: "proxy",
         caveat: "Better than guest identity retention, but still uses last update rather than explicit return events.",
       },
       {
         path: "ruby.retention.characterD1",
-        label: "Event-backed character D1 retention",
+        label: "Event-backed student D1 retention",
         source: "StoredMetricEventRecord funnel_step plus app_open/session_resume",
-        semantics: "Sessions with first_character_created and later durable activity at least 24h after creation.",
+        semantics: "Sessions with a saved first-student event and more saved activity at least 24 hours later.",
         reliability: "authoritative",
         caveat: "Falls back to product-state characterD1Retention until event history exists.",
       },
@@ -1576,23 +1576,23 @@ function buildAdminMetricsSchema(): {
       },
       {
         path: "ruby.characters",
-        label: "Current characters",
+        label: "Current students",
         source: "QuizState.character",
-        semantics: "Saved game sessions with an active player character.",
+        semantics: "Saved sessions with an active student.",
         reliability: "authoritative",
       },
       {
         path: "ruby.completedGrades",
         label: "Completed grades",
         source: "PlayerCharacter.yearbook and StudentPoolEntry.yearbook",
-        semantics: "Sealed grade entries across current and pooled characters.",
+        semantics: "Completed school years across current and saved students.",
         reliability: "authoritative",
       },
       {
         path: "ruby.graduatedCharacters",
-        label: "Graduated characters",
+        label: "Graduated students",
         source: "PlayerCharacter.yearbook length",
-        semantics: "Current characters with all Ruby High grades sealed.",
+        semantics: "Current students who completed all four Ruby High years.",
         reliability: "authoritative",
       },
       {
@@ -1607,9 +1607,9 @@ function buildAdminMetricsSchema(): {
         path: "ruby.curriculum",
         label: "Curriculum coverage",
         source: "QuizState askedQuestionIds plus per-grade questionBankStatus",
-        semantics: "Active-character coverage by grade and teacher: eligible bank size, average seen/remaining cards, low/exhausted pool counts, and replenishment proposals.",
+        semantics: "Question coverage by year and teacher: available questions, average questions seen and left, groups running low, and suggested updates.",
         reliability: "authoritative",
-        caveat: "Aggregates current saved sessions, not anonymous traffic that has no active character.",
+        caveat: "Uses current saved sessions. It does not include anonymous visits without a student.",
       },
       {
         path: "ruby.photoPosts",
@@ -1638,7 +1638,7 @@ function buildAdminMetricsSchema(): {
         path: "ruby.daily",
         label: "Play daily buckets",
         source: "QuizState, PlayerCharacter, yearbook entries, and EssayReport timestamps",
-        semantics: "14 UTC day buckets for saved-session updates, character creation, grade completion, essays graded, and v4 metric events.",
+        semantics: "Fourteen UTC day groups for saved-session updates, student creation, completed school years, graded essays, and app events.",
         reliability: "proxy",
         caveat: "Good for durable milestones; appOpens/sessionResumes are event-backed only after schema v4 deployment.",
       },
@@ -1662,7 +1662,7 @@ function buildAdminMetricsSchema(): {
         path: "ruby.events.funnel",
         label: "Activation funnel",
         source: "StoredMetricEventRecord funnel_step",
-        semantics: "First character created, first question answered, first essay submitted, first daily class passed, and first grade completed.",
+        semantics: "First student created, first question answered, first essay submitted, first daily class passed, and first school year completed.",
         reliability: "authoritative",
         caveat: "Dedupe is per Ruby High session id.",
       },
@@ -1678,7 +1678,7 @@ function buildAdminMetricsSchema(): {
         path: "ruby.events.onboardingFunnel",
         label: "First-visit onboarding funnel",
         source: "StoredMetricEventRecord app_open, viewer onboarding funnel_step, and gameplay milestones",
-        semantics: "Ordered, visitor-backed steps from app open through student creator, candidate, enrollment, character creation, and first class start.",
+        semantics: "Ordered steps from opening the app to creating a student and starting the first class.",
         reliability: "authoritative",
         caveat: "Begins at instrumentationStart in schema v8; earlier visits are intentionally excluded because the intermediate client events did not exist.",
       },
@@ -1709,9 +1709,9 @@ function buildAdminMetricsSchema(): {
         path: "ruby.events.referral",
         label: "Share loop",
         source: "StoredMetricEventRecord share_artifact_created, share_initiated, share_link_visited, and funnel_step first_character_created",
-        semantics: "Shareable artifact creation, outbound share starts, inbound link visits, unique referred visitors, click-through rates, and bounded per-ref visit/visitor/enrollment attribution.",
+        semantics: "Shared report and yearbook page creation, outbound shares, inbound link visits, unique referred visitors, click-through rates, and limited attribution by referral code.",
         reliability: "authoritative",
-        caveat: "Link visits are recorded when a referred visitor reaches the viewer with a ref parameter; visits to static share pages alone are not counted. byRef enrollments count attributed character creations and are not limited to refs that also produced a link visit, so an agent-channel ref can report enrollments with zero visits.",
+        caveat: "A link visit is counted when a referred visitor opens the app. Visits to a shared page alone are not counted. Referral enrollments count created students, even when the same referral code recorded no app visit.",
       },
       {
         path: "ruby.guestSpotlight",
@@ -1756,7 +1756,7 @@ function buildAdminMetricsSchema(): {
         path: "ruby.world",
         label: "School activity health",
         source: "RubyHighService shared school activity projection, durable event cache, and school activity service state",
-        semantics: "Current School Presence participants, recent visible event count/newest event time, durable event cache pressure, durable room/outcome counts, teacher-agenda ready/queued/watching counts, live-room goal state count, suppressed-event count, and last external-store refresh age.",
+        semantics: "Students shown in shared school activity, recent visible events, saved room and result counts, teacher-plan status, hidden event counts, and the last refresh time.",
         reliability: "proxy",
         caveat: "Refresh age is process-local and reflects the most recent shared activity store hydration in this app instance.",
       },
@@ -2497,7 +2497,7 @@ export function renderAdminDashboardHtml(): string {
 	      <div class="section-head">
 	        <h2>Logs</h2>
 	        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
-	          <button class="secondary" id="curriculum-drafts-auto" type="button" disabled>Auto enqueue exhausted</button>
+	          <button class="secondary" id="curriculum-drafts-auto" type="button" disabled>Create needed drafts</button>
 	          <button class="secondary" id="curriculum-drafts-create" type="button" disabled>Create review drafts</button>
 	        </div>
 	      </div>
@@ -2746,13 +2746,13 @@ async function postTelegramSnapshot() {
         if (!response.ok || !data.ok) {
           throw new Error(data.error || "Auto enqueue failed.");
         }
-        status("Auto-enqueued " + n(data.created) + " exhausted curriculum drafts.", "");
+        status("Created " + n(data.created) + " curriculum drafts where more questions are needed.", "");
         latestReplenishment = await loadReplenishment(token);
         if (latestMetrics) render(latestMetrics);
       } catch (err) {
         status(err && err.message ? err.message : String(err), "is-error");
       } finally {
-        curriculumDraftsAutoEl.textContent = "Auto enqueue exhausted";
+        curriculumDraftsAutoEl.textContent = "Create needed drafts";
         const generationQueue = (latestReplenishment && latestReplenishment.generationQueue) || [];
         curriculumDraftsAutoEl.disabled = generationQueue.filter((step) => step.autoEligible).length === 0;
       }
@@ -2907,16 +2907,16 @@ async function postTelegramSnapshot() {
         metric("Identity records", n(auth.users), n(auth.createdLast24h) + " new records - not unique people"),
         metric("Unexpired auth sessions", n(auth.unexpiredAuthSessions), n(auth.pendingAuth) + " pending auth"),
         metric("Identity D1", pct(auth.d1Retention && auth.d1Retention.rate), n(auth.d1Retention && auth.d1Retention.returnedUsers) + " / " + n(auth.d1Retention && auth.d1Retention.eligibleUsers) + " cookie-bound"),
-        metric("Providers", n(auth.providers && auth.providers.guest) + " / " + n(auth.providers && auth.providers.openrouter) + " / " + n(auth.providers && auth.providers.privy), "guest / BYOK OpenRouter / Privy"),
+        metric("Providers", n(auth.providers && auth.providers.guest) + " / " + n(auth.providers && auth.providers.openrouter) + " / " + n(auth.providers && auth.providers.privy), "guest / own AI key / account sign-in"),
       ].join("");
       playGrid.innerHTML = [
         metric("Saved sessions", n(ruby.sessions), n(ruby.updatedLast24h) + " updated in 24h"),
-        metric("Character D1 / D7", pct(ruby.characterD1Retention && ruby.characterD1Retention.rate) + " / " + pct(ruby.retention && ruby.retention.characterD7 && ruby.retention.characterD7.rate), n(ruby.characterD1Retention && ruby.characterD1Retention.returnedSessions) + " / " + n(ruby.characterD1Retention && ruby.characterD1Retention.eligibleSessions)),
+        metric("Student D1 / D7", pct(ruby.characterD1Retention && ruby.characterD1Retention.rate) + " / " + pct(ruby.retention && ruby.retention.characterD7 && ruby.retention.characterD7.rate), n(ruby.characterD1Retention && ruby.characterD1Retention.returnedSessions) + " / " + n(ruby.characterD1Retention && ruby.characterD1Retention.eligibleSessions)),
         metric("App opens", n(events.appOpen && events.appOpen.total), n(events.sessionResume && events.sessionResume.total) + " resumes"),
-        metric("Human activation", n(humanActivation.eligibleSessions) + " opens", pct(humanCharacterStep.rateFromOpen) + " character · " + pct(humanResultStep.rateFromOpen) + " result viewed"),
+        metric("Human activation", n(humanActivation.eligibleSessions) + " opens", pct(humanCharacterStep.rateFromOpen) + " student · " + pct(humanResultStep.rateFromOpen) + " result viewed"),
         metric("First-visit journey", n(onboarding.eligibleSessions) + " opens", pct(creatorOpenedStep.rateFromOpen) + " creator · " + pct(enrollmentStep.rateFromOpen) + " enroll click"),
         metric("Issue #174 cohort", n(experiment174Funnel.sampleSize) + " visitors", n(experiment174Result.numerator) + " results · " + pct(experiment174Result.rateFromOpen) + " activation"),
-        metric("Characters", n(ruby.characters), n(ruby.graduatedCharacters) + " graduated - " + n(ruby.completedGrades) + " grades sealed"),
+        metric("Students", n(ruby.characters), n(ruby.graduatedCharacters) + " graduated - " + n(ruby.completedGrades) + " years completed"),
         metric("Questions", n(ruby.questions && ruby.questions.total), n(ruby.questions && ruby.questions.correct) + " correct - " + pct(ruby.questions && ruby.questions.accuracy) + " accuracy"),
         metric("Curriculum", n(ruby.curriculum && ruby.curriculum.lowPools && ruby.curriculum.lowPools.length), n(ruby.curriculum && ruby.curriculum.rows && ruby.curriculum.rows.length) + " grade/teacher pools"),
         metric("Active rounds", n(ruby.activeRounds), n(ruby.essayReports) + " essay reports"),
@@ -2931,9 +2931,9 @@ async function postTelegramSnapshot() {
       economyGrid.innerHTML = [
         metric("Merit Stars", n(wallet.meritStars), signedNumber(commerce.meritStarsDelta) + " net Merit Stars · chat spends"),
         metric("Hall Passes", n(wallet.hallPasses), signedNumber(commerce.hallPassesDelta) + " net Hall Passes · images, cards, tools"),
-        metric("Revenue", revenueStr, n(commerce.payingSessions) + " payers - " + n(commerce.events) + " txns"),
+        metric("Revenue", revenueStr, n(commerce.payingSessions) + " payers - " + n(commerce.events) + " transactions"),
         metric("Solana packs", solanaMetricValue(commerce), solanaMetricSub(commerce)),
-        metric("Funnel V→C→P", n(funnel.totalVisitors) + "→" + n(funnel.charactersCreated) + "→" + n(funnel.payers), pct(funnel.visitorToCharacterRate) + " / " + pct(funnel.characterToPayerRate)),
+        metric("Visitor→Student→Payer", n(funnel.totalVisitors) + "→" + n(funnel.charactersCreated) + "→" + n(funnel.payers), pct(funnel.visitorToCharacterRate) + " / " + pct(funnel.characterToPayerRate)),
       ].join("");
       opsGrid.innerHTML = [
         metric("School activity", schoolActivityMetricValue(ruby.world), schoolActivityMetricSub(ruby.world), "is-wide"),
@@ -3001,7 +3001,7 @@ async function postTelegramSnapshot() {
       const revenue = commerce.amountCents != null ? "\$" + (commerce.amountCents / 100).toFixed(2) : "n/a";
       return {
         headline: n(auth.visitors && auth.visitors.total) + " visitor ids recorded",
-        summary: "The current loop has " + n(ruby.characters) + " characters, " + n(ruby.completedGrades) + " sealed grades, and " + pct(ruby.questions && ruby.questions.accuracy) + " answer accuracy.",
+        summary: "The current loop has " + n(ruby.characters) + " students, " + n(ruby.completedGrades) + " completed years, and " + pct(ruby.questions && ruby.questions.accuracy) + " answer accuracy.",
         highlights: [
           n(events.appOpen && events.appOpen.total) + " durable app opens",
           n(events.sessionResume && events.sessionResume.total) + " durable session resumes",
@@ -3011,15 +3011,15 @@ async function postTelegramSnapshot() {
           revenue + " total revenue from " + n(commerce.payingSessions) + " payers",
         ],
         risks: [
-          d1 + " character-session D1 retention",
-          d7 + " character-session D7 retention",
+          d1 + " student-session D1 retention",
+          d7 + " student-session D7 retention",
           (visitorD1.rate == null ? "n/a" : pct(visitorD1.rate)) + " visitor D1 (" + (visitorD7.rate == null ? "n/a" : pct(visitorD7.rate)) + " D7)",
           n(auth.providers && auth.providers.guest) + " guest identity records are not unique people",
           activeShare + "% of saved sessions were active in 24h",
         ],
         actions: [
-          "Visitor→character: " + (funnel.visitorToCharacterRate != null ? pct(funnel.visitorToCharacterRate) : "n/a") + " (" + n(funnel.charactersCreated) + "/" + n(funnel.totalVisitors) + ")",
-          "Character→payer: " + (funnel.characterToPayerRate != null ? pct(funnel.characterToPayerRate) : "n/a") + " (" + n(funnel.payers) + "/" + n(funnel.charactersCreated) + ")",
+          "Visitor→student: " + (funnel.visitorToCharacterRate != null ? pct(funnel.visitorToCharacterRate) : "n/a") + " (" + n(funnel.charactersCreated) + "/" + n(funnel.totalVisitors) + ")",
+          "Student→payer: " + (funnel.characterToPayerRate != null ? pct(funnel.characterToPayerRate) : "n/a") + " (" + n(funnel.payers) + "/" + n(funnel.charactersCreated) + ")",
         ],
       };
     }
@@ -3044,7 +3044,7 @@ async function postTelegramSnapshot() {
           { key: "appOpens", label: "Opens", color: "#665c6d", mode: "bar" },
           { key: "sessionResumes", label: "Resumes", color: "#0f6f68", mode: "line" },
           { key: "updatedSessions", label: "Updated", color: "#9f2338", mode: "bar" },
-          { key: "charactersCreated", label: "Characters", color: "#2f5f91", mode: "line" },
+          { key: "charactersCreated", label: "Students", color: "#2f5f91", mode: "line" },
           { key: "gradesCompleted", label: "Grades", color: "#0f6f68", mode: "line" },
         ]),
         chartCard("Essay Flow", rubyDaily, [
@@ -3182,7 +3182,7 @@ async function postTelegramSnapshot() {
       const bySource = commerce.revenueBySource || {};
       const sources = Object.keys(bySource).filter(Boolean).sort();
       const sourceText = sources.length ? "sources " + sources.slice(0, 4).join(", ") : "no source totals yet";
-      return "Solana pack checkout source · token settlement on-chain · " + sourceText;
+      return "Solana collectible-pack checkout · payment confirmed on Solana · " + sourceText;
     }
     function table(title, rows) {
       const entries = Object.entries(rows);
@@ -3217,7 +3217,7 @@ async function postTelegramSnapshot() {
       return "<table><thead><tr><th>Low Curriculum Pools</th><th>Remaining</th><th>Next</th></tr></thead><tbody>" + rows.map((row) => {
         const label = "Grade " + esc(row.grade) + " · " + esc(row.displayName || row.facultyId);
         const repeated = row.repetitionPressure ? " · " + n(Math.round(row.repetitionPressure * 100)) + "% repeat pressure" : "";
-        const sub = n(row.sessions) + " sessions · " + n(row.lowPoolSessions) + " low · " + n(row.exhaustedSessions) + " exhausted" + repeated;
+        const sub = n(row.sessions) + " sessions · " + n(row.lowPoolSessions) + " running low · " + n(row.exhaustedSessions) + " out of questions" + repeated;
         const remaining = n(row.averageRemaining) + " / " + n(row.totalEligibleMax);
         const plan = row.replenishment || null;
         const planSubjects = plan ? ((plan.weakSubjects && plan.weakSubjects.length ? plan.weakSubjects : plan.focusSubjects) || []) : [];
@@ -3235,7 +3235,7 @@ async function postTelegramSnapshot() {
         const agenda = row.teacherAgenda || null;
         const agendaText = agenda ? " · agenda " + esc(agenda.executionReason || "ready") + (agenda.termRuleLabel ? " / " + esc(agenda.termRuleLabel) : "") + (agenda.draftStatus ? " / " + esc(agenda.draftStatus) : "") : "";
         const sub = esc((row.focusSubjects || []).slice(0, 3).join(", ") || row.corpusTitle || "teacher corpus") + agendaText;
-        const pressure = n(row.priority) + "<div class=\\"sub\\">" + n(row.lowPoolSessions) + " low · " + n(row.exhaustedSessions) + " exhausted</div>";
+        const pressure = n(row.priority) + "<div class=\\"sub\\">" + n(row.lowPoolSessions) + " running low · " + n(row.exhaustedSessions) + " out of questions</div>";
         const auto = row.autoEligible ? " · auto" : "";
         const reason = row.autoReason ? "<div class=\\"sub\\">" + esc(row.autoReason) + "</div>" : "";
         const status = esc(row.status || "unknown") + auto + "<div class=\\"sub\\">" + esc(row.action || "review") + (row.draftId ? " · " + esc(row.draftId) : "") + "</div>" + reason;
@@ -3444,7 +3444,7 @@ async function postTelegramSnapshot() {
           const grades = Object.entries(s.classGrades || {}).map(([f,g]) => f + ":" + g).join(" ") || "no grades";
           const stats = ["head","heart","hustle","honor"].map(k => k + ":" + (s.stats && s.stats[k] >= 0 ? "+" : "") + (s.stats ? s.stats[k] : 0)).join(" ");
           const portraitImg = s.portraitUrl ? '<span style="width:40px;height:40px;border-radius:50%;overflow:hidden;border:2px solid var(--line);flex-shrink:0;display:block;"><img src="' + escHtml(s.portraitUrl) + '" style="width:40px;height:40px;object-fit:cover;object-position:50% 15%;transform:scale(2.5);transform-origin:top center;display:block;" alt=""></span>' : '<span style="width:40px;height:40px;border-radius:50%;background:var(--line);flex-shrink:0;display:flex;border:2px solid var(--line);align-items:center;justify-content:center;font-size:16px;color:var(--muted);">' + escHtml(s.name.charAt(0).toUpperCase()) + '</span>';
-          html += '<div class="metric" style="display:flex;align-items:center;gap:12px;"><div>' + portraitImg + '</div><div style="flex:1;min-width:0;"><div class="label">' + escHtml(s.name) + ' <span style="color:var(--muted);font-weight:400;">' + sg + ' · ' + escHtml(s.playbookId) + '</span></div><div class="sub">' + escHtml(stats) + '</div><div class="sub">' + escHtml(grades) + ' · ' + (s.yearbookCount||0) + '/4 sealed</div></div><button class="x-social-btn" style="white-space:nowrap;flex-shrink:0;" data-action="post-report" data-session="' + s.sessionId + '">Post Report</button></div>';
+          html += '<div class="metric" style="display:flex;align-items:center;gap:12px;"><div>' + portraitImg + '</div><div style="flex:1;min-width:0;"><div class="label">' + escHtml(s.name) + ' <span style="color:var(--muted);font-weight:400;">' + sg + ' · ' + escHtml(s.playbookId) + '</span></div><div class="sub">' + escHtml(stats) + '</div><div class="sub">' + escHtml(grades) + ' · ' + (s.yearbookCount||0) + '/4 completed</div></div><button class="x-social-btn" style="white-space:nowrap;flex-shrink:0;" data-action="post-report" data-session="' + s.sessionId + '">Post Report</button></div>';
         }
         studentsPanel.innerHTML = html;
       } catch {

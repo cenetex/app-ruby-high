@@ -98,7 +98,7 @@ describe("teacher roll controls renderer", () => {
     expect(textTree(card)).toEqual([
       "roll",
       "Teacher Roll",
-      "Start with a pregenerated Ruby High teacher, then reroll the parts that should change.",
+      "Start with a ready-made Ruby High teacher, then try another version of any part you want to change.",
       "Name",
       "↻",
       "Class",

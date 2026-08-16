@@ -140,7 +140,7 @@ export function createAccountCardReaderRenderer(deps: AccountCardReaderRendererD
         detail.textContent = view.detail;
         body.appendChild(detail);
         if (view.proofAddress) {
-          deps.appendSolanaProofLink(body, view.proofAddress, "View Card on Solscan");
+          deps.appendSolanaProofLink(body, view.proofAddress, "View Collectible on Solscan");
         }
         if (view.teachesVisible) {
           const teaches = deps.document.createElement("div");
@@ -179,7 +179,7 @@ export function createAccountCardReaderRenderer(deps: AccountCardReaderRendererD
             event.preventDefault();
             event.stopPropagation();
             reveal.disabled = true;
-            reveal.textContent = "Minting...";
+            reveal.textContent = "Creating collectible...";
             panel.classList.add("is-minting");
             const revealedCard = await deps.mintCard(recordValue(currentCard, "id"));
             if (revealedCard) {

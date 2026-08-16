@@ -95,7 +95,7 @@ describe("yearbook archive renderer", () => {
     expect(summary.tagName).toBe("summary");
     expect(summary.className).toBe("paper-archive-summary");
     expect((summary.children[0] as FakeElement).children).toHaveLength(2);
-    expect(textTree(summary)).toEqual(["2 sealed years", "open yearbook"]);
+    expect(textTree(summary)).toEqual(["2 completed years", "open yearbook"]);
 
     const list = archive.children[1] as FakeElement;
     expect(list.className).toBe("paper-archive-list");
@@ -107,7 +107,7 @@ describe("yearbook archive renderer", () => {
       "\u25c6",
       "\u25c6",
       "Soph",
-      "sealed date:2026-06-01 \u00b7 8/10",
+      "completed date:2026-06-01 \u00b7 8/10",
       "head",
       " +1",
       "heart",
@@ -118,7 +118,7 @@ describe("yearbook archive renderer", () => {
       " +4",
       "md:\u201cI found the signal.\u201d",
       "Ruby High Diploma",
-      "collectible \u00b7 date:2026-06-02",
+      "saved date:2026-06-02",
       "Grade 10 Photo",
       "Ruby \u00b7 Noor",
     ]);
@@ -141,7 +141,7 @@ describe("yearbook archive renderer", () => {
     const diploma = r.buildDiploma({}) as unknown as FakeElement;
     const photo = r.buildGraduationPhoto({}) as unknown as FakeElement;
 
-    expect(textTree(diploma)).toEqual(["Ruby High Diploma", "collectible \u00b7 date:unknown"]);
+    expect(textTree(diploma)).toEqual(["Ruby High Diploma", "saved date:unknown"]);
     expect(textTree(photo)).toEqual(["?", "?", "Graduation Photo", "top teacher \u00b7 top classmate"]);
   });
 

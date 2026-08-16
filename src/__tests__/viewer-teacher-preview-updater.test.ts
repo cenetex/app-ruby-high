@@ -39,7 +39,7 @@ describe("teacher preview updater", () => {
     });
 
     expect(card.children[".ccg-name"]?.textContent).toBe("Professor Quill");
-    expect(card.children[".ccg-subtitle"]?.textContent).toBe("Research Seminar · teacher candidate");
+    expect(card.children[".ccg-subtitle"]?.textContent).toBe("Research Seminar · teacher preview");
     expect(card.children[".ccg-quote"]?.textContent).toBe("md:“Show your work.”");
     expect(card.children[".ccg-footer-content"]?.textContent).toBe("md:Skeptical but kind.");
     expect(markdown).toHaveBeenCalledWith(card.children[".ccg-quote"], "“Show your work.”", { inline: true });
@@ -56,7 +56,7 @@ describe("teacher preview updater", () => {
     updater.refresh(root as unknown as ParentNode, {});
 
     expect(card.children[".ccg-name"]?.textContent).toBe("New Teacher");
-    expect(card.children[".ccg-subtitle"]?.textContent).toBe("Custom class · teacher candidate");
+    expect(card.children[".ccg-subtitle"]?.textContent).toBe("Custom class · teacher preview");
     expect(card.children[".ccg-quote"]?.textContent).toBe("");
     expect(card.children[".ccg-footer-content"]?.textContent).toBe("");
   });

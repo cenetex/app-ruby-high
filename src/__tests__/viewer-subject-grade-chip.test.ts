@@ -3,9 +3,9 @@ import { boardSubjectGradesTitleView, subjectGradeChipView } from "../viewer-par
 
 describe("boardSubjectGradesTitleView", () => {
   it("formats known, unknown, and missing grade summaries", () => {
-    expect(boardSubjectGradesTitleView("9", { met: 2, total: 3 })).toBe("Freshman · 2/3 subjects cleared");
-    expect(boardSubjectGradesTitleView("13", { met: 1, total: 4 })).toBe("Grade 13 · 1/4 subjects cleared");
-    expect(boardSubjectGradesTitleView("", {})).toBe("Current year · 0/0 subjects cleared");
+    expect(boardSubjectGradesTitleView("9", { met: 2, total: 3 })).toBe("Freshman · 2/3 subjects passed");
+    expect(boardSubjectGradesTitleView("13", { met: 1, total: 4 })).toBe("Grade 13 · 1/4 subjects passed");
+    expect(boardSubjectGradesTitleView("", {})).toBe("Current year · 0/0 subjects passed");
   });
 });
 
@@ -17,8 +17,8 @@ describe("subjectGradeChipView", () => {
       grade: "B",
     })).toEqual({
       className: "subject-grade-chip is-met",
-      title: "Science: B subject cleared",
-      ariaLabel: "Science: B subject cleared",
+      title: "Science: B subject passed",
+      ariaLabel: "Science: B subject passed",
       iconText: "⚗",
       gradeText: "B",
     });
@@ -44,7 +44,7 @@ describe("subjectGradeChipView", () => {
       grade: "D",
     })).toMatchObject({
       className: "subject-grade-chip",
-      title: "Homeroom: D needs C and daily classes",
+      title: "Homeroom: D needs a C and the required daily classes",
     });
 
     expect(subjectGradeChipView({ label: "Guest" })).toMatchObject({

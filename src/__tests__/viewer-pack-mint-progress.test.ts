@@ -91,7 +91,7 @@ describe("pack mint progress controller", () => {
     expect(spinner.className).toBe("pack-mint-spinner");
     expect(spinner.attributes["aria-hidden"]).toBe("true");
     expect(copy.className).toBe("pack-mint-copy");
-    expect(title.textContent).toBe("Please wait: minting pack");
+    expect(title.textContent).toBe("Creating your collectible pack");
     expect(status.className).toBe("pack-mint-status");
     expect(status.attributes["aria-live"]).toBe("polite");
     expect(status.textContent).toBe("Checking ledger");

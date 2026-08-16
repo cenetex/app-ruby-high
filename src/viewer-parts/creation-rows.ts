@@ -27,8 +27,8 @@ export function createCreationRowsRenderer(deps: CreationRowsRendererDeps): Crea
       const reroll = deps.document.createElement("button");
       reroll.type = "button";
       reroll.className = "creation-reroll";
-      reroll.title = "Reroll " + label.toLowerCase();
-      reroll.setAttribute("aria-label", "Reroll " + label.toLowerCase());
+      reroll.title = "Try another " + label.toLowerCase();
+      reroll.setAttribute("aria-label", "Try another " + label.toLowerCase());
       reroll.textContent = "\u21bb";
       reroll.dataset.key = key;
       row.appendChild(lab);

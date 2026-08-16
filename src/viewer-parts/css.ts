@@ -6472,7 +6472,7 @@ export const VIEWER_CSS = `
     letter-spacing: 0.22em;
   }
   .card-deck-track > .ccg-card.is-paper-card .ccg-role::after {
-    content: " · sealed";
+    content: " · completed";
     opacity: 0.7;
   }
   .card-deck-track > .ccg-card.is-paper-card .ccg-name {

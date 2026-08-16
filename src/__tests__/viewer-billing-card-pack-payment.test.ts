@@ -19,7 +19,7 @@ describe("billingCardPackPaymentChoiceView", () => {
     })).toEqual({
       titleText: "Buy Ruby High 2-Pack",
       metaText: "Solana payment: 0.05 SOL · +2 Packs · 10 cards",
-      buttonText: "Buy Pack",
+      buttonText: "Buy Collectible Pack",
       buttonDisabled: false,
       buttonTitle: "Pay with Solana wallet.",
       noteText: "",
@@ -35,10 +35,10 @@ describe("billingCardPackPaymentChoiceView", () => {
       canPackCheckout: true,
     })).toMatchObject({
       titleText: "Buy 1 Pack",
-      buttonText: "Crypto unavailable",
+      buttonText: "Wallet checkout unavailable",
       buttonDisabled: true,
-      buttonTitle: "Card pack checkout needs Privy wallet configuration.",
-      noteText: "Card pack checkout is not configured in this preview.",
+      buttonTitle: "Collectible-pack checkout needs wallet support.",
+      noteText: "Collectible-pack checkout is not available in this preview.",
       showGetRubyLink: false,
     });
   });
@@ -54,10 +54,10 @@ describe("billingCardPackPaymentChoiceView", () => {
       cryptoUnavailable: false,
       canPackCheckout: false,
     })).toMatchObject({
-      buttonText: "Buy Pack",
+      buttonText: "Buy Collectible Pack",
       buttonDisabled: true,
-      buttonTitle: "Solana pack checkout is unavailable. Try again later.",
-      noteText: "Solana pack checkout is incomplete. Try again later.",
+      buttonTitle: "Collectible-pack checkout is unavailable. Try again later.",
+      noteText: "Collectible-pack checkout is unavailable. Try again later.",
       showGetRubyLink: false,
     });
   });
@@ -74,7 +74,7 @@ describe("billingCardPackPaymentChoiceView", () => {
       billingBusy: true,
     })).toMatchObject({
       metaText: "Solana payment: 0.0125 SOL · +1 Pack · 5 cards",
-      buttonText: "Buy Pack",
+      buttonText: "Buy Collectible Pack",
       buttonDisabled: true,
       buttonTitle: "Pay with Solana wallet.",
       noteText: "",

@@ -475,7 +475,7 @@ describe("/pack-library", () => {
       body: { enabled: true },
     });
     expect(response.status).toBe(403);
-    expect(response.body.error).toBe("Content pack request origin is not allowed.");
+    expect(response.body.error).toBe("Course request origin is not allowed.");
 
     const bobSessionId = auth.stateKeyForCookie("rh_session=bob");
     expect((await ruby.listPackInstallationRecords()).some((entry) =>
@@ -765,7 +765,7 @@ describe("/pack-library", () => {
       body: { rating: 5, comment: "Cross-site review" },
     });
     expect(response.status).toBe(403);
-    expect(response.body.error).toBe("Content pack request origin is not allowed.");
+    expect(response.body.error).toBe("Course request origin is not allowed.");
 
     response = await route({
       method: "POST",
@@ -775,7 +775,7 @@ describe("/pack-library", () => {
       body: { rating: 5, comment: "Plain text review" },
     });
     expect(response.status).toBe(415);
-    expect(response.body.error).toBe("Content pack requests must be sent as JSON.");
+    expect(response.body.error).toBe("Course requests must be sent as JSON.");
 
     response = await route({
       method: "GET",
@@ -1215,7 +1215,7 @@ describe("/pack-library", () => {
     });
 
     expect(response.status).toBe(503);
-    expect(response.body.error).toContain("hosted image generation");
+    expect(response.body.error).toContain("Ruby High image creation");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

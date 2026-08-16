@@ -16,7 +16,7 @@ describe("guestSpotlightView", () => {
       packId: "pack-week-1",
       titleText: "This week's guest teacher",
       metaText: "Null Signals · Captain Null · space ethics · 1,200 questions",
-      actionText: "Try Guest Faculty",
+      actionText: "Try this guest",
       actionDisabled: false,
     });
   });
@@ -32,8 +32,8 @@ describe("guestSpotlightView", () => {
       },
     })).toMatchObject({
       visible: true,
-      metaText: "Library Drift · Guest Faculty · guest class · 4 questions",
-      actionText: "Guest Faculty active",
+      metaText: "Library Drift · Guest teacher · guest class · 4 questions",
+      actionText: "Current guest",
       actionDisabled: true,
     });
   });

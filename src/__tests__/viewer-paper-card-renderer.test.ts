@@ -77,7 +77,7 @@ describe("paper card renderer", () => {
       {
         role: "player",
         name: "Snapshot Noor",
-        subtitle: "\u2713 Sophomore \u00b7 sealed sealed:2026-06-01T00:00:00.000Z \u00b7 7/8 correct",
+        subtitle: "\u2713 Sophomore \u00b7 completed sealed:2026-06-01T00:00:00.000Z \u00b7 7/8 correct",
         portraitUrl: "data:image/png;base64,snapshot",
         accent: "#123456",
         stats: { nerve: 9 },
@@ -106,7 +106,7 @@ describe("paper card renderer", () => {
     expect(specs[0]).toEqual({
       role: "player",
       name: "Live Sami",
-      subtitle: "\u2713 Grade 12 \u00b7 sealed sealed:missing \u00b7 0/0 correct",
+      subtitle: "\u2713 Grade 12 \u00b7 completed sealed:missing \u00b7 0/0 correct",
       portraitUrl: "/default/slacker.png",
       accent: "#00aa88",
       stats: { chill: 10 },

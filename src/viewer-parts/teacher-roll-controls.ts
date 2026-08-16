@@ -99,7 +99,8 @@ export function createTeacherRollControlsRenderer(
       const reroll = deps.document.createElement("button");
       reroll.type = "button";
       reroll.className = "creation-reroll";
-      reroll.title = "Reroll " + label.toLowerCase();
+      reroll.title = "Try another " + label.toLowerCase();
+      reroll.setAttribute("aria-label", "Try another " + label.toLowerCase());
       reroll.textContent = "↻";
       reroll.disabled = input.importBusy;
       reroll.addEventListener("click", () => input.onReroll(key));
@@ -204,7 +205,7 @@ export function createTeacherRollControlsRenderer(
       controlsBody.appendChild(controlsName);
       const controlsSub = deps.document.createElement("div");
       controlsSub.className = "ccg-subtitle";
-      controlsSub.textContent = "Start with a pregenerated Ruby High teacher, then reroll the parts that should change.";
+      controlsSub.textContent = "Start with a ready-made Ruby High teacher, then try another version of any part you want to change.";
       controlsBody.appendChild(controlsSub);
       const fields = deps.document.createElement("div");
       fields.className = "creation-fields";

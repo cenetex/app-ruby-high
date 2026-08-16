@@ -22,7 +22,7 @@ export function createTeacherPreviewUpdater(deps: TeacherPreviewUpdaterDeps): Te
       const nameEl = card.querySelector(".ccg-name");
       if (nameEl) nameEl.textContent = roll.displayName || "New Teacher";
       const subtitleEl = card.querySelector(".ccg-subtitle");
-      if (subtitleEl) subtitleEl.textContent = (roll.subject || "Custom class") + " · teacher candidate";
+      if (subtitleEl) subtitleEl.textContent = (roll.subject || "Custom class") + " · teacher preview";
       const quoteEl = card.querySelector(".ccg-quote");
       if (quoteEl) deps.renderMarkdownInto(quoteEl, roll.quote ? "“" + roll.quote + "”" : "", { inline: true });
       const footerEl = card.querySelector(".ccg-footer-content");

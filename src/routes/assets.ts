@@ -373,7 +373,7 @@ function renderPwaManifest(): Record<string, unknown> {
     name: "Ruby High",
     short_name: "Ruby High",
     description:
-      "A school where the teachers grade you in their own voice. Clear daily classes, bank grades, and keep the yearbook.",
+      "Take short daily classes, save your grades, and build a yearbook with teachers who respond in their own voice.",
     id: `${APP_ROUTE_PREFIX}/`,
     start_url: VIEWER_PATH,
     scope: `${APP_ROUTE_PREFIX}/`,

@@ -95,7 +95,7 @@ export function createYearbookArchiveRenderer(deps: YearbookArchiveRendererDeps)
       }
       const label = deps.document.createElement("span");
       label.className = "paper-archive-label";
-      label.textContent = entries.length === 1 ? "1 sealed year" : entries.length + " sealed years";
+      label.textContent = entries.length === 1 ? "1 completed year" : entries.length + " completed years";
       const hint = deps.document.createElement("span");
       hint.className = "paper-archive-hint";
       hint.textContent = "open yearbook";
@@ -142,7 +142,7 @@ export function createYearbookArchiveRenderer(deps: YearbookArchiveRendererDeps)
       gradeEl.appendChild(gradeText);
       const meta = deps.document.createElement("span");
       meta.className = "paper-archive-meta";
-      meta.textContent = "sealed " + deps.formatSealedDate(recordValue(entry, "completedAt")) + " · "
+      meta.textContent = "completed " + deps.formatSealedDate(recordValue(entry, "completedAt")) + " · "
         + stringValue(recordValue(summary, "correct"), "0") + "/" + stringValue(recordValue(summary, "total"), "0");
       top.appendChild(gradeEl);
       top.appendChild(meta);
@@ -186,7 +186,7 @@ export function createYearbookArchiveRenderer(deps: YearbookArchiveRendererDeps)
       title.textContent = titleText;
       const meta = deps.document.createElement("div");
       meta.className = "paper-archive-diploma-meta";
-      meta.textContent = "collectible · " + deps.formatSealedDate(recordValue(diploma, "issuedAt"));
+      meta.textContent = "saved " + deps.formatSealedDate(recordValue(diploma, "issuedAt"));
       copy.appendChild(title);
       copy.appendChild(meta);
       wrap.appendChild(copy);

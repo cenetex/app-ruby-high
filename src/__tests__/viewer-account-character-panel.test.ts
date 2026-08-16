@@ -92,7 +92,7 @@ function emptySlotView(overrides?: Partial<AccountEmptyCharacterSlotView>): Acco
     tagName: "button",
     type: "button",
     className: "account-character-card is-empty is-create",
-    name: "Create Character",
+    name: "Create Student",
     meta: "Slot 2 · start today's class",
     canCreate: true,
     ...overrides,
@@ -174,7 +174,7 @@ describe("account character panel renderer", () => {
       "Noor",
       "Slot 1 · active · Sophomore",
       "+",
-      "Create Character",
+      "Create Student",
       "Slot 2 · start today's class",
     ]);
 
@@ -253,7 +253,7 @@ describe("account character panel renderer", () => {
 
     expect(grid.children).toHaveLength(1);
     expect(grid.children[0]!.className).toBe("account-empty");
-    expect(grid.children[0]!.textContent).toBe("Roll your first student to start filling your account.");
+    expect(grid.children[0]!.textContent).toBe("Create your first student to start class.");
   });
 
   it("ignores missing grids", () => {

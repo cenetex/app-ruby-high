@@ -10,11 +10,11 @@ describe("billingCardBurnChoiceView", () => {
       burnableCards: 0,
       hallPassesPerBurnedCard: 5,
     })).toEqual({
-      titleText: "Burn Card",
-      metaText: "Connect your Solana wallet to burn a Card for 5 Hall Passes.",
+      titleText: "Exchange a Collectible Card",
+      metaText: "Connect your Solana wallet to permanently destroy a collectible card for 5 Hall Passes.",
       buttonText: "Connect Wallet",
       buttonDisabled: false,
-      buttonTitle: "Connect a Solana wallet before burning a Card.",
+      buttonTitle: "Connect a Solana wallet before exchanging a collectible card.",
     });
   });
 
@@ -26,11 +26,11 @@ describe("billingCardBurnChoiceView", () => {
       burnableCards: 2,
       hallPassesPerBurnedCard: 7,
     })).toEqual({
-      titleText: "Burn Card",
-      metaText: "2 burnable Cards · +7 Hall Passes",
-      buttonText: "Burn Card",
+      titleText: "Exchange a Collectible Card",
+      metaText: "2 collectible cards can be permanently destroyed · +7 Hall Passes",
+      buttonText: "Choose Collectible Card",
       buttonDisabled: false,
-      buttonTitle: "Burn one Card for 7 Hall Passes.",
+      buttonTitle: "Permanently destroy one collectible card for 7 Hall Passes.",
     });
   });
 
@@ -42,10 +42,10 @@ describe("billingCardBurnChoiceView", () => {
       burnableCards: 0,
       hallPassesPerBurnedCard: 5,
     })).toMatchObject({
-      metaText: "No active on-chain Cards in this wallet.",
-      buttonText: "Burn Card",
+      metaText: "No collectible cards on Solana can be exchanged from this wallet.",
+      buttonText: "Choose Collectible Card",
       buttonDisabled: true,
-      buttonTitle: "No active on-chain Cards are available to burn.",
+      buttonTitle: "No collectible cards on Solana are available to exchange.",
     });
   });
 
@@ -65,7 +65,7 @@ describe("billingCardBurnChoiceView", () => {
       burnableCards: 1,
       hallPassesPerBurnedCard: 5,
     })).toMatchObject({
-      buttonText: "Burning...",
+      buttonText: "Exchanging...",
       buttonDisabled: true,
     });
   });

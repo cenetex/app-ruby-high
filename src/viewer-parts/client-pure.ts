@@ -93,9 +93,9 @@ export function dailyClassProgressView(telemetry: NullableRecord): DailyClassPro
   const offlineStatic = telemetry && telemetry.store_path === "localStorage";
   const currentIndex = complete ? 3 : Math.min(2, count);
   const definitions: Array<{ key: DailyClassProgressStepView["key"]; label: string }> = [
-    { key: "evidence-1", label: "Evidence 1" },
-    { key: "evidence-2", label: "Evidence 2" },
-    { key: "take", label: offlineStatic ? "Evidence 3" : "Your Take" },
+    { key: "evidence-1", label: "Question 1" },
+    { key: "evidence-2", label: "Question 2" },
+    { key: "take", label: offlineStatic ? "Question 3" : "Your View" },
     { key: "result", label: "Result" },
   ];
   const steps = definitions.map((definition, index): DailyClassProgressStepView => ({
@@ -106,12 +106,12 @@ export function dailyClassProgressView(telemetry: NullableRecord): DailyClassPro
     visible: hasContext,
     steps,
     continuationLabel: currentIndex === 1
-      ? "Next: Evidence 2"
+      ? "Next: Question 2"
       : currentIndex === 2
-        ? offlineStatic ? "Next: Evidence 3" : "Next: Your Take"
+        ? offlineStatic ? "Next: Question 3" : "Next: Your View"
         : currentIndex === 3
           ? "View Result"
-          : "Start Evidence 1",
+          : "Start Question 1",
   };
 }
 export type AccountPublicWorldView = {
@@ -562,7 +562,7 @@ export function boardSubjectGradesTitleView(currentGradeInput: unknown, summaryI
   const met = Math.max(0, Math.floor(Number(summary.met || 0)));
   const total = Math.max(0, Math.floor(Number(summary.total || 0)));
   const labels = VIEWER_CONSTANTS.GRADE_LABELS as Record<string, string>;
-  return (labels[grade] || (grade ? "Grade " + grade : "Current year")) + " · " + met + "/" + total + " subjects cleared";
+  return (labels[grade] || (grade ? "Grade " + grade : "Current year")) + " · " + met + "/" + total + " subjects passed";
 }
 export function subjectGradeChipView(specInput: NullableRecord): SubjectGradeChipView {
   const spec = specInput && typeof specInput === "object" ? specInput : {};
@@ -575,7 +575,7 @@ export function subjectGradeChipView(specInput: NullableRecord): SubjectGradeChi
     ? label + ": " + grade + " daily classes toward course grade"
     : grade === "—"
       ? label + ": no subject grade yet"
-      : label + ": " + grade + (met ? " subject cleared" : " needs C and daily classes");
+      : label + ": " + grade + (met ? " subject passed" : " needs a C and the required daily classes");
   return {
     className: "subject-grade-chip" + (met ? " is-met" : "") + (pending ? " is-pending" : ""),
     title,
@@ -598,7 +598,7 @@ export function guestSpotlightView(guestInput: NullableRecord): GuestSpotlightVi
     };
   }
   const packId = String(pack.id);
-  const teacher = String(pack.teacher_name || "Guest Faculty");
+  const teacher = String(pack.teacher_name || "Guest teacher");
   const subject = String(pack.subject || "guest class");
   const count = Math.max(0, Math.floor(Number(pack.question_count || 0)));
   const active = guest.active && typeof guest.active === "object" && guest.active.id === pack.id && guest.mode === "auto";
@@ -606,8 +606,8 @@ export function guestSpotlightView(guestInput: NullableRecord): GuestSpotlightVi
     visible: true,
     packId,
     titleText: "This week's guest teacher",
-    metaText: String(pack.name || "Guest Faculty") + " · " + teacher + " · " + subject + " · " + formatWholeNumber(count) + " questions",
-    actionText: active ? "Guest Faculty active" : "Try Guest Faculty",
+    metaText: String(pack.name || "Guest course") + " · " + teacher + " · " + subject + " · " + formatWholeNumber(count) + " questions",
+    actionText: active ? "Current guest" : "Try this guest",
     actionDisabled: !!active,
   };
 }
@@ -680,7 +680,7 @@ export function billingHallPassPaymentChoiceView(
     metaText: formatMoney(product.unitAmount, product.currency),
     buttonText: "Checkout",
     buttonDisabled: !configured || billingBusy,
-    buttonTitle: configured ? "Pay by card with Stripe." : "Stripe checkout is not configured.",
+    buttonTitle: configured ? "Pay by card." : "Card payment is not available.",
   };
 }
 export function welcomeHallPassPopupView(
@@ -694,12 +694,12 @@ export function welcomeHallPassPopupView(
   return {
     titleText: formatWholeNumber(amount) + " Hall Passes added",
     bodyText: fromBilling
-      ? "The front office stamped your starter passes. Spend them on images, slots, and cards, or keep playing classes free."
+      ? "Your starter Hall Passes are ready. Use them for images, extra students, and collectible cards, or keep playing classes for free."
       : portraitConfigured
-        ? "Roll your first student and try a custom portrait, or save your Hall Passes for extra character slots."
-        : "Roll your first student now, or save your Hall Passes for images, cards, and extra character slots.",
+        ? "Create your first student and try a custom portrait, or save your Hall Passes for an extra student slot."
+        : "Create your first student now, or save your Hall Passes for images, collectible cards, and extra student slots.",
     showLater: !fromBilling,
-    primaryText: fromBilling ? "Continue" : hasCharacter ? "Open Account" : "Create Character",
+    primaryText: fromBilling ? "Continue" : hasCharacter ? "Open Account" : "Create Student",
   };
 }
 export function clipPlayerContext(text: unknown, max?: number): string {
@@ -761,31 +761,31 @@ export function accountPublicWorldView(character: unknown, opts?: { authed?: unk
   const busy = !!(opts && opts.busy);
   const nextVisible = !visible;
   const summaryText = !hasCharacter
-    ? "Create a student before joining school activity."
+    ? "Create a student before showing them in shared school activity."
     : visible
-    ? "Your active student is shown in school activity."
+    ? "Your active student appears in shared school activity."
     : blockedBySocialConsent
-    ? "A legacy privacy setting is keeping this student out of shared school activity."
+    ? "An older privacy setting is keeping this student out of shared school activity."
     : hasPublicName && !publicNameReviewOk
     ? nameReview.reason === "reserved"
-      ? "Choose a student name that is not a staff or system name before joining school rooms."
+      ? "Choose a student name that is not a staff or system name before showing them in school rooms."
       : nameReview.reason === "contact"
-        ? "Remove contact info, handles, or links from this student name before joining school rooms."
-        : "Choose a school-appropriate student name before joining school rooms."
+        ? "Remove contact details, usernames, or links from this student name before showing them in school rooms."
+        : "Choose a school-appropriate student name before showing them in school rooms."
     : hasPublicName
-    ? "Your active student is not shown in school activity."
-    : "Name your student before they can join school activity.";
+    ? "Your active student is hidden from shared school activity."
+    : "Name your student before showing them in shared school activity.";
   const toggleTitle = !hasCharacter
     ? "Create a student first"
     : !hasPublicName
-    ? "School presence requires a real student name"
+    ? "Add a student name first"
     : !publicNameReviewOk
-    ? "Review this student name before joining school rooms"
+    ? "Review this student name before showing it in school rooms"
     : blockedBySocialConsent
-    ? "Legacy social sharing is off for this student"
+    ? "An older privacy setting is hiding this student"
     : visible
-    ? "Remove this student from school activity"
-    : "Show this student in school activity";
+    ? "Hide this student from shared school activity"
+    : "Show this student in shared school activity";
   return {
     hasCharacter,
     hasPublicName,
@@ -794,9 +794,9 @@ export function accountPublicWorldView(character: unknown, opts?: { authed?: unk
     blockedBySocialConsent,
     visible,
     summaryText,
-    statusText: visible ? "Shown in school activity" : "Not shown in school activity",
+    statusText: visible ? "Shown in shared school activity" : "Hidden from shared school activity",
     statusClass: visible ? "is-visible" : "",
-    toggleText: visible ? "Leave" : "Join",
+    toggleText: visible ? "Hide" : "Show",
     toggleDisabled: !authed || busy || !hasCharacter || !hasPublicName || !publicNameReviewOk || blockedBySocialConsent,
     toggleTitle,
     nextVisible,
@@ -830,13 +830,13 @@ export function walletTransactionTitle(tx: NullableRecord): string {
   if (tx.kind === "merit-star-grant") return "Merit Star grant";
   if (tx.kind === "merit-star-spend") return "Chat message";
   if (tx.kind === "hall-pass-grant") return walletTransactionCardCount(tx) > 0 ? "Pack opened" : "Hall Pass grant";
-  if (tx.kind === "hall-pass-spend") return walletTransactionCardCount(tx) < 0 ? "Card burn" : "Hall Pass spend";
+  if (tx.kind === "hall-pass-spend") return walletTransactionCardCount(tx) < 0 ? "Collectible card permanently destroyed" : "Hall Pass used";
   if (tx.kind === "hall-pass-refund") return "Hall Pass refund";
   if (tx.kind === "hall-pass-revoke") return "Hall Pass reversal";
-  if (tx.kind === "hall-pass-card-burn") return "Card burned for Hall Pass";
-  if (tx.kind === "hall-pass-pack-mint") return "Pack minted";
+  if (tx.kind === "hall-pass-card-burn") return "Collectible card exchanged for Hall Passes";
+  if (tx.kind === "hall-pass-pack-mint") return "Collectible pack created";
   if (tx.kind === "hall-pass-pack-open") return "Pack opened";
-  if (tx.kind === "hall-pass-card-mint") return "Card minted";
+  if (tx.kind === "hall-pass-card-mint") return "Collectible card created";
   if (tx.kind === "photo-day-spend") return "Photo Day credit";
   if (tx.kind === "photo-day-refund") return "Photo Day refund";
   return "Wallet update";
@@ -852,7 +852,7 @@ export function walletTransactionPackDeltaText(tx: NullableRecord): string {
   const metadata = tx && tx.metadata && typeof tx.metadata === "object" ? tx.metadata : {};
   const packCount = Math.max(1, Math.floor(Number(metadata.packCount || 1)));
   const amount = metadata.solanaAmountSol || "";
-  return "-" + formatSolDisplayAmount(amount) + " SOL · +" + packCountLabel(packCount);
+  return "-" + formatSolDisplayAmount(amount) + " SOL · +" + formatWholeNumber(packCount) + " Collectible Pack" + (packCount === 1 ? "" : "s");
 }
 
 export function walletTransactionSource(tx: NullableRecord): string {
@@ -872,7 +872,7 @@ export function accountHistoryRowView(tx: NullableRecord): AccountHistoryRowView
   const delta = isPackPurchase
     ? walletTransactionPackDeltaText(tx)
     : cardAmount !== 0
-    ? (cardAmount > 0 ? "+" : "") + formatWholeNumber(cardAmount) + " Card" + (Math.abs(cardAmount) === 1 ? "" : "s")
+    ? (cardAmount > 0 ? "+" : "") + formatWholeNumber(cardAmount) + " Collectible Card" + (Math.abs(cardAmount) === 1 ? "" : "s")
     : meritStarAmount !== 0
       ? (meritStarAmount > 0 ? "+" : "") + formatWholeNumber(meritStarAmount) + " Merit Star" + (Math.abs(meritStarAmount) === 1 ? "" : "s")
     : amount !== 0
@@ -924,7 +924,7 @@ export function accountEmptyCharacterSlotView(slotNumber: unknown, canCreateChar
     tagName: canCreate ? "button" : "div",
     type: canCreate ? "button" : "",
     className: "account-character-card is-empty" + (canCreate ? " is-create" : ""),
-    name: canCreate ? "Create Character" : "Empty Slot",
+    name: canCreate ? "Create Student" : "Empty Slot",
     meta: canCreate
       ? "Slot " + slotNumber + " · start today's class"
       : "Slot " + slotNumber + " · ready for a future student",
@@ -959,10 +959,10 @@ export function accountCharacterPanelView(slotsInput: NullableRecord, walletInpu
         + (photoDayCredits === 1 ? "credit" : "credits"),
     createHidden: !canCreateCharacter,
     createDisabled: !canCreateCharacter,
-    unlockText: "Unlock Slot (" + costHallPasses + " Card" + (costHallPasses === 1 ? "" : "s") + ")",
+    unlockText: "Add Student Slot (" + costHallPasses + " Hall Pass" + (costHallPasses === 1 ? "" : "es") + ")",
     unlockDisabled: !authed || hallPasses < costHallPasses || billingBusy,
     unlockTitle: hallPasses < costHallPasses
-      ? "Need " + costHallPasses + " Card" + (costHallPasses === 1 ? "" : "s")
+      ? "Need " + costHallPasses + " Hall Pass" + (costHallPasses === 1 ? "" : "es")
       : "Adds one student slot and " + photoDayCreditsPerSlot + " Photo Day credit",
   };
 }
@@ -979,36 +979,36 @@ export function accountAiPanelView(aiInput: NullableRecord, opts?: NullableRecor
   const aiEnabled = !!(opts && opts.aiEnabled);
   const canUseHallPass = !!(opts && opts.canUseHallPass);
   const teacherServerAi = !!(opts && opts.teacherServerAi);
-  let status = "Offline mode";
-  let meta = "Server AI is sponsored when configured; chat still spends Merit Stars.";
-  let primaryLabel = "Use Hall Pass";
+  let status = "AI is off";
+  let meta = "Ruby High AI is included when available. Teacher chat still uses Merit Stars.";
+  let primaryLabel = "Use Ruby High AI";
   let primaryTitle = canUseHallPass
-    ? "Hall Passes are used for images, cards, and creator tools."
-    : "Need " + costLabel + ". Buy Hall Passes or burn a Card first.";
+    ? "Hall Passes are used for images, collectible cards, and course tools."
+    : "Need " + costLabel + ". Buy Hall Passes or permanently destroy a collectible card first.";
   const aiActive = !!ai.active;
   let primaryDisabled = !authed || billingBusy || localAiEnabled || aiActive || !ai.configured || !canUseHallPass;
-  let secondaryLabel = hasBrowserKey && aiEnabled ? "Disconnect" : "Connect AI key";
+  let secondaryLabel = hasBrowserKey && aiEnabled ? "Disconnect my AI key" : "Use my AI key";
   const secondaryDisabled = !authed || localAiEnabled;
   if (localAiEnabled) {
-    status = "Local AI active";
-    meta = "This device is already providing text AI.";
-    primaryLabel = "Local AI";
+    status = "On-device AI is ready";
+    meta = "This device is providing the text AI.";
+    primaryLabel = "On-device AI";
     primaryTitle = "";
-    secondaryLabel = "Connect AI key";
+    secondaryLabel = "Use my AI key";
   } else if (hasBrowserKey && aiEnabled) {
-    status = "AI key connected";
-    meta = "Teacher chat and character text rerolls use your browser key. Hall Passes are still available for images, cards, and creator tools.";
+    status = "Your AI key is connected";
+    meta = "Teacher chat and student text use your AI key. Hall Passes still pay for images, collectible cards, and course tools.";
   } else if (aiActive || hostedAiActive) {
-    status = "Sponsored AI active";
-    meta = "Server AI is available. Chat messages spend Merit Stars.";
+    status = "Ruby High AI is ready";
+    meta = "Ruby High provides the AI. Teacher chat uses Merit Stars.";
     primaryLabel = "Active";
     primaryTitle = "";
   } else if (teacherServerAi) {
-    status = "Teacher AI connected";
-    meta = "This server can speak for teachers. Connect your own AI key for browser-owned AI features.";
+    status = "Teacher AI is ready";
+    meta = "Teachers can reply. Use your own AI key for personal AI features.";
   } else if (!ai.configured) {
-    meta = "Server AI is not configured here. Connect your own AI key.";
-    primaryTitle = "Server AI is not configured on this server.";
+    meta = "Ruby High AI is not available here. Use your own AI key instead.";
+    primaryTitle = "Ruby High AI is not available here.";
   }
   return {
     status,
@@ -1033,9 +1033,9 @@ export function accountWalletPanelView(walletInput: NullableRecord, slotsInput?:
     balanceText: "⭐ " + formatWholeNumber(meritStars) + " · 🎫 " + formatWholeNumber(hallPasses),
     metaText: photoDayCredits > 0
       ? photoDayCredits + " Photo Day " + (photoDayCredits === 1 ? "credit" : "credits")
-      : "Use Hall Passes for images, creator tools, cards, and slots. Buy more or burn a Card on the Buy Hall Passes page.",
+      : "Use Hall Passes for images, course tools, collectible cards, and extra student slots. Buy more or permanently destroy a collectible card on the Buy Hall Passes page.",
     buyPassesText: billingBusy && billingMode === "hall-passes" ? "Loading..." : "Buy Hall Passes",
-    buyPassesTitle: "Buy Hall Passes for images, creator slots, and card features.",
+    buyPassesTitle: "Buy Hall Passes for images, course tools, collectible cards, and extra student slots.",
     buyPassesDisabled: !(opts && opts.authed) || billingBusy,
   };
 }
@@ -1115,7 +1115,7 @@ export function accountTrustPanelView(payloadInput: NullableRecord, connectedWal
         href: solanaAccountLink(cardCollection),
       },
     ],
-    note: "Ruby High never asks for a seed phrase. Wallet prompts should be limited to sign-in, pack payment, pack opening, card minting, or card burning.",
+    note: "Ruby High never asks for your seed phrase. A wallet request should only ask you to sign in, pay for or open a pack, create a collectible card on Solana, or permanently destroy a collectible card.",
   };
 }
 
@@ -1136,18 +1136,18 @@ export function accountHallPassCardsPanelView(
   const hasSolanaWallet = !!(opts && opts.hasSolanaWallet);
   const needsWalletConnection = !hasSolanaWallet && (activePacks.length > 0 || pendingMints.length > 0);
   const pieces: string[] = [];
-  if (packs.length > 0) pieces.push(activePacks.length + " active pack" + (activePacks.length === 1 ? "" : "s"));
+  if (packs.length > 0) pieces.push(activePacks.length + " unopened collectible pack" + (activePacks.length === 1 ? "" : "s"));
   if (cards.length > 0) {
-    pieces.push(activeCards.length + " active card" + (activeCards.length === 1 ? "" : "s"));
-    if (mintedCards.length > 0) pieces.push(mintedCards.length + " on-chain Card" + (mintedCards.length === 1 ? "" : "s"));
+    pieces.push(activeCards.length + " active collectible card" + (activeCards.length === 1 ? "" : "s"));
+    if (mintedCards.length > 0) pieces.push(mintedCards.length + " collectible card" + (mintedCards.length === 1 ? "" : "s") + " on Solana");
     if (pendingMints.length > 0) {
-      pieces.push(pendingMints.length + " face-down Card" + (pendingMints.length === 1 ? "" : "s") + " to reveal");
+      pieces.push(pendingMints.length + " face-down collectible card" + (pendingMints.length === 1 ? "" : "s") + " to reveal");
     }
   }
   let summaryText = needsWalletConnection
-    ? "Connect a Solana wallet to open packs and reveal Cards."
+    ? "Connect a Solana wallet to open packs and reveal collectible cards."
     : pieces.length === 0
-      ? "No packs or Cards in this wallet yet."
+      ? "No collectible packs or cards in this wallet yet."
       : pieces.join(" · ");
   const checkout = opts && opts.checkout && typeof opts.checkout === "object" ? opts.checkout as LooseRecord : {};
   const checkoutBlocked = !!(checkout.loaded && !checkout.ready);
@@ -1156,23 +1156,23 @@ export function accountHallPassCardsPanelView(
   const authed = !!(opts && opts.authed);
   const billingBusy = !!(opts && opts.billingBusy);
   const billingMode = String((opts && opts.billingMode) || "");
-  let mintText = "Reveal Card";
-  let mintTitle = "No face-down cards are ready to reveal.";
+  let mintText = "Reveal Collectible";
+  let mintTitle = "No face-down collectible cards are ready to reveal.";
   if (needsWalletConnection) {
     mintText = billingBusy ? "Connecting..." : "Connect Wallet";
-    mintTitle = "Connect a Solana wallet before opening packs or revealing Cards.";
+    mintTitle = "Connect a Solana wallet before opening packs or revealing collectible cards.";
   } else if (pendingMints.length > 0) {
-    mintText = billingBusy ? "Minting..." : "Reveal Card";
-    mintTitle = "Mint the next face-down Ruby High Card to reveal it.";
+    mintText = billingBusy ? "Revealing..." : "Reveal Collectible";
+    mintTitle = "Create the next collectible card on Solana to reveal it.";
   }
   return {
     summaryText,
-    buyText: billingBusy && billingMode === "card-packs" ? "Loading..." : "Buy Card Packs",
+    buyText: billingBusy && billingMode === "card-packs" ? "Loading..." : "Buy Collectible Packs",
     buyTitle: !authed
-      ? "Sign in to buy Ruby High card packs."
+      ? "Sign in to buy Ruby High collectible packs."
       : checkoutBlocked
-        ? checkoutReason || "Card pack checkout is unavailable right now."
-        : "Buy Ruby High card packs.",
+        ? checkoutReason || "Collectible-pack checkout is unavailable right now."
+        : "Buy Ruby High collectible packs.",
     buyDisabled: !authed || billingBusy || checkoutBlocked,
     mintHidden: !needsWalletConnection && pendingMints.length === 0,
     mintDisabled: !authed || billingBusy,
@@ -1198,17 +1198,17 @@ export function accountHallPassPackTileView(packInput: NullableRecord, opts?: Nu
     imageAlt: status === "active" ? "Ruby High Pack" : "Opened Ruby High Pack",
     imageKind: status === "active" ? "active" : "opened",
     title: packCount === 1 ? "Ruby High Pack" : "Ruby High " + packCount + "-Pack",
-    detail: (status === "active" ? "On-chain Solana pack" : "Opened pack record")
+    detail: (status === "active" ? "Collectible pack on Solana" : "Opened collectible pack")
       + " · " + formatWholeNumber(cardCount)
       + " cards · #" + String(pack.serial || "").padStart(6, "0"),
-    proofLabel: status === "active" ? "View Solana pack" : "Pack proof",
+    proofLabel: status === "active" ? "View pack on Solscan" : "View pack record",
     openVisible: status === "active",
     openText: walletReady
       ? (billingBusy ? "Opening..." : "Open Pack")
       : (billingBusy ? "Connecting..." : "Connect Wallet"),
     openDisabled: !authed || billingBusy,
     openTitle: walletReady
-      ? "Open this Ruby High pack and create its Cards."
+      ? "Open this Ruby High pack and get its collectible cards."
       : "Connect a Solana wallet before opening this Ruby High pack.",
     walletReady,
   };
@@ -1221,23 +1221,23 @@ export function packLibraryCardView(packInput: NullableRecord, opts?: NullableRe
   const busy = !!(opts && opts.busy);
   const active = !!pack.active;
   const canSwitch = !isDraft && !isSearch && !active;
-  const name = String(pack.name || "Untitled Pack");
+  const name = String(pack.name || "Untitled Course");
   const source = String(pack.source || "");
   const teacherCount = Math.floor(Number(pack.facultyCount || pack.teacherCount || 0)) || 0;
   const questionCount = Math.floor(Number(pack.questionCount || 0)) || 0;
   const chips = [
-    source === "official" ? "official" : source === "creator" ? "creator" : pack.builtIn ? "built-in" : String(pack.status || "pack"),
-    pack.readOnly ? "read only" : pack.owner ? "yours" : "",
+    source === "official" ? "official" : source === "creator" ? "community" : pack.builtIn ? "included" : String(pack.status || "course"),
+    pack.readOnly ? "view only" : pack.owner ? "yours" : "",
     isSearch && pack.installed ? "installed" : "",
     teacherCount + " teachers",
-    questionCount + " cards",
+    questionCount + " questions",
   ].filter(Boolean) as string[];
   const actions: PackLibraryCardActionView[] = [];
   if (isSearch) {
     actions.push({
       kind: "search-primary",
       className: "pack-action",
-      text: pack.installed ? (active ? "Guest" : "Set Guest") : "Install",
+      text: pack.installed ? (active ? "Current Guest" : "Choose Guest") : "Add Course",
       disabled: busy || active,
     });
   }
@@ -1254,15 +1254,15 @@ export function packLibraryCardView(packInput: NullableRecord, opts?: NullableRe
     className: "pack-card-item" + (active ? " is-active" : "") + (canSwitch ? " is-clickable" : ""),
     interactive: canSwitch,
     tabIndex: busy ? -1 : 0,
-    ariaLabel: (active ? "Guest " : "Set guest ") + name,
+    ariaLabel: (active ? "Current guest: " : "Choose as guest: ") + name,
     name,
-    description: String(pack.description || (isDraft ? "Draft content pack." : "Ruby High content pack.")),
+    description: String(pack.description || (isDraft ? "Draft course." : "Ruby High course.")),
     chips,
     stateText: isDraft
       ? ""
       : isSearch
-        ? active ? "Guest now" : pack.installed ? "Installed" : "Not installed"
-        : pack.builtIn ? "Always on" : active ? "Guest now" : "Set guest",
+        ? active ? "Current guest" : pack.installed ? "Added" : "Not added"
+        : pack.builtIn ? "Always available" : active ? "Current guest" : "Choose guest",
     actions,
   };
 }
@@ -1281,7 +1281,7 @@ export function packTeacherRowView(teacherInput: NullableRecord, opts?: Nullable
     avatarUrl: String((opts && opts.avatarUrl) || ""),
     avatarText: initialSource.charAt(0).toUpperCase(),
     titleText,
-    subtitleText: count + " card" + (count === 1 ? "" : "s") + (subject ? " · " + subject : ""),
+    subtitleText: count + " question" + (count === 1 ? "" : "s") + (subject ? " · " + subject : ""),
     editDisabled: busy,
     deleteDisabled: busy,
   };
@@ -1292,14 +1292,14 @@ export function packTeacherDetailView(teacherInput: NullableRecord): PackTeacher
   if (!teacher) {
     return {
       nameText: "No teacher selected",
-      metaText: "Add a teacher to configure this pack.",
+      metaText: "Add a teacher to set up this course.",
       descriptionText: "",
     };
   }
   const count = typeof teacher.questionCount === "number" ? teacher.questionCount : 0;
   return {
     nameText: String(teacher.displayName || teacher.id || "No teacher selected"),
-    metaText: count + " cards" + (teacher.materialSourceUrl ? " · linked source" : ""),
+    metaText: count + " questions" + (teacher.materialSourceUrl ? " · linked materials" : ""),
     descriptionText: String(teacher.description || ""),
   };
 }
@@ -1339,13 +1339,13 @@ export function hallPassCardTitle(card: NullableRecord, faceDown?: unknown): str
 
 export function hallPassCardStatus(card: NullableRecord): string {
   if (!card) return "active";
-  return card.status === "redeemed" ? "burned" : card.status === "void" ? "void" : "active";
+  return card.status === "redeemed" ? "permanently destroyed" : card.status === "void" ? "unavailable" : "active";
 }
 
 export function hallPassCardDetail(card: NullableRecord, faceDown?: unknown): string {
   const hidden = faceDown === undefined ? hallPassCardIsFaceDown(card) : !!faceDown;
-  if (hidden) return "Face-down Card · mint to reveal · #" + String(card && (card.serial || card.id) || "").slice(-6);
-  const chain = card && card.mintAddress && card.mintSignature ? "On-chain Card" : "In-app Card";
+  if (hidden) return "Face-down collectible · reveal on Solana · #" + String(card && (card.serial || card.id) || "").slice(-6);
+  const chain = card && card.mintAddress && card.mintSignature ? "Collectible on Solana" : "In-app collectible";
   return chain + " · " + String(card && card.rarity || "common") + " · " + hallPassCardStatus(card) + " · #" + String(card && (card.serial || card.id) || "").slice(-6);
 }
 
@@ -1552,11 +1552,11 @@ export function accountHallPassCardReaderView(cardInput: NullableRecord, opts?: 
     teachesLabel: hallPassCardDetailLabel(card),
     teachesText: profile ? String(profile.teaches || profile.subtitle || "Ruby High") : "",
     quoteText: !faceDown && profile && profile.quote ? "\"" + String(profile.quote) + "\"" : "",
-    noteText: faceDown ? "Mint this Card to reveal the character." : "",
+    noteText: faceDown ? "Create this collectible card on Solana to reveal it." : "",
     revealVisible,
-    revealText: billingBusy ? "Minting..." : "Mint to Reveal",
+    revealText: billingBusy ? "Revealing..." : "Reveal on Solana",
     revealDisabled: !authed || billingBusy,
-    revealTitle: "Mint this Card with your Solana wallet to reveal it.",
+    revealTitle: "Create this collectible card with your Solana wallet to reveal it.",
   };
 }
 
@@ -1568,19 +1568,19 @@ export function billingCardBurnChoiceView(opts?: NullableRecord): BillingCardBur
   const billingBusy = !!(opts && opts.billingBusy);
   const creditLabel = hallPassCostLabel(hallPassesPerBurnedCard);
   return {
-    titleText: "Burn Card",
+    titleText: "Exchange a Collectible Card",
     metaText: hasWallet
       ? burnableCards > 0
-        ? formatWholeNumber(burnableCards) + " burnable Card" + (burnableCards === 1 ? "" : "s") + " · +" + creditLabel
-        : "No active on-chain Cards in this wallet."
-      : "Connect your Solana wallet to burn a Card for " + creditLabel + ".",
-    buttonText: billingBusy ? "Burning..." : hasWallet ? "Burn Card" : "Connect Wallet",
+        ? formatWholeNumber(burnableCards) + " collectible card" + (burnableCards === 1 ? "" : "s") + " can be permanently destroyed · +" + creditLabel
+        : "No collectible cards on Solana can be exchanged from this wallet."
+      : "Connect your Solana wallet to permanently destroy a collectible card for " + creditLabel + ".",
+    buttonText: billingBusy ? "Exchanging..." : hasWallet ? "Choose Collectible Card" : "Connect Wallet",
     buttonDisabled: !authed || billingBusy || (hasWallet && burnableCards <= 0),
     buttonTitle: hasWallet
       ? burnableCards > 0
-        ? "Burn one Card for " + creditLabel + "."
-        : "No active on-chain Cards are available to burn."
-      : "Connect a Solana wallet before burning a Card.",
+        ? "Permanently destroy one collectible card for " + creditLabel + "."
+        : "No collectible cards on Solana are available to exchange."
+      : "Connect a Solana wallet before exchanging a collectible card.",
   };
 }
 
@@ -2087,17 +2087,17 @@ export function billingCardPackPaymentChoiceView(
   return {
     titleText: "Buy " + (product.name || packCountLabel(product.packCount)),
     metaText: cardPackProductMeta(product, solana),
-    buttonText: cryptoUnavailable ? "Crypto unavailable" : "Buy Pack",
+    buttonText: cryptoUnavailable ? "Wallet checkout unavailable" : "Buy Collectible Pack",
     buttonDisabled: billingBusy || cryptoUnavailable || !canPackCheckout,
     buttonTitle: cryptoUnavailable
-      ? "Card pack checkout needs Privy wallet configuration."
+      ? "Collectible-pack checkout needs wallet support."
       : !canPackCheckout
-        ? "Solana pack checkout is unavailable. Try again later."
+        ? "Collectible-pack checkout is unavailable. Try again later."
         : "Pay with Solana wallet.",
     noteText: cryptoUnavailable
-      ? "Card pack checkout is not configured in this preview."
+      ? "Collectible-pack checkout is not available in this preview."
       : !canPackCheckout
-        ? "Solana pack checkout is incomplete. Try again later."
+        ? "Collectible-pack checkout is unavailable. Try again later."
         : "",
     showGetRubyLink: false,
   };
@@ -2139,21 +2139,21 @@ export function billingProductsPanelView(
   const hallPassesPerBurnedCard = Math.max(1, Math.floor(Number(opts && opts.hallPassesPerBurnedCard || 5)));
   const isCardPacks = mode === "card-packs";
   return {
-    titleText: isCardPacks ? "Buy Card Packs" : "Buy Hall Passes",
+    titleText: isCardPacks ? "Buy Collectible Packs" : "Buy Hall Passes",
     subtitleText: isCardPacks
-      ? "Card packs are Solana collectibles. Open a pack to create five face-down Ruby High cards."
-      : "Buy Hall Passes or burn one Card for 5.",
+      ? "These collectible packs are stored on Solana. Open one to get five face-down Ruby High cards."
+      : "Buy Hall Passes or permanently destroy one collectible card to get 5.",
     cardPackCostLabels: isCardPacks
       ? [
-        "Solana pack: " + VIEWER_CONSTANTS.HALL_PASS_CARDS_PER_PACK + " cards",
-        "Burn rate: 1 Card = " + hallPassCostLabel(hallPassesPerBurnedCard),
+        "Each collectible pack: " + VIEWER_CONSTANTS.HALL_PASS_CARDS_PER_PACK + " cards",
+        "Permanently destroy 1 collectible card: get " + hallPassCostLabel(hallPassesPerBurnedCard),
       ]
       : [],
     showGetRubyCostLink: false,
-    emptyStatusText: isCardPacks ? "No card packs are available." : "No Hall Passes are available.",
+    emptyStatusText: isCardPacks ? "No collectible packs are available." : "No Hall Passes are available.",
     checkoutStatusText: isCardPacks
-      ? (solana && solana.configured ? "" : "Card pack checkout is not configured on this server.")
-      : (payload.configured ? "" : "Stripe checkout is not configured on this server."),
+      ? (solana && solana.configured ? "" : "Collectible-pack checkout is not available here.")
+      : (payload.configured ? "" : "Card payment is not available here."),
     checkoutStatusError: isCardPacks
       ? !(solana && solana.configured)
       : !payload.configured,

@@ -57,11 +57,11 @@ export function createCardBurnSelector(deps: CardBurnSelectorDeps): CardBurnSele
         panel.className = "card-burn-panel";
         const kicker = deps.document.createElement("div");
         kicker.className = "card-burn-kicker";
-        kicker.textContent = "Choose card burn";
+        kicker.textContent = "Permanent action";
         const title = deps.document.createElement("h2");
-        title.textContent = count === 1 ? "Pick a card to burn" : "Pick " + count + " cards to burn";
+        title.textContent = count === 1 ? "Choose a collectible card" : "Choose " + count + " collectible cards";
         const copy = deps.document.createElement("p");
-        copy.textContent = "Each selected card leaves your wallet and credits 5 Hall Passes.";
+        copy.textContent = "Each selected collectible card will be permanently destroyed. You will get 5 Hall Passes for each card.";
         const grid = deps.document.createElement("div");
         grid.className = "card-burn-grid";
         const actions = deps.document.createElement("div");
@@ -74,7 +74,7 @@ export function createCardBurnSelector(deps: CardBurnSelectorDeps): CardBurnSele
         confirm.type = "button";
         confirm.className = "primary";
         confirm.disabled = true;
-        confirm.textContent = count === 1 ? "Burn Card" : "Burn " + count + " Cards";
+        confirm.textContent = count === 1 ? "Permanently Destroy Card" : "Permanently Destroy " + count + " Cards";
 
         function cleanup(result: unknown[] | null): void {
           deps.document.removeEventListener("keydown", onKeyDown);

@@ -119,7 +119,7 @@ export function createAccountCharacterPanelRenderer(
   function appendEmptyState(parent: HTMLElement): void {
     const empty = deps.document.createElement("div");
     empty.className = "account-empty";
-    empty.textContent = "Roll your first student to start filling your account.";
+    empty.textContent = "Create your first student to start class.";
     parent.appendChild(empty);
   }
 

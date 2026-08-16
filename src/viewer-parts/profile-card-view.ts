@@ -90,9 +90,9 @@ export function createProfileCardView(deps: ProfileCardViewDeps): ProfileCardVie
     "professor-edward": { head: 3, heart: 1, hustle: -1, honor: 2 },
   };
   const teacherSubjectLine: Record<string, string> = {
-    ruby: "Homeroom · school lore + general",
-    "sally-science": "Science Lab · physics, chem, bio, earth-sci",
-    "professor-edward": "Library · postwar literature & literary theory",
+    ruby: "Homeroom · school stories and general knowledge",
+    "sally-science": "Science Lab · physics, chemistry, biology, and Earth science",
+    "professor-edward": "Library · postwar literature and literary theory",
   };
   const teacherSignature: Record<string, string> = {
     ruby: "My job's the door. The teaching happens in the rooms.",
@@ -192,13 +192,13 @@ export function createProfileCardView(deps: ProfileCardViewDeps): ProfileCardVie
       const subjectLine = teacherSubject(faculty);
       const facultyId = faculty.id || "";
       return {
-        badgeLabel: "faculty",
-        name: "Faculty Card",
+        badgeLabel: "teacher",
+        name: "Teacher Card",
         subtitle: subjectLine,
         metrics: [
-          { label: "role", value: "Teacher", detail: "faculty", met: true },
-          { label: "subject", value: deps.teachingFacultyLabels[facultyId] || "Faculty", detail: "room", met: true },
-          { label: "questions", value: String(faculty.questionCount || 0), detail: "question bank", met: false },
+          { label: "role", value: "Teacher", detail: "teacher", met: true },
+          { label: "subject", value: deps.teachingFacultyLabels[facultyId] || "Teacher", detail: "classroom", met: true },
+          { label: "questions", value: String(faculty.questionCount || 0), detail: "available", met: false },
         ],
       };
     },
@@ -234,8 +234,8 @@ export function createProfileCardView(deps: ProfileCardViewDeps): ProfileCardVie
         subtitle: graduated ? "Graduated · classmate" : label + " · classmate",
         metrics: graduated
           ? [
-              { label: "status", value: "graduated", detail: "four-year arc complete", met: true },
-              { label: "yearbook", value: ((arc && arc.completedGrades && arc.completedGrades.length) || 4) + "/4", detail: "paper cards sealed", met: true },
+              { label: "status", value: "graduated", detail: "all four years complete", met: true },
+              { label: "yearbook", value: ((arc && arc.completedGrades && arc.completedGrades.length) || 4) + "/4", detail: "years saved", met: true },
               { label: "room", value: roomLabel(npc.currentRoom), detail: "last seen", met: false },
             ]
           : [

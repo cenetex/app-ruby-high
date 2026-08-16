@@ -86,7 +86,7 @@ describe("creation roll presenter", () => {
     );
 
     expect((candidate.name as unknown as FakeElement).textContent).toBe("Noor");
-    expect((candidate.subtitle as unknown as FakeElement).textContent).toBe("Outsider · Freshman candidate");
+    expect((candidate.subtitle as unknown as FakeElement).textContent).toBe("Outsider · Grade 9 student");
     expect((candidate.card as unknown as FakeElement).style.borderColor).toBe("#123456");
     expect((candidate.role as unknown as FakeElement).style.background).toBe("#123456");
     expect((candidate.moveTitle as unknown as FakeElement).textContent).toBe("Read the Room");
@@ -131,9 +131,9 @@ describe("creation roll presenter", () => {
     );
 
     expect((candidate.name as unknown as FakeElement).textContent).toBe("—");
-    expect((candidate.subtitle as unknown as FakeElement).textContent).toBe("mystery · Freshman candidate");
+    expect((candidate.subtitle as unknown as FakeElement).textContent).toBe("mystery · Grade 9 student");
     expect((candidate.moveTitle as unknown as FakeElement).textContent).toBe("—");
-    expect((candidate.moveContent as unknown as FakeElement).textContent).toBe("No move text yet.");
+    expect((candidate.moveContent as unknown as FakeElement).textContent).toBe("No starting strength yet.");
     expect((candidate.quote as unknown as FakeElement).textContent).toBe("“I need a map.”");
     expect((rowRefs.statsRow.val as unknown as FakeElement).textContent).toBe("HEAD +0 · HEART +0 · HUSTLE +0 · HONOR +0");
     expect((candidate.portraitImg as unknown as FakeElement).src).toBe("data:image/png;base64,ai");

@@ -180,7 +180,7 @@ describe("account card reader renderer", () => {
     expect(textTree(panel)).toContain("Ruby");
     expect(textTree(panel)).toContain("HEAD +1");
     expect(textTree(panel)).toContain("HUSTLE -1");
-    expect(proofCalls).toEqual([["account-card-reader-body", "mint-abc", "View Card on Solscan"]]);
+    expect(proofCalls).toEqual([["account-card-reader-body", "mint-abc", "View Collectible on Solscan"]]);
 
     await close.click();
     expect(doc.body.children).toHaveLength(0);

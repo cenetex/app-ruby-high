@@ -49,7 +49,7 @@ function gradeLabel(card: FirstBellShareCard): string {
 function summaryLine(card: FirstBellShareCard): string {
   return card.wasCorrect
     ? `${card.characterName} got the first Ruby High answer right.`
-    : `${card.characterName} survived the first Ruby High question.`;
+    : `${card.characterName} answered the first Ruby High question.`;
 }
 
 function renderHtml(ctx: RouteContext, card: FirstBellShareCard): string {
@@ -105,7 +105,7 @@ function renderHtml(ctx: RouteContext, card: FirstBellShareCard): string {
       <header>
         <div class="kicker">First Bell Report</div>
         <h1>${escapeHtml(card.characterName)}</h1>
-        <div class="meta">${escapeHtml(gradeLabel(card))} / ${escapeHtml(card.facultyName)} / ${escapeHtml(card.wasCorrect ? "Marked correct" : "Needs a review")}</div>
+        <div class="meta">${escapeHtml(gradeLabel(card))} / ${escapeHtml(card.facultyName)} / ${escapeHtml(card.wasCorrect ? "Correct" : "Needs more work")}</div>
       </header>
       <section>
         <blockquote>${escapeHtml(card.prompt)}</blockquote>
@@ -118,7 +118,7 @@ function renderHtml(ctx: RouteContext, card: FirstBellShareCard): string {
         ${card.encouragement ? `<p>${escapeHtml(card.encouragement)}</p>` : ""}
         ${statsHtml ? `<div class="stats">${statsHtml}</div>` : ""}
       </section>
-      <footer>${escapeHtml(APP_DISPLAY_NAME)} first question artifact</footer>
+      <footer>${escapeHtml(APP_DISPLAY_NAME)} first class report</footer>
     </article>
     <a class="play" href="${escapeHtml(playUrl)}">Play ${escapeHtml(APP_DISPLAY_NAME)}</a>
   </main>
@@ -130,7 +130,7 @@ function renderSvg(card: FirstBellShareCard): string {
   const lines = [
     cardTitle(card),
     `${gradeLabel(card)} / ${card.facultyName}`,
-    card.wasCorrect ? "Marked correct" : "Needs a review",
+    card.wasCorrect ? "Correct" : "Needs more work",
     card.prompt,
     `Answer: ${card.answerText}`,
   ].map((line) => escapeHtml(line).slice(0, 88));

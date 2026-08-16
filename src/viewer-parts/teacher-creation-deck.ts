@@ -44,7 +44,7 @@ export function createTeacherCreationDeckRenderer(
       const candidateCard = deps.buildCharacterCard({
         role: "teacher",
         name: input.roll.displayName,
-        subtitle: String(input.roll.subject || "") + " · teacher candidate",
+        subtitle: String(input.roll.subject || "") + " · teacher preview",
         portraitUrl: input.portraitUrl,
         accent: input.accent,
         stats: input.roll.stats,

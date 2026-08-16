@@ -31,12 +31,12 @@ describe("account card and pack tile views", () => {
       imageAlt: "Ruby High Pack",
       imageKind: "active",
       title: "Ruby High 2-Pack",
-      detail: "On-chain Solana pack · 10 cards · #000042",
-      proofLabel: "View Solana pack",
+      detail: "Collectible pack on Solana · 10 cards · #000042",
+      proofLabel: "View pack on Solscan",
       openVisible: true,
       openText: "Open Pack",
       openDisabled: false,
-      openTitle: "Open this Ruby High pack and create its Cards.",
+      openTitle: "Open this Ruby High pack and get its collectible cards.",
       walletReady: true,
     });
   });
@@ -60,8 +60,8 @@ describe("account card and pack tile views", () => {
       imageAlt: "Opened Ruby High Pack",
       imageKind: "opened",
       title: "Ruby High Pack",
-      detail: "Opened pack record · 5 cards · #000abc",
-      proofLabel: "Pack proof",
+      detail: "Opened collectible pack · 5 cards · #000abc",
+      proofLabel: "View pack record",
       openVisible: false,
     });
   });
@@ -80,7 +80,7 @@ describe("account card and pack tile views", () => {
       className: "account-card-tile is-active is-student rarity-rare is-face-down",
       faceDown: true,
       title: "Mystery Card",
-      detail: "Face-down Card · mint to reveal · #abcdef",
+      detail: "Face-down collectible · reveal on Solana · #abcdef",
       ariaLabel: "Open Mystery Card",
       imageAlt: "Face-down Ruby High card",
       fallbackInitial: "R",
@@ -100,14 +100,14 @@ describe("account card and pack tile views", () => {
     };
 
     expect(hallPassCardIsFaceDown(card)).toBe(false);
-    expect(hallPassCardStatus(card)).toBe("burned");
+    expect(hallPassCardStatus(card)).toBe("permanently destroyed");
     expect(hallPassCardTitle(card)).toBe("Ruby");
-    expect(hallPassCardDetail(card)).toBe("On-chain Card · legendary! · burned · #123456");
+    expect(hallPassCardDetail(card)).toBe("Collectible on Solana · legendary! · permanently destroyed · #123456");
     expect(accountHallPassCardTileView(card)).toEqual({
       className: "account-card-tile is-redeemed is-teacher rarity-legendary",
       faceDown: false,
       title: "Ruby",
-      detail: "On-chain Card · legendary! · burned · #123456",
+      detail: "Collectible on Solana · legendary! · permanently destroyed · #123456",
       ariaLabel: "Open Ruby",
       imageAlt: "Ruby Ruby High card",
       fallbackInitial: "R",
@@ -129,15 +129,15 @@ describe("account card and pack tile views", () => {
       artClassName: "account-card-reader-art",
       faceDown: true,
       title: "Mystery Card",
-      detail: "Face-down Card · mint to reveal · #abcdef",
+      detail: "Face-down collectible · reveal on Solana · #abcdef",
       artAlt: "Mystery Card",
       proofAddress: "",
       teachesVisible: false,
-      noteText: "Mint this Card to reveal the character.",
+      noteText: "Create this collectible card on Solana to reveal it.",
       revealVisible: true,
-      revealText: "Mint to Reveal",
+      revealText: "Reveal on Solana",
       revealDisabled: false,
-      revealTitle: "Mint this Card with your Solana wallet to reveal it.",
+      revealTitle: "Create this collectible card with your Solana wallet to reveal it.",
     });
   });
 
@@ -176,7 +176,7 @@ describe("account card and pack tile views", () => {
       quoteText: "\"If the answer exists, this helps you find it.\"",
       noteText: "",
       revealVisible: false,
-      revealText: "Minting...",
+      revealText: "Revealing...",
       revealDisabled: true,
     });
   });

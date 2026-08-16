@@ -283,7 +283,7 @@ describe("account Hall Pass cards panel renderer", () => {
       container: container as unknown as HTMLElement,
       panelView: () => {
         panelCalls += 1;
-        return panelView({ summaryText: "No packs or Cards in this wallet yet." });
+        return panelView({ summaryText: "No collectible packs or cards in this wallet yet." });
       },
       packTileView: packView,
       cardTileView: (card) => cardView(card, { faceDown: false }),
@@ -316,7 +316,7 @@ describe("account Hall Pass cards panel renderer", () => {
     renderer.render({ ...opts, cards: [] });
     expect(container.children).toHaveLength(1);
     expect(container.children[0]!.className).toBe("account-empty");
-    expect(container.children[0]!.textContent).toBe("No packs or Cards in this wallet yet.");
+    expect(container.children[0]!.textContent).toBe("No collectible packs or cards in this wallet yet.");
   });
 
   it("ignores missing containers", () => {

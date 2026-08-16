@@ -1178,14 +1178,14 @@ function streamPlayerLine(args: {
   bankStatus?: QuestionBankStatus | null;
 }): AsyncGenerator<AvatarChatLineStreamEvent> {
   const character = args.state.character;
-  if (!character) throw new Error("Create a character before using AI Chat.");
+  if (!character) throw new Error("Create a student before using AI chat.");
   const playbook = PLAYBOOKS.find((p) => p.id === character.playbookId);
   const stats = character.stats;
 
   // Skip auto-generated (smoke-test) characters so their suffixed
   // names never appear in LLM prompts.
   if (/\b(Smoke|Pacing)\s+mp[a-z][a-z0-9]{4,}\b/i.test(character.name)) {
-    throw new Error("Create a character before using AI Chat.");
+    throw new Error("Create a student before using AI chat.");
   }
   const fmt = (n: number) => (n >= 0 ? "+" : "") + n;
   const facultyName = facultyDisplayNameForState(args.state, args.faculty);
@@ -1663,7 +1663,7 @@ async function prepareHostedImageCharge(args: {
     const usedPhotoDayCredit = existing.kind === "photo-day-spend" || Number(existing.photoDayCredits ?? 0) < 0;
     const metadata = existing.metadata ?? {};
     if (metadata.route !== args.route || metadata.requestId !== requestId || metadata.fingerprint !== fingerprint) {
-      throw new HostedImageChargeError("Hosted image request id was already used for different image inputs.", 409);
+      throw new HostedImageChargeError("This image request number was already used for a different image.", 409);
     }
     const spentHallPasses = walletHallPassDebit(existing, hallPassCost);
     const imageUrl = walletMetadataString(metadata.imageUrl);
@@ -1678,7 +1678,7 @@ async function prepareHostedImageCharge(args: {
       };
     }
     if (metadata.status === "failed") {
-      throw new HostedImageChargeError("Hosted image request failed previously. Start a new image request.", 409);
+      throw new HostedImageChargeError("This image request failed before. Start a new image request.", 409);
     }
     const pendingAgeMs = Date.now() - Math.floor(Number(existing.at ?? 0));
     if (
@@ -1698,11 +1698,11 @@ async function prepareHostedImageCharge(args: {
           replayUrl: null,
           usedPhotoDayCredit,
         },
-        reason: "Hosted image request timed out before completion.",
+        reason: "Image creation took too long and stopped.",
       });
-      throw new HostedImageChargeError("Hosted image request timed out. Start a new image request.", 409);
+      throw new HostedImageChargeError("Image creation took too long. Start a new image request.", 409);
     }
-    throw new HostedImageChargeError("Hosted image request is already in progress. Try again in a moment.", 409);
+    throw new HostedImageChargeError("This image is already being created. Try again in a moment.", 409);
   }
 
   const usePhotoDayCredit = args.route === "character-portrait" &&
@@ -1713,7 +1713,7 @@ async function prepareHostedImageCharge(args: {
   const imageLabel = args.imageLabel || (args.costKind === "diploma" ? "diploma image" : "portrait");
   if (!usePhotoDayCredit && !imageEntitlement.affordable && burns.length <= 0) {
     throw new HostedImageChargeError(
-      `Need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} or ${requiredBurnCards} burned Card${requiredBurnCards === 1 ? "" : "s"} for a hosted ${imageLabel}.`,
+      `You need ${hallPassCost} Hall Pass${hallPassCost === 1 ? "" : "es"} or must permanently destroy ${requiredBurnCards} collectible card${requiredBurnCards === 1 ? "" : "s"} to create this ${imageLabel}.`,
       402,
     );
   }
@@ -2267,7 +2267,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/privy`) {
     if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
     if (!privyServerConfigured()) {
-      ctx.error(ctx.res, "Privy is not configured on this Ruby High server.", 503);
+      ctx.error(ctx.res, "Account sign-in is not available on this Ruby High server.", 503);
       return true;
     }
     try {
@@ -2457,7 +2457,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const guestAccess = guestAccessForRecord(ruby, stateKey, record);
     if (rejectGuestViolation(ctx, guestAccessViolation({ guestAccess, facultyId: faculty }))) return true;
     if (!apiKey && chat.requiresBrowserApiKey(sessionId, faculty)) {
-      ctx.error(ctx.res, "Connect AI first for this teacher.", 401);
+      ctx.error(ctx.res, "Use an AI key first for this teacher.", 401);
       return true;
     }
     const message = (body?.message ?? "").trim();
@@ -2525,7 +2525,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/room-turn`) {
     const cred = requireAuth(ctx, auth, ruby);
     if (!cred) {
-      ctx.error(ctx.res, "Not authenticated. Connect AI first.", 401);
+      ctx.error(ctx.res, "Sign in and use an AI key first.", 401);
       return true;
     }
     const { token, apiKey, record, stateKey } = cred;
@@ -2847,7 +2847,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/player-line`) {
     const cred = requireAuth(ctx, auth, ruby);
     if (!cred) {
-      ctx.error(ctx.res, "Not authenticated. Connect AI first.", 401);
+      ctx.error(ctx.res, "Sign in and use an AI key first.", 401);
       return true;
     }
     const { token, apiKey, record, stateKey } = cred;
@@ -2922,7 +2922,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const guestAccess = guestAccessForRecord(ruby, stateKey, record);
     if (rejectGuestViolation(ctx, guestAccessViolation({ guestAccess, facultyId: faculty }))) return true;
     if (!apiKey && chat.requiresBrowserApiKey(sessionId, faculty)) {
-      ctx.error(ctx.res, "Connect AI first for this teacher.", 401);
+      ctx.error(ctx.res, "Use an AI key first for this teacher.", 401);
       return true;
     }
     const trigger = String(body?.trigger ?? "manual");
@@ -3673,8 +3673,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(
         ctx.res,
         isLocalLlmProvider()
-          ? "Local text AI is enabled, but portrait generation still requires a hosted image model."
-          : "Connect AI first.",
+          ? "On-device text AI is ready, but portraits still need Ruby High image creation."
+          : "Use an AI key first.",
         isLocalLlmProvider() ? 501 : 401,
       );
       return true;
@@ -3867,8 +3867,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(
         ctx.res,
         isLocalLlmProvider()
-          ? "Local text AI is enabled, but graduation photo generation still requires a hosted image model."
-          : "Connect AI first.",
+          ? "On-device text AI is ready, but graduation photos still need Ruby High image creation."
+          : "Use an AI key first.",
         isLocalLlmProvider() ? 501 : 401,
       );
       return true;
@@ -4024,8 +4024,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(
         ctx.res,
         isLocalLlmProvider()
-          ? "Local text AI is enabled, but diploma image generation still requires a hosted image model."
-          : "Connect AI first.",
+          ? "On-device text AI is ready, but diploma images still need Ruby High image creation."
+          : "Use an AI key first.",
         isLocalLlmProvider() ? 501 : 401,
       );
       return true;
@@ -4039,7 +4039,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const state = ruby.getOrCreate(sessionId);
     const ch = state.character;
     if (!ch) {
-      ctx.error(ctx.res, "No character on this session.", 400);
+      ctx.error(ctx.res, "Create a student first.", 400);
       return true;
     }
     if ((ch.yearbook ?? []).length < 4) {
@@ -4132,8 +4132,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.error(
         ctx.res,
         isLocalLlmProvider()
-          ? "Local text AI is enabled, but yearbook card generation still requires a hosted image model."
-          : "Connect AI first.",
+          ? "On-device text AI is ready, but yearbook cards still need Ruby High image creation."
+          : "Use an AI key first.",
         isLocalLlmProvider() ? 501 : 401,
       );
       return true;
@@ -4147,7 +4147,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const state = ruby.getOrCreate(sessionId);
     const ch = state.character;
     if (!ch) {
-      ctx.error(ctx.res, "No character on this session.", 400);
+      ctx.error(ctx.res, "Create a student first.", 400);
       return true;
     }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as { grade?: string } | null;
@@ -4273,7 +4273,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/generate`) {
     const cred = requireSession(ctx, auth, ruby);
     if (!cred) {
-      ctx.error(ctx.res, "Start a Ruby High session before rolling a character.", 401);
+      ctx.error(ctx.res, "Start Ruby High before creating a student.", 401);
       return true;
     }
     const { token, stateKey } = cred;
@@ -4290,7 +4290,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         });
     const apiKey = fallbackCredential.apiKey;
     if (!apiKey) {
-      ctx.error(ctx.res, "Basic AI character rolling is not configured.", 503);
+      ctx.error(ctx.res, "AI student creation is not available.", 503);
       return true;
     }
     // Body: { regen?: CharacterComponent[], keep?: Partial<RolledCharacter> }

@@ -9,14 +9,14 @@ describe("account Hall Pass cards panel view", () => {
       checkout: { loaded: false, ready: true, reason: "" },
       hasSolanaWallet: false,
     })).toEqual({
-      summaryText: "No packs or Cards in this wallet yet.",
-      buyText: "Buy Card Packs",
-      buyTitle: "Sign in to buy Ruby High card packs.",
+      summaryText: "No collectible packs or cards in this wallet yet.",
+      buyText: "Buy Collectible Packs",
+      buyTitle: "Sign in to buy Ruby High collectible packs.",
       buyDisabled: true,
       mintHidden: true,
       mintDisabled: true,
-      mintText: "Reveal Card",
-      mintTitle: "No face-down cards are ready to reveal.",
+      mintText: "Reveal Collectible",
+      mintTitle: "No face-down collectible cards are ready to reveal.",
       needsWalletConnection: false,
     });
   });
@@ -39,13 +39,13 @@ describe("account Hall Pass cards panel view", () => {
     });
 
     expect(view).toMatchObject({
-      summaryText: "1 active pack · 2 active cards · 1 on-chain Card · 1 face-down Card to reveal",
+      summaryText: "1 unopened collectible pack · 2 active collectible cards · 1 collectible card on Solana · 1 face-down collectible card to reveal",
       buyDisabled: false,
-      buyTitle: "Buy Ruby High card packs.",
+      buyTitle: "Buy Ruby High collectible packs.",
       mintHidden: false,
       mintDisabled: false,
-      mintText: "Reveal Card",
-      mintTitle: "Mint the next face-down Ruby High Card to reveal it.",
+      mintText: "Reveal Collectible",
+      mintTitle: "Create the next collectible card on Solana to reveal it.",
       needsWalletConnection: false,
     });
   });
@@ -61,10 +61,10 @@ describe("account Hall Pass cards panel view", () => {
     });
 
     expect(view).toMatchObject({
-      summaryText: "Connect a Solana wallet to open packs and reveal Cards.",
+      summaryText: "Connect a Solana wallet to open packs and reveal collectible cards.",
       mintHidden: false,
       mintText: "Connect Wallet",
-      mintTitle: "Connect a Solana wallet before opening packs or revealing Cards.",
+      mintTitle: "Connect a Solana wallet before opening packs or revealing collectible cards.",
       needsWalletConnection: true,
     });
   });
@@ -82,7 +82,7 @@ describe("account Hall Pass cards panel view", () => {
     });
 
     expect(view).toMatchObject({
-      summaryText: "No packs or Cards in this wallet yet. · Solana pack checkout is not configured on this server.",
+      summaryText: "No collectible packs or cards in this wallet yet. · Solana pack checkout is not configured on this server.",
       buyDisabled: true,
       buyTitle: "Solana pack checkout is not configured on this server.",
     });
@@ -98,7 +98,7 @@ describe("account Hall Pass cards panel view", () => {
     })).toMatchObject({
       buyText: "Loading...",
       buyDisabled: true,
-      mintText: "Minting...",
+      mintText: "Revealing...",
       mintDisabled: true,
     });
   });

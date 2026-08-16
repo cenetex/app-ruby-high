@@ -217,7 +217,7 @@ export async function handleCommandRoute(args: {
   };
   const characterInputFromBody = () => {
     if (typeof body?.name !== "string" || typeof body.playbookId !== "string" || !body.stats) {
-      throw new Error("Missing name, playbookId, or stats.");
+      throw new Error("Student name, style, and starting strengths are required.");
     }
     if (!PLAYBOOKS.some((p) => p.id === body.playbookId)) {
       throw new Error(`Unknown playbookId: ${body.playbookId}`);
@@ -275,7 +275,7 @@ export async function handleCommandRoute(args: {
         throw new Error(openRouterGenerationRequiredMessage("generating multiple-choice distractors"));
       }
       const state = await ruby.generateCurrentMcQuestion(stateKey, credential.apiKey);
-      return await persist(state, "Multiple choice generated");
+      return await persist(state, "Answer choices created");
     },
     pick: async () => {
       const state = ruby.pickAndPose(stateKey, {
@@ -289,7 +289,7 @@ export async function handleCommandRoute(args: {
     "play-bonus": playBonusCommand,
     "play-daily": playBonusCommand,
     "set-faculty": async () => {
-      if (!body?.faculty) throw new Error("Missing faculty id");
+      if (!body?.faculty) throw new Error("Choose a teacher first.");
       const state = ruby.setFaculty(stateKey, body.faculty);
       return await persist(state, `Now teaching: ${state.faculty}`);
     },
@@ -309,10 +309,10 @@ export async function handleCommandRoute(args: {
       const { state, result, reason } = ruby.rollAdvantage(stateKey);
       const message = result == null
         ? reason === "exhausted"
-          ? "Out of advantage rolls for this grade — pass your year to refill."
+          ? "No help rolls left this grade — pass the year to get more."
           : reason === "answered"
-            ? "You already locked in your answer — too late to roll."
-            : "No active question to roll on."
+            ? "You already submitted your answer."
+            : "There is no active question."
         : result.outcome === "hit"
           ? `Hit (${result.total}) — eliminated ${result.eliminated.join(" & ")}.`
           : result.outcome === "mixed"
@@ -342,7 +342,7 @@ export async function handleCommandRoute(args: {
         const resumed = startFirstBellIfRequested(current);
         return await persist(
           resumed,
-          resumed.current ? "Character already created. First Bell ready." : "Character already created",
+          resumed.current ? "Student already created. First Bell is ready." : "Student already created",
         );
       }
       let state = ruby.createCharacter(stateKey, {
@@ -351,7 +351,7 @@ export async function handleCommandRoute(args: {
         creationMethod: "custom",
       });
       state = startFirstBellIfRequested(state);
-      return await persist(state, state.current ? "Character created. First Bell ready." : "Character created");
+      return await persist(state, state.current ? "Student created. First Bell is ready." : "Student created");
     },
     "quick-roll-student": async () => {
       const state = ruby.quickRollIntoFirstBell(stateKey);
@@ -359,17 +359,17 @@ export async function handleCommandRoute(args: {
     },
     "update-character": async () => {
       const state = ruby.updateCharacter(stateKey, characterInputFromBody());
-      return await persist(state, "Character updated");
+      return await persist(state, "Student updated");
     },
     "clear-character": async () => {
       const state = ruby.clearCharacter(stateKey);
-      return await persist(state, "Active character slot cleared");
+      return await persist(state, "Active student slot cleared");
     },
     "unlock-character-slot": async () => {
       const result = ruby.unlockCharacterSlot(stateKey, {
         requestId: typeof body?.requestId === "string" ? body.requestId : undefined,
       });
-      return await persist(result.state, result.applied ? "Character slot unlocked" : "Character slot already unlocked");
+      return await persist(result.state, result.applied ? "Student slot added" : "Student slot already added");
     },
     "set-portrait": async () => {
       const url = String(body?.portraitDataUrl ?? "");
@@ -389,7 +389,7 @@ export async function handleCommandRoute(args: {
     "set-social-consent": async () => {
       const consent = body?.socialConsent ?? true;
       const state = ruby.getOrCreate(stateKey);
-      if (!state.character) throw new Error("No character to update.");
+      if (!state.character) throw new Error("No student to update.");
       state.character.socialConsent = !!consent;
       state.updatedAt = Date.now();
       void ruby.flushSession(stateKey);
@@ -398,25 +398,25 @@ export async function handleCommandRoute(args: {
     "set-public-presence": async () => {
       const visible = body?.publicWorldVisible ?? true;
       const state = ruby.getOrCreate(stateKey);
-      if (!state.character) throw new Error("No character to update.");
+      if (!state.character) throw new Error("No student to update.");
       if (visible) {
         const review = publicWorldNameReview(state.character.name);
         if (!review.ok) {
           throw new Error(
             review.reason === "reserved"
-              ? "Choose a student name that is not a reserved staff or system name before joining school rooms."
+              ? "Choose a student name that is not used by Ruby High staff before showing the student."
               : review.reason === "contact"
-                ? "Remove contact info, handles, or links from the student name before joining school rooms."
+                ? "Remove contact details, usernames, or links from the student name before showing the student."
                 : review.reason === "unsafe"
-                  ? "Choose a school-appropriate student name before joining school rooms."
-                  : "Name your student before joining school rooms.",
+                  ? "Choose a school-appropriate student name before showing the student."
+                  : "Name your student before showing the student.",
           );
         }
       }
       state.character.publicWorldVisible = !!visible;
       state.updatedAt = Date.now();
       void ruby.flushSession(stateKey);
-      return await persist(state, visible ? "Public world presence enabled" : "Public world presence hidden");
+      return await persist(state, visible ? "Student shown in shared school activity" : "Student hidden from shared school activity");
     },
     "hide-public-world-event": async () => {
       const result = ruby.hidePublicWorldEvent(stateKey, body?.eventId ?? "");
@@ -452,7 +452,7 @@ export async function handleCommandRoute(args: {
         success: true,
         noQuestionDue: true,
         message: status.mode === "srs"
-          ? "No scheduled deck card is ready right now."
+          ? "No review question is ready right now."
           : "No scheduled question is ready right now.",
         session: buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
       });

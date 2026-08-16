@@ -19,8 +19,8 @@ export function createCreationIntroRenderer(deps: CreationIntroRendererDeps): Cr
       const explanation = deps.document.createElement("div");
       explanation.className = "creation-explanation";
       explanation.innerHTML =
-        '<p><strong>Meet your student.</strong> Change their name or student style, or reroll anything you like.</p>'
-        + '<p>Nothing is enrolled until you take your seat. Your first class starts immediately.</p>';
+        '<p><strong>Meet your student.</strong> Change their name or student style, or try another version.</p>'
+        + '<p>Your student is not saved until you take your seat. Your first class starts right away.</p>';
       parent.appendChild(explanation);
 
       loading.innerHTML =

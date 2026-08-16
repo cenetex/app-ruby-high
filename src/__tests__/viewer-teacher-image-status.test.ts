@@ -31,7 +31,7 @@ describe("teacher image status view", () => {
     };
 
     expect(view.reason(input)).toBe("");
-    expect(view.creditHint(input)).toBe("Uses your AI key. No cards are burned.");
+    expect(view.creditHint(input)).toBe("Uses your AI key. It does not use Hall Passes.");
   });
 
   it("describes hosted Hall Pass spending when hosted images are configured", () => {
@@ -48,13 +48,13 @@ describe("teacher image status view", () => {
       hasApiKey: false,
       entitlement: { configured: true, cost: 2 },
       canSpendHallPasses: true,
-    })).toBe("Hosted image generation spends a Hall Pass when it completes.");
+    })).toBe("Ruby High image creation uses a Hall Pass when the image is ready.");
     expect(view.creditHint({
       authed: true,
       hasApiKey: false,
       entitlement: { configured: true, cost: 2 },
       canSpendHallPasses: false,
-    })).toBe("No Hall Passes yet. Buy Hall Passes or burn a Card first.");
+    })).toBe("No Hall Passes yet. Buy Hall Passes or permanently destroy a collectible card first.");
   });
 
   it("uses the injected OpenRouter message when neither key nor hosted image generation is available", () => {

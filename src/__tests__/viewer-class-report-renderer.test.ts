@@ -98,20 +98,20 @@ describe("class report renderer", () => {
     expect(textTree(report)).toEqual([
       "A",
       "Ruby class result",
-      "Class passed · final response met · Freshman · 3/3",
+      "Class passed · final answer passed · Freshman · 3/3",
       "Final prompt: Which source best supports the claim?",
       "What Ruby noticed",
       "Ruby noticed that “The primary source” matched what the final research prompt asked for.",
       "Passing class recorded",
       "Freshman with Ruby: A, 3 of 3 graded cards correct.",
       "Course progress",
-      "1 of 3 passing Ruby class days are recorded for Freshman. 2 more days to clear the course.",
+      "You completed 1 of 3 required Ruby class days for Freshman. Pass 2 more days to finish the course.",
       "correct",
       "3/3",
       "questions answered",
       "score",
       "93%",
-      "grade score",
+      "class score",
     ]);
     const art = (report.children[0] as FakeElement).children[2] as FakeElement;
     expect(art.className).toBe("class-report-teacher-art");
@@ -142,9 +142,9 @@ describe("class report renderer", () => {
     expect(report.className).toBe("class-report-card needs-work");
     expect(textTree(report)).toContain("D");
     expect(textTree(report)).toContain("Sally class result");
-    expect(textTree(report)).toContain("Class needs review · Freshman · 1/3");
-    expect(textTree(report)).toContain("Sally recorded 1/3 on today’s graded cards.");
-    expect(textTree(report)).toContain("0 of 3 passing Sally class days are recorded for Freshman. 3 more days to clear the course.");
+    expect(textTree(report)).toContain("Class needs work · Freshman · 1/3");
+    expect(textTree(report)).toContain("Sally recorded 1/3 for today’s class.");
+    expect(textTree(report)).toContain("You completed 0 of 3 required Sally class days for Freshman. Pass 3 more days to finish the course.");
   });
 
   it("renders next-step copy for signup, essay, social, practice, and complete states", () => {
@@ -163,11 +163,11 @@ describe("class report renderer", () => {
     expect((essay as unknown as FakeElement).className).toBe("class-report-next is-essay");
     expect(textTree(essay as unknown as FakeElement)).toEqual([
       "Your graded essay is ready",
-      "Write it next to complete this year's requirements and unlock the ceremony.",
+      "Write it next to finish this year's requirements and start the ceremony.",
     ]);
     expect(textTree(social as unknown as FakeElement)).toEqual([
       "Finish today’s reflection",
-      "Then practice stays open; return tomorrow for the next graded class.",
+      "After that, you can keep practising. Return tomorrow for the next graded class.",
     ]);
     expect((practice as unknown as FakeElement).className).toBe("class-report-next is-practice");
     expect(textTree(practice as unknown as FakeElement)).toEqual([

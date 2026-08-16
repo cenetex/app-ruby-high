@@ -168,7 +168,7 @@ describe("career card renderer", () => {
       roleLabel: "graduated",
       subtitle: "Arc complete",
       metrics: [
-        { label: "status", value: "graduated", detail: "four-year arc complete", met: true },
+        { label: "status", value: "graduated", detail: "all four years complete", met: true },
       ],
       tokens: tokens as unknown as HTMLElement,
       ceremony: ceremony as unknown as HTMLElement,
@@ -182,7 +182,7 @@ describe("career card renderer", () => {
       "Arc complete",
       "status",
       "graduated",
-      "four-year arc complete",
+      "all four years complete",
       "ceremony",
     ]);
   });

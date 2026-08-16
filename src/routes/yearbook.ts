@@ -77,7 +77,7 @@ function cardTitle(card: YearbookShareCard): string {
 function summaryLine(card: YearbookShareCard): string {
   const total = Math.max(0, Math.floor(Number(card.summary.total ?? 0)));
   const correct = Math.max(0, Math.floor(Number(card.summary.correct ?? 0)));
-  return total > 0 ? `${correct}/${total} questions passed` : "Year sealed";
+  return total > 0 ? `${correct}/${total} answers correct` : "Year completed";
 }
 
 function subjectRows(card: YearbookShareCard): string[] {
@@ -97,7 +97,7 @@ function renderHtml(ctx: RouteContext, card: YearbookShareCard): string {
   const completed = new Date(card.completedAt).toISOString().slice(0, 10);
   const superlatives = card.superlatives.length > 0
     ? card.superlatives.map((line) => `<li>${escapeHtml(line)}</li>`).join("")
-    : "<li>Paper card sealed.</li>";
+    : "<li>Year saved.</li>";
   const subjects = subjectRows(card).map((line) => `<li>${escapeHtml(line)}</li>`).join("");
   const playUrl = absoluteUrl(ctx, `${VIEWER_PATH}?ref=yb_${encodeURIComponent(card.shareId)}`);
   return `<!doctype html>
@@ -141,13 +141,13 @@ function renderHtml(ctx: RouteContext, card: YearbookShareCard): string {
         <dl>
           <dt>Completed</dt><dd>${escapeHtml(completed)}</dd>
           <dt>Summary</dt><dd>${escapeHtml(summaryLine(card))}</dd>
-          <dt>Playbook</dt><dd>${escapeHtml(card.playbookId ?? "student")}</dd>
+          <dt>Student style</dt><dd>${escapeHtml(card.playbookId ?? "student")}</dd>
         </dl>
-        <h2>Superlatives</h2>
+        <h2>Highlights</h2>
         <ul>${superlatives}</ul>
         ${subjects ? `<h2>Class Marks</h2><ul>${subjects}</ul>` : ""}
       </section>
-      <footer>Ruby High yearbook card</footer>
+      <footer>Ruby High yearbook page</footer>
     </article>
     <a class="play" href="${escapeHtml(playUrl)}">Play ${escapeHtml(APP_DISPLAY_NAME)}</a>
   </main>
@@ -160,7 +160,7 @@ function renderSvg(card: YearbookShareCard): string {
   const lines = [
     title,
     summaryLine(card),
-    card.flavorQuote ? `"${card.flavorQuote}"` : "Paper card sealed.",
+    card.flavorQuote ? `"${card.flavorQuote}"` : "Year saved.",
     ...card.superlatives.slice(0, 4),
   ].map((line) => escapeHtml(line).slice(0, 92));
   const text = lines.map((line, index) =>

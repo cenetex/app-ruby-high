@@ -131,7 +131,7 @@ describe("mash grid renderer", () => {
     }, true) as unknown as FakeElement;
 
     expect(textTree(card)).toEqual([
-      "Social Card · sealed",
+      "Social Card · completed",
       "Noor",
       "·",
       "Vince",

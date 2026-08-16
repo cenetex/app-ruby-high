@@ -37,7 +37,7 @@ export function createRaceStripRenderer(deps: RaceStripRendererDeps): RaceStripR
       deps.timerPill.classList.toggle("is-locked", view.timer.locked);
       deps.timerPill.classList.toggle("is-soft", !!view.timer.soft);
       deps.timerPill.title = view.timer.soft
-        ? "Timer is soft: answer when ready. Classmates may already be locked in."
+        ? "The timer ended, but you can still answer. Some classmates may have answered already."
         : "";
     }
   }

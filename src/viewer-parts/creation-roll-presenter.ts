@@ -86,15 +86,15 @@ export function createCreationRollPresenter(deps: CreationRollPresenterDeps): Cr
       const pb = playbooks.find((p) => p.id === c.playbookId)
         || { name: c.playbookId, startingMove: { name: "\u2014", description: "" } };
       candidate.name.textContent = c.name || "\u2014";
-      candidate.subtitle.textContent = (pb.name || c.playbookId || "Student") + " \u00b7 Freshman candidate";
+      candidate.subtitle.textContent = (pb.name || c.playbookId || "Student") + " \u00b7 Grade 9 student";
       if (pb.accent) {
         candidate.card.style.borderColor = pb.accent;
         candidate.role.style.background = pb.accent;
       }
       deps.renderCreationStatsInto(candidate.stats, c.stats);
       deps.renderMarkdownInto(candidate.quote, quoteText(c), { inline: true });
-      candidate.moveTitle.textContent = pb.startingMove && pb.startingMove.name ? pb.startingMove.name : "Starting Move";
-      deps.renderMarkdownInto(candidate.moveContent, pb.startingMove && pb.startingMove.description ? pb.startingMove.description : "No move text yet.", { inline: true });
+      candidate.moveTitle.textContent = pb.startingMove && pb.startingMove.name ? pb.startingMove.name : "Starting strength";
+      deps.renderMarkdownInto(candidate.moveContent, pb.startingMove && pb.startingMove.description ? pb.startingMove.description : "No starting strength yet.", { inline: true });
       setRowText(rows.nameRow, c.name || "");
       setRowText(rows.playbookRow, rows.playbookRow.select ? (c.playbookId || "") : (pb.name || ""));
       const stats = c.stats || {};

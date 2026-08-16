@@ -41,7 +41,7 @@ describe("account history row view", () => {
       className: "account-history-row is-swap",
       title: "First Bell pack",
       meta: "Solana checkout · Jun 19, 2026",
-      delta: "-0.05 SOL · +2 Packs",
+      delta: "-0.05 SOL · +2 Collectible Packs",
     });
   });
 
@@ -77,8 +77,8 @@ describe("account history row view", () => {
       metadata: { hallPassCardCount: 1 },
     })).toMatchObject({
       className: "account-history-row is-debit",
-      title: "Card burn",
-      delta: "-1 Card",
+      title: "Collectible card permanently destroyed",
+      delta: "-1 Collectible Card",
     });
   });
 

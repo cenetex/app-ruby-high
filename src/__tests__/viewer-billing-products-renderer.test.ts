@@ -70,7 +70,7 @@ function hallPassPaymentView(overrides?: Partial<BillingHallPassPaymentChoiceVie
     metaText: "$5.00",
     buttonText: "Checkout",
     buttonDisabled: false,
-    buttonTitle: "Pay by card with Stripe.",
+    buttonTitle: "Pay by card.",
     ...overrides,
   };
 }

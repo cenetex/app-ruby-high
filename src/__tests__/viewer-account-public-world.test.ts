@@ -39,9 +39,9 @@ describe("accountPublicWorldView", () => {
       hasCharacter: false,
       hasPublicName: false,
       visible: false,
-      summaryText: "Create a student before joining school activity.",
-      statusText: "Not shown in school activity",
-      toggleText: "Join",
+      summaryText: "Create a student before showing them in shared school activity.",
+      statusText: "Hidden from shared school activity",
+      toggleText: "Show",
       toggleDisabled: true,
       toggleTitle: "Create a student first",
       nextVisible: true,
@@ -65,17 +65,17 @@ describe("accountPublicWorldView", () => {
       hasPublicName: true,
       publicNameReviewOk: true,
       visible: true,
-      summaryText: "Your active student is shown in school activity.",
+      summaryText: "Your active student appears in shared school activity.",
       statusClass: "is-visible",
-      toggleText: "Leave",
+      toggleText: "Hide",
       toggleDisabled: false,
       nextVisible: false,
     });
     expect(hidden).toMatchObject({
       visible: false,
-      summaryText: "Your active student is not shown in school activity.",
+      summaryText: "Your active student is hidden from shared school activity.",
       statusClass: "",
-      toggleText: "Join",
+      toggleText: "Show",
       toggleDisabled: false,
       nextVisible: true,
     });
@@ -102,18 +102,18 @@ describe("accountPublicWorldView", () => {
       publicNameReviewOk: false,
       publicNameReviewReason: "reserved",
       visible: false,
-      summaryText: "Choose a student name that is not a staff or system name before joining school rooms.",
+      summaryText: "Choose a student name that is not a staff or system name before showing them in school rooms.",
       toggleDisabled: true,
-      toggleTitle: "Review this student name before joining school rooms",
+      toggleTitle: "Review this student name before showing it in school rooms",
     });
     expect(contact).toMatchObject({
       publicNameReviewReason: "contact",
-      summaryText: "Remove contact info, handles, or links from this student name before joining school rooms.",
+      summaryText: "Remove contact details, usernames, or links from this student name before showing them in school rooms.",
       toggleDisabled: true,
     });
     expect(unsafe).toMatchObject({
       publicNameReviewReason: "unsafe",
-      summaryText: "Choose a school-appropriate student name before joining school rooms.",
+      summaryText: "Choose a school-appropriate student name before showing them in school rooms.",
       toggleDisabled: true,
     });
   });
@@ -128,10 +128,10 @@ describe("accountPublicWorldView", () => {
     expect(view).toMatchObject({
       blockedBySocialConsent: true,
       visible: false,
-      summaryText: "A legacy privacy setting is keeping this student out of shared school activity.",
-      toggleText: "Join",
+      summaryText: "An older privacy setting is keeping this student out of shared school activity.",
+      toggleText: "Show",
       toggleDisabled: true,
-      toggleTitle: "Legacy social sharing is off for this student",
+      toggleTitle: "An older privacy setting is hiding this student",
       nextVisible: true,
     });
   });
@@ -208,19 +208,19 @@ describe("account public-world controller", () => {
 
     harness.controller.render();
 
-    expect(harness.summary.textContent).toBe("Your active student is not shown in school activity.");
-    expect(harness.status.textContent).toBe("Not shown in school activity");
+    expect(harness.summary.textContent).toBe("Your active student is hidden from shared school activity.");
+    expect(harness.status.textContent).toBe("Hidden from shared school activity");
     expect(harness.status.classList.has("is-visible")).toBe(false);
-    expect(harness.toggle.textContent).toBe("Join");
+    expect(harness.toggle.textContent).toBe("Show");
     expect(harness.toggle.disabled).toBe(false);
-    expect(harness.toggle.title).toBe("Show this student in school activity");
+    expect(harness.toggle.title).toBe("Show this student in shared school activity");
 
     harness.setCharacter({ name: "Noor", publicWorldVisible: true, socialConsent: true });
     harness.controller.render();
 
-    expect(harness.status.textContent).toBe("Shown in school activity");
+    expect(harness.status.textContent).toBe("Shown in shared school activity");
     expect(harness.status.classList.has("is-visible")).toBe(true);
-    expect(harness.toggle.textContent).toBe("Leave");
+    expect(harness.toggle.textContent).toBe("Hide");
   });
 
   it("toggles presence through the command route and restores busy state", async () => {
@@ -232,7 +232,7 @@ describe("account public-world controller", () => {
       type: "set-public-presence",
       publicWorldVisible: true,
     });
-    expect(harness.notify).toHaveBeenCalledWith("School presence enabled", true);
+    expect(harness.notify).toHaveBeenCalledWith("Your student is now shown", true);
     expect(harness.onUpdated).toHaveBeenCalled();
     expect(harness.setStatus).not.toHaveBeenCalled();
     expect(harness.isBusy()).toBe(false);
@@ -251,7 +251,7 @@ describe("account public-world controller", () => {
 
     await harness.controller.toggle();
 
-    expect(harness.setStatus).toHaveBeenCalledWith("Could not update school presence.", true);
+    expect(harness.setStatus).toHaveBeenCalledWith("Could not change who can see your student.", true);
     expect(harness.notify).not.toHaveBeenCalled();
     expect(harness.onUpdated).not.toHaveBeenCalled();
     expect(harness.isBusy()).toBe(false);
