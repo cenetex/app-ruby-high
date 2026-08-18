@@ -14,7 +14,7 @@ import {
   multipleChoiceDefinition,
   validateMultipleChoiceDefinition,
 } from "../../question-choices.js";
-import type { ContentPack, PackCurriculumMetadata } from "../types.js";
+import type { ContentPack, PackCurriculumMetadata, PackSourceCard } from "../types.js";
 
 export const PROJECT89_SIGNAL_TIMELINE_LAB_PACK_ID = "teacher:seraph-project89-signal-timeline-lab";
 export const PROJECT89_SIGNAL_TIMELINE_LAB_FACULTY_ID = "seraph";
@@ -41,7 +41,11 @@ export function getProject89SignalTimelineLab(): Promise<ContentPack> {
 }
 
 async function loadCourse(): Promise<ContentPack> {
-  const parsed = JSON.parse(await readCourseFile()) as CourseFile;
+  const [courseFile, corpusFile] = await Promise.all([
+    readProject89Asset("questions", "project89-signal-timeline-lab.json"),
+    readProject89Asset("corpora", "project89.md"),
+  ]);
+  const parsed = JSON.parse(courseFile) as CourseFile;
   if (parsed.faculty !== PROJECT89_SIGNAL_TIMELINE_LAB_FACULTY_ID) {
     throw new Error("project89-signal-timeline-lab.json must declare faculty='seraph'.");
   }
@@ -63,6 +67,8 @@ async function loadCourse(): Promise<ContentPack> {
   }
   const questions = parsed.questions.map((question, index) => parseQuestion(question, index));
   validateEditorialShape(questions, curriculum);
+  const sourceCards = parseCorpus(corpusFile);
+  validateCorpusShape(sourceCards, curriculum);
 
   return {
     id: PROJECT89_SIGNAL_TIMELINE_LAB_PACK_ID,
@@ -92,6 +98,7 @@ async function loadCourse(): Promise<ContentPack> {
         ].join(" "),
         defaultModel: DEFAULT_OPENROUTER_MODEL,
         questions,
+        sourceCards,
       },
     ],
     courses: [
@@ -118,13 +125,13 @@ async function loadCourse(): Promise<ContentPack> {
   };
 }
 
-async function readCourseFile(): Promise<string> {
+async function readProject89Asset(directory: "questions" | "corpora", fileName: string): Promise<string> {
   const here = dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    resolve(here, "..", "..", "..", "assets", "questions", "project89-signal-timeline-lab.json"),
-    resolve(here, "..", "..", "assets", "questions", "project89-signal-timeline-lab.json"),
-    resolve(here, "..", "assets", "questions", "project89-signal-timeline-lab.json"),
-    resolve(here, "assets", "questions", "project89-signal-timeline-lab.json"),
+    resolve(here, "..", "..", "..", "assets", directory, fileName),
+    resolve(here, "..", "..", "assets", directory, fileName),
+    resolve(here, "..", "assets", directory, fileName),
+    resolve(here, "assets", directory, fileName),
   ];
   let lastError: unknown = null;
   for (const path of candidates) {
@@ -137,10 +144,102 @@ async function readCourseFile(): Promise<string> {
     }
   }
   throw new Error(
-    `Project 89 Signal & Timeline Lab bank not found; searched ${candidates.join(", ")}; lastErr=${
+    `Project 89 Signal & Timeline Lab asset '${fileName}' not found; searched ${candidates.join(", ")}; lastErr=${
       lastError instanceof Error ? lastError.message : String(lastError)
     }`,
   );
+}
+
+function parseCorpus(raw: string): PackSourceCard[] {
+  const rows = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("|") && line.endsWith("|"))
+    .filter((line) => !/^\|\s*-+/.test(line))
+    .map((line) => line.slice(1, -1).split("|").map((cell) => cell.trim()));
+  if (rows.length === 0) return [];
+  const header = rows[0]!.map((cell) => cell.toLowerCase());
+  const index = (name: string) => header.indexOf(name);
+  const idIndex = index("id");
+  const subjectIndex = index("subject");
+  const difficultyIndex = index("difficulty");
+  const frontIndex = index("front");
+  const backIndex = index("back");
+  const tagsIndex = index("tags");
+  for (const [name, columnIndex] of Object.entries({
+    id: idIndex,
+    subject: subjectIndex,
+    difficulty: difficultyIndex,
+    front: frontIndex,
+    back: backIndex,
+  })) {
+    if (columnIndex < 0) throw new Error(`project89.md corpus table missing '${name}' column.`);
+  }
+  return rows.slice(1).map((row, index) => {
+    const id = row[idIndex]?.trim();
+    const subject = row[subjectIndex]?.trim();
+    const front = row[frontIndex]?.trim();
+    const back = row[backIndex]?.trim();
+    const difficulty = row[difficultyIndex]?.trim() as Difficulty;
+    if (!id) throw new Error(`project89.md corpus row ${index + 1}.id missing.`);
+    if (!subject) throw new Error(`project89.md corpus row ${index + 1}.subject missing.`);
+    if (!front) throw new Error(`project89.md corpus row ${index + 1}.front missing.`);
+    if (!back) throw new Error(`project89.md corpus row ${index + 1}.back missing.`);
+    if (!DIFFICULTIES.includes(difficulty)) {
+      throw new Error(`project89.md corpus row ${index + 1}.difficulty must be easy, medium, or hard.`);
+    }
+    return {
+      id,
+      kind: "basic",
+      front,
+      back,
+      acceptedAnswers: [back],
+      deckName: "project89",
+      tags: (row[tagsIndex] ?? "").split(",").map((tag) => tag.trim()).filter(Boolean),
+      subject,
+      difficulty,
+      minGrade: difficulty === "easy" ? "10" : difficulty === "medium" ? "11" : "12",
+      faculty: PROJECT89_SIGNAL_TIMELINE_LAB_FACULTY_ID,
+    };
+  });
+}
+
+function validateCorpusShape(
+  sourceCards: PackSourceCard[],
+  curriculum: PackCurriculumMetadata,
+): void {
+  if (sourceCards.length !== 60) {
+    throw new Error(`Project 89 research corpus must contain 60 source cards; found ${sourceCards.length}.`);
+  }
+  if (new Set(sourceCards.map((card) => card.id)).size !== sourceCards.length) {
+    throw new Error("Project 89 research corpus source-card ids must be unique.");
+  }
+  if (new Set(sourceCards.map((card) => card.front.toLocaleLowerCase())).size !== sourceCards.length) {
+    throw new Error("Project 89 research corpus prompts must be unique.");
+  }
+  const moduleCounts = new Map(curriculum.modules.map((module) => [module, 0]));
+  const difficultyCounts: Record<Difficulty, number> = { easy: 0, medium: 0, hard: 0 };
+  for (const card of sourceCards) {
+    if (!moduleCounts.has(card.subject)) {
+      throw new Error(`Unknown Project 89 research corpus module: ${card.subject}.`);
+    }
+    moduleCounts.set(card.subject, (moduleCounts.get(card.subject) ?? 0) + 1);
+    difficultyCounts[card.difficulty] += 1;
+  }
+  for (const [module, count] of moduleCounts) {
+    if (count !== 10) {
+      throw new Error(`Project 89 research corpus module '${module}' must contain 10 cards; found ${count}.`);
+    }
+  }
+  if (
+    difficultyCounts.easy !== 18
+    || difficultyCounts.medium !== 24
+    || difficultyCounts.hard !== 18
+  ) {
+    throw new Error(
+      `Project 89 research corpus difficulty mix must be 18/24/18; found ${difficultyCounts.easy}/${difficultyCounts.medium}/${difficultyCounts.hard}.`,
+    );
+  }
 }
 
 function parseQuestion(value: unknown, index: number): BankedQuestion {

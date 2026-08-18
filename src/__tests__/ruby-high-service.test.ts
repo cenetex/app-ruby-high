@@ -20,6 +20,7 @@ import {
   resetActivePack,
 } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
+import { PROJECT89_SIGNAL_TIMELINE_LAB_PACK_ID } from "../content/packs/project89-signal-timeline-lab.js";
 import { FIRST_BELL_SET_CODE, FIRST_BELL_SET_NAME } from "../services/hall-pass-card-catalog.js";
 import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 import { cardMemoryKey, defaultCardMemory } from "../services/ruby-high/helpers.js";
@@ -1372,6 +1373,37 @@ describe("RubyHighService Phase 1", () => {
           nextAction: expect.stringMatching(/^(manual-curation|monitor-coverage)$/),
           priorityScore: expect.any(Number),
         }),
+      ]),
+    });
+  });
+
+  it("uses Seraph's research corpus when Project 89 occupies the Guest Faculty course", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:project89-guest-research-corpus";
+    const state = attachTestCharacter(ruby, sid);
+    ruby.setGuestPackOverrideForSession(sid, PROJECT89_SIGNAL_TIMELINE_LAB_PACK_ID);
+    ruby.selectGrade(sid, "10");
+
+    const eligible = ruby["courseQuestionsFor"](state, "guest");
+    state.cardMemory = {};
+    for (const question of eligible.slice(0, -1)) {
+      state.cardMemory[cardMemoryKey("guest", question.id)] = {
+        ...defaultCardMemory("guest", question.id),
+        dueAt: Date.UTC(2036, 0, 1),
+      };
+    }
+
+    const guest = ruby.curriculumCoverageSnapshot().rows.find((row) =>
+      row.grade === "10" && row.facultyId === "guest"
+    );
+    expect(guest?.replenishment).toMatchObject({
+      corpusId: "seraph-project89-research-corpus",
+      corpusTitle: "Seraph Project 89 Research Corpus",
+      corpusPath: "assets/corpora/project89.md",
+      researchInterests: expect.arrayContaining(["signal verification", "bounded intervention"]),
+      sourcePackets: expect.arrayContaining([
+        expect.objectContaining({ id: "seraph-source-human-ai-agency" }),
+        expect.objectContaining({ id: "seraph-source-bounded-intervention" }),
       ]),
     });
   });

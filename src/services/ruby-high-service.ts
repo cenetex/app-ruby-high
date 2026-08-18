@@ -3732,6 +3732,7 @@ export class RubyHighService extends Service {
         const key = `${grade}:${status.facultyId}`;
         let row = rows.get(key);
         if (!row) {
+          const teacherTemplateId = courseForFacultyForSession(state, status.facultyId)?.teacherTemplateId;
           row = {
             grade,
             facultyId: status.facultyId,
@@ -3749,7 +3750,10 @@ export class RubyHighService extends Service {
             sourceSubjects: new Map<string, number>(),
             weakSubjects: new Map<string, number>(),
             recentConcepts: new Map<string, number>(),
-            researchCorpus: builtInTeacherResearchCorpusForFaculty(status.facultyId),
+            researchCorpus: builtInTeacherResearchCorpusForFaculty(status.facultyId)
+              ?? (status.facultyId === GUEST_COURSE_ID && teacherTemplateId
+                ? builtInTeacherResearchCorpusForFaculty(teacherTemplateId)
+                : null),
           };
           rows.set(key, row);
         }
