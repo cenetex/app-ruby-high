@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -37,6 +37,7 @@ import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 
 afterEach(() => {
   resetActivePack();
+  vi.unstubAllEnvs();
 });
 
 describe("ContentPack registry", () => {
@@ -243,6 +244,7 @@ describe("per-session pack helpers — abstraction in place", () => {
 
   it("the *ForSession sync helpers all read through packForSession", async () => {
     await getActivePack();
+    vi.stubEnv("RUBY_HIGH_FEATURED_GUEST_PACK_ID", ELIZAOS_SYSTEMS_LAB_PACK_ID);
     const session = { activePackId: null };
     expect(facultyForSession(session).map((f) => f.id).sort()).toEqual(
       ["guest", "professor-edward", "ruby", "sally-science"],

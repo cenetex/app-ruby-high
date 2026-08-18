@@ -493,6 +493,7 @@ describe("/pack-library", () => {
     pack.faculty[0]!.displayName = "Signal Coach";
     pack.faculty[0]!.subjects = ["sampling", "controls"];
     await ruby.persistPublicTeacherPack(pack, { creatorUserId: "test-alice" });
+    vi.stubEnv("RUBY_HIGH_FEATURED_GUEST_PACK_ID", pack.id);
 
     let response = await route({
       method: "GET",
@@ -2063,6 +2064,7 @@ describe("/pack-library", () => {
     const aliceSessionId = signInUser("alice");
     const pack = fakeQuestionPack("pack:legacy-published-edit");
     await ruby.persistPublicTeacherPack(pack, { creatorUserId: "test-alice" });
+    vi.stubEnv("RUBY_HIGH_FEATURED_GUEST_PACK_ID", pack.id);
 
     let response = await route({
       method: "GET",

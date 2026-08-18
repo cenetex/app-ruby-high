@@ -622,7 +622,7 @@ export function formatMoney(cents: unknown, currency?: unknown): string {
   const amount = Number(cents || 0) / 100;
   const code = String(currency || "usd").toUpperCase();
   try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency: code }).format(amount);
+    return new Intl.NumberFormat(undefined, { style: "currency", currency: code, currencyDisplay: "narrowSymbol" }).format(amount);
   } catch (_e) {
     return code + " " + amount.toFixed(2);
   }

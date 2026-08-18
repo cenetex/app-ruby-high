@@ -34,6 +34,8 @@ export default defineConfig({
       "dist/**",
       "dist-spa/**",
       "tests/browser/**",
+      "tmp/**",
+      ".tmp/**",
     ],
   }
 });
