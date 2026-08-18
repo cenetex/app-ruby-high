@@ -9739,6 +9739,24 @@ export class RubyHighService extends Service {
     return state;
   }
 
+  /** Update the live avatar portrait immediately, in place. Used by the
+   *  yearbook "age up" action so the avatar evolves one grade at a time
+   *  without waiting for the social photo-reveal lottery. */
+  setPortraitDirect(sessionId: string, portraitDataUrl: string): QuizState {
+    const state = this.getOrCreate(sessionId);
+    if (!state.character) throw new Error("No character to attach portrait to.");
+    const stored = normalizeStoredImageRef(portraitDataUrl, "portraitDataUrl");
+    if (!stored) throw new Error("portraitDataUrl is required.");
+    state.character.portraitDataUrl = stored;
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    log.event("portrait.aged-up", {
+      sessionId,
+      characterName: state.character.name,
+    });
+    return state;
+  }
+
   /** Store an AI-generated yearbook card image URL on a completed grade. */
   setYearbookImage(sessionId: string, grade: string, imageUrl: string): QuizState {
     const state = this.getOrCreate(sessionId);

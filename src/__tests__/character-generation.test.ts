@@ -363,4 +363,37 @@ describe("graduation photo prompts", () => {
     expect(JSON.stringify(body)).toContain("Ruby High teacher's lounge");
     expect(JSON.stringify(body)).toContain("lively social energy");
   });
+
+  it("ages a student portrait up one grade using the current portrait as identity", async () => {
+    vi.stubEnv("RUBY_HIGH_PUBLIC_BASE", "https://ruby-high.ai");
+    const requests: any[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: unknown, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body || "{}")));
+      return imageResponse("data:image/png;base64,AGEDUP");
+    }));
+
+    const { renderCharacterPortraitAgeUp } = await import("../services/character-generation.js");
+    const url = await renderCharacterPortraitAgeUp({
+      apiKey: "sk-test",
+      name: "Mina",
+      personality: "Restless, bright, and trying to look less proud than she is.",
+      referenceImageUrl: "/api/apps/ruby-high/assets/students/indra-full.png",
+      gradeLabel: "Sophomore",
+    });
+
+    expect(url).toBe("data:image/png;base64,AGEDUP");
+    const content = requests[0]?.messages?.[0]?.content;
+    const prompt = Array.isArray(content)
+      ? content.filter((part: any) => part.type === "text").map((part: any) => String(part.text ?? "")).join("\n")
+      : "";
+    const imageParts = Array.isArray(content) ? content.filter((part: any) => part.type === "image_url") : [];
+    expect(imageParts.map((part: any) => part.image_url?.url)).toEqual([
+      "https://ruby-high.ai/api/apps/ruby-high/assets/students/indra-full.png",
+    ]);
+    expect(prompt).toContain("REFERENCE IMAGE: Mina's current student portrait");
+    expect(prompt).toContain("IDENTITY LOCK");
+    expect(prompt).toContain("one grade older");
+    expect(prompt).toContain("now a Sophomore");
+    expect(prompt).toContain("SOLID FLAT pale lavender background");
+  });
 });

@@ -132,6 +132,58 @@ export async function renderCharacterPortrait(args: {
   }
 }
 
+export async function renderCharacterPortraitAgeUp(args: {
+  apiKey: string;
+  name: string;
+  personality: string;
+  referenceImageUrl: string;
+  gradeLabel: string;
+}): Promise<string> {
+  const contentParts: Array<Record<string, unknown>> = [
+    {
+      type: "text",
+      text: `REFERENCE IMAGE: ${args.name}'s current student portrait. Treat this as their canonical identity.`,
+    },
+    { type: "image_url", image_url: { url: imageReferenceUrl(args.referenceImageUrl) } },
+    {
+      type: "text",
+      text: [
+        `Draw ${args.name} one grade older — now a ${args.gradeLabel} at Ruby High.`,
+        "IDENTITY LOCK: Preserve the student's hair shape and color, face, skin tone, outfit, silhouette, proportions, and JRPG art style from the reference. Age them up by one school year — slightly taller, a touch more mature in the face and posture — without redesigning or swapping the character.",
+        `Personality: ${args.personality}`,
+        "",
+        "STYLE: JRPG-style FULL BODY standing portrait — 3/4 view, head to ankles. Tall portrait orientation. Anime-influenced. Bold black outline 5px. Vibrant flat colors, subtle cel shading. Dynamic relaxed pose, expressive face that fits the personality.",
+        "",
+        "OUTPUT FORMAT: a single PNG portrait with a SOLID FLAT pale lavender background (#ece6f5). The background fills the entire frame as one perfectly even color. The character is centered on top of the solid background, with bold black 5px outline around the character separating figure from background.",
+        "No text, no logo, no signature, no caption.",
+      ].join("\n"),
+    },
+  ];
+  const attempt = () => openRouterJson<PortraitResponse>({
+    apiKey: args.apiKey,
+    label: "portrait-age-up",
+    timeoutMs: PORTRAIT_TIMEOUT_MS,
+    body: {
+      model: PORTRAIT_MODEL,
+      modalities: ["image", "text"],
+      messages: [{ role: "user", content: contentParts }],
+      max_tokens: PORTRAIT_MAX_TOKENS,
+    },
+  }).then((body) => {
+    const url = body.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    if (!url) throw new Error("Portrait age-up generation returned no image.");
+    return url;
+  });
+  try {
+    return await attempt();
+  } catch (err) {
+    log.event("portrait-age-up.first-attempt-failed", {
+      reason: err instanceof Error ? err.message : String(err),
+    });
+    return attempt();
+  }
+}
+
 export async function renderTeacherPortrait(args: {
   apiKey: string;
   name: string;

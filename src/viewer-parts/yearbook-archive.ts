@@ -48,17 +48,17 @@ export function createYearbookArchiveRenderer(deps: YearbookArchiveRendererDeps)
     parent.appendChild(stat);
   }
 
-  function buildPortrait(entry: unknown): HTMLElement | null {
-    const entryImgUrl = recordValue(entry, "diplomaImageDataUrl") || recordValue(entry, "portraitDataUrl");
+  function buildAvatar(entry: unknown): HTMLElement | null {
+    const entryImgUrl = recordValue(entry, "portraitDataUrl") || recordValue(entry, "diplomaImageDataUrl");
     if (!entryImgUrl) return null;
-    const photoWrap = deps.document.createElement("div");
-    photoWrap.className = "paper-archive-portrait";
+    const wrap = deps.document.createElement("span");
+    wrap.className = "paper-archive-avatar";
     const img = deps.document.createElement("img");
-    img.alt = stringValue(recordValue(entry, "name"), "Student") + " photo";
+    img.alt = stringValue(recordValue(entry, "name"), "Student") + " avatar";
     img.loading = "lazy";
     img.src = String(entryImgUrl);
-    photoWrap.appendChild(img);
-    return photoWrap;
+    wrap.appendChild(img);
+    return wrap;
   }
 
   function buildPersonFace(person: unknown): HTMLElement {
@@ -127,6 +127,8 @@ export function createYearbookArchiveRenderer(deps: YearbookArchiveRendererDeps)
 
       const top = deps.document.createElement("div");
       top.className = "paper-archive-entry-top";
+      const avatar = buildAvatar(entry);
+      if (avatar) top.appendChild(avatar);
       const gradeEl = deps.document.createElement("span");
       gradeEl.className = "paper-archive-grade";
       const diamonds = deps.document.createElement("span");
@@ -163,8 +165,6 @@ export function createYearbookArchiveRenderer(deps: YearbookArchiveRendererDeps)
       if (diploma) item.appendChild(renderer.buildDiploma(diploma));
       const photo = recordValue(entry, "photo");
       if (photo) item.appendChild(renderer.buildGraduationPhoto(photo, entry));
-      const portrait = buildPortrait(entry);
-      if (portrait) item.appendChild(portrait);
       return item;
     },
     buildDiploma(diploma): HTMLElement {
