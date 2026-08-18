@@ -141,9 +141,7 @@ test("keeps a specific Class Result after refresh with one truthful next step", 
   await expect(report.locator(".class-result-section.observation")).toContainText(finalResponse);
   await expect(report.locator(".class-result-section.consequence")).toContainText(/class recorded|mark recorded/i);
   await expect(report.locator(".class-result-section.progress")).toContainText("Course progress");
-  const nextStep = page.locator(".class-report-next");
-  await expect(nextStep).toContainText("Sign up to continue");
-  await expect(nextStep).toContainText(/guest lesson is complete/i);
+  await expect(page.locator(".class-report-next")).toContainText(/return tomorrow for the next graded class/i);
   const resultText = await report.textContent();
 
   await page.setViewportSize({ width: 375, height: 812 });
