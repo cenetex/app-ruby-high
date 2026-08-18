@@ -131,9 +131,10 @@ describe("yearbook archive renderer", () => {
     expect(groupPhoto.className).toBe("paper-archive-photo-image");
     expect(groupPhoto.src).toBe("/group-photo.png");
     expect(groupPhoto.alt).toBe("Grade 10 Photo");
-    const portrait = entry.children[5] as FakeElement;
-    expect(portrait.className).toBe("paper-archive-portrait");
-    expect((portrait.children[0] as FakeElement).alt).toBe("Noor photo");
+    const top = entry.children[0] as FakeElement;
+    const avatar = top.children[0] as FakeElement;
+    expect(avatar.className).toBe("paper-archive-avatar");
+    expect((avatar.children[0] as FakeElement).alt).toBe("Noor avatar");
   });
 
   it("renders diploma and graduation photo fallbacks", () => {

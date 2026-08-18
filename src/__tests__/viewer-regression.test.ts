@@ -1191,7 +1191,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(clientSource, "return yearbookArchiveRenderer.buildArchive(entries, liveChar, livePb, playbooks);");
     expectScriptToContain(clientSource, "return yearbookArchiveRenderer.buildEntry(entry, liveChar, livePb, playbooks);");
     expectScriptToContain(clientSource, "return yearbookShareActionsRenderer.build(share);");
-    expectScriptToContain(script, "paper-archive-portrait");
+    expectScriptToContain(script, "paper-archive-avatar");
     expect(clientSource).not.toContain('!(grad && y.grade === "12")');
     expect(clientSource).not.toContain('archive.className = "paper-archive";');
     expect(clientSource).not.toContain('item.className = "paper-archive-entry";');

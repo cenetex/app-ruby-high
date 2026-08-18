@@ -6299,30 +6299,31 @@ export const VIEWER_CSS = `
   }
   .paper-archive-diploma,
   .paper-archive-photo {
-    display: grid;
-    grid-template-columns: 74px minmax(0, 1fr);
-    align-items: center;
-    gap: 8px;
-    margin-top: 7px;
+    display: block;
+    margin-top: 8px;
     border: 1px solid rgba(255,235,200,0.12);
     border-radius: 6px;
     background: rgba(0,0,0,0.12);
-    padding: 5px;
+    padding: 6px;
   }
   .paper-archive-diploma img {
     display: block;
-    width: 74px;
+    width: 100%;
     aspect-ratio: 724 / 543;
     object-fit: cover;
     border-radius: 4px;
   }
   .paper-archive-photo-image {
     display: block;
-    width: 74px;
+    width: 100%;
     aspect-ratio: 16 / 9;
     object-fit: cover;
     border-radius: 4px;
     background: rgba(255,255,255,0.08);
+  }
+  .paper-archive-diploma-copy,
+  .paper-archive-photo-copy {
+    margin-top: 6px;
   }
   .paper-archive-diploma-title,
   .paper-archive-photo-title {
@@ -6383,15 +6384,22 @@ export const VIEWER_CSS = `
     height: 100%;
     object-fit: cover;
   }
-  .paper-archive-portrait {
-    margin-top: 12px;
-    border-radius: 6px;
+  .paper-archive-avatar {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border: 2px solid rgba(255,235,200,0.4);
+    border-radius: 999px;
     overflow: hidden;
-    background: var(--bg-card);
+    background: rgba(255,255,255,0.08);
   }
-  .paper-archive-portrait img {
+  .paper-archive-avatar img {
     width: 100%;
-    height: auto;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
     display: block;
   }
   .paper-archive-pending {

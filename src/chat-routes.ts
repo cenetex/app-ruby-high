@@ -52,6 +52,7 @@ import {
   highestScoringFaculty,
   maybeUploadPortrait,
   renderCharacterPortrait,
+  renderCharacterPortraitAgeUp,
   renderDiplomaImage,
   renderGraduationPhoto,
   renderTeacherPortrait,
@@ -1570,7 +1571,7 @@ function readApiKey(ctx: ChatRouteContext, ruby: RubyHighService, sessionId: str
   }).apiKey;
 }
 
-type HostedImageChargeRoute = "character-portrait" | "teacher-portrait" | "diploma" | "yearbook-card" | "graduation-photo";
+type HostedImageChargeRoute = "character-portrait" | "character-portrait-age-up" | "teacher-portrait" | "diploma" | "yearbook-card" | "graduation-photo";
 
 class HostedImageChargeError extends Error {
   constructor(message: string, readonly status: number) {
@@ -3761,6 +3762,121 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         hallPasses,
         photoDayCreditsUsed: !!charge.usedPhotoDayCredit,
         characterSlots: ruby.characterSlotEntitlements(sessionId),
+        entitlements: hostedEntitlementStatus({ ruby, sessionId }),
+      } : {}),
+    });
+    return true;
+  }
+
+  // Age-up portrait — regenerates the student's avatar one grade older using
+  // the current portrait as an identity reference. Costs Hall Passes.
+  if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/character/portrait/age-up`) {
+    const token = auth.parseSessionToken(ctx.cookieHeader);
+    const record = auth.resolve(token);
+    const imageCredential = resolveOpenRouterImageCredential({ apiKeyHeader: ctx.apiKeyHeader });
+    const apiKey = imageCredential.apiKey;
+    if (!token || !record) {
+      ctx.error(ctx.res, "Not authenticated.", 401);
+      return true;
+    }
+    if (!apiKey) {
+      ctx.error(ctx.res, openRouterGenerationRequiredMessage("generating student portraits"), 401);
+      return true;
+    }
+    const rlKey = rateLimitKey(ctx, token);
+    if (!PORTRAIT_LIMITER.take(rlKey)) {
+      reject429(ctx, PORTRAIT_LIMITER.retryAfterSeconds(rlKey));
+      return true;
+    }
+    const sessionId = auth.stateKeyForRecord(record);
+    const state = ruby.getOrCreate(sessionId);
+    const ch = state.character;
+    if (!ch) {
+      ctx.error(ctx.res, "Create a student first.", 400);
+      return true;
+    }
+    const referenceImageUrl = ch.portraitDataUrl || defaultPlayerPortraitUrl(ch.playbookId);
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown> | null;
+    const rawGrade = body && typeof body.targetGrade === "string" ? body.targetGrade : "";
+    const currentGrade = Number(state.currentGrade ?? 0);
+    const nextGrade = Number.isFinite(currentGrade) && currentGrade >= 9 && currentGrade < 12
+      ? String(currentGrade + 1)
+      : String(currentGrade || 9);
+    let targetGrade: Grade;
+    if (rawGrade) {
+      if (!(GRADES as readonly string[]).includes(rawGrade)) {
+        ctx.error(ctx.res, `targetGrade must be one of ${GRADES.join(", ")}`, 400);
+        return true;
+      }
+      targetGrade = rawGrade as Grade;
+    } else {
+      targetGrade = (GRADES as readonly string[]).includes(nextGrade) ? nextGrade as Grade : "9" as Grade;
+    }
+    const gradeLabel = GRADE_LABELS[targetGrade] ?? `Grade ${targetGrade}`;
+    let charge: HostedImageCharge;
+    try {
+      charge = await prepareHostedImageCharge({
+        ruby,
+        sessionId,
+        hosted: imageCredential.hosted,
+        route: "character-portrait-age-up",
+        costKind: "portrait",
+        body: body as Record<string, unknown> | null,
+        description: "Age-up student portrait",
+        imageLabel: "aged-up portrait",
+        fingerprintPayload: {
+          name: ch.name,
+          personality: ch.personality,
+          referenceImageUrl,
+          targetGrade,
+        },
+      });
+    } catch (err) {
+      rejectHostedImageChargeError(ctx, err);
+      return true;
+    }
+    if (charge.replayUrl) {
+      ruby.setPortraitDirect(sessionId, charge.replayUrl);
+      await ruby.flushSession(sessionId);
+      ctx.json(ctx.res, {
+        ok: true,
+        portraitDataUrl: charge.replayUrl,
+        grade: targetGrade,
+        hallPassCost: charge.hallPassCost,
+        hallPasses: charge.hallPasses,
+        entitlements: hostedEntitlementStatus({ ruby, sessionId }),
+      });
+      return true;
+    }
+    let url: string;
+    try {
+      const dataUrl = await renderCharacterPortraitAgeUp({
+        apiKey,
+        name: ch.name,
+        personality: ch.personality,
+        referenceImageUrl,
+        gradeLabel,
+      });
+      url = await maybeUploadPortrait(dataUrl, "portrait");
+      ruby.setPortraitDirect(sessionId, url);
+    } catch (err) {
+      await refundHostedImageCharge({
+        ruby,
+        sessionId,
+        charge,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 502);
+      return true;
+    }
+    const hallPasses = await completeHostedImageCharge({ ruby, sessionId, charge, imageUrl: url });
+    ctx.json(ctx.res, {
+      ok: true,
+      portraitDataUrl: url,
+      grade: targetGrade,
+      ...(imageCredential.hosted ? {
+        hallPassCost: charge.hallPassCost,
+        hallPasses,
         entitlements: hostedEntitlementStatus({ ruby, sessionId }),
       } : {}),
     });
