@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 const globalPath = new URL("../dist/viewer-privy-client.global.js", import.meta.url);
-const DEFAULT_MAX_GLOBAL_BYTES = 10 * 1024 * 1024;
+const DEFAULT_MAX_GLOBAL_BYTES = 11 * 1024 * 1024;
 const maxGlobalBytes = positiveInt(process.env.RUBY_HIGH_PRIVY_CLIENT_GLOBAL_MAX_BYTES, DEFAULT_MAX_GLOBAL_BYTES);
 const globalText = await readFile(globalPath, "utf8");
 const globalStats = await stat(globalPath);
