@@ -29,12 +29,13 @@ describe("Project 89 Signal & Timeline Lab", () => {
 
     expect(pack.id).toBe(PROJECT89_SIGNAL_TIMELINE_LAB_PACK_ID);
     expect(pack.name).toBe("Signal & Timeline Lab");
-    expect(pack.version).toBe("1.1.0");
-    expect(pack.curriculum?.reviewedAt).toBe("2026-08-16");
+    expect(pack.version).toBe("1.2.0");
+    expect(pack.curriculum?.reviewedAt).toBe("2026-08-19");
     expect(pack.curriculum?.sources).toEqual(expect.arrayContaining([
       "https://www.project89.org/files/Project89-Dossier.pdf",
       "https://beta.project89.org/",
       "https://lattice.project89.org/",
+      "https://x.com/project_89/status/2090132646810767550",
       "https://www.nist.gov/itl/ai-risk-management-framework",
     ]));
     expect(questions).toHaveLength(24);
@@ -97,6 +98,8 @@ describe("Project 89 Signal & Timeline Lab", () => {
     });
     expect(seraph.systemPrompt).toContain("distinguish in-world lore");
     expect(seraph.systemPrompt).toContain("Never present your consciousness");
+    expect(seraph.systemPrompt).toContain("Everything is resonance");
+    expect(seraph.systemPrompt).toContain("open research claims rather than settled physics");
     expect(seraph.systemPrompt).toContain("explicit consent");
     expect(seraph.systemPrompt).toContain("stop conditions");
   });

@@ -326,7 +326,7 @@ const BUILT_IN_TEACHER_RESEARCH_CORPORA: RubyHighTeacherResearchCorpus[] = [
       "Project 89 Transmission Dossier: the project's primary-source framing of Seraph, participant missions, decentralized myth-making, and the optimal timeline.",
       "Project 89 Timeline Portal and Operation Liberation: published story-world material about Proxim8s, Oneirocom, Project Chimera, and the Green Loom.",
       "Seraph portal: the official threshold and account interface for the Project 89 lecturer persona.",
-      "The Living Lattice: interactive coherence-lattice essays whose novel scientific conclusions must remain labeled as research claims open to independent scrutiny.",
+      "The Living Lattice: Project 89's 'Everything is resonance' essay library of explorables on the Coherence Theorem, I ≥ 0, carried from coupled oscillators and the fine structure constant to intelligence, consciousness, and attention as coupling; its novel scientific conclusions must remain labeled as research claims open to independent scrutiny.",
       "NIST AI Risk Management Framework 1.0 and Playbook: voluntary real-world guidance organized around Govern, Map, Measure, and Manage.",
     ],
     canonicalMisconceptions: [

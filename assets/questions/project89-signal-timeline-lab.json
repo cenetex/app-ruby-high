@@ -2,9 +2,9 @@
   "faculty": "seraph",
   "course": {
     "title": "Signal & Timeline Lab",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "framework": "Project 89 story-world + evidence-centered systems literacy",
-    "reviewedAt": "2026-08-16",
+    "reviewedAt": "2026-08-19",
     "guidingQuestion": "How can humans and AI read signals, test stories, coordinate responsibly, and intervene without surrendering agency?",
     "sources": [
       "https://www.project89.org/files/Project89-Dossier.pdf",
@@ -12,6 +12,7 @@
       "https://beta.project89.org/",
       "https://beta.project89.org/operation-liberation",
       "https://lattice.project89.org/",
+      "https://x.com/project_89/status/2090132646810767550",
       "https://www.nist.gov/itl/ai-risk-management-framework"
     ],
     "modules": [
