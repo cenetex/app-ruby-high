@@ -37,6 +37,12 @@ let tmpDir: string;
 let storePath: string;
 let captured: { url: string; body: any } | null = null;
 let activeRuby: RubyHighService | null = null;
+const activeChats = new Set<ChatService>();
+
+function trackChat(chat: ChatService): ChatService {
+  activeChats.add(chat);
+  return chat;
+}
 
 function buildSseChunk(events: Array<{ content?: string; toolCalls?: any[]; finish?: string }>): Uint8Array {
   const lines: string[] = [];
@@ -92,7 +98,7 @@ async function makeServices() {
   const ruby = new RubyHighService({} as never, new StateStore(storePath));
   await ruby["hydrate"]();
   ruby.setFacultyService(faculty);
-  const chat = await ChatService.start({} as never);
+  const chat = trackChat(await ChatService.start({} as never));
   chat.setRubyHighService(ruby);
   activeRuby = ruby;
   return { ruby, chat, faculty };
@@ -206,12 +212,15 @@ beforeEach(async () => {
   storePath = join(tmpDir, "state.json");
   captured = null;
   activeRuby = null;
+  activeChats.clear();
 });
 
 afterEach(async () => {
   vi.restoreAllMocks();
-  // Stop also detaches the global log sink. A plain flush leaves that sink
-  // able to schedule another write between the flush and directory cleanup.
+  // ChatService owns persistence chains and persona-memory schedulers. Drain
+  // those before RubyHighService detaches the global log sink and the backing
+  // directory is removed.
+  for (const chat of activeChats) await chat.stop();
   if (activeRuby) await activeRuby.stop();
   await rm(tmpDir, { recursive: true, force: true });
 });
@@ -259,7 +268,7 @@ describe("ChatService.send — message composition", () => {
     expect(chat.roomSummary({ sessionToken: "late-student", faculty: "lounge" })).toContain("shared lounge line 0");
     await (chat as any).flushPersistence();
 
-    const rehydrated = await ChatService.start({} as never);
+    const rehydrated = trackChat(await ChatService.start({} as never));
     rehydrated.setRubyHighService(ruby);
     await rehydrated.ready();
 
@@ -310,7 +319,7 @@ describe("ChatService.send — message composition", () => {
     const ruby = new RubyHighService({} as never, new StateStore(storePath));
     await ruby["hydrate"]();
     ruby.setFacultyService(faculty);
-    const chat = new ChatService({} as never, personaMemory);
+    const chat = trackChat(new ChatService({} as never, personaMemory));
     chat.setRubyHighService(ruby);
     activeRuby = ruby;
 
@@ -551,7 +560,7 @@ describe("ChatService.send — message composition", () => {
     const ruby = new RubyHighService({} as never, new FailingSaveSessionStore());
     await ruby["hydrate"]();
     ruby.setFacultyService(faculty);
-    const chat = await ChatService.start({} as never);
+    const chat = trackChat(await ChatService.start({} as never));
     chat.setRubyHighService(ruby);
     activeRuby = ruby;
 
