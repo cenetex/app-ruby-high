@@ -67,4 +67,32 @@ describe("daily class progress view", () => {
       current: { opinionPurpose: "grade-essay" },
     })).toMatchObject({ visible: false });
   });
+
+  it("hides the whole bar when an active or completed class moves into practice", () => {
+    for (const classTelemetry of [telemetry(1), telemetry(3, "complete")]) {
+      expect(dailyClassProgressView({
+        ...classTelemetry,
+        current: { id: "practice-question" },
+        active_round: {
+          cardRole: "practice",
+          classSession: { mode: "practice" },
+        },
+      })).toMatchObject({ visible: false });
+    }
+  });
+
+  it("keeps the bar for a graded take and for the class report", () => {
+    expect(dailyClassProgressView({
+      ...telemetry(2),
+      active_round: {
+        cardRole: "social",
+        classSession: { mode: "class" },
+      },
+    })).toMatchObject({ visible: true });
+
+    expect(dailyClassProgressView(telemetry(3, "complete"))).toMatchObject({
+      visible: true,
+      steps: [{}, {}, {}, { key: "result", state: "current" }],
+    });
+  });
 });
