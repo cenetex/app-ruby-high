@@ -97,15 +97,23 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 
     <section class="blackboard-panel is-empty" id="blackboard-panel">
       <div class="blackboard-empty" id="blackboard-empty">
+        <div class="onboarding-hero" aria-hidden="true">
+          <div class="onboarding-hero-copy">
+            <span class="onboarding-kicker">First bell</span>
+            <img class="onboarding-wordmark" src="${safeApiBase}/assets/ruby-high-logo.png?v=first-bell-20260823" alt="" />
+            <span class="onboarding-hero-line">Your story starts in homeroom.</span>
+          </div>
+          <img class="onboarding-ruby" src="${safeApiBase}/assets/teachers/ruby-full-sticker.png?v=first-bell-20260823" alt="" />
+        </div>
         <div id="blackboard-empty-text">
           <div class="onboarding-title">Ruby High</div>
-          <div class="onboarding-sub">One short class a day. Three teachers. Six classmates. Four years to graduate.</div>
-          <div class="onboarding-detail">A new class opens each day at 17:00 UTC. Your first class starts now. Every grade and teacher note goes in your yearbook.</div>
+          <div class="onboarding-sub">Create a student and answer your first question.</div>
+          <div class="onboarding-detail">Ruby and your classmates are ready. Your choices become part of your yearbook.</div>
         </div>
         <button class="blackboard-empty-action" id="blackboard-empty-action" type="button" hidden>Create Student</button>
         <div class="onboarding-actions" id="onboarding-actions" hidden>
           <button class="blackboard-empty-action" id="onboarding-create-btn" type="button">Create my student</button>
-          <div class="onboarding-reassurance">Free · no account or AI key needed · your first class starts now</div>
+          <div class="onboarding-reassurance">Free · no sign-up needed · starts now</div>
         </div>
       </div>
 
@@ -248,12 +256,9 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       </div>
     </div>
     <div class="account-tabs" role="tablist" aria-label="Account areas">
-      <button type="button" class="account-tab is-active" id="account-tab-account" data-account-tab="account" role="tab" aria-selected="true" aria-controls="account-panel-account">Account</button>
-      <button type="button" class="account-tab" id="account-tab-wallet" data-account-tab="wallet" role="tab" aria-selected="false" aria-controls="account-panel-wallet">Wallet</button>
-      <button type="button" class="account-tab" id="account-tab-cards" data-account-tab="cards" role="tab" aria-selected="false" aria-controls="account-panel-cards">Collectibles</button>
+      <button type="button" class="account-tab is-active" id="account-tab-account" data-account-tab="account" role="tab" aria-selected="true" aria-controls="account-panel-account">Profile</button>
+      <button type="button" class="account-tab" id="account-tab-wallet" data-account-tab="wallet" role="tab" aria-selected="false" aria-controls="account-panel-wallet">Passes</button>
       <button type="button" class="account-tab" id="account-tab-library" data-account-tab="library" role="tab" aria-selected="false" aria-controls="account-panel-library">Library</button>
-      <button type="button" class="account-tab" id="account-tab-receipts" data-account-tab="receipts" role="tab" aria-selected="false" aria-controls="account-panel-receipts">Receipts</button>
-      <button type="button" class="account-tab" id="account-tab-trust" data-account-tab="trust" role="tab" aria-selected="false" aria-controls="account-panel-trust">Trust</button>
     </div>
     <div class="account-workspace">
       <div class="account-panel is-active" id="account-panel-account" data-account-panel="account" role="tabpanel" aria-labelledby="account-tab-account">
@@ -282,17 +287,30 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           </div>
           <div class="account-public-world-status" id="account-public-world-status"></div>
         </section>
-        <section class="account-section account-danger-section">
-          <div class="account-section-head">
-            <div>
-              <div class="account-section-title">Account Data</div>
-              <div class="account-section-sub">Permanently delete this account, its students, progress, purchase history, and school activity.</div>
+        <details class="account-details">
+          <summary>Account settings</summary>
+          <section class="account-section account-receipts-section">
+            <div class="account-section-title">Activity</div>
+            <div class="account-section-sub">Purchases, rewards, and Hall Pass use.</div>
+            <div class="account-history-list" id="account-history-list"></div>
+          </section>
+          <section class="account-section account-trust-section">
+            <div class="account-section-title">Safety and links</div>
+            <div class="account-section-sub">Official links, wallet safety, and current service details.</div>
+            <div class="account-trust-list" id="account-trust-list"></div>
+          </section>
+          <section class="account-section account-danger-section">
+            <div class="account-section-head">
+              <div>
+                <div class="account-section-title">Delete account</div>
+                <div class="account-section-sub">Permanently delete this account and its school activity.</div>
+              </div>
+              <div class="account-section-actions">
+                <button type="button" class="secondary danger" id="account-delete">Delete Account</button>
+              </div>
             </div>
-            <div class="account-section-actions">
-              <button type="button" class="secondary danger" id="account-delete">Delete Account</button>
-            </div>
-          </div>
-        </section>
+          </section>
+        </details>
       </div>
       <div class="account-panel" id="account-panel-wallet" data-account-panel="wallet" role="tabpanel" aria-labelledby="account-tab-wallet" hidden>
         <section class="account-section account-wallet-section">
@@ -311,8 +329,6 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
             <div><strong>Activity history</strong><span>Your purchases and collectible-card activity appear here.</span></div>
           </div>
         </section>
-      </div>
-      <div class="account-panel" id="account-panel-cards" data-account-panel="cards" role="tabpanel" aria-labelledby="account-tab-cards" hidden>
         <section class="account-section account-hall-pass-card-section">
           <div class="account-section-head">
             <div>
@@ -336,20 +352,6 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
             </div>
           </div>
           <div id="account-comics"></div>
-        </section>
-      </div>
-      <div class="account-panel" id="account-panel-receipts" data-account-panel="receipts" role="tabpanel" aria-labelledby="account-tab-receipts" hidden>
-        <section class="account-section account-receipts-section">
-          <div class="account-section-title">Receipts</div>
-          <div class="account-section-sub">See purchases, rewards, Hall Pass use, collectible-card activity, and refunds.</div>
-          <div class="account-history-list" id="account-history-list"></div>
-        </section>
-      </div>
-      <div class="account-panel" id="account-panel-trust" data-account-panel="trust" role="tabpanel" aria-labelledby="account-tab-trust" hidden>
-        <section class="account-section account-trust-section">
-          <div class="account-section-title">Trust</div>
-          <div class="account-section-sub">Check official links, wallet safety, and Ruby High's current blockchain details.</div>
-          <div class="account-trust-list" id="account-trust-list"></div>
         </section>
       </div>
     </div>

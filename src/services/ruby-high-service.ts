@@ -155,6 +155,8 @@ import {
   type StoredSchoolEventRecord,
   type StoredServiceStateRecord,
   type StoredTeacherRecord,
+  normalizeStoredAccountDeletionTarget,
+  storedAccountMetricEventMatches,
   storedContentPackVisibility,
 } from "./state-store.js";
 import { log, setLogSink, type LogSinkRecord } from "./logger.js";
@@ -357,6 +359,7 @@ const SCHOOL_SNAPSHOT_PHOTO_POOL_LIMIT = 100;
 const SCHOOL_SNAPSHOT_CLASS_PHOTO_HISTORY_LIMIT = 100;
 const PHOTO_POST_RETRY_DELAY_MS = 15 * 60 * 1000;
 const PHOTO_POST_SCHEDULER_INTERVAL_MS = 60 * 1000;
+const METRIC_EVENT_PRUNE_INTERVAL_MS = 15 * 60 * 1000;
 export const HALL_PASS_CARDS_PER_PACK = 5;
 export const HALL_PASS_CARD_BURN_HALL_PASS_VALUE = 5;
 const GENERATED_NFT_SET_NAME = "Ruby High Generated";
@@ -1820,6 +1823,7 @@ export class RubyHighService extends Service {
   private readonly store: StateStoreLike;
   private readonly backgroundWrites = new Set<Promise<void>>();
   private readonly metricEvents = new Map<string, StoredMetricEventRecord>();
+  private metricEventsPrunedAt = 0;
   private readonly schoolEventRecords = new Map<string, StoredSchoolEventRecord>();
   private readonly liveRoomGoalStates = new Map<string, LiveRoomGoalState>();
   private readonly publicWorldRoomRecords = new Map<string, PublicWorldRoomRecord>();
@@ -1918,10 +1922,10 @@ export class RubyHighService extends Service {
       throw new Error("Account deletion is not supported by this state store.");
     }
     const publicSessionId = target.publicSessionId ?? publicWorldSessionId(target.sessionId);
-    const deletionTarget: StoredAccountDeletionTarget = {
+    const deletionTarget = normalizeStoredAccountDeletionTarget({
       ...target,
       ...(publicSessionId ? { publicSessionId } : {}),
-    };
+    });
     if (typeof this.store.flush === "function") await this.store.flush();
 
     const publicEventIds = new Set<string>();
@@ -1940,6 +1944,9 @@ export class RubyHighService extends Service {
     const result = await this.store.deleteAccountData(deletionTarget);
 
     this.sessions.delete(deletionTarget.sessionId);
+    for (const [id, record] of Array.from(this.metricEvents.entries())) {
+      if (storedAccountMetricEventMatches(record, deletionTarget)) this.metricEvents.delete(id);
+    }
     if (this.persistedPackRecords) {
       this.persistedPackRecords = this.persistedPackRecords.filter((record) =>
         record.ownerSessionId !== deletionTarget.sessionId && record.creatorUserId !== deletionTarget.userId);
@@ -2362,6 +2369,7 @@ export class RubyHighService extends Service {
 
   private buildMetricEvent(name: StoredMetricEventName, input: MetricEventInput): StoredMetricEventRecord | null {
     if (!this.store.saveMetricEvent) return null;
+    this.pruneExpiredMetricEvents(Date.now());
     const occurredAt = normalizeMetricTimestamp(input.occurredAt);
     const event: StoredMetricEventRecord = {
       id: metricEventId(name, occurredAt),
@@ -2388,6 +2396,17 @@ export class RubyHighService extends Service {
     };
     this.metricEvents.set(event.id, event);
     return event;
+  }
+
+  private pruneExpiredMetricEvents(now: number, force = false): void {
+    const retentionMs = this.store.metricEventRetentionMs?.() ?? null;
+    if (retentionMs == null) return;
+    if (!force && now - this.metricEventsPrunedAt < METRIC_EVENT_PRUNE_INTERVAL_MS) return;
+    const cutoff = now - retentionMs;
+    for (const [id, event] of this.metricEvents) {
+      if (event.occurredAt < cutoff) this.metricEvents.delete(id);
+    }
+    this.metricEventsPrunedAt = now;
   }
 
   private metricClientSurfaceForEvent(input: MetricEventInput): MetricClientSurface {
@@ -2565,6 +2584,7 @@ export class RubyHighService extends Service {
   }
 
   analyticsSnapshot(now: number = Date.now()): RubyHighAnalyticsSnapshot {
+    this.pruneExpiredMetricEvents(now, true);
     const dayMs = 24 * 60 * 60 * 1000;
     const { days, byDate } = buildRubyHighDailyBuckets(now, 14);
     let updatedLast24h = 0;
@@ -3732,6 +3752,7 @@ export class RubyHighService extends Service {
         const key = `${grade}:${status.facultyId}`;
         let row = rows.get(key);
         if (!row) {
+          const teacherTemplateId = courseForFacultyForSession(state, status.facultyId)?.teacherTemplateId;
           row = {
             grade,
             facultyId: status.facultyId,
@@ -3749,7 +3770,10 @@ export class RubyHighService extends Service {
             sourceSubjects: new Map<string, number>(),
             weakSubjects: new Map<string, number>(),
             recentConcepts: new Map<string, number>(),
-            researchCorpus: builtInTeacherResearchCorpusForFaculty(status.facultyId),
+            researchCorpus: builtInTeacherResearchCorpusForFaculty(status.facultyId)
+              ?? (status.facultyId === GUEST_COURSE_ID && teacherTemplateId
+                ? builtInTeacherResearchCorpusForFaculty(teacherTemplateId)
+                : null),
           };
           rows.set(key, row);
         }
@@ -9735,6 +9759,24 @@ export class RubyHighService extends Service {
     return state;
   }
 
+  /** Update the live avatar portrait immediately, in place. Used by the
+   *  yearbook "age up" action so the avatar evolves one grade at a time
+   *  without waiting for the social photo-reveal lottery. */
+  setPortraitDirect(sessionId: string, portraitDataUrl: string): QuizState {
+    const state = this.getOrCreate(sessionId);
+    if (!state.character) throw new Error("No character to attach portrait to.");
+    const stored = normalizeStoredImageRef(portraitDataUrl, "portraitDataUrl");
+    if (!stored) throw new Error("portraitDataUrl is required.");
+    state.character.portraitDataUrl = stored;
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    log.event("portrait.aged-up", {
+      sessionId,
+      characterName: state.character.name,
+    });
+    return state;
+  }
+
   /** Store an AI-generated yearbook card image URL on a completed grade. */
   setYearbookImage(sessionId: string, grade: string, imageUrl: string): QuizState {
     const state = this.getOrCreate(sessionId);
@@ -13436,6 +13478,13 @@ function buildMetricEventsSnapshot(
   excludedSynthetic = 0,
 ): RubyHighMetricEventsSnapshot {
   const orderedEvents = Array.from(events).sort((a, b) => a.occurredAt - b.occurredAt);
+  const visitorsBySession = new Map<string, Set<string>>();
+  for (const event of orderedEvents) {
+    if (!event.sessionId || !event.visitorHash) continue;
+    const visitors = visitorsBySession.get(event.sessionId) ?? new Set<string>();
+    visitors.add(event.visitorHash);
+    visitorsBySession.set(event.sessionId, visitors);
+  }
   const byName: Record<StoredMetricEventName, number> = {
     visitor_seen: 0,
     app_open: 0,
@@ -13539,6 +13588,8 @@ function buildMetricEventsSnapshot(
   };
   const payingSessions = new Set<string>();
   const creditedSessions = new Set<string>();
+  const characterVisitors = new Set<string>();
+  const payingVisitors = new Set<string>();
   const revenueBySource: Record<string, number> = {};
   const llm = {
     calls: 0,
@@ -13577,6 +13628,8 @@ function buildMetricEventsSnapshot(
       if (day) day.funnelSteps += 1;
       if (event.step === "first_character_created") {
         funnel.firstCharacterCreated += 1;
+        const visitorHash = uniqueMetricVisitor(event, visitorsBySession);
+        if (visitorHash) characterVisitors.add(visitorHash);
         const ref = typeof event.metadata?.ref === "string" ? event.metadata.ref : "";
         if (ref) referralBucket(ref).enrollments += 1;
       }
@@ -13639,8 +13692,14 @@ function buildMetricEventsSnapshot(
       commerce.photoDayCreditsDelta += metricIntegerOrZero(event.photoDayCreditsDelta);
       commerce.amountCents += metricIntegerOrZero(event.amountCents);
       if (hpDelta > 0 && event.sessionId) creditedSessions.add(event.sessionId);
-      if (metricIntegerOrZero(event.amountCents) > 0 && event.sessionId) {
+      if (
+        metricIntegerOrZero(event.amountCents) > 0
+        && event.sessionId
+        && event.metadata?.stripeReversalAdjustment !== true
+      ) {
         payingSessions.add(event.sessionId);
+        const visitorHash = uniqueMetricVisitor(event, visitorsBySession);
+        if (visitorHash) payingVisitors.add(visitorHash);
       }
       const src = event.source || "unknown";
       revenueBySource[src] = (revenueBySource[src] ?? 0) + metricIntegerOrZero(event.amountCents);
@@ -13684,13 +13743,16 @@ function buildMetricEventsSnapshot(
         enrollments: bucket.enrollments,
       }]),
   );
+  const convertedPayerVisitors = new Set(
+    Array.from(payingVisitors).filter((visitorHash) => characterVisitors.has(visitorHash)),
+  );
   const conversionFunnel = {
     totalVisitors: visitorHashes.size,
-    charactersCreated: funnel.firstCharacterCreated,
-    payers: payingSessions.size,
-    visitorToCharacterRate: visitorHashes.size > 0 ? funnel.firstCharacterCreated / visitorHashes.size : null,
-    characterToPayerRate: funnel.firstCharacterCreated > 0 ? payingSessions.size / funnel.firstCharacterCreated : null,
-    visitorToPayerRate: visitorHashes.size > 0 ? payingSessions.size / visitorHashes.size : null,
+    charactersCreated: characterVisitors.size,
+    payers: convertedPayerVisitors.size,
+    visitorToCharacterRate: visitorHashes.size > 0 ? characterVisitors.size / visitorHashes.size : null,
+    characterToPayerRate: characterVisitors.size > 0 ? convertedPayerVisitors.size / characterVisitors.size : null,
+    visitorToPayerRate: visitorHashes.size > 0 ? convertedPayerVisitors.size / visitorHashes.size : null,
   };
   const trustStartMs = activationMetricsTrustStart();
   const activationFunnel = {
@@ -13766,6 +13828,16 @@ function buildMetricEventsSnapshot(
     llm,
     errors,
   };
+}
+
+function uniqueMetricVisitor(
+  event: StoredMetricEventRecord,
+  visitorsBySession: ReadonlyMap<string, ReadonlySet<string>>,
+): string | null {
+  if (event.visitorHash) return event.visitorHash;
+  if (!event.sessionId) return null;
+  const visitors = Array.from(visitorsBySession.get(event.sessionId) ?? []);
+  return visitors.length === 1 ? visitors[0]! : null;
 }
 
 const ACTIVATION_FUNNEL_STEPS: ReadonlyArray<{

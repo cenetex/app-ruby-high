@@ -1895,6 +1895,9 @@ export const VIEWER_CSS = `
     gap: 14px;
     font-size: 16px;
   }
+  .onboarding-hero {
+    display: none;
+  }
   .blackboard-panel[data-mode="in-lounge"] .blackboard-empty {
     padding: 12px calc(var(--safe-right) + 10px) 12px calc(var(--safe-left) + 10px);
   }
@@ -5059,6 +5062,137 @@ export const VIEWER_CSS = `
     cursor: not-allowed;
   }
 
+  /* First-session creator: one calm vertical decision instead of a card
+     carousel. Name and style stay visible; advanced choices are optional. */
+  .sheet-card.is-creation-sheet {
+    width: min(480px, calc(100vw - 32px));
+    max-width: 480px;
+  }
+  .creation-single {
+    display: grid;
+    gap: 12px;
+    width: 100%;
+    max-width: 440px;
+    margin: 0 auto;
+    padding: 0 14px 18px;
+  }
+  .creation-single .is-creation-candidate-card,
+  .creation-single .is-creation-control-card {
+    width: 100%;
+    min-height: 0;
+    flex: none;
+    border-color: var(--line);
+    background: var(--bg);
+    box-shadow: none;
+  }
+  .creation-single .is-creation-candidate-card .ccg-art {
+    aspect-ratio: 16 / 10;
+  }
+  .creation-quick-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+    margin-top: 2px;
+  }
+  .sheet-card.is-creation-sheet .creation-quick-fields .creation-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 9px 10px;
+    background: rgba(255,255,255,0.035);
+  }
+  .sheet-card.is-creation-sheet .creation-quick-fields .creation-row-label,
+  .sheet-card.is-creation-sheet .creation-quick-fields .creation-row-value {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .sheet-card.is-creation-sheet .creation-quick-fields .creation-row-label {
+    padding: 0;
+  }
+  .sheet-card.is-creation-sheet .creation-quick-fields .creation-reroll {
+    display: none;
+  }
+  .creation-single .is-creation-candidate-card .ccg-next-step {
+    display: none;
+  }
+  .creation-single .is-creation-control-card .ccg-role {
+    display: none;
+  }
+  .creation-single .is-creation-control-card .ccg-body {
+    padding: 16px;
+  }
+  .creation-single .is-creation-control-card .ccg-name {
+    font-size: 17px;
+  }
+  .creation-single .is-creation-control-card .ccg-subtitle {
+    max-width: none;
+  }
+  .creation-single .is-creation-control-card .creation-fields {
+    margin-top: 4px;
+  }
+  .creation-single .is-creation-candidate-card .ccg-card-actions {
+    align-items: stretch;
+    margin-top: 2px;
+  }
+  .creation-single .is-creation-candidate-card .ccg-card-actions .primary {
+    min-height: 46px;
+    padding-inline: 18px;
+  }
+
+  @media (max-width: 600px) {
+    .sheet-overlay.is-creation-overlay {
+      display: block;
+      padding: 0;
+      background: var(--bg-deep);
+    }
+    .sheet-overlay.is-creation-overlay .sheet-close {
+      position: fixed;
+      top: calc(var(--safe-top) + 8px);
+      right: calc(var(--safe-right) + 10px);
+      z-index: 3;
+    }
+    .sheet-card.is-creation-sheet {
+      width: 100%;
+      max-width: none;
+      height: 100dvh;
+      max-height: none;
+      min-height: 100dvh;
+      padding: calc(var(--safe-top) + 54px) 0 var(--safe-bot);
+      border: 0;
+      border-radius: 0;
+      background: var(--bg-deep);
+      box-shadow: none;
+    }
+    .sheet-card.is-creation-sheet .creation-explanation.is-persistent {
+      max-width: 440px;
+      padding: 0 16px 8px;
+      text-align: left;
+    }
+    .sheet-card.is-creation-sheet .creation-explanation.is-persistent p:first-child {
+      font-size: 21px;
+      line-height: 1.15;
+    }
+    .creation-single {
+      max-width: 440px;
+      padding: 0 10px calc(var(--safe-bot) + 18px);
+    }
+    .creation-single .is-creation-candidate-card .ccg-art {
+      aspect-ratio: 16 / 9;
+    }
+    .creation-single .is-creation-candidate-card .ccg-card-actions {
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+      padding: 8px 0 2px;
+      background: linear-gradient(180deg, rgba(29,32,48,0), var(--bg) 28%);
+    }
+  }
+
+  @media (max-width: 350px) {
+    .creation-quick-fields {
+      grid-template-columns: 1fr;
+    }
+  }
+
   /* ── progression "what you need" hint ────────────────────────────────── */
   .ccg-next-step {
     padding: 8px 10px;
@@ -6299,30 +6433,31 @@ export const VIEWER_CSS = `
   }
   .paper-archive-diploma,
   .paper-archive-photo {
-    display: grid;
-    grid-template-columns: 74px minmax(0, 1fr);
-    align-items: center;
-    gap: 8px;
-    margin-top: 7px;
+    display: block;
+    margin-top: 8px;
     border: 1px solid rgba(255,235,200,0.12);
     border-radius: 6px;
     background: rgba(0,0,0,0.12);
-    padding: 5px;
+    padding: 6px;
   }
   .paper-archive-diploma img {
     display: block;
-    width: 74px;
+    width: 100%;
     aspect-ratio: 724 / 543;
     object-fit: cover;
     border-radius: 4px;
   }
   .paper-archive-photo-image {
     display: block;
-    width: 74px;
+    width: 100%;
     aspect-ratio: 16 / 9;
     object-fit: cover;
     border-radius: 4px;
     background: rgba(255,255,255,0.08);
+  }
+  .paper-archive-diploma-copy,
+  .paper-archive-photo-copy {
+    margin-top: 6px;
   }
   .paper-archive-diploma-title,
   .paper-archive-photo-title {
@@ -6383,15 +6518,22 @@ export const VIEWER_CSS = `
     height: 100%;
     object-fit: cover;
   }
-  .paper-archive-portrait {
-    margin-top: 12px;
-    border-radius: 6px;
+  .paper-archive-avatar {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border: 2px solid rgba(255,235,200,0.4);
+    border-radius: 999px;
     overflow: hidden;
-    background: var(--bg-card);
+    background: rgba(255,255,255,0.08);
   }
-  .paper-archive-portrait img {
+  .paper-archive-avatar img {
     width: 100%;
-    height: auto;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
     display: block;
   }
   .paper-archive-pending {
@@ -8364,6 +8506,773 @@ export const VIEWER_CSS = `
     clip: rect(0 0 0 0) !important;
     white-space: nowrap !important;
     border: 0 !important;
+  }
+
+  /* ── reduction pass: one calm product system ───────────────────────────
+     The classroom keeps Ruby High's character. Utility screens use flat,
+     neutral pages so progress and account tools no longer look like a
+     second card game layered over the school. */
+  :root {
+    --bg-deep: #12141a;
+    --bg: #181b23;
+    --bg-elev: #20242e;
+    --bg-elev-2: #292e3a;
+    --bg-active: #303644;
+    --line: rgba(255,255,255,0.085);
+    --border: rgba(255,255,255,0.11);
+    --accent: #d63b3f;
+    --accent-soft: rgba(214,59,63,0.13);
+  }
+
+  /* Answers are decisions, not four competing brand colors. Result color
+     only appears after the player commits. */
+  .answer,
+  .answer.A,
+  .answer.B,
+  .answer.C,
+  .answer.D {
+    --bg: var(--bg-elev-2);
+    border: 1px solid var(--line);
+    background: var(--bg-elev-2);
+    color: var(--text);
+    box-shadow: none;
+  }
+  .answer .badge,
+  .answer.C .badge,
+  .answer.D .badge {
+    background: rgba(255,255,255,0.08);
+    color: var(--text-soft);
+  }
+  .answer:not(:disabled):hover {
+    border-color: rgba(255,255,255,0.2);
+    background: var(--bg-active);
+  }
+  .answer.is-correct {
+    border-color: rgba(76,181,85,0.75);
+    background: rgba(76,181,85,0.16);
+    outline: 0;
+    color: var(--text);
+  }
+  .answer.is-correct .badge {
+    background: #4cb555;
+    color: #0d2110;
+  }
+  .answer.is-wrong {
+    border-color: rgba(214,59,63,0.7);
+    background: rgba(214,59,63,0.13);
+    outline: 0;
+    color: var(--text);
+  }
+
+  /* Student creation is a setup form, not a collectible card. */
+  .sheet-card.is-creation-sheet {
+    width: min(520px, calc(100vw - 32px));
+    max-width: 520px;
+    padding: 34px 34px 38px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--bg);
+    box-shadow: 0 24px 70px rgba(0,0,0,0.42);
+  }
+  .sheet-card.is-creation-sheet .creation-explanation.is-persistent {
+    max-width: none;
+    padding: 0 0 24px;
+    text-align: left;
+  }
+  .sheet-card.is-creation-sheet .creation-explanation.is-persistent p:first-child {
+    margin: 0 0 6px;
+    font-size: 26px;
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+  }
+  .sheet-card.is-creation-sheet .creation-explanation.is-persistent p:last-child {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 14px;
+  }
+  .creation-single {
+    display: block;
+    max-width: none;
+    padding: 0;
+  }
+  .creation-single .student-setup {
+    display: grid;
+    grid-template-columns: 116px minmax(0, 1fr);
+    gap: 22px;
+    width: 100%;
+    max-width: none;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+  .creation-single .student-setup > .ccg-role,
+  .creation-single .student-setup .ccg-name,
+  .creation-single .student-setup .ccg-subtitle,
+  .creation-single .student-setup .ccg-next-step,
+  .creation-single .student-setup .ccg-stats,
+  .creation-single .student-setup .ccg-quote,
+  .creation-single .student-setup .ccg-footer {
+    display: none;
+  }
+  .creation-single .student-setup .ccg-art {
+    width: 116px;
+    height: 116px;
+    aspect-ratio: 1;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--bg-elev);
+  }
+  .creation-single .student-setup .ccg-art::after { display: none; }
+  .creation-single .student-setup .ccg-body {
+    min-width: 0;
+    padding: 0;
+    gap: 10px;
+  }
+  .creation-quick-fields {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin: 0;
+  }
+  .sheet-card.is-creation-sheet .creation-quick-fields .creation-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 7px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .account-header-row h2 { color: var(--text); }
+  .sheet-card.is-creation-sheet .creation-quick-fields .creation-row-label {
+    color: var(--text-soft);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .sheet-card.is-creation-sheet .creation-quick-fields .creation-edit-input {
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg-elev);
+    font-size: 15px;
+  }
+  .creation-single .student-setup .creation-portrait-status,
+  .creation-single .student-setup .stat-budget {
+    grid-column: 1 / -1;
+    min-height: 0;
+    margin: 0;
+    text-align: left;
+  }
+  .creation-single .student-setup .ccg-card-actions {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .creation-single .student-setup .ccg-card-actions button {
+    min-height: 46px;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+  .creation-single .student-setup .ccg-card-actions .primary {
+    grid-column: 2;
+    width: 100%;
+    box-shadow: none;
+  }
+  .creation-single .student-setup-options {
+    width: 100%;
+    max-width: none;
+    margin-top: 22px;
+    border: 0;
+    border-top: 1px solid var(--line);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .creation-single .student-setup-options .ccg-body {
+    padding: 22px 0 0;
+  }
+  .creation-single .student-setup-options .ccg-name { font-size: 16px; }
+  .creation-single .student-setup-options .creation-row {
+    border: 1px solid var(--line);
+    background: var(--bg-elev);
+    box-shadow: none;
+  }
+
+  /* Profiles and progress are one vertical page. No clipped cards, swipe
+     rails, dots, gold borders, or card-inside-modal framing. */
+  .sheet-card.is-card-deck-sheet {
+    width: min(560px, calc(100vw - 32px));
+    max-width: 560px;
+    padding: 0;
+    overflow: hidden auto;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--bg);
+    box-shadow: 0 24px 70px rgba(0,0,0,0.42);
+  }
+  .profile-page.card-deck {
+    width: 100%;
+    padding: 0;
+  }
+  .profile-page .profile-page-sections.card-deck-track {
+    display: block;
+    padding: 0;
+    overflow: visible;
+  }
+  .profile-page .profile-page-sections > .ccg-card {
+    width: 100%;
+    max-width: none;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+  .profile-page .profile-page-sections > .ccg-card + .ccg-card {
+    border-top: 1px solid var(--line);
+  }
+  .profile-page .ccg-role {
+    top: 16px;
+    left: 16px;
+    border: 1px solid rgba(255,255,255,0.13);
+    background: rgba(18,20,26,0.72) !important;
+    color: var(--text-soft) !important;
+    box-shadow: none;
+    backdrop-filter: blur(8px);
+  }
+  .profile-page .ccg-art {
+    aspect-ratio: 16 / 9;
+    max-height: 280px;
+    background: var(--bg-elev);
+  }
+  .profile-page .ccg-art::after {
+    height: 72px;
+    background: linear-gradient(180deg, transparent, var(--bg) 96%);
+  }
+  .profile-page .ccg-body { padding: 22px; gap: 12px; }
+  .profile-page .is-career-card .ccg-body,
+  .profile-page .is-report-card .ccg-body { padding-top: 22px; }
+  .profile-page .ccg-stats,
+  .profile-page .ccg-progression,
+  .profile-page .ccg-quote,
+  .profile-page .career-metrics,
+  .profile-page .paper-archive-entry {
+    border-color: var(--line);
+    background: transparent;
+    box-shadow: none;
+  }
+  .profile-page .ccg-quote {
+    border-left-color: var(--line);
+    border-radius: 0;
+  }
+  .profile-page .ccg-footer {
+    margin: 4px 0 0;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--line);
+    border-radius: 0;
+    background: transparent;
+  }
+  .card-deck-dots,
+  .card-deck-nav { display: none !important; }
+
+  /* Account is three quiet areas. Financial detail stays behind Passes;
+     receipts and safety details stay collapsed under Profile. */
+  .account-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+    background: transparent;
+  }
+  .account-tab {
+    min-height: 44px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    padding: 0 12px;
+    font-size: 13px;
+  }
+  .account-tab.is-active {
+    border-color: var(--accent);
+    background: transparent;
+    color: var(--text);
+  }
+  .account-section {
+    margin-top: 0;
+    padding: 18px 0;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+    background: transparent;
+  }
+  .account-section-title {
+    font-size: 14px;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .account-section-head button,
+  .account-card .sheet-actions button,
+  .account-history-row button {
+    border-radius: 9px;
+  }
+  .account-wallet-rules div,
+  .account-character-card,
+  .account-history-row,
+  .account-trust-row,
+  .account-pack-tile,
+  .account-card-tile,
+  .account-card #account-comics .comic-locker {
+    border-color: var(--line);
+    background: transparent;
+    box-shadow: none;
+  }
+  .account-details {
+    margin-top: 18px;
+    border-top: 1px solid var(--line);
+  }
+  .account-details > summary {
+    min-height: 50px;
+    display: flex;
+    align-items: center;
+    color: var(--text-soft);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    list-style: none;
+  }
+  .account-details > summary::-webkit-details-marker { display: none; }
+  .account-details > summary::after {
+    content: "+";
+    margin-left: auto;
+    color: var(--text-mute);
+    font-size: 18px;
+  }
+  .account-details[open] > summary::after { content: "−"; }
+
+  /* Character restoration: identity and achievement moments carry the
+     school. Utility screens stay restrained. */
+  .blackboard-panel[data-mode="needs-character"] .blackboard-empty {
+    justify-content: flex-start;
+    padding: 0 16px 30px;
+  }
+  .blackboard-panel[data-mode="needs-character"] .onboarding-hero {
+    position: relative;
+    isolation: isolate;
+    width: calc(100% + 32px);
+    min-height: 248px;
+    margin: 0 -16px 24px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(150px, 220px);
+    align-items: center;
+    overflow: hidden;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    background:
+      radial-gradient(circle at 78% 34%, rgba(214,59,63,0.22), transparent 32%),
+      linear-gradient(135deg, #171b2a 0%, #11131a 72%);
+  }
+  .blackboard-panel[data-mode="needs-character"] .onboarding-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    opacity: 0.24;
+    background: repeating-linear-gradient(0deg, transparent 0 31px, rgba(184,228,255,0.1) 32px 33px);
+  }
+  .onboarding-hero-copy {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 26px 0 26px max(24px, 6vw);
+  }
+  .onboarding-kicker {
+    display: inline-flex;
+    min-height: 24px;
+    align-items: center;
+    padding: 0 9px;
+    border: 1px solid rgba(255,220,135,0.32);
+    border-radius: 999px;
+    background: rgba(240,180,65,0.1);
+    color: #f4cf7c;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .onboarding-wordmark {
+    display: block;
+    width: min(210px, 42vw);
+    height: auto;
+    filter: drop-shadow(0 10px 20px rgba(0,0,0,0.35));
+  }
+  .onboarding-hero-line {
+    max-width: 250px;
+    color: rgba(236,240,250,0.76);
+    font-size: 14px;
+    font-weight: 750;
+    line-height: 1.35;
+    text-align: left;
+  }
+  .onboarding-ruby {
+    align-self: end;
+    justify-self: end;
+    width: min(230px, 46vw);
+    height: 236px;
+    object-fit: contain;
+    object-position: right bottom;
+    filter: drop-shadow(-12px 14px 22px rgba(0,0,0,0.34));
+  }
+  .blackboard-panel[data-mode="needs-character"] .onboarding-title { display: none; }
+  .blackboard-panel[data-mode="needs-character"] .onboarding-sub {
+    margin-bottom: 7px;
+    color: var(--text);
+    font-size: 19px;
+    line-height: 1.25;
+  }
+  .blackboard-panel[data-mode="needs-character"] .onboarding-detail {
+    margin-bottom: 13px;
+  }
+
+  .sheet-card.is-creation-sheet {
+    width: min(580px, calc(100vw - 32px));
+    max-width: 580px;
+  }
+  .creation-single .student-setup {
+    grid-template-columns: 154px minmax(0, 1fr);
+    gap: 26px;
+  }
+  .creation-single .student-setup .ccg-subtitle {
+    display: block;
+    margin: 4px 0 2px;
+    color: var(--text-soft);
+    font-size: 14px;
+    font-weight: 780;
+    letter-spacing: 0;
+    line-height: 1.35;
+  }
+  .creation-single .student-setup .ccg-subtitle::before {
+    content: "Your student";
+    display: block;
+    margin-bottom: 7px;
+    color: #efb6b8;
+    font-size: 9px;
+    font-weight: 950;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .creation-single .student-setup .ccg-art {
+    width: 154px;
+    height: 176px;
+    border: 1px solid rgba(239,182,184,0.42);
+    border-radius: 13px;
+    background:
+      radial-gradient(circle at 50% 30%, rgba(214,59,63,0.18), transparent 48%),
+      var(--bg-elev);
+    box-shadow: 0 12px 26px rgba(0,0,0,0.27), 0 0 0 5px rgba(255,255,255,0.025);
+  }
+  .creation-single .student-setup .ccg-art::before {
+    content: "School photo";
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    z-index: 2;
+    padding: 4px 6px;
+    border-radius: 5px;
+    background: rgba(15,17,23,0.78);
+    color: rgba(255,255,255,0.72);
+    font-size: 8px;
+    font-weight: 900;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    backdrop-filter: blur(5px);
+  }
+  .creation-single .student-setup .ccg-art img { object-position: center 14%; }
+  .sheet-card.is-creation-sheet .creation-edit-input:focus {
+    border-color: rgba(214,59,63,0.72);
+    outline: 3px solid rgba(214,59,63,0.12);
+  }
+  .creation-single .student-setup .ccg-card-actions .primary {
+    background: #d63b3f;
+    color: #fff;
+  }
+
+  .profile-page .profile-page-sections > .ccg-card.is-career-card {
+    background:
+      linear-gradient(90deg, rgba(214,59,63,0.14) 0 3px, transparent 3px),
+      repeating-linear-gradient(0deg, transparent 0 39px, rgba(184,228,255,0.035) 40px 41px),
+      linear-gradient(180deg, rgba(240,180,65,0.045), transparent 180px);
+  }
+  .profile-page .is-career-card .ccg-role {
+    border-color: rgba(240,180,65,0.32);
+    background: rgba(58,43,19,0.86) !important;
+    color: #f4cf7c !important;
+  }
+  .profile-page .is-career-card .ccg-name {
+    font-size: 24px;
+    letter-spacing: -0.025em;
+  }
+  .profile-page .is-career-card .ccg-subtitle {
+    color: #d5b86f;
+    font-weight: 750;
+  }
+  .profile-page .is-career-card .career-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--line);
+  }
+  .profile-page .is-career-card .career-metrics:has(.career-metric:only-child) {
+    grid-template-columns: 1fr;
+  }
+  .profile-page .is-career-card .career-metric {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 3px;
+    padding: 13px;
+    border: 0;
+    background: rgba(18,20,26,0.82);
+  }
+  .profile-page .is-career-card .career-metric .k {
+    grid-row: auto;
+    color: var(--text-mute);
+    font-size: 9px;
+  }
+  .profile-page .is-career-card .career-metric .v { font-size: 20px; }
+  .profile-page .is-career-card .ccg-next-step {
+    padding: 13px 14px 13px 17px;
+    border: 0;
+    border-left: 3px solid #d63b3f;
+    border-radius: 0 10px 10px 0;
+    background: linear-gradient(90deg, rgba(214,59,63,0.13), rgba(214,59,63,0.025));
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 750;
+    line-height: 1.4;
+  }
+  .profile-page .is-career-card .ccg-next-step::before {
+    content: "Next goal";
+    display: block;
+    margin-bottom: 4px;
+    color: #ef9699;
+    font-size: 9px;
+    font-weight: 950;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+
+  .privy-card.account-card {
+    --utility-accent: #d63b3f;
+  }
+  .privy-card.account-card .account-tab.is-active {
+    border-bottom-color: var(--utility-accent);
+    background: transparent;
+    color: var(--text);
+  }
+  .privy-card.account-card #privy-login-widget,
+  .privy-card.account-card .account-section-head button:not(.secondary):not(.danger),
+  .privy-card.account-card .account-history-row button:not(.secondary):not(.danger) {
+    background: var(--utility-accent);
+    color: #fff;
+  }
+  .privy-card.account-card .account-character-card {
+    border-color: rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.025);
+  }
+
+  .leaderboard-panel {
+    background:
+      radial-gradient(circle at 18% 18%, rgba(240,180,65,0.075), transparent 27%),
+      var(--bg);
+  }
+  .leaderboard-header {
+    border-bottom-color: rgba(240,180,65,0.22);
+    background: linear-gradient(90deg, rgba(240,180,65,0.08), transparent 55%);
+  }
+  .leaderboard-title {
+    font-size: 21px;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+  }
+  .leaderboard-year-group { margin-top: 8px; }
+  .leaderboard-row.is-top-student {
+    position: relative;
+    min-height: 118px;
+    margin: 12px 0 14px;
+    padding: 18px 16px;
+    gap: 15px;
+    overflow: hidden;
+    border: 1px solid rgba(240,180,65,0.32);
+    border-radius: 16px;
+    background:
+      radial-gradient(circle at 92% 5%, rgba(240,180,65,0.18), transparent 42%),
+      linear-gradient(135deg, rgba(240,180,65,0.1), rgba(255,255,255,0.025));
+    box-shadow: 0 16px 34px rgba(0,0,0,0.2);
+  }
+  .leaderboard-row.is-top-student::after {
+    content: "R";
+    position: absolute;
+    right: 12px;
+    bottom: -30px;
+    color: rgba(240,180,65,0.08);
+    font: 900 112px/1 Georgia, serif;
+    pointer-events: none;
+  }
+  .leaderboard-row.is-top-student .leaderboard-rank {
+    width: 36px;
+    height: 36px;
+    box-shadow: 0 0 0 5px rgba(255,215,0,0.08);
+  }
+  .leaderboard-row.is-top-student .leaderboard-portrait {
+    width: 68px;
+    height: 68px;
+    border: 2px solid rgba(240,180,65,0.55);
+    border-radius: 18px;
+  }
+  .leaderboard-row.is-top-student .leaderboard-name {
+    font-size: 19px;
+    font-weight: 900;
+  }
+  .leaderboard-leader-label {
+    margin-bottom: 3px;
+    color: #f4cf7c;
+    font-size: 9px;
+    font-weight: 950;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+
+  @media (max-width: 600px) {
+    .sheet-overlay.is-creation-overlay.is-open,
+    #sheet-overlay.is-open:has(.sheet-card.is-card-deck-sheet),
+    #privy-overlay.is-open {
+      display: block;
+      padding: 0;
+      background: var(--bg);
+    }
+    .sheet-overlay.is-creation-overlay .sheet-close,
+    #sheet-overlay:has(.sheet-card.is-card-deck-sheet) .sheet-close,
+    #privy-overlay .sheet-close {
+      position: fixed;
+      top: calc(var(--safe-top) + 8px);
+      right: calc(var(--safe-right) + 10px);
+      z-index: 5;
+    }
+    .sheet-card.is-creation-sheet,
+    .sheet-card.is-card-deck-sheet,
+    .privy-card.account-card {
+      width: 100%;
+      max-width: none;
+      height: 100dvh;
+      min-height: 100dvh;
+      max-height: none;
+      margin: 0;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+      background: var(--bg);
+    }
+    .sheet-card.is-creation-sheet {
+      padding: calc(var(--safe-top) + 62px) 18px calc(var(--safe-bot) + 24px);
+    }
+    .sheet-card.is-creation-sheet .creation-explanation.is-persistent {
+      padding: 0 0 20px;
+    }
+    .sheet-card.is-creation-sheet .creation-explanation.is-persistent p:first-child {
+      font-size: 25px;
+    }
+    .creation-single .student-setup {
+      grid-template-columns: 128px minmax(0, 1fr);
+      gap: 16px;
+    }
+    .creation-single .student-setup .ccg-art {
+      width: 128px;
+      height: 146px;
+      border-radius: 14px;
+    }
+    .creation-single .student-setup .ccg-body { display: contents; }
+    .creation-single .student-setup .creation-quick-fields,
+    .creation-single .student-setup .creation-portrait-status,
+    .creation-single .student-setup .stat-budget,
+    .creation-single .student-setup .ccg-card-actions {
+      grid-column: 1 / -1;
+    }
+    .creation-single .student-setup .creation-quick-fields {
+      margin-top: 2px;
+    }
+    .creation-single .student-setup .ccg-card-actions {
+      position: static;
+      padding: 2px 0 0;
+      background: transparent;
+    }
+    .sheet-card.is-card-deck-sheet {
+      padding-top: calc(var(--safe-top) + 52px);
+    }
+    .profile-page .ccg-art {
+      aspect-ratio: 4 / 3;
+      max-height: 42dvh;
+    }
+    .profile-page .ccg-body { padding: 20px 18px; }
+    .privy-card.account-card {
+      padding: calc(var(--safe-top) + 54px) 18px calc(var(--safe-bot) + 18px);
+    }
+    .account-header-row {
+      display: block;
+      margin-bottom: 16px;
+    }
+    .account-header-row h2 {
+      font-size: 25px;
+      letter-spacing: -0.02em;
+    }
+    .account-identity-inline {
+      justify-content: flex-start;
+      margin-top: 10px;
+    }
+    .account-workspace { padding-right: 0; }
+    .account-wallet-rules { grid-template-columns: 1fr; }
+    .account-section-head { align-items: flex-start; }
+    .account-section-actions { justify-content: flex-start; }
+    .account-character-grid { grid-template-columns: 1fr; }
+    .account-character-card {
+      grid-template-columns: 58px minmax(0, 1fr);
+      padding: 11px;
+    }
+    .account-character-portrait {
+      width: 58px;
+      height: 58px;
+    }
+  }
+
+  @media (max-width: 360px) {
+    .creation-single .student-setup {
+      grid-template-columns: 104px minmax(0, 1fr);
+      gap: 12px;
+    }
+    .creation-single .student-setup .ccg-art {
+      width: 104px;
+      height: 122px;
+    }
+    .creation-single .student-setup .ccg-card-actions {
+      grid-template-columns: 1fr;
+    }
+    .creation-single .student-setup .ccg-card-actions .primary { grid-column: 1; }
   }
 
 `;

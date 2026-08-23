@@ -71,6 +71,11 @@ describe("viewer regression guardrails", () => {
     expect(boot.indexOf("await deriveAuth();")).toBeLessThan(boot.indexOf('postViewerMetricEvent("app_open"'));
     expect(boot.indexOf('postViewerMetricEvent("app_open"')).toBeLessThan(boot.indexOf("await fetchSession();"));
     expect(boot.indexOf("await fetchSession();")).toBeLessThan(boot.indexOf("await applySharedPackFromUrl(sharedPackId);"));
+    expectScriptToContain(script, "SESSION_RESUME_INACTIVE_MS");
+    expectScriptToContain(script, 'postViewerMetricEvent("session_resume"');
+    expectScriptToContain(script, 'document.addEventListener("visibilitychange"');
+    expectScriptToContain(script, 'window.addEventListener("focus"');
+    expectScriptToContain(script, 'window.addEventListener("pageshow"');
   });
 
   it("captures only bounded acquisition keys and routes the canonical landing into student creation", () => {
@@ -174,7 +179,7 @@ describe("viewer regression guardrails", () => {
     const script = inlineScript(html);
 
     expect(html).toContain(">Create my student</button>");
-    expect(html).toContain("Free · no account or AI key needed · your first class starts now");
+    expect(html).toContain("Free · no sign-up needed · starts now");
     expect(html).toContain('<svg aria-hidden="true"');
     expect(VIEWER_CSS).toContain("--text-dim:");
     expect(VIEWER_CSS).toContain("--border:");
@@ -506,7 +511,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function createCreationCandidateCardRenderer(");
     expectScriptToContain(clientSource, "const creationCandidateCardRenderer = createCreationCandidateCardRenderer({");
     expectScriptToContain(clientSource, "const candidateCardRefs = creationCandidateCardRenderer.build();");
-    expectScriptToContain(script, 'card.className = "ccg-card is-character-card is-creation-candidate-card";');
+    expectScriptToContain(script, 'card.className = "ccg-card is-character-card is-creation-candidate-card student-setup";');
     const creationStart = clientSource.indexOf("function renderSheetCreation(playbooks)");
     const controlsStart = clientSource.indexOf("const controlsCard = document.createElement", creationStart);
     const creationCandidateSource = clientSource.slice(creationStart, controlsStart);
@@ -521,7 +526,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function createCreationControlCardRenderer(");
     expectScriptToContain(clientSource, "const creationControlCardRenderer = createCreationControlCardRenderer({");
     expectScriptToContain(clientSource, "const controlsCardRefs = creationControlCardRenderer.build({");
-    expectScriptToContain(script, 'card.className = "ccg-card is-career-card is-creation-control-card";');
+    expectScriptToContain(script, 'card.className = "ccg-card is-career-card is-creation-control-card student-setup-options";');
     const controlsStart = clientSource.indexOf("const controlsSubtitle =");
     const controlsEnd = clientSource.indexOf("// Control rows:", controlsStart);
     const controlsSource = clientSource.slice(controlsStart, controlsEnd);
@@ -1059,7 +1064,7 @@ describe("viewer regression guardrails", () => {
     expect(PRIVY_CLIENT_SOURCE).not.toContain("modalOpenedForWalletConnect.current = true;\n      connectWallet({");
   });
 
-  it("keeps Account split into focused account, wallet, cards, library, receipts, and trust panes", () => {
+  it("keeps Account reduced to profile, passes, and library panes", () => {
     const html = renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test" } });
     const script = inlineScript(html);
     const characters = html.indexOf('class="account-section account-character-section"');
@@ -1070,23 +1075,23 @@ describe("viewer regression guardrails", () => {
 
     expect(html).toContain('data-account-tab="account"');
     expect(html).toContain('data-account-tab="wallet"');
-    expect(html).toContain('data-account-tab="cards"');
     expect(html).toContain('data-account-tab="library"');
-    expect(html).toContain('data-account-tab="receipts"');
-    expect(html).toContain('data-account-tab="trust"');
+    expect(html).not.toContain('data-account-tab="cards"');
+    expect(html).not.toContain('data-account-tab="receipts"');
+    expect(html).not.toContain('data-account-tab="trust"');
     expect(html).toContain('id="account-trust-list"');
-    expect(html).toContain("Receipts");
+    expect(html).toContain("Account settings");
     expectScriptToContain(script, "function accountPaneItemView(id, activePane)");
     expectScriptToContain(script, "function accountPaneKeyTarget(key, currentIndex, tabCount)");
     expectScriptToContain(script, "function normalizeAccountPane(pane)");
     expectScriptToContain(script, "const view = accountPaneItemView(rawId, active);");
     expectScriptToContain(script, "const targetIndex = accountPaneKeyTarget(event.key, currentIndex, els.accountTabs.length);");
     expect(characters).toBeGreaterThan(-1);
-    expect(wallet).toBeGreaterThan(characters);
+    expect(history).toBeGreaterThan(characters);
+    expect(wallet).toBeGreaterThan(history);
     expect(html).not.toContain('class="account-section account-ai-section"');
     expect(cards).toBeGreaterThan(wallet);
     expect(comics).toBeGreaterThan(cards);
-    expect(history).toBeGreaterThan(comics);
     expectScriptToContain(script, "function setAccountPane(pane)");
     expectScriptToContain(script, "function renderAccountTrust()");
     expectScriptToContain(script, "let previousRenderSignature = \"\";");
@@ -1191,7 +1196,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(clientSource, "return yearbookArchiveRenderer.buildArchive(entries, liveChar, livePb, playbooks);");
     expectScriptToContain(clientSource, "return yearbookArchiveRenderer.buildEntry(entry, liveChar, livePb, playbooks);");
     expectScriptToContain(clientSource, "return yearbookShareActionsRenderer.build(share);");
-    expectScriptToContain(script, "paper-archive-portrait");
+    expectScriptToContain(script, "paper-archive-avatar");
     expect(clientSource).not.toContain('!(grad && y.grade === "12")');
     expect(clientSource).not.toContain('archive.className = "paper-archive";');
     expect(clientSource).not.toContain('item.className = "paper-archive-entry";');
@@ -1388,7 +1393,7 @@ describe("viewer regression guardrails", () => {
     expect(html).not.toContain("Student name, grade, playbook, stats, completed class grades, yearbook count, and safe portrait URL.");
     expect(html).not.toContain("Answers, chat text, session id, wallets, AI keys, receipts, and account identity stay off shared school activity.");
     expect(html).toContain('id="account-delete"');
-    expect(html).toContain("Permanently delete this account, its students, progress, purchase history, and school activity.");
+    expect(html).toContain("Permanently delete this account and its school activity.");
     expectScriptToContain(script, "function renderAccountPublicWorld()");
     expectScriptToContain(script, "function accountPublicWorldView(character, opts)");
     expectScriptToContain(script, "function createAccountPublicWorldController(deps)");

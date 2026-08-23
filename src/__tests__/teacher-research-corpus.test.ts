@@ -9,6 +9,7 @@ describe("built-in teacher research corpora", () => {
       "professor-edward",
       "ruby",
       "sally-science",
+      "seraph",
     ]);
     for (const corpus of corpora) {
       expect(corpus.sourcePackets.length, `${corpus.facultyId} source packet count`).toBeGreaterThanOrEqual(4);
@@ -36,6 +37,21 @@ describe("built-in teacher research corpora", () => {
         subjects: expect.arrayContaining(["seminar ethics", "close reading"]),
       }),
     ]));
+    expect(corpora.find((corpus) => corpus.facultyId === "seraph")).toMatchObject({
+      corpusPath: "assets/corpora/project89.md",
+      researchInterests: expect.arrayContaining(["signal verification", "bounded intervention"]),
+      sourcePackets: expect.arrayContaining([
+        expect.objectContaining({
+          id: "seraph-source-story-world-boundary",
+          grades: ["9", "10", "11", "12"],
+          subjects: expect.arrayContaining(["story-worlds", "signal-verification"]),
+        }),
+        expect.objectContaining({
+          id: "seraph-source-bounded-intervention",
+          subjects: expect.arrayContaining(["bounded-intervention", "human-ai-agency"]),
+        }),
+      ]),
+    });
   });
 
   it("returns defensive copies of source packet arrays", () => {

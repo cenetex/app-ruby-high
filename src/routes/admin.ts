@@ -25,8 +25,8 @@ export const ADMIN_METRICS_SCHEMA_PATH = `${APP_ROUTE_PREFIX}/admin/metrics/sche
 export const ADMIN_OVERVIEW_PATH = `${APP_ROUTE_PREFIX}/admin/overview`;
 export const ADMIN_CURRICULUM_REPLENISHMENT_PATH = `${APP_ROUTE_PREFIX}/admin/curriculum/replenishment`;
 export const ADMIN_WORLD_MODERATION_PATH = `${APP_ROUTE_PREFIX}/admin/world/moderation`;
-export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v9";
-const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-08-13";
+export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v10";
+const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-08-21";
 const ADMIN_METRICS_DEFAULT_TRUST_START = "2026-07-26";
 const BUILT_IN_GENERATOR_FACULTY_IDS = new Set(["ruby", "sally-science", "professor-edward"]);
 const BUILT_IN_QUESTION_FILES: Record<string, string> = {
@@ -1691,6 +1691,14 @@ function buildAdminMetricsSchema(): {
         caveat: "Begins at instrumentationStart in schema v9. Raw referrers, query strings, user agents, and free-form campaign labels are neither accepted nor stored in the acquisition payload.",
       },
       {
+        path: "ruby.events.conversionFunnel",
+        label: "Visitor conversion funnel",
+        source: "Visitor-backed StoredMetricEventRecord app_open, funnel_step, and commerce events",
+        semantics: "Unique retained visitor ids that opened Ruby High, created a student, and later paid in the same visitor-linked cohort.",
+        reliability: "authoritative",
+        caveat: "Ambiguous sessions linked to multiple visitor ids are excluded from downstream steps; visitors without a retained local id cannot enter this cohort.",
+      },
+      {
         path: "ruby.events.byClientSurface",
         label: "Metric events by client surface",
         source: "StoredMetricEventRecord.clientSurface",
@@ -1734,7 +1742,7 @@ function buildAdminMetricsSchema(): {
         source: "StoredMetricEventRecord commerce plus wallet mutation path",
         semantics: "Durable wallet and entitlement mutations with currency deltas and transaction ids.",
         reliability: "authoritative",
-        caveat: "payingSessions requires a positive amountCents event; creditedSessions separately counts non-payment Hall Pass grants. Revenue is not accounting-grade financial reporting.",
+        caveat: "payingSessions requires an original positive amountCents event; signed refund and dispute adjustments reduce net revenue. Revenue is not accounting-grade financial reporting.",
       },
       {
         path: "ruby.events.llm",

@@ -67,5 +67,5 @@ not present percentages from five-person waves as stable product rates.
 ## Stop conditions
 
 Pause invitations if production health is not ready, the metrics schema is not
-`ruby-high-admin-metrics.v8`, or the viewer records test/smoke sessions as
+`ruby-high-admin-metrics.v10`, or the viewer records test/smoke sessions as
 human-viewer activity. Fix the measurement boundary before continuing.

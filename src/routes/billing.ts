@@ -1009,7 +1009,7 @@ function desiredStripeReversalHallPasses(
   purchaseTransactionId: string,
   purchasedHallPasses: number,
   purchaseCents: number,
-): { desired: number; netReversed: number } {
+): { desired: number; netReversed: number; desiredCents: number; netReversedCents: number } {
   const transactions = ruby.walletTransactions(sessionId);
   const eventMarkers = transactions.filter((transaction) => (
     transaction.metadata?.stripeReversalEvent === true &&
@@ -1041,26 +1041,38 @@ function desiredStripeReversalHallPasses(
   const incrementalRefundCents = [...refunds.values()]
     .filter((refund) => refund.status === "active")
     .reduce((sum, refund) => sum + refund.amountCents, 0);
+  const activeRefundCents = Math.max(cumulativeRefundCents, incrementalRefundCents);
   const refundPasses = proportionalStripeHallPasses(
     purchasedHallPasses,
     purchaseCents,
-    Math.max(cumulativeRefundCents, incrementalRefundCents),
+    activeRefundCents,
   );
-  const disputePasses = [...disputes.values()]
+  const activeDisputeCents = [...disputes.values()]
     .filter((dispute) => dispute.status === "active")
-    .reduce((maximum, dispute) => Math.max(
-      maximum,
-      proportionalStripeHallPasses(purchasedHallPasses, purchaseCents, dispute.amountCents),
-    ), 0);
-  const netReversed = transactions
-    .filter((transaction) => (
+    .reduce((maximum, dispute) => Math.max(maximum, dispute.amountCents), 0);
+  const disputePasses = proportionalStripeHallPasses(
+    purchasedHallPasses,
+    purchaseCents,
+    activeDisputeCents,
+  );
+  const adjustments = transactions.filter((transaction) => (
       transaction.metadata?.stripeReversalAdjustment === true &&
       transaction.metadata?.stripePurchaseTransactionId === purchaseTransactionId
-    ))
+    ));
+  const netReversed = adjustments
     .reduce((sum, transaction) => sum - Math.floor(Number(transaction.hallPasses ?? 0)), 0);
+  const netReversedCents = adjustments.reduce((sum, transaction) => {
+    const amountCents = Math.abs(Math.floor(Number(transaction.amountCents ?? 0)));
+    if (!Number.isFinite(amountCents)) return sum;
+    const isReversal = Number(transaction.hallPasses ?? 0) < 0
+      || (Number(transaction.hallPasses ?? 0) === 0 && transaction.kind === "hall-pass-revoke");
+    return sum + (isReversal ? amountCents : -amountCents);
+  }, 0);
   return {
     desired: Math.min(purchasedHallPasses, Math.max(refundPasses, disputePasses)),
     netReversed: Math.min(purchasedHallPasses, Math.max(0, netReversed)),
+    desiredCents: Math.min(purchaseCents, Math.max(activeRefundCents, activeDisputeCents)),
+    netReversedCents: Math.min(purchaseCents, Math.max(0, netReversedCents)),
   };
 }
 
@@ -1106,7 +1118,8 @@ async function fulfillStripeReversal(
     purchaseCents,
   );
   const delta = target.desired - target.netReversed;
-  if (delta === 0) {
+  const revenueDeltaCents = target.desiredCents - target.netReversedCents;
+  if (delta === 0 && revenueDeltaCents === 0) {
     await ruby.flushSession(purchase.sessionId);
     return {
       applied: recordedMarker.applied,
@@ -1118,11 +1131,11 @@ async function fulfillStripeReversal(
   }
   const adjustmentInput = {
     amount: Math.abs(delta),
-    idempotencyKey: `stripe:reconcile:${marker.idempotencyKey}:${target.desired}:${target.netReversed}`,
+    idempotencyKey: `stripe:reconcile:${marker.idempotencyKey}:${target.desired}:${target.netReversed}:${target.desiredCents}:${target.netReversedCents}`,
     source: "stripe" as const,
-    description: delta > 0 ? "Stripe purchase reversed" : "Stripe dispute funds restored",
+    description: delta > 0 || revenueDeltaCents > 0 ? "Stripe purchase reversed" : "Stripe dispute funds restored",
     at: stripeEventAt(event),
-    amountCents: marker.amountCents,
+    amountCents: -revenueDeltaCents,
     metadata: {
       stripeReversalAdjustment: true,
       stripeEventId: event.id ?? null,
@@ -1132,11 +1145,19 @@ async function fulfillStripeReversal(
       stripeReversalKind: marker.kind,
       stripeReversalReferenceId: marker.referenceId,
       stripeReversalTargetHallPasses: target.desired,
+      stripeReversalTargetAmountCents: target.desiredCents,
     },
   };
-  const adjustment = delta > 0
-    ? ruby.revokeHallPasses(purchase.sessionId, adjustmentInput)
-    : ruby.refundHallPasses(purchase.sessionId, adjustmentInput);
+  const adjustment = delta === 0
+    ? ruby.recordWalletMarker(purchase.sessionId, {
+        ...adjustmentInput,
+        kind: revenueDeltaCents > 0 ? "hall-pass-revoke" : "hall-pass-refund",
+        hallPasses: 0,
+        display: false,
+      })
+    : delta > 0
+      ? ruby.revokeHallPasses(purchase.sessionId, adjustmentInput)
+      : ruby.refundHallPasses(purchase.sessionId, adjustmentInput);
   await ruby.flushSession(purchase.sessionId);
   return {
     applied: adjustment.applied,

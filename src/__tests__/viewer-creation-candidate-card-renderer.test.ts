@@ -40,13 +40,13 @@ describe("creation candidate card renderer", () => {
     const refs = renderer.build();
     const card = refs.card as unknown as FakeElement;
 
-    expect(card.className).toBe("ccg-card is-character-card is-creation-candidate-card");
+    expect(card.className).toBe("ccg-card is-character-card is-creation-candidate-card student-setup");
     expect(textTree(card)).toEqual([
-      "student",
+      "Your student",
       "Free · no sign-up needed · your first class starts now.",
       "\u2728 Create AI portrait",
-      "Customize",
-      "Take my seat · start class",
+      "Advanced",
+      "Start first class",
     ]);
     expect(refs.role).toBe(card.children[0] as unknown as HTMLElement);
     expect(refs.portraitImg).toBe((card.children[1] as FakeElement).children[0] as unknown as HTMLImageElement);
@@ -54,6 +54,7 @@ describe("creation candidate card renderer", () => {
 
     const body = card.children[2] as FakeElement;
     expect(body.className).toBe("ccg-body");
+    expect(refs.body).toBe(body as unknown as HTMLElement);
     expect(refs.name).toBe(body.children[0] as unknown as HTMLElement);
     expect(refs.subtitle).toBe(body.children[1] as unknown as HTMLElement);
     expect(refs.stats).toBe(body.children[4] as unknown as HTMLElement);
@@ -76,10 +77,10 @@ describe("creation candidate card renderer", () => {
     expect(portraitBtn.textContent).toBe("\u2728 Create AI portrait");
     expect(customizeBtn.className).toBe("secondary creation-customize-btn");
     expect(customizeBtn.type).toBe("button");
-    expect(customizeBtn.textContent).toBe("Customize");
+    expect(customizeBtn.textContent).toBe("Advanced");
     expect(saveBtn.className).toBe("primary");
     expect(saveBtn.type).toBe("button");
-    expect(saveBtn.textContent).toBe("Take my seat · start class");
+    expect(saveBtn.textContent).toBe("Start first class");
     expect(saveBtn.disabled).toBe(true);
     expect(saveBtn.hidden).toBe(true);
   });

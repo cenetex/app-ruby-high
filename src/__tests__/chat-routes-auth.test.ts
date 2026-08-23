@@ -397,15 +397,12 @@ describe("auth origin guard", () => {
     } as any;
     state.updatedAt = Date.now();
     await ruby.flushSession(stateKey);
-    await stateStore.saveMetricEvent({
-      id: "metric-delete-account",
-      name: "app_open",
-      occurredAt: Date.now(),
-      day: "2026-06-20",
+    await ruby.recordMetricEventDurably("app_open", {
       sessionId: stateKey,
       userId: record.userId,
       visitorHash: "delete-visitor",
     });
+    expect(ruby.analyticsSnapshot().events.appOpen.total).toBe(1);
     await stateStore.saveSchoolEvent({
       id: "school:event:delete-account",
       sessionId: stateKey,
@@ -452,6 +449,8 @@ describe("auth origin guard", () => {
     expect(res.getHeader("set-cookie")).toEqual(expect.stringContaining("Max-Age=0"));
     expect(auth.resolve(token)).toBeNull();
     expect(ruby.getSchoolWorldEvents(10).map((event) => event.id)).not.toContain("school:event:delete-account");
+    expect(ruby.analyticsSnapshot().events.appOpen.total).toBe(0);
+    expect(ruby.analyticsSnapshot().events.total).toBe(0);
 
     const fresh = new StateStore(join(tmpDir, "state.json"));
     expect((await fresh.load()).has(stateKey)).toBe(false);

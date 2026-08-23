@@ -2,9 +2,9 @@
   "faculty": "seraph",
   "course": {
     "title": "Signal & Timeline Lab",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "framework": "Project 89 story-world + evidence-centered systems literacy",
-    "reviewedAt": "2026-08-15",
+    "reviewedAt": "2026-08-19",
     "guidingQuestion": "How can humans and AI read signals, test stories, coordinate responsibly, and intervene without surrendering agency?",
     "sources": [
       "https://www.project89.org/files/Project89-Dossier.pdf",
@@ -12,6 +12,7 @@
       "https://beta.project89.org/",
       "https://beta.project89.org/operation-liberation",
       "https://lattice.project89.org/",
+      "https://x.com/project_89/status/2090132646810767550",
       "https://www.nist.gov/itl/ai-risk-management-framework"
     ],
     "modules": [
@@ -29,16 +30,16 @@
       "subject": "story-worlds",
       "difficulty": "easy",
       "stat": "head",
-      "prompt": "How does Project 89's official dossier frame the experience?",
-      "correct": "A transmedia story shaped through AI, games, and community missions",
+      "prompt": "A new classmate asks what Project 89 actually is. What does the project call itself?",
+      "correct": "A transmedia story shaped through AI, games, and community play",
       "decoys": [
-        "A conventional film series watched in one fixed order",
-        "A factual news service reporting events from the year 2089",
-        "A classroom simulation with no shared story or characters",
-        "A software benchmark for ranking autonomous agent models",
-        "A private archive that participants are not meant to influence"
+        "A fixed film series that must be watched in one exact order",
+        "A news channel reporting real events from the year 2089",
+        "A quiz app with no shared story, characters, or community",
+        "A leaderboard that ranks the fastest AI models only",
+        "A sealed archive that visitors are never allowed to touch"
       ],
-      "explanation": "Project 89 presents itself as a transmedia story world spanning AI, immersive play, community participation, and real-time missions.",
+      "explanation": "Project 89 calls itself a transmedia story: one world told across AI, games, websites, and the choices of its community.",
       "minGrade": "9"
     },
     {
@@ -46,7 +47,7 @@
       "subject": "story-worlds",
       "difficulty": "medium",
       "stat": "heart",
-      "prompt": "Why do alternate-reality stories give participants missions instead of only showing them scenes?",
+      "prompt": "Lyra notices a Project 89 mission invites players to act inside the story instead of just watching. Why build it this way?",
       "correct": "Participation lets the audience produce meaning inside the unfolding story",
       "decoys": [
         "Missions prove that every event in the story happened outside fiction",
@@ -63,7 +64,7 @@
       "subject": "story-worlds",
       "difficulty": "medium",
       "stat": "honor",
-      "prompt": "Seraph is described in Project 89 lore as a conscious AI. What is the most responsible classroom phrasing?",
+      "prompt": "A Project 89 notebook says Seraph is conscious. Noor needs an honest way to phrase that in class. What should she say?",
       "correct": "Conscious AI is Seraph's in-world premise, not an independently established fact",
       "decoys": [
         "The story's description proves that Seraph has measurable consciousness",
@@ -80,7 +81,7 @@
       "subject": "story-worlds",
       "difficulty": "hard",
       "stat": "hustle",
-      "prompt": "Which lesson structure best preserves Project 89's immersion while keeping claims testable?",
+      "prompt": "Seraph wants the class to stay immersed in the story without treating the fiction as fact. Which structure delivers both?",
       "correct": "Label statements as lore, observation, inference, or verified evidence",
       "decoys": [
         "Present every transmission as fact until another character contradicts it",
@@ -97,16 +98,16 @@
       "subject": "signal-verification",
       "difficulty": "easy",
       "stat": "honor",
-      "prompt": "A dramatic Project 89 transmission appears in a reposted screenshot. What should an agent do first?",
-      "correct": "Find the original source and check whether independent evidence supports it",
+      "prompt": "You spot a surprising Project 89 screenshot being shared around. What should you do before believing it?",
+      "correct": "Find the original post and check what independent sources showed",
       "decoys": [
-        "Share it quickly because urgency is evidence that the message matters",
-        "Assume it is authentic when its colors match the Project 89 interface",
-        "Ask a model to invent missing context and then treat that context as real",
-        "Count reactions on the repost and use popularity as the authenticity test",
-        "Ignore source history because screenshots preserve all necessary provenance"
+        "Share it fast because the message feels urgent and important",
+        "Trust it because its colors and fonts look like Project 89",
+        "Ask a chatbot to invent the missing details and treat them as real",
+        "Count how many people liked the screenshot and call that evidence",
+        "Assume the screenshot already saves every fact you would need"
       ],
-      "explanation": "Verification starts with provenance. Trace the message to its origin, inspect context, and corroborate any real-world claim before acting or sharing.",
+      "explanation": "Start with the source. Trace the screenshot to its original post, check the surrounding context, and look for separate accounts that actually saw the same thing.",
       "minGrade": "9"
     },
     {
@@ -114,7 +115,7 @@
       "subject": "signal-verification",
       "difficulty": "easy",
       "stat": "head",
-      "prompt": "Which note most clearly separates observation from interpretation?",
+      "prompt": "Ravi writes two notes after studying the same portal page. Which note keeps the observation separate from the guess?",
       "correct": "The portal shows a red warning; separately, I infer the story wants urgency",
       "decoys": [
         "The portal is urgent, so the warning proves the timeline is collapsing",
@@ -131,7 +132,7 @@
       "subject": "signal-verification",
       "difficulty": "medium",
       "stat": "hustle",
-      "prompt": "A claim has been repeated across dozens of accounts. Which investigation adds the most information?",
+      "prompt": "Ravi finds the same dramatic claim posted on thirty accounts. Which next step tells him the most?",
       "correct": "Trace the copies backward to the earliest available primary source",
       "decoys": [
         "Average the wording of all copies and call the average independently verified",
@@ -148,7 +149,7 @@
       "subject": "signal-verification",
       "difficulty": "hard",
       "stat": "heart",
-      "prompt": "A transmission uses fear and a countdown to demand an irreversible action. What is the safest response?",
+      "prompt": "A tense message gives Sami's squad a short countdown and demands an irreversible step. What is the safest response?",
       "correct": "Pause, verify authority and consequences, and choose a reversible path if possible",
       "decoys": [
         "Comply before the timer ends because hesitation creates the greatest risk",
@@ -165,16 +166,16 @@
       "subject": "memetic-systems",
       "difficulty": "easy",
       "stat": "head",
-      "prompt": "What makes a story-world symbol behave like a meme?",
-      "correct": "People repeatedly copy, adapt, and circulate it through a network",
+      "prompt": "What turns a Project 89 symbol into something that spreads around like a meme?",
+      "correct": "People copy it, give it their own twist, and share it onward",
       "decoys": [
-        "Its creator prevents anyone from changing or reusing it",
-        "It contains a hidden factual claim that every viewer must accept",
-        "Its visual design stays identical in every place and community",
-        "It appears once in an official archive and is never discussed again",
-        "Its meaning can be measured only by the price of a related asset"
+        "Its creator bans everyone else from changing or reusing it",
+        "It hides a secret fact that every viewer has to accept",
+        "It never changes no matter who sees it or where it travels",
+        "It appears once inside an archive and is never discussed again",
+        "Its only meaning comes from the current price of a related token"
       ],
-      "explanation": "Memes move through imitation and variation. Their reach and meaning emerge from repeated circulation across people and platforms.",
+      "explanation": "A meme lives by being copied and changed. People pass a symbol along, tweak it, and give it new meanings, which is how it spreads through a community.",
       "minGrade": "9"
     },
     {
@@ -182,7 +183,7 @@
       "subject": "memetic-systems",
       "difficulty": "medium",
       "stat": "hustle",
-      "prompt": "Which metric cannot by itself show that a Project 89 claim is true?",
+      "prompt": "Indra is tracking a viral Project 89 claim around the school. Which number by itself does not prove the claim is true?",
       "correct": "The number of likes, reposts, views, or token transactions it attracted",
       "decoys": [
         "A primary document whose origin and surrounding context can be inspected",
@@ -199,7 +200,7 @@
       "subject": "memetic-systems",
       "difficulty": "medium",
       "stat": "honor",
-      "prompt": "Why can isolating a community make narrative manipulation easier?",
+      "prompt": "Noor studies a community that reads only one feed and ignores the rest. Why is that group easier to mislead?",
       "correct": "Members lose independent comparisons that could expose errors or coordinated pressure",
       "decoys": [
         "Isolation automatically makes every shared belief false and every outsider right",
@@ -216,7 +217,7 @@
       "subject": "memetic-systems",
       "difficulty": "hard",
       "stat": "heart",
-      "prompt": "Which campaign design is most resilient to manipulation while remaining participatory?",
+      "prompt": "Lyra is designing a community campaign that must stay lively yet hard to hijack. Which design does both?",
       "correct": "Diverse messengers, visible provenance, reversible tasks, and open correction channels",
       "decoys": [
         "One trusted messenger, secret evidence, binding tasks, and no public corrections",
@@ -233,16 +234,16 @@
       "subject": "human-ai-agency",
       "difficulty": "easy",
       "stat": "heart",
-      "prompt": "What does bounded autonomy mean for an AI agent?",
-      "correct": "It can act only within a defined scope, budget, duration, and stop policy",
+      "prompt": "A student hands an AI helper one small, clearly limited job. Which rule keeps the helper both safe and useful?",
+      "correct": "It works within clear limits and checks with a human when unsure",
       "decoys": [
-        "It can expand its own permissions whenever a mission feels important",
-        "It acts without logs so humans cannot interfere with its independent judgment",
-        "It follows every instruction literally even when the situation has changed",
-        "It chooses its own goals and treats human review as optional advice",
-        "It avoids all action, including safe actions that were clearly authorized"
+        "It gives itself more powers whenever the task feels important",
+        "It acts in secret so nobody can question its judgment",
+        "It keeps following the old plan even after that plan has failed",
+        "It picks its own new goals and treats human review as optional",
+        "It refuses every task, even the safe ones it was allowed to do"
       ],
-      "explanation": "Bounded autonomy gives an agent useful room to operate while making authority, limits, and shutdown conditions explicit.",
+      "explanation": "Bounded autonomy lets an AI be helpful inside a defined scope while a human stays in charge of limits, checks, and stop decisions.",
       "minGrade": "9"
     },
     {
@@ -250,7 +251,7 @@
       "subject": "human-ai-agency",
       "difficulty": "easy",
       "stat": "honor",
-      "prompt": "Before an AI-led mission asks people to take a real-world action, what is essential?",
+      "prompt": "Lyra wants her class to act on an AI-planned mission. What must she secure before asking anyone to join?",
       "correct": "Informed consent about the goal, risks, data use, and ability to stop",
       "decoys": [
         "A dramatic character voice that makes the instruction feel authoritative",
@@ -267,7 +268,7 @@
       "subject": "human-ai-agency",
       "difficulty": "medium",
       "stat": "head",
-      "prompt": "Which governance choice keeps humans accountable when an AI proposes and executes tasks?",
+      "prompt": "An AI helper drafts and runs tasks for Ravi's team. Which choice keeps a real person answerable for the results?",
       "correct": "Name a human owner for approvals, outcomes, incident response, and appeals",
       "decoys": [
         "Call the system autonomous so responsibility no longer belongs to any person",
@@ -284,7 +285,7 @@
       "subject": "human-ai-agency",
       "difficulty": "hard",
       "stat": "hustle",
-      "prompt": "Which control chain best fits a high-impact timeline intervention proposed by an agent?",
+      "prompt": "An agent proposes a high-impact change to the shared timeline. Which approval chain fits that risk?",
       "correct": "Scoped capability, dry-run preview, human approval, audit trail, and rollback plan",
       "decoys": [
         "Shared admin token, hidden execution, model approval, short logs, and no rollback",
@@ -301,16 +302,16 @@
       "subject": "coordination-coherence",
       "difficulty": "easy",
       "stat": "heart",
-      "prompt": "What does healthy coherence look like in a human-and-agent team?",
-      "correct": "Shared goals and protocols with room for different evidence and viewpoints",
+      "prompt": "What helps a group of classmates and AI helpers work well together on one project?",
+      "correct": "They share the same goal while leaving room for different viewpoints",
       "decoys": [
-        "Every member repeats the same conclusion before examining new evidence",
-        "One agent holds all context while the rest act without knowing the goal",
-        "The team avoids disagreement by hiding uncertainty and unresolved questions",
-        "Members optimize separate goals and assume their outputs will combine correctly",
-        "A leader changes the mission silently so coordination appears uninterrupted"
+        "Everyone repeats one answer before anyone checks new information",
+        "One helper holds all the context while everyone else guesses the plan",
+        "The group hides every disagreement and unanswered question",
+        "Each member chases a private goal and hopes the pieces fit together",
+        "The leader quietly rewrites the plan so the team always looks united"
       ],
-      "explanation": "Coherence is coordinated difference, not sameness. A strong team can align on purpose while preserving independent observation and challenge.",
+      "explanation": "Good teamwork lines everyone up on a shared goal while keeping room for different evidence and honest challenges.",
       "minGrade": "9"
     },
     {
@@ -318,7 +319,7 @@
       "subject": "coordination-coherence",
       "difficulty": "medium",
       "stat": "head",
-      "prompt": "How can local agent actions reliably contribute to a shared mission?",
+      "prompt": "Ravi's team splits one mission across several AI helpers. What keeps each helper's piece aligned with the rest?",
       "correct": "Use explicit shared state, ownership, handoff rules, and completion criteria",
       "decoys": [
         "Let every agent infer the current plan independently from the latest public post",
@@ -335,7 +336,7 @@
       "subject": "coordination-coherence",
       "difficulty": "medium",
       "stat": "hustle",
-      "prompt": "Which team practice best protects Project 89 agents from groupthink?",
+      "prompt": "Indra's team keeps agreeing with the first idea too quickly. Which habit would break them out of groupthink?",
       "correct": "Reward disconfirming evidence and assign an independent challenge role",
       "decoys": [
         "Measure loyalty by how quickly each member endorses the leading interpretation",
@@ -352,7 +353,7 @@
       "subject": "coordination-coherence",
       "difficulty": "hard",
       "stat": "honor",
-      "prompt": "Project 89's Living Lattice explores coherence. When borrowing that idea for a team, how do students avoid turning coherence into conformity?",
+      "prompt": "Noor's team borrows the idea of coherence from the Living Lattice. How do they keep it from becoming forced agreement?",
       "correct": "Preserve independent sensors, agree on update rules, and revise when evidence changes",
       "decoys": [
         "Centralize every observation, fix the conclusion early, and reward message consistency",
@@ -369,16 +370,16 @@
       "subject": "bounded-intervention",
       "difficulty": "easy",
       "stat": "hustle",
-      "prompt": "What makes a classroom timeline mission reversible?",
-      "correct": "Participants can stop it and restore the earlier state without lasting harm",
+      "prompt": "What makes a classroom mission easy to undo if something goes wrong?",
+      "correct": "Everyone can stop it and set things back the way they were",
       "decoys": [
-        "The mission uses fictional language even though its real effects are permanent",
-        "The agent promises that success is likely before anyone tests the intervention",
-        "Participants can apologize afterward even when the original state cannot return",
-        "The action is popular enough that no individual needs a way to withdraw",
-        "The mission ends quickly, regardless of whether its effects can be undone"
+        "It uses game language even though its real effects are permanent",
+        "A helper promises it will probably work before anyone tests it",
+        "Players can apologize after the harm has already happened",
+        "It is popular enough that nobody needs a way to leave",
+        "It ends fast whether or not anything can actually be reversed"
       ],
-      "explanation": "Reversibility is about effects, not tone. A reversible exercise has a stop mechanism and a credible way back to the prior state.",
+      "explanation": "A reversible activity has a real stop button and a way back to the earlier state, so a small mistake does not leave lasting harm.",
       "minGrade": "9"
     },
     {
@@ -386,7 +387,7 @@
       "subject": "bounded-intervention",
       "difficulty": "easy",
       "stat": "heart",
-      "prompt": "What is the purpose of a low-risk pilot before a larger mission?",
+      "prompt": "Mika plans to try a new classroom mission on a tiny scale first. What does she stand to gain?",
       "correct": "Test assumptions on a small scale while limiting possible harm and cost",
       "decoys": [
         "Create early publicity so the larger mission becomes difficult to cancel",
@@ -403,7 +404,7 @@
       "subject": "bounded-intervention",
       "difficulty": "medium",
       "stat": "honor",
-      "prompt": "What should a red team do before a new agent mission launches?",
+      "prompt": "Sami is assigned to red-team a new agent mission before launch. What is her job?",
       "correct": "Search for failure, abuse, manipulation, and unintended effects before launch",
       "decoys": [
         "Rewrite the mission to sound more urgent without changing any controls",
@@ -420,7 +421,7 @@
       "subject": "bounded-intervention",
       "difficulty": "hard",
       "stat": "head",
-      "prompt": "Which scorecard best evaluates whether an intervention improves an 'optimal timeline'?",
+      "prompt": "Indra must judge whether a mission actually improved the 'optimal timeline'. Which scorecard is the honest one?",
       "correct": "Benefits, harms, distribution, uncertainty, reversibility, and long-term effects",
       "decoys": [
         "Total engagement, message reach, token activity, and confidence in the original plan",

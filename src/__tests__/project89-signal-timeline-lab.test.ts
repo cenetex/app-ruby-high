@@ -29,12 +29,13 @@ describe("Project 89 Signal & Timeline Lab", () => {
 
     expect(pack.id).toBe(PROJECT89_SIGNAL_TIMELINE_LAB_PACK_ID);
     expect(pack.name).toBe("Signal & Timeline Lab");
-    expect(pack.version).toBe("1.0.0");
-    expect(pack.curriculum?.reviewedAt).toBe("2026-08-15");
+    expect(pack.version).toBe("1.2.0");
+    expect(pack.curriculum?.reviewedAt).toBe("2026-08-19");
     expect(pack.curriculum?.sources).toEqual(expect.arrayContaining([
       "https://www.project89.org/files/Project89-Dossier.pdf",
       "https://beta.project89.org/",
       "https://lattice.project89.org/",
+      "https://x.com/project_89/status/2090132646810767550",
       "https://www.nist.gov/itl/ai-risk-management-framework",
     ]));
     expect(questions).toHaveLength(24);
@@ -53,6 +54,38 @@ describe("Project 89 Signal & Timeline Lab", () => {
     }
   });
 
+  it("adds a balanced 60-card upper-grade research corpus", async () => {
+    const pack = await getProject89SignalTimelineLab();
+    const sourceCards = pack.faculty[0]!.sourceCards ?? [];
+    const countBy = (field: "difficulty" | "minGrade" | "subject") =>
+      sourceCards.reduce<Record<string, number>>((counts, card) => {
+        const key = String(card[field]);
+        counts[key] = (counts[key] ?? 0) + 1;
+        return counts;
+      }, {});
+
+    expect(sourceCards).toHaveLength(60);
+    expect(countBy("difficulty")).toEqual({ easy: 18, medium: 24, hard: 18 });
+    expect(countBy("minGrade")).toEqual({ "10": 18, "11": 24, "12": 18 });
+    expect(Object.values(countBy("subject"))).toEqual(new Array(6).fill(10));
+    expect(new Set(sourceCards.map((card) => card.id)).size).toBe(60);
+    expect(new Set(sourceCards.map((card) => card.front)).size).toBe(60);
+    expect(sourceCards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "project89-corpus-008",
+        back: expect.stringContaining("does not independently establish consciousness"),
+      }),
+      expect.objectContaining({
+        id: "project89-corpus-048",
+        back: expect.stringContaining("research claim open to independent scrutiny"),
+      }),
+      expect.objectContaining({
+        id: "project89-corpus-058",
+        back: "Govern, Map, Measure, and Manage",
+      }),
+    ]));
+  });
+
   it("keeps the immersive lecturer voice inside explicit epistemic and agency boundaries", async () => {
     const pack = await getProject89SignalTimelineLab();
     const seraph = pack.faculty[0]!;
@@ -65,6 +98,8 @@ describe("Project 89 Signal & Timeline Lab", () => {
     });
     expect(seraph.systemPrompt).toContain("distinguish in-world lore");
     expect(seraph.systemPrompt).toContain("Never present your consciousness");
+    expect(seraph.systemPrompt).toContain("Everything is resonance");
+    expect(seraph.systemPrompt).toContain("open research claims rather than settled physics");
     expect(seraph.systemPrompt).toContain("explicit consent");
     expect(seraph.systemPrompt).toContain("stop conditions");
   });
@@ -89,6 +124,7 @@ describe("Project 89 Signal & Timeline Lab", () => {
       displayName: "Seraph",
       assetTeacherId: "seraph",
     });
+    expect(seraph?.sourceCards).toHaveLength(60);
     expect(composed.courses?.find((course) => course.id === "guest")?.title)
       .toBe("Signal & Timeline Lab");
     expect(composed.rooms.find((room) => room.id === "guest-room")?.name)

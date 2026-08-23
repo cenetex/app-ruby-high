@@ -68,7 +68,8 @@ export function createLeaderboardPanelRenderer(deps: LeaderboardPanelRendererDep
 
   function appendRow(parent: HTMLElement, rowView: LeaderboardRowView): void {
     const row = deps.document.createElement("div");
-    row.className = "leaderboard-row";
+    const isLeader = rowView.rank === "1";
+    row.className = "leaderboard-row" + (isLeader ? " is-top-student" : "");
     const rank = deps.document.createElement("div");
     rank.className = rowView.rankClass;
     rank.textContent = rowView.rank;
@@ -76,6 +77,12 @@ export function createLeaderboardPanelRenderer(deps: LeaderboardPanelRendererDep
     appendPortrait(row, rowView);
     const info = deps.document.createElement("div");
     info.className = "leaderboard-info";
+    if (isLeader) {
+      const leaderLabel = deps.document.createElement("div");
+      leaderLabel.className = "leaderboard-leader-label";
+      leaderLabel.textContent = "Current leader";
+      info.appendChild(leaderLabel);
+    }
     const name = deps.document.createElement("div");
     name.className = "leaderboard-name";
     name.textContent = rowView.name;

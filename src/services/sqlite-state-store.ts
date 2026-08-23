@@ -563,6 +563,10 @@ export class SqliteStateStore implements StateStoreLike {
     return `sqlite://${this.path}`;
   }
 
+  metricEventRetentionMs(): number | null {
+    return this.ttlSeconds > 0 ? this.ttlSeconds * 1000 : null;
+  }
+
   private packPk(ownerSessionId: string | null, packId: string): string {
     return `pack:${encodeURIComponent(ownerSessionId ?? "public")}:${encodeURIComponent(packId)}`;
   }

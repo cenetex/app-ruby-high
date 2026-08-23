@@ -85,7 +85,7 @@ export async function handleMetricsEventRoute(
   const body = (await ctx.readJsonBody().catch(() => ({}))) as MetricsEventBody;
   const type = typeof body?.type === "string" ? body.type : "";
   const visitorHash = visitorHashFromHeader(ctx.visitorHeader);
-  const clientSurface = trustedMetricClientSurface(body.clientSurface, ctx.userAgentHeader);
+  const clientSurface = trustedMetricClientSurface(body.clientSurface, ctx.userAgentHeader, deps.sessionId);
   if (type === "app_open") {
     return await respondAfterMetricPersist(ctx, () => deps.ruby.recordAppOpenDurably(deps.sessionId, {
       source: "viewer",
@@ -250,12 +250,16 @@ function metricClientSurface(value: unknown): MetricClientSurface | undefined {
 function trustedMetricClientSurface(
   claimedValue: unknown,
   userAgent: string | string[] | null | undefined,
+  sessionId: string,
 ): MetricClientSurface | undefined {
-  const claimed = metricClientSurface(claimedValue);
-  if (claimed === "agent" || claimed === "smoke") return claimed;
+  const normalizedSessionId = sessionId.toLowerCase();
+  if (normalizedSessionId.startsWith("rh:agent-player:") || normalizedSessionId.startsWith("rh:agent:")) {
+    return "agent";
+  }
   const observed = clientSurfaceFromUserAgent(userAgent);
-  if (observed === "api" || observed === "smoke") return observed;
-  return claimed ?? observed;
+  if (observed) return observed;
+  const claimed = metricClientSurface(claimedValue);
+  return claimed === "viewer" || claimed === "api" ? claimed : undefined;
 }
 
 function requestString(value: unknown): string | undefined {

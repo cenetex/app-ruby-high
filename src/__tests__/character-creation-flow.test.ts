@@ -93,7 +93,7 @@ describe("character creation flow", () => {
       expectScriptToContain(script, '"create-character"');
       // The initial rollComponents() call should still exist.
       expectScriptToContain(script, "rollComponents()");
-      expectScriptToContain(script, "Take my seat · start class");
+      expectScriptToContain(script, "Start first class");
       expectScriptToContain(script, 'setStatus("Saving your student...")');
       expectScriptNotToContain(script, "scheduleCharacterAutosave");
       expectScriptNotToContain(script, "Save Character");
@@ -172,23 +172,23 @@ describe("character creation flow", () => {
       // The explanation text for new students.
       expectScriptToContain(
         script,
-        "Meet your student",
+        "Create your student",
       );
-      expectScriptToContain(script, "Your student is not saved until you take your seat");
+      expectScriptToContain(script, "Pick a name and style");
 
       // The loading spinner text for initial roll.
       expectScriptToContain(script, "Getting your student ready");
       expectScriptToContain(script, "This should only take a moment");
 
       // The character card with playbook stats.
-      expectScriptToContain(script, "Create a Student");
+      expectScriptToContain(script, "Advanced");
     });
 
     it("renders one post-roll start action without the old confirmation copy", () => {
       const script = renderedViewerScript();
 
       expectScriptToContain(script, '"create-character"');
-      expectScriptToContain(script, "Take my seat · start class");
+      expectScriptToContain(script, "Start first class");
       expectScriptNotToContain(script, "Save Character");
       // The old saving-character status text from the accept handler is gone.
       expectScriptNotToContain(script, '"Saving character"');
@@ -196,7 +196,7 @@ describe("character creation flow", () => {
 
     it("renders a low-commitment start-class button for the final student choice", () => {
       const script = renderedViewerScript();
-      expectScriptToContain(script, "Take my seat · start class");
+      expectScriptToContain(script, "Start first class");
       expectScriptToContain(script, "Free · no sign-up needed · your first class starts now.");
     });
 
@@ -226,7 +226,8 @@ describe("character creation flow", () => {
       expectScriptToContain(script, 'playbookSelect.setAttribute("aria-label", "Student style")');
       expectScriptToContain(script, 'customizeBtn.addEventListener("click"');
       expectScriptToContain(script, 'doneBtn.addEventListener("click"');
-      expectScriptToContain(script, "sheetCard.prepend(explanation)");
+      expectScriptToContain(script, "sheetCard.appendChild(explanation)");
+      expectScriptToContain(script, 'creator.className = "creation-single"');
     });
   });
 });

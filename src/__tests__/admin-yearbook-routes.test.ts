@@ -1790,7 +1790,7 @@ describe("admin metrics route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       ok: true,
-      schemaVersion: "ruby-high-admin-metrics.v9",
+      schemaVersion: "ruby-high-admin-metrics.v10",
       schemaPath: "/api/apps/ruby-high/admin/metrics/schema",
       auth: {
         users: 1,
@@ -2851,7 +2851,7 @@ describe("admin metrics route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       ok: true,
-      schemaVersion: "ruby-high-admin-metrics.v9",
+      schemaVersion: "ruby-high-admin-metrics.v10",
       endpoint: "/api/apps/ruby-high/admin/metrics",
       bucketTimezone: "UTC",
       trustStart: "2026-07-26",
@@ -3089,6 +3089,38 @@ describe("admin metrics route", () => {
     expect(JSON.stringify(appOpens)).not.toContain("person@example.com");
     expect(JSON.stringify(appOpens)).not.toContain("tracking.example");
     expect(ruby.analyticsSnapshot().events.acquisition.totalEligibleVisitors).toBe(2);
+  });
+
+  it("derives synthetic metric surfaces from trusted request and session signals", async () => {
+    const { token } = await auth.createGuestSession();
+    const cookieHeader = `rh_session=${token}`;
+
+    let response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/metrics/event",
+      cookieHeader,
+      userAgentHeader: "Mozilla/5.0 AppleWebKit/537.36",
+      visitorHeader: "rhv_surface_human",
+      body: { type: "app_open", clientSurface: "smoke" },
+    });
+    expect(response.status).toBe(200);
+
+    response = await appRoute({
+      method: "POST",
+      path: "/api/apps/ruby-high/metrics/event",
+      cookieHeader,
+      userAgentHeader: "RubyHighSmoke/1.0",
+      visitorHeader: "rhv_surface_smoke",
+      body: { type: "app_open", clientSurface: "viewer" },
+    });
+    expect(response.status).toBe(200);
+
+    const appOpens = (await store.loadMetricEvents()).filter((event) => event.name === "app_open");
+    expect(appOpens.map((event) => event.clientSurface)).toEqual(["viewer", "smoke"]);
+    const analytics = ruby.analyticsSnapshot().events;
+    expect(analytics.appOpen.total).toBe(1);
+    expect(analytics.excludedSynthetic).toBe(2);
+    expect(analytics.acquisition.totalEligibleVisitors).toBe(1);
   });
 
   it("accepts only allowlisted first-run onboarding steps from the viewer", async () => {
@@ -3524,7 +3556,7 @@ describe("admin metrics route", () => {
     expect(headers.Authorization).toBe("Bearer or-test-key");
     const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body));
     const prompt = body.messages[1].content as string;
-    expect(prompt).toContain("ruby-high-admin-metrics.v9");
+    expect(prompt).toContain("ruby-high-admin-metrics.v10");
     expect(prompt).toContain("identityRecords");
     expect(prompt).toContain("not deduped people");
     expect(prompt).toContain("characterD1Retention");

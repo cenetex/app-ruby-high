@@ -318,6 +318,10 @@ export interface StateStoreLike {
   deleteAccountData?(target: StoredAccountDeletionTarget): Promise<StoredAccountDeletionResult>;
   save(states: Iterable<QuizState>): Promise<void>;
   describe(): string;
+  /** Retention window applied to durable metric events, in milliseconds.
+   *  null means the backend keeps them indefinitely. Services use this to
+   *  keep their in-memory metric cache aligned with durable storage. */
+  metricEventRetentionMs?(): number | null;
   /** Optional: drain any debounced writes immediately. No-op for backends
    *  that don't debounce. Returning the writeChain lets callers `await` it
    *  to know all in-flight writes have landed. */
@@ -777,6 +781,10 @@ export class StateStore implements StateStoreLike {
 
   describe(): string {
     return this.path;
+  }
+
+  metricEventRetentionMs(): number | null {
+    return null;
   }
 
   /** Drain any pending debounced write right now and wait for everything

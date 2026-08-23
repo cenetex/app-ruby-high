@@ -100,7 +100,7 @@ export async function dismissAnnouncements(page: Page) {
 export async function createCharacter(page: Page) {
   const rollAStudent = page.getByRole("button", { name: /quick roll student|roll a student/i });
   const saveCharacter = page.locator("#sheet-card").getByRole("button", { name: "Save Character" });
-  const takeSeat = page.locator("#sheet-card").getByRole("button", { name: /take my seat/i });
+  const takeSeat = page.locator("#sheet-card").getByRole("button", { name: /start first class|take my seat/i });
 
   // Capture console errors for debugging.
   const errors: string[] = [];

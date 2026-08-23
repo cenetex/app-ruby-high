@@ -76,11 +76,13 @@ export function dailyClassProgressView(telemetry: NullableRecord): DailyClassPro
   const progress = telemetry && telemetry.active_course_progress;
   const today = progress && progress.today;
   const classSession = telemetry && telemetry.active_round && telemetry.active_round.classSession;
+  const activeRoundIsPractice = classSession && classSession.mode === "practice";
   const hasContext = !!(
     telemetry
     && telemetry.character
     && Number(progress && progress.requiredClasses) > 0
     && !(telemetry.current && telemetry.current.opinionPurpose === "grade-essay")
+    && !activeRoundIsPractice
     && today
     && (
       today.status === "active"
