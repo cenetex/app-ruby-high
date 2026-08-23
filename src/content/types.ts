@@ -98,6 +98,8 @@ export interface PackFaculty {
   /** The teacher's system prompt. The chat layer prepends shared rules
    *  (group-chat framing, tool surface) to this. */
   systemPrompt: string;
+  /** Optional tool-free persona for the shared teachers' lounge. */
+  loungePrompt?: string;
   /** OpenRouter model id. Cheap fast models work fine — chat is short
    *  and high-volume. */
   defaultModel: string;

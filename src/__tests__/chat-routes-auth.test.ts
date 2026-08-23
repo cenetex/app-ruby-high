@@ -2481,13 +2481,15 @@ describe("chat event context", () => {
     expect(calls).toHaveLength(4);
     const loungeContexts = calls.flatMap((call) =>
       (call.body.messages as Array<{ role?: string; content?: string }>)
-        .filter((m) => typeof m.content === "string" && m.content.startsWith("LOUNGE CONTEXT"))
+        .filter((m) => typeof m.content === "string" && m.content.includes("LOUNGE CONTEXT"))
         .map((m) => m.content as string)
     );
     expect(loungeContexts.length).toBeGreaterThan(0);
     expect(loungeContexts[0]).toContain("Dr. Wells");
     expect(loungeContexts[0]).not.toMatch(/\btools?\b/i);
     expect(capturedChatRequest.body.model).toBe("test/guest-model");
+    expect(capturedChatRequest.body.messages[0].content).toContain("in the Ruby High teachers' lounge");
+    expect(capturedChatRequest.body.messages[0].content).not.toContain("guest astrobiology teacher");
   });
 
   it("threads classroom Chat button player lines into the teacher turn", async () => {
@@ -2833,7 +2835,7 @@ describe("chat event context", () => {
     expect(handled).toBe(true);
     const promptText = JSON.stringify(capturedChatRequest.body.messages);
     expect(promptText).toContain("Player answer: no answer (timeout)");
-    expect(promptText).toContain("Time expired before");
+    expect(promptText).toContain("did not answer before time expired");
     expect(promptText).not.toContain("answered A");
     expect(promptText).not.toContain("Player answer: A");
   });

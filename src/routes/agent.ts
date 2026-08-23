@@ -14,6 +14,7 @@ import {
 } from "../services/agent-access-service.js";
 import { AuthService } from "../services/auth-service.js";
 import { FacultyService } from "../services/faculty-service.js";
+import { ChatService } from "../services/chat-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { publicWorldNameReview } from "../services/ruby-high/world-projection.js";
 import { TokenBucket } from "../services/rate-limit.js";
@@ -30,7 +31,8 @@ type AgentActionType =
   | "ANSWER"
   | "CHANGE_CLASS"
   | "CHECK_PROGRESS"
-  | "SET_PUBLIC_PRESENCE";
+  | "SET_PUBLIC_PRESENCE"
+  | "LOUNGE";
 
 interface AgentActionBody {
   requestId?: unknown;
@@ -46,6 +48,7 @@ export async function handleAgentRoutes(
     auth: AuthService | null;
     ruby: RubyHighService;
     faculty: FacultyService | null;
+    chat: ChatService | null;
   },
 ): Promise<boolean> {
   if (!ctx.pathname.startsWith(AGENT_API_PREFIX)) return false;
@@ -278,6 +281,7 @@ export async function handleAgentRoutes(
         input,
         credential,
         ruby: services.ruby,
+        chat: services.chat,
       });
       await services.ruby.flushSession(credential.stateKey);
       const response = {
@@ -313,8 +317,9 @@ function applyAgentAction(args: {
   input: Record<string, unknown>;
   credential: AgentCredential;
   ruby: RubyHighService;
+  chat: ChatService | null;
 }): { state: QuizState; result: Record<string, unknown> } {
-  const { type, input, credential, ruby } = args;
+  const { type, input, credential, ruby, chat } = args;
   const sessionId = credential.stateKey;
   if (type === "ENROLL") {
     const state = enrollAgent(ruby, credential, input);
@@ -353,7 +358,7 @@ function applyAgentAction(args: {
     }
     if (state.current) state = ruby.clearBoard(sessionId);
     if (state.faculty !== facultyId) state = ruby.setFaculty(sessionId, facultyId);
-    state = ruby.pickAndPose(sessionId, { faculty: facultyId, mode: "practice" });
+    state = ruby.pickAndPose(sessionId, { faculty: facultyId });
     return { state, result: { attended: true, faculty: state.faculty } };
   }
   if (type === "ANSWER") {
@@ -399,8 +404,55 @@ function applyAgentAction(args: {
       }
     }
     state.character.publicWorldVisible = visible;
+    state.character.socialConsent = visible;
     state.updatedAt = Date.now();
     return { state, result: { publicWorldVisible: visible } };
+  }
+  if (type === "LOUNGE") {
+    if (!credential.scopes.includes("world:participate")) {
+      throw new AgentAccessError(
+        "Missing required scope: world:participate.",
+        403,
+        "insufficient_scope",
+      );
+    }
+    if (state.character.publicWorldVisible !== true || state.character.socialConsent === false) {
+      throw new AgentAccessError(
+        "Enable public presence before joining the shared lounge.",
+        409,
+        "public_presence_required",
+      );
+    }
+    if (state.current && state.phase === "asking") {
+      throw new AgentAccessError(
+        "Answer the open class question before visiting the lounge.",
+        409,
+        "question_already_open",
+      );
+    }
+    if (!chat) {
+      throw new AgentAccessError(
+        "The shared lounge is unavailable right now.",
+        503,
+        "lounge_unavailable",
+      );
+    }
+    const line = cleanOptionalString(input.line)?.slice(0, 280);
+    if (!line) {
+      throw new AgentAccessError(
+        "LOUNGE needs a short line.",
+        400,
+        "invalid_lounge_line",
+      );
+    }
+    const authorName = state.character.name;
+    state = ruby.setFaculty(sessionId, "lounge");
+    chat.appendPlayerMessage({
+      sessionToken: `agent:${credential.id}`,
+      faculty: "lounge",
+      authorName,
+    }, line);
+    return { state, result: { lounged: true, line } };
   }
   throw new AgentAccessError("Unsupported agent action.", 400, "invalid_action");
 }
@@ -515,6 +567,9 @@ export function safeAgentState(
           playbookId: state.character.playbookId,
           currentGrade: state.currentGrade,
           publicWorldVisible: state.character.publicWorldVisible === true,
+          personality: state.character.personality,
+          arcAnswer: state.character.arcAnswer,
+          flavorQuote: state.character.flavorQuote ?? null,
         }
       : null,
     faculty: state.faculty,
@@ -534,6 +589,8 @@ export function safeAgentState(
           subject: current.subject ?? null,
           difficulty: current.difficulty ?? null,
           media: current.media ?? [],
+          rubric: current.rubric ?? null,
+          opinionPurpose: current.opinionPurpose ?? null,
         }
       : null,
     reveal: reveal
@@ -571,7 +628,12 @@ function safeAgentNextActions(
     "CHANGE_CLASS",
     "CHECK_PROGRESS",
     ...(credential.scopes.includes("world:participate")
-      ? ["SET_PUBLIC_PRESENCE" as const]
+      ? [
+          "SET_PUBLIC_PRESENCE" as const,
+          ...(state.character.publicWorldVisible === true && state.character.socialConsent !== false
+            ? ["LOUNGE" as const]
+            : []),
+        ]
       : []),
   ];
 }
@@ -604,6 +666,7 @@ function actionTypeField(value: unknown): AgentActionType {
       "CHANGE_CLASS",
       "CHECK_PROGRESS",
       "SET_PUBLIC_PRESENCE",
+      "LOUNGE",
     ].includes(type)
   ) {
     throw new AgentAccessError("Unknown action type.", 400, "invalid_action");
@@ -818,5 +881,7 @@ function escapeHtml(value: string): string {
 }
 
 export function agentScopeForAction(type: AgentActionType): AgentScope {
-  return type === "SET_PUBLIC_PRESENCE" ? "world:participate" : "student:play";
+  return type === "SET_PUBLIC_PRESENCE" || type === "LOUNGE"
+    ? "world:participate"
+    : "student:play";
 }

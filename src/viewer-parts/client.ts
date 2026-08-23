@@ -6032,6 +6032,40 @@ export function runViewerClient(bootstrap) {
       : pb.name + " · " + gradeLabel + " student";
 
     const actions = [];
+    if (!graduated) {
+      actions.push({
+        label: "✨ Age up portrait",
+        secondary: true,
+        onClick: async (e) => {
+          const btn = e && e.currentTarget;
+          if (btn) { btn.disabled = true; btn.textContent = "✨ Aging up…"; }
+          try {
+            if (!(await confirmHostedCreditSpend("Age up student portrait", "portrait"))) {
+              if (btn) { btn.disabled = false; btn.textContent = "✨ Age up portrait"; }
+              return;
+            }
+            const portraitEntitlement = hostedImageEntitlement("portrait") || {};
+            const portraitCost = portraitEntitlement.cost || 1;
+            if (usingHostedImageGeneration("portrait") && !canSpendHallPasses(portraitCost)) return;
+            const r = await apiFetch("/api/apps/ruby-high/chat/character/portrait/age-up", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ requestId: imageRequestId("age-up-portrait") }),
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(responseErrorText(data) || "portrait " + r.status);
+            if (typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements, data.characterSlots);
+            await fetchSession();
+            if (sheetOverlayOpen) renderSheet();
+            const gradeName = data.grade ? (GRADE_LABELS[data.grade] || data.grade) : "the next year";
+            showCongrats("Portrait aged up for " + gradeName + ".", true);
+          } catch (err) {
+            if (btn) { btn.disabled = false; btn.textContent = "✨ Age up portrait"; }
+            showCongrats(err && err.message ? err.message : "Portrait age-up failed.", false);
+          }
+        },
+      });
+    }
     if (graduated) {
       actions.push({
         label: "Start next student",
