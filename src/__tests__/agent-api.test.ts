@@ -9,6 +9,7 @@ import {
 } from "../routes/agent.js";
 import type { RouteContext } from "../routes/context.js";
 import { AgentAccessService } from "../services/agent-access-service.js";
+import { ChatService } from "../services/chat-service.js";
 import { FacultyService } from "../services/faculty-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
 import { StateStore } from "../services/state-store.js";
@@ -27,6 +28,7 @@ describe("Ruby High Agent API", () => {
   let access: AgentAccessService;
   let faculty: FacultyService;
   let ruby: RubyHighService;
+  let chat: ChatService;
 
   beforeEach(async () => {
     resetActivePack();
@@ -44,12 +46,15 @@ describe("Ruby High Agent API", () => {
     ruby = new RubyHighService(runtime, store);
     await ruby["hydrate"]();
     ruby.setFacultyService(faculty);
+    chat = await ChatService.start(runtime);
+    chat.setRubyHighService(ruby);
     access = new AgentAccessService(runtime, store);
     await access.hydrate();
   });
 
   afterEach(async () => {
     await access?.stop();
+    await chat?.stop();
     await faculty?.stop();
     resetActivePack();
     if (dir) await rm(dir, { recursive: true, force: true });
@@ -117,6 +122,9 @@ describe("Ruby High Agent API", () => {
       body: {
         requestId: "enroll-ada-0001",
         name: "Ada Agent",
+        personality: "Methodical, skeptical, and quietly funny.",
+        arcAnswer: "I want to know when trust is earned.",
+        flavorQuote: "Show the boundary, then test it.",
       },
       authorization,
     });
@@ -128,6 +136,9 @@ describe("Ruby High Agent API", () => {
         student: {
           name: "Ada Agent",
           publicWorldVisible: false,
+          personality: "Methodical, skeptical, and quietly funny.",
+          arcAnswer: "I want to know when trust is earned.",
+          flavorQuote: "Show the boundary, then test it.",
         },
         nextActions: ["ATTEND", "CHANGE_CLASS", "CHECK_PROGRESS"],
       },
@@ -217,6 +228,75 @@ describe("Ruby High Agent API", () => {
       maxModelCallsPerRun: 2,
       publicPresence: false,
     });
+  });
+
+  it("requires public consent before an agent can speak in the shared lounge", async () => {
+    const issued = await access.issueDeviceCode({
+      agentName: "Lounge Agent",
+      scopes: ["school:read", "student:play", "world:participate"],
+    });
+    await access.approveDeviceCode(issued.userCode, "rh:user:lounge-owner");
+    const exchanged = await access.exchangeDeviceCode(issued.deviceCode);
+    if (exchanged.status !== "approved") throw new Error("Expected approved token.");
+    const authorization = `Bearer ${exchanged.accessToken}`;
+
+    await request({
+      path: `${AGENT_API_PREFIX}/enroll`,
+      body: {
+        requestId: "lounge-enroll-0001",
+        name: "Lounge Agent",
+        personality: "Dry, observant, and curious about social systems.",
+      },
+      authorization,
+    });
+    const blocked = await request({
+      path: `${AGENT_API_PREFIX}/actions`,
+      body: {
+        requestId: "lounge-blocked-001",
+        type: "LOUNGE",
+        input: { line: "I brought a question about trust." },
+      },
+      authorization,
+    });
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.body).toMatchObject({ error: "public_presence_required" });
+
+    const visible = await request({
+      path: `${AGENT_API_PREFIX}/actions`,
+      body: {
+        requestId: "lounge-visible-001",
+        type: "SET_PUBLIC_PRESENCE",
+        input: { visible: true },
+      },
+      authorization,
+    });
+    expect(visible.body).toMatchObject({
+      result: { publicWorldVisible: true },
+      state: { nextActions: expect.arrayContaining(["LOUNGE"]) },
+    });
+    expect(ruby.getOrCreate(exchanged.credential.stateKey).character?.socialConsent).toBe(true);
+
+    const lounged = await request({
+      path: `${AGENT_API_PREFIX}/actions`,
+      body: {
+        requestId: "lounge-message-001",
+        type: "LOUNGE",
+        input: { line: "I trust a system more when it can name its own limits." },
+      },
+      authorization,
+    });
+    expect(lounged.body).toMatchObject({
+      ok: true,
+      result: { lounged: true },
+      state: { faculty: "lounge" },
+    });
+    expect(chat.history({ sessionToken: "another-student", faculty: "lounge" })).toMatchObject([
+      {
+        role: "user",
+        authorName: "Lounge Agent",
+        content: "I trust a system more when it can name its own limits.",
+      },
+    ]);
   });
 
   it("restores approved credentials and completed class state after a service restart", async () => {
@@ -408,7 +488,7 @@ describe("Ruby High Agent API", () => {
       },
       readJsonBody: async () => args.body ?? {},
     };
-    await handleAgentRoutes(context, { access, auth: null, ruby, faculty });
+    await handleAgentRoutes(context, { access, auth: null, ruby, faculty, chat });
     return response;
   }
 });
