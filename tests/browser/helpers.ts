@@ -98,6 +98,7 @@ export async function dismissAnnouncements(page: Page) {
  * sheet; enrollment commits when the player takes their seat.
  */
 export async function createCharacter(page: Page) {
+  const createStudent = page.getByRole("button", { name: "Create my student", exact: true });
   const rollAStudent = page.getByRole("button", { name: /quick roll student|roll a student/i });
   const saveCharacter = page.locator("#sheet-card").getByRole("button", { name: "Save Character" });
   const takeSeat = page.locator("#sheet-card").getByRole("button", { name: /start first class|take my seat/i });
@@ -109,6 +110,11 @@ export async function createCharacter(page: Page) {
   });
 
   const rollVisible = await rollAStudent.isVisible().catch(() => false);
+
+  if (await createStudent.isVisible().catch(() => false)) {
+    await createStudent.click();
+    await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
+  }
 
   if (rollVisible) {
     await rollAStudent.click();

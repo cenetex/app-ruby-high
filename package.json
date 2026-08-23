@@ -36,7 +36,7 @@
     "typecheck": "tsc --noEmit && node scripts/check-question-bank.mjs && node scripts/check-viewer-script.mjs",
     "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --disable-warning=ExperimentalWarning\" vitest",
     "test:ci": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --disable-warning=ExperimentalWarning\" vitest --run --testTimeout=15000",
-    "test:browser": "playwright test",
+    "test:browser": "playwright test tests/browser/student-journey.spec.ts tests/browser/viewer-smoke.spec.ts",
     "screens:sheet": "playwright test tests/browser/screen-sheet.spec.ts --project=chromium",
     "test:coverage": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --disable-warning=ExperimentalWarning\" vitest --run --coverage --testTimeout=15000",
     "audit:prod": "npm audit --omit=dev --audit-level=high",

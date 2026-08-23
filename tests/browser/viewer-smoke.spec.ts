@@ -27,7 +27,7 @@ test("canonical issue-174 link opens the Quick Roll/customize choice with bounde
   await dismissAnnouncements(page);
   await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
   await expect(page.locator(".is-creation-control-card .ccg-subtitle")).toContainText(
-    "Edit the name and student style.",
+    "Stats, voice, rerolls, and custom portraits are optional.",
   );
   await expect(page.locator(".creation-row")).toHaveCount(5);
   await expect(page.getByRole("textbox", { name: "Student name" })).toBeVisible();
@@ -70,7 +70,7 @@ test("keeps creator editing and the start-class action reachable on a small phon
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);
 
-  const sheet = page.getByRole("dialog", { name: "Create your Ruby High student" });
+  const sheet = page.locator("#sheet-overlay");
   if (!(await sheet.evaluate((element) => element.classList.contains("is-open")))) {
     await page.getByRole("button", { name: "Create my student" }).click();
   }
@@ -161,6 +161,7 @@ test("keeps the generated student as a preview until the player takes their seat
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);
 
+  await page.getByRole("button", { name: "Create my student", exact: true }).click();
   await expect(page.getByRole("button", { name: /start first class/i })).toBeVisible();
   await page.locator("#sheet-close").click();
 
@@ -252,7 +253,7 @@ test("uses one welcome layer, then keeps announcements for returning students", 
   await expect(page.locator("#announcements-dismiss")).toBeFocused();
 
   await page.keyboard.press("Tab");
-  await expect(page.locator("#announcements-dismiss")).toBeFocused();
+  await expect(page.locator("#announcements-about")).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   await expect(page.locator("#announcements-dismiss")).toBeFocused();
 
