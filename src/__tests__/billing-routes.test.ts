@@ -659,10 +659,16 @@ describe("Stripe webhook", () => {
       status: 200,
       body: { applied: true, reversals: [{ sessionId: stateKey, amount: -20, hallPasses: 0 }] },
     });
+    expect(ruby.analyticsSnapshot().events.commerce).toMatchObject({
+      amountCents: 0,
+      revenueBySource: { stripe: 0 },
+      payingSessions: 1,
+    });
 
     await deliverStripeEvent(refundEvent);
     expect(lastResponse).toMatchObject({ status: 200, body: { applied: false } });
     expect(ruby.hallPassBalance(stateKey)).toBe(0);
+    expect(ruby.analyticsSnapshot().events.commerce.amountCents).toBe(0);
   });
 
   it("restores Hall Passes when a refund fails", async () => {
@@ -700,6 +706,7 @@ describe("Stripe webhook", () => {
       } },
     });
     expect(ruby.hallPassBalance(stateKey)).toBe(10);
+    expect(ruby.analyticsSnapshot().events.commerce.amountCents).toBe(350);
 
     await deliverStripeEvent({
       id: "evt_partial_refund_failed",
@@ -717,6 +724,7 @@ describe("Stripe webhook", () => {
       status: 200,
       body: { applied: true, reversals: [{ amount: 10, hallPasses: 20 }] },
     });
+    expect(ruby.analyticsSnapshot().events.commerce.amountCents).toBe(699);
   });
 
   it("records durable debt when a reversal exceeds the spendable balance", async () => {
@@ -856,6 +864,7 @@ describe("Stripe webhook", () => {
       } },
     });
     expect(ruby.hallPassBalance(stateKey)).toBe(0);
+    expect(ruby.analyticsSnapshot().events.commerce.amountCents).toBe(0);
 
     await deliverStripeEvent({
       id: "evt_dispute_won",
@@ -873,6 +882,7 @@ describe("Stripe webhook", () => {
       status: 200,
       body: { applied: true, reversals: [{ amount: 5, hallPasses: 5 }] },
     });
+    expect(ruby.analyticsSnapshot().events.commerce.amountCents).toBe(199);
   });
 
   it("does not revoke for an inquiry unless Stripe reports funds withdrawn", async () => {

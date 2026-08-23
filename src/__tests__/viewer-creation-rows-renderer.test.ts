@@ -47,6 +47,7 @@ describe("creation rows renderer", () => {
     expect(parent.children).toHaveLength(1);
     const row = parent.children[0]!;
     expect(row.className).toBe("creation-row");
+    expect(refs.row).toBe(row as unknown as HTMLElement);
     expect(textTree(parent)).toEqual(["Playbook", "\u21bb"]);
     expect(row.children.map((child) => child.className)).toEqual([
       "creation-row-label",

@@ -295,6 +295,7 @@ export function runViewerClient(bootstrap) {
   let announcementsOverlay = null;
   let announcementsPreviousFocus = null;
   let announcementsBackgroundLocked = false;
+  let onboardingIntroTracked = false;
   let morningAnnouncementsShown = false;
 
   const WELCOME_HALL_PASS_ART_URL = apiBase + "/assets/welcome-hall-passes.png";
@@ -1347,6 +1348,33 @@ export function runViewerClient(bootstrap) {
       body: JSON.stringify(body),
     }).catch(() => {});
   }
+
+  const SESSION_RESUME_INACTIVE_MS = 5 * 60 * 1000;
+  let viewerMetricsBooted = false;
+  let viewerInactiveSince = document.visibilityState === "hidden" ? Date.now() : null;
+
+  function markViewerInactive() {
+    if (viewerInactiveSince == null) viewerInactiveSince = Date.now();
+  }
+
+  function postViewerSessionResume(reason) {
+    if (viewerInactiveSince == null) return;
+    const inactiveMs = Math.max(0, Date.now() - viewerInactiveSince);
+    viewerInactiveSince = null;
+    if (!viewerMetricsBooted || inactiveMs < SESSION_RESUME_INACTIVE_MS) return;
+    postViewerMetricEvent("session_resume", { inactiveMs: inactiveMs, reason: reason });
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") markViewerInactive();
+    else postViewerSessionResume("visibility");
+  });
+  window.addEventListener("blur", markViewerInactive);
+  window.addEventListener("focus", () => postViewerSessionResume("focus"));
+  window.addEventListener("pagehide", markViewerInactive);
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) postViewerSessionResume("pageshow");
+  });
 
   let acquisitionAttribution = null;
   let quickRollExperimentLanding = false;
@@ -5045,6 +5073,9 @@ export function runViewerClient(bootstrap) {
   }
 
   function showMorningAnnouncements(t) {
+    // The welcome screen is the only first-visit introduction. Daily
+    // announcements return after enrollment, when they have useful context.
+    if (!t || !t.character) return;
     if (morningAnnouncementsShown) return;
     if (!shouldShowMorningAnnouncements()) return;
     morningAnnouncementsShown = true;
@@ -5071,7 +5102,6 @@ export function runViewerClient(bootstrap) {
     const bodyEl = document.getElementById("announcements-body");
     const notesEl = document.getElementById("announcements-notes");
 
-    const hasCharacter = !!(t && t.character);
     const streak = (t && t.streak) || 0;
     const todayFaculty = t && t.faculty_roster && Array.isArray(t.faculty_roster)
       ? t.faculty_roster.find(function(f) { return f.id === t.faculty; })
@@ -5088,47 +5118,30 @@ export function runViewerClient(bootstrap) {
     if (guestPack && guestPack.teacher_name) {
       notes.push({ icon: "📚", text: "<strong>Guest teacher:</strong> " + escapeHtml(guestPack.teacher_name) + " — " + escapeHtml(guestPack.name || guestPack.subject || "guest class") });
     }
-    if (hasCharacter) {
-      notes.push({ icon: "📖", text: "<strong>Books:</strong> <em>Qiao</em> and <em>Egregoregramming 101</em> on Gumroad" });
-    }
+    notes.push({ icon: "📖", text: "<strong>Books:</strong> <em>Qiao</em> and <em>Egregoregramming 101</em> on Gumroad" });
 
-    if (!hasCharacter) {
-      // First visit — welcome
-      if (titleEl) titleEl.textContent = "Welcome to Ruby High";
-      if (bodyEl) {
-        bodyEl.innerHTML =
-          "<p>Create a student, meet six classmates, and answer today's first question. " + escapeHtml(facultyName) + " grades what you actually say.</p>" +
-          "<p><strong>Today's class is ready now.</strong> New classes arrive daily at 17:00 UTC, and every finished year goes in your yearbook.</p>";
-      }
-      if (notesEl) notesEl.innerHTML = notes.map(function(n) {
-        return "<div class=\"announcements-note\"><span class=\"announcements-note-icon\">" + n.icon + "</span><span>" + n.text + "</span></div>";
-      }).join("");
-      postOnboardingFunnelStep("onboarding_intro_shown");
-    } else {
-      // Returning student — daily briefing
-      if (titleEl) titleEl.textContent = "Morning Announcements";
-      var bodyParts = [];
-      bodyParts.push("<p>Good morning, <strong>" + escapeHtml(t.character.name || "student") + "</strong>. Welcome back to Ruby High.</p>");
-      if (facultyName) {
-        bodyParts.push("<p>Today's class: <strong>" + escapeHtml(facultyName) + "</strong>" + (gradeLabel ? " · " + escapeHtml(gradeLabel) : "") + "</p>");
-      }
-      if (streak > 0) {
-        bodyParts.push("<p>Your streak: <span class=\"announcement-streak\">" + streak + " day" + (streak !== 1 ? "s" : "") + "</span></p>");
-      } else {
-        bodyParts.push("<p>No active streak yet — today is a fresh start.</p>");
-      }
-      if (bodyEl) bodyEl.innerHTML = bodyParts.join("");
-      if (notesEl) notesEl.innerHTML = notes.map(function(n) {
-        return "<div class=\"announcements-note\"><span class=\"announcements-note-icon\">" + n.icon + "</span><span>" + n.text + "</span></div>";
-      }).join("");
+    if (titleEl) titleEl.textContent = "Morning Announcements";
+    var bodyParts = [];
+    bodyParts.push("<p>Good morning, <strong>" + escapeHtml(t.character.name || "student") + "</strong>. Welcome back to Ruby High.</p>");
+    if (facultyName) {
+      bodyParts.push("<p>Today's class: <strong>" + escapeHtml(facultyName) + "</strong>" + (gradeLabel ? " · " + escapeHtml(gradeLabel) : "") + "</p>");
     }
+    if (streak > 0) {
+      bodyParts.push("<p>Your streak: <span class=\"announcement-streak\">" + streak + " day" + (streak !== 1 ? "s" : "") + "</span></p>");
+    } else {
+      bodyParts.push("<p>No active streak yet — today is a fresh start.</p>");
+    }
+    if (bodyEl) bodyEl.innerHTML = bodyParts.join("");
+    if (notesEl) notesEl.innerHTML = notes.map(function(n) {
+      return "<div class=\"announcements-note\"><span class=\"announcements-note-icon\">" + n.icon + "</span><span>" + n.text + "</span></div>";
+    }).join("");
 
     const announcementCta = document.getElementById("announcements-dismiss");
-    if (announcementCta) announcementCta.textContent = hasCharacter ? "Take your seat" : "Create my student";
+    if (announcementCta) announcementCta.textContent = "Take your seat";
     const announcementAbout = document.getElementById("announcements-about");
     const announcementBooks = document.getElementById("announcements-books");
-    if (announcementAbout) announcementAbout.hidden = !hasCharacter;
-    if (announcementBooks) announcementBooks.hidden = !hasCharacter;
+    if (announcementAbout) announcementAbout.hidden = false;
+    if (announcementBooks) announcementBooks.hidden = false;
 
     announcementsPreviousFocus = document.activeElement && typeof document.activeElement.focus === "function"
       ? document.activeElement
@@ -5160,6 +5173,13 @@ export function runViewerClient(bootstrap) {
     const actions = document.getElementById("onboarding-actions");
     const visible = !!authed && !(t && t.character);
     if (actions) actions.hidden = !visible;
+    if (visible && !onboardingIntroTracked) {
+      onboardingIntroTracked = true;
+      // The first welcome carries today's announcement role. Do not interrupt
+      // the first question with another modal immediately after enrollment.
+      markAnnouncementsSeen();
+      postOnboardingFunnelStep("onboarding_intro_shown");
+    }
     // The richer first-run actions replace the legacy fallback button.
     const emptyAction = document.getElementById("blackboard-empty-action");
     if (emptyAction && visible) emptyAction.hidden = true;
@@ -5182,8 +5202,7 @@ export function runViewerClient(bootstrap) {
     }
     loadRoomHumanHistories(t);
     applyViewMode(deriveViewMode(t));
-    // Morning announcements — shown once per day on first visit.
-    // Fires after the first telemetry tick, before class content renders.
+    // Returning-student briefing, shown once per day after enrollment.
     showMorningAnnouncements(t);
 
     if (authed && !t.character && !firstRunCreationOpened) {
@@ -5561,82 +5580,21 @@ export function runViewerClient(bootstrap) {
   function renderCardDeck(cardNodes) {
     sheetCard.classList.add("is-card-deck-sheet");
     sheetCard.classList.remove("is-creation-sheet");
-    sheetCard.classList.toggle("is-two-card-deck", cardNodes.length === 2);
+    sheetCard.classList.remove("is-two-card-deck");
     sheetCard.innerHTML = "";
     const wrap = document.createElement("div");
-    wrap.className = "card-deck is-count-" + cardNodes.length;
+    wrap.className = "card-deck profile-page is-count-" + cardNodes.length;
     sheetCard.appendChild(wrap);
 
     const track = document.createElement("div");
-    track.className = "card-deck-track";
+    track.className = "card-deck-track profile-page-sections";
     wrap.appendChild(track);
-    let scrollToCard = () => {};
-
     cardNodes.forEach((card) => track.appendChild(card));
-
-    // Carousel controls only render when there's more than one card.
-    if (cardNodes.length > 1) {
-      const dots = document.createElement("div");
-      dots.className = "card-deck-dots";
-      const cards = Array.from(track.children);
-      cards.forEach((_, i) => {
-        const dot = document.createElement("button");
-        dot.type = "button";
-        dot.className = "card-deck-dot" + (i === 0 ? " is-active" : "");
-        dot.setAttribute("aria-label", "Show card " + (i + 1));
-        dot.addEventListener("click", () => scrollToCard(i));
-        dots.appendChild(dot);
-      });
-      wrap.appendChild(dots);
-
-      const prev = document.createElement("button");
-      prev.type = "button";
-      prev.className = "card-deck-nav prev";
-      prev.setAttribute("aria-label", "Previous card");
-      prev.textContent = "‹";
-      const next = document.createElement("button");
-      next.type = "button";
-      next.className = "card-deck-nav next";
-      next.setAttribute("aria-label", "Next card");
-      next.textContent = "›";
-      wrap.appendChild(prev);
-      wrap.appendChild(next);
-
-      scrollToCard = (i) => {
-        const target = cards[Math.max(0, Math.min(cards.length - 1, i))];
-        if (target && track.scrollTo) {
-          const maxLeft = Math.max(0, track.scrollWidth - track.clientWidth);
-          const left = Math.max(0, Math.min(
-            maxLeft,
-            target.offsetLeft + target.offsetWidth / 2 - track.clientWidth / 2,
-          ));
-          track.scrollTo({ left, behavior: "smooth" });
-        }
-      };
-      const activeIndex = () => {
-        let best = 0;
-        let bestDist = Infinity;
-        const wrapMid = track.scrollLeft + track.clientWidth / 2;
-        cards.forEach((el, i) => {
-          const mid = el.offsetLeft + el.offsetWidth / 2;
-          const d = Math.abs(mid - wrapMid);
-          if (d < bestDist) { bestDist = d; best = i; }
-        });
-        return best;
-      };
-      const refreshControls = () => {
-        const i = activeIndex();
-        Array.from(dots.children).forEach((d, idx) => {
-          d.classList.toggle("is-active", idx === i);
-        });
-        prev.hidden = i <= 0;
-        next.hidden = i >= cards.length - 1;
-      };
-      track.addEventListener("scroll", () => requestAnimationFrame(refreshControls), { passive: true });
-      prev.addEventListener("click", () => scrollToCard(activeIndex() - 1));
-      next.addEventListener("click", () => scrollToCard(activeIndex() + 1));
-      requestAnimationFrame(refreshControls);
-    }
+    const cards = Array.from(track.children);
+    const scrollToCard = (i) => {
+      const target = cards[Math.max(0, Math.min(cards.length - 1, i))];
+      if (target && target.scrollIntoView) target.scrollIntoView({ block: "start", behavior: "smooth" });
+    };
     return { track, scrollToCard };
   }
 
@@ -6744,10 +6702,12 @@ export function runViewerClient(bootstrap) {
 
     const { explanation } = creationIntroRenderer.renderInto(sheetCard);
 
-    // Creation now uses the same two-card deck surface as profile sheets:
-    // a playable character card beside a roll-control card.
+    // Creation is a plain setup page. The old collectible-card styling is
+    // kept only in the shared renderer classes so existing presentation code
+    // can still update the same references.
     const candidateCardRefs = creationCandidateCardRenderer.build();
     const candidateCard = candidateCardRefs.card;
+    const candidateBody = candidateCardRefs.body;
     const candidateRole = candidateCardRefs.role;
     const portraitImg = candidateCardRefs.portraitImg;
     const candidateName = candidateCardRefs.name;
@@ -6761,18 +6721,7 @@ export function runViewerClient(bootstrap) {
     const customizeBtn = candidateCardRefs.customizeBtn;
     const saveBtn = candidateCardRefs.saveBtn;
 
-    const hostedPortrait = hostedImageEntitlement("portrait");
-    const hasPhotoDayCredit = characterSlotTelemetry().photoDayCredits > 0;
-    const portraitCost = hostedPortrait && hostedPortrait.cost || 1;
-    const controlsSubtitle = quickRollExperimentLanding
-      ? "Edit the name and student style. Try another version if you want, then complete one class to get your report."
-      : hostedPortrait && hostedPortrait.configured && (hasPhotoDayCredit || canSpendHallPasses(portraitCost))
-      ? "Edit the name and student style. Try another version if you want. Photo Day credits or Hall Passes can make a custom portrait."
-      : localAiEnabled
-        ? "Edit the name and student style. On-device AI can refresh the voice."
-        : aiEnabled
-          ? "Edit the name and student style. AI can refresh the voice and portrait."
-          : "Edit the name and student style. Try another version if you want. You can use an AI key later for a custom portrait.";
+    const controlsSubtitle = "Stats, voice, rerolls, and custom portraits are optional. You can start class without changing them.";
     const controlsCardRefs = creationControlCardRenderer.build({
       subtitle: controlsSubtitle,
     });
@@ -6788,7 +6737,7 @@ export function runViewerClient(bootstrap) {
       return creationRowsRenderer.buildRow(fields, label, key);
     }
     const nameRow = makeRow("Name", "name");
-    const playbookRow = makeRow("Student style", "playbook");
+    const playbookRow = makeRow("Style", "playbook");
     const statsRow = makeRow("Stats", "stats");
     const personalityRow = makeRow("Voice", "personality");
     const quoteRow = makeRow("Quote", "flavorQuote");
@@ -6815,18 +6764,47 @@ export function runViewerClient(bootstrap) {
     playbookRow.val.replaceChildren(playbookSelect);
     playbookRow.select = playbookSelect;
 
-    let deckRendered = false;
-    let deckController = null;
+    const quickFields = document.createElement("div");
+    quickFields.className = "creation-quick-fields";
+    quickFields.appendChild(nameRow.row);
+    quickFields.appendChild(playbookRow.row);
+    candidateBody.insertBefore(quickFields, candidateCardRefs.hint);
+
+    // Keep the default decision small. Detailed character data is still
+    // available, but only after the player asks for it.
+    candidateStats.hidden = true;
+    candidateQuote.hidden = true;
+    const candidateMove = candidateMoveTitle.parentElement;
+    if (candidateMove) candidateMove.hidden = true;
+    controlsCard.id = "creation-more-options";
+    controlsCard.hidden = true;
+    customizeBtn.textContent = "Advanced";
+    customizeBtn.setAttribute("aria-controls", controlsCard.id);
+    customizeBtn.setAttribute("aria-expanded", "false");
+    const controlActions = doneBtn.parentElement;
+    if (controlActions) controlActions.insertBefore(portraitBtn, doneBtn);
+    const controlBody = controlsCard.querySelector(".ccg-body");
+    if (controlBody) controlBody.insertBefore(portraitStatus, status);
+    candidateBody.insertBefore(status, candidateStats);
+
+    let creatorRendered = false;
 
     // Reveal the form (and hide the loading state) once the first
     // roll lands. Subsequent component-rerolls don't re-trigger this.
     function revealForm() {
-      if (deckRendered) return;
-      deckRendered = true;
-      deckController = renderCardDeck([candidateCard, controlsCard]);
-      explanation.classList.add("is-persistent");
-      sheetCard.prepend(explanation);
+      if (creatorRendered) return;
+      creatorRendered = true;
+      sheetCard.classList.remove("is-card-deck-sheet");
+      sheetCard.classList.remove("is-two-card-deck");
       sheetCard.classList.add("is-creation-sheet");
+      sheetCard.innerHTML = "";
+      explanation.classList.add("is-persistent");
+      const creator = document.createElement("div");
+      creator.className = "creation-single";
+      creator.appendChild(candidateCard);
+      creator.appendChild(controlsCard);
+      sheetCard.appendChild(explanation);
+      sheetCard.appendChild(creator);
     }
 
     let rolled = null;
@@ -7025,9 +7003,7 @@ export function runViewerClient(bootstrap) {
           rolled = offlineCharacterRoll(components);
           renderRolled(rolled);
           revealForm();
-          setStatus(aiEnabled
-            ? "Your student is ready. Try another AI version, or take your seat now."
-            : "Your student is ready. You can use an AI key later for a custom voice or portrait.");
+          setStatus("Your student is ready.");
           return;
         }
         const body = isFullRoll
@@ -7101,15 +7077,18 @@ export function runViewerClient(bootstrap) {
       applyDisabled();
     });
 
-    customizeBtn.addEventListener("click", () => {
-      if (deckController) deckController.scrollToCard(1);
-      setTimeout(() => focusWithoutScroll(nameInput), 220);
-    });
-
-    doneBtn.addEventListener("click", () => {
-      if (deckController) deckController.scrollToCard(0);
-      setTimeout(() => focusWithoutScroll(saveBtn), 220);
-    });
+    function setMoreOptionsOpen(open) {
+      controlsCard.hidden = !open;
+      customizeBtn.textContent = open ? "Hide advanced" : "Advanced";
+      customizeBtn.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) {
+        setTimeout(() => focusWithoutScroll(statsRow.reroll), 0);
+      } else {
+        setTimeout(() => focusWithoutScroll(customizeBtn), 0);
+      }
+    }
+    customizeBtn.addEventListener("click", () => setMoreOptionsOpen(controlsCard.hidden));
+    doneBtn.addEventListener("click", () => setMoreOptionsOpen(false));
 
     // ✨ Generate AI portrait — fires /chat/character/portrait. On
     // success, replaces the default img and stashes the data URL so it
@@ -7208,7 +7187,7 @@ export function runViewerClient(bootstrap) {
         ...(error && Number.isFinite(Number(error.status)) ? { statusCode: Number(error.status) } : {}),
       });
       const message = failureKind === "timeout"
-        ? "Saving took too long. Your student is still here — tap Take my seat to try again."
+        ? "Saving took too long. Your student is still here — tap Start first class to try again."
         : failureKind === "network"
           ? "Saving lost its connection. Your student is still here — reconnect and try again."
           : "Could not start Grade 9. Your student is still here — try again.";
@@ -10793,6 +10772,7 @@ export function runViewerClient(bootstrap) {
   async function bootInitialSession() {
     showWelcomeBackCopy = markLocalAppOpen();
     await deriveAuth();
+    viewerMetricsBooted = true;
     postViewerMetricEvent("app_open", acquisitionAttribution || {});
     await fetchSession();
     await applySharedPackFromUrl(sharedPackId);

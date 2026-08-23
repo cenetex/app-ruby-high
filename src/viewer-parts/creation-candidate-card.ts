@@ -1,9 +1,12 @@
 export interface CreationCandidateCardRefs {
   card: HTMLElement;
+  body: HTMLElement;
   role: HTMLElement;
   portraitImg: HTMLImageElement;
   name: HTMLElement;
   subtitle: HTMLElement;
+  hint: HTMLElement;
+  actions: HTMLElement;
   stats: HTMLElement;
   quote: HTMLElement;
   moveTitle: HTMLElement;
@@ -28,10 +31,10 @@ export function createCreationCandidateCardRenderer(
   return {
     build(): CreationCandidateCardRefs {
       const card = deps.document.createElement("div");
-      card.className = "ccg-card is-character-card is-creation-candidate-card";
+      card.className = "ccg-card is-character-card is-creation-candidate-card student-setup";
       const role = deps.document.createElement("span");
       role.className = "ccg-role player";
-      role.textContent = "student";
+      role.textContent = "Your student";
       card.appendChild(role);
 
       const art = deps.document.createElement("div");
@@ -69,11 +72,11 @@ export function createCreationCandidateCardRenderer(
       const customizeBtn = deps.document.createElement("button");
       customizeBtn.type = "button";
       customizeBtn.className = "secondary creation-customize-btn";
-      customizeBtn.textContent = "Customize";
+      customizeBtn.textContent = "Advanced";
       const saveBtn = deps.document.createElement("button");
       saveBtn.type = "button";
       saveBtn.className = "primary";
-      saveBtn.textContent = "Take my seat \u00b7 start class";
+      saveBtn.textContent = "Start first class";
       saveBtn.disabled = true;
       saveBtn.hidden = true;
       actions.appendChild(portraitBtn);
@@ -103,10 +106,13 @@ export function createCreationCandidateCardRenderer(
 
       return {
         card,
+        body,
         role,
         portraitImg: portraitImg as HTMLImageElement,
         name,
         subtitle,
+        hint,
+        actions,
         stats,
         quote,
         moveTitle,

@@ -38,12 +38,12 @@ describe("creation control card renderer", () => {
     });
     const card = refs.card as unknown as FakeElement;
 
-    expect(card.className).toBe("ccg-card is-career-card is-creation-control-card");
+    expect(card.className).toBe("ccg-card is-career-card is-creation-control-card student-setup-options");
     expect(textTree(card)).toEqual([
-      "setup",
-      "Create a Student",
+      "optional",
+      "More options",
       "Reroll any field. AI can refresh the voice and portrait.",
-      "Done editing",
+      "Done",
       "Make a student",
     ]);
     const body = card.children[1] as FakeElement;
@@ -61,6 +61,6 @@ describe("creation control card renderer", () => {
 
     const card = renderer.build({}).card as unknown as FakeElement;
 
-    expect(textTree(card)).toEqual(["setup", "Create a Student", "Done editing", "Make a student"]);
+    expect(textTree(card)).toEqual(["optional", "More options", "Done", "Make a student"]);
   });
 });

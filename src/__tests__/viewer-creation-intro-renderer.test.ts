@@ -45,9 +45,9 @@ describe("creation intro renderer", () => {
     const explanation = refs.explanation as unknown as FakeElement;
     const loading = refs.loading as unknown as FakeElement;
 
-    expect(explanation.innerHTML).toContain("<strong>Meet your student.</strong>");
-    expect(explanation.innerHTML).toContain("Change their name or student style");
-    expect(explanation.innerHTML).toContain("Your student is not saved until you take your seat.");
+    expect(explanation.innerHTML).toContain("<strong>Create your student</strong>");
+    expect(explanation.innerHTML).toContain("Pick a name and style");
+    expect(explanation.innerHTML).toContain("change everything else later");
     expect(loading.innerHTML).toContain("creation-loading-spinner");
     expect(loading.innerHTML).toContain("Getting your student ready");
     expect(loading.innerHTML).toContain("This should only take a moment.");

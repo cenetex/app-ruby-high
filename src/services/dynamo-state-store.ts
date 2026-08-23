@@ -718,6 +718,10 @@ export class DynamoStateStore implements StateStoreLike {
     return `dynamodb://${this.region}/${this.tableName}`;
   }
 
+  metricEventRetentionMs(): number | null {
+    return this.ttlSeconds > 0 ? this.ttlSeconds * 1000 : null;
+  }
+
   private toItem(state: QuizState): Record<string, unknown> {
     const item: Record<string, unknown> = {
       pk: state.sessionId,

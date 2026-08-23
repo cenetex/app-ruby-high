@@ -5963,4 +5963,64 @@ describe("RubyHighService Phase 1", () => {
       amountCents: 499,
     });
   });
+
+  it("joins conversion steps through one visitor identity instead of mixing session counts", async () => {
+    const { ruby } = await makeServices();
+    const visitorHash = "visitor-conversion-one";
+    ruby.recordAppOpen("viewer:conversion:first", { visitorHash, clientSurface: "viewer" });
+    ruby.recordAppOpen("viewer:conversion:rotated", { visitorHash, clientSurface: "viewer" });
+    ruby.recordMetricEvent("funnel_step", {
+      sessionId: "viewer:conversion:first",
+      step: "first_character_created",
+      source: "gameplay",
+    });
+    ruby.recordMetricEvent("funnel_step", {
+      sessionId: "viewer:conversion:rotated",
+      step: "first_character_created",
+      source: "gameplay",
+    });
+    ruby.recordMetricEvent("commerce", {
+      sessionId: "viewer:conversion:rotated",
+      source: "stripe",
+      amountCents: 499,
+    });
+    ruby.recordMetricEvent("commerce", {
+      sessionId: "viewer:conversion:unattributed",
+      source: "stripe",
+      amountCents: 499,
+    });
+
+    expect(ruby.analyticsSnapshot().events.conversionFunnel).toEqual({
+      totalVisitors: 1,
+      charactersCreated: 1,
+      payers: 1,
+      visitorToCharacterRate: 1,
+      characterToPayerRate: 1,
+      visitorToPayerRate: 1,
+    });
+  });
+
+  it("prunes the in-memory metric cache on the durable store retention window", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const startedAt = Date.UTC(2026, 7, 20, 12);
+    vi.setSystemTime(startedAt);
+    const store = new SqliteStateStore({ path: ":memory:", ttlSeconds: 60 });
+    const ruby = new RubyHighService({} as never, store);
+    await ruby["hydrate"]();
+    activeRuby = ruby;
+    await ruby.recordMetricEventDurably("app_open", {
+      sessionId: "viewer:retention",
+      visitorHash: "visitor-retention",
+      clientSurface: "viewer",
+    });
+    expect(ruby.analyticsSnapshot().events.total).toBe(1);
+
+    vi.setSystemTime(startedAt + 60_001);
+    expect(ruby.analyticsSnapshot().events.total).toBe(0);
+    expect(await store.loadMetricEvents()).toHaveLength(0);
+
+    await ruby.stop();
+    activeRuby = null;
+    store.close();
+  });
 });

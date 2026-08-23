@@ -1,4 +1,5 @@
 export interface CreationRowRefs {
+  row: HTMLElement;
   val: HTMLElement;
   reroll: HTMLButtonElement;
   input?: HTMLInputElement;
@@ -35,7 +36,7 @@ export function createCreationRowsRenderer(deps: CreationRowsRendererDeps): Crea
       row.appendChild(val);
       row.appendChild(reroll);
       parent.appendChild(row);
-      return { val, reroll };
+      return { row, val, reroll };
     },
   };
 }

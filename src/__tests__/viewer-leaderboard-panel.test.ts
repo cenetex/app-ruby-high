@@ -98,13 +98,14 @@ describe("leaderboard panel renderer", () => {
     expect(group.children[0]!.children[1]!.className).toBe("leaderboard-year-count");
     expect(group.children[0]!.children[1]!.textContent).toBe("2");
     expect(group.children.slice(1).map((row) => row.className)).toEqual([
-      "leaderboard-row",
+      "leaderboard-row is-top-student",
       "leaderboard-row",
     ]);
     expect(textTree(group)).toEqual([
       "Grade 10 Classroom ",
       "2",
       "1",
+      "Current leader",
       "Noor",
       "Rebel",
       "Ruby A",

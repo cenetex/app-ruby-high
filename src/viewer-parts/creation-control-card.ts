@@ -24,11 +24,11 @@ export function createCreationControlCardRenderer(
   return {
     build(spec): CreationControlCardRefs {
       const card = deps.document.createElement("div");
-      card.className = "ccg-card is-career-card is-creation-control-card";
+      card.className = "ccg-card is-career-card is-creation-control-card student-setup-options";
 
       const role = deps.document.createElement("span");
       role.className = "ccg-role career";
-      role.textContent = "setup";
+      role.textContent = "optional";
       card.appendChild(role);
 
       const body = deps.document.createElement("div");
@@ -37,7 +37,7 @@ export function createCreationControlCardRenderer(
 
       const name = deps.document.createElement("div");
       name.className = "ccg-name";
-      name.textContent = "Create a Student";
+      name.textContent = "More options";
       body.appendChild(name);
 
       const sub = deps.document.createElement("div");
@@ -58,7 +58,7 @@ export function createCreationControlCardRenderer(
       const doneBtn = deps.document.createElement("button");
       doneBtn.type = "button";
       doneBtn.className = "secondary creation-done-btn";
-      doneBtn.textContent = "Done editing";
+      doneBtn.textContent = "Done";
       actions.appendChild(doneBtn);
       actions.appendChild(rollBtn);
       body.appendChild(actions);

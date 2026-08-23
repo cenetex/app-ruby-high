@@ -13,6 +13,10 @@ export default defineConfig([
     entry: ["src/viewer-privy-client.ts"],
     format: ["iife"],
     globalName: "RubyHighPrivyClientModule",
+    // This browser-only bundle vendors the complete Privy/React dependency
+    // graph. Production minification keeps it under the enforced 10 MiB
+    // delivery budget without weakening the bundle check.
+    minify: true,
     dts: true,
     clean: false,
     splitting: false,

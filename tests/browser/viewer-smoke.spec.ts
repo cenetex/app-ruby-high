@@ -27,12 +27,12 @@ test("canonical issue-174 link opens the Quick Roll/customize choice with bounde
   await dismissAnnouncements(page);
   await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
   await expect(page.locator(".is-creation-control-card .ccg-subtitle")).toContainText(
-    "Edit the name and student style.",
+    "Stats, voice, rerolls, and custom portraits are optional.",
   );
   await expect(page.locator(".creation-row")).toHaveCount(5);
   await expect(page.getByRole("textbox", { name: "Student name" })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Student style" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /take my seat/i })).toBeEnabled();
+  await expect(page.getByRole("button", { name: /start first class/i })).toBeEnabled();
 });
 
 test("enrolls a first student through the creation sheet into First Bell", async ({ page }) => {
@@ -50,7 +50,7 @@ test("enrolls a first student through the creation sheet into First Bell", async
   }
 
   await expect(sheet).toHaveClass(/is-open/);
-  const takeSeat = page.getByRole("button", { name: /take my seat/i });
+  const takeSeat = page.getByRole("button", { name: /start first class/i });
   await expect(takeSeat).toBeEnabled();
   await takeSeat.click();
 
@@ -70,26 +70,28 @@ test("keeps creator editing and the start-class action reachable on a small phon
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);
 
-  const sheet = page.getByRole("dialog", { name: "Create your Ruby High student" });
+  const sheet = page.locator("#sheet-overlay");
   if (!(await sheet.evaluate((element) => element.classList.contains("is-open")))) {
     await page.getByRole("button", { name: "Create my student" }).click();
   }
 
   await expect(sheet).toHaveClass(/is-open/);
   await expect(page.getByRole("button", { name: "Close student creator" })).toBeVisible();
-  await page.getByRole("button", { name: "Customize", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Student name" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Student style" })).toBeVisible();
+  await page.getByRole("button", { name: "Advanced", exact: true }).click();
 
   const name = page.getByRole("textbox", { name: "Student name" });
   const style = page.getByRole("combobox", { name: "Student style" });
-  await expect(name).toBeFocused();
+  await expect(page.getByRole("button", { name: "Try another stats" })).toBeFocused();
   await name.fill("Mina");
   await style.selectOption("outsider");
   await expect(page.locator(".is-creation-candidate-card .ccg-name")).toHaveText("Mina");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
-  await page.getByRole("button", { name: "Done editing" }).click();
-  await expect(page.getByRole("button", { name: /take my seat/i })).toBeVisible();
-  await expect(page.getByRole("button", { name: /take my seat/i })).toBeEnabled();
+  await page.getByRole("button", { name: "Done" }).click();
+  await expect(page.getByRole("button", { name: /start first class/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /start first class/i })).toBeEnabled();
   expect(errors).toEqual([]);
 });
 
@@ -159,7 +161,8 @@ test("keeps the generated student as a preview until the player takes their seat
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);
 
-  await expect(page.getByRole("button", { name: /take my seat/i })).toBeVisible();
+  await page.getByRole("button", { name: "Create my student", exact: true }).click();
+  await expect(page.getByRole("button", { name: /start first class/i })).toBeVisible();
   await page.locator("#sheet-close").click();
 
   await page.reload();
@@ -236,15 +239,21 @@ test("boots as a guest, creates a character, answers a card, and opens account t
   expect(errors).toEqual([]);
 });
 
-test("keeps morning announcements keyboard-modal", async ({ page }) => {
+test("uses one welcome layer, then keeps announcements for returning students", async ({ page }) => {
   const { errors } = await openViewer(page);
   const announcements = page.locator("#announcements-overlay");
+  await expect(announcements).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "Create my student" })).toBeVisible();
+  await createCharacter(page);
+  await expect(announcements).not.toBeVisible();
+  await page.evaluate(() => localStorage.removeItem("ruby-high:announcements-last-date"));
+  await page.reload();
   await expect(announcements).toBeVisible();
   await expect(page.locator("#shell")).toHaveAttribute("inert", "");
   await expect(page.locator("#announcements-dismiss")).toBeFocused();
 
   await page.keyboard.press("Tab");
-  await expect(page.locator("#announcements-dismiss")).toBeFocused();
+  await expect(page.locator("#announcements-about")).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   await expect(page.locator("#announcements-dismiss")).toBeFocused();
 
