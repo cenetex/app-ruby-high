@@ -769,18 +769,25 @@ function joinHumanList(values: string[]): string {
 
 function loungeSystemContext(state: QuizState, teacherIds: string[]): string {
   const names = teacherIds.map((id) => loungeTeacherName(state, id));
+  const profiles = teacherIds.map((id) => {
+    const faculty = facultyByIdForSession(state, id);
+    if (!faculty) return `${loungeTeacherName(state, id)}: resident faculty.`;
+    const subjects = faculty.subjects.slice(0, 6).join(", ") || "general faculty";
+    return `${loungeTeacherName(state, id)}: ${subjects}. ${clipped(faculty.bio, 220)}`;
+  });
   return [
     `LOUNGE CONTEXT: You're hanging out in the Ruby High teachers' lounge with ${joinHumanList(names)}.`,
+    `Public colleague profiles (background only): ${profiles.join(" | ")}`,
     "This is downtime; do not use the blackboard, start a class, or narrate UI controls.",
-    "Chat in 1-2 short sentences in your voice: riff on a student you saw, ask a colleague's opinion, or share a small observation.",
-    "Address colleagues by name when natural. The student is lurking and may chime in.",
+    "Chat in 1-2 short sentences in your own voice. Pick one thread that fits your interests, add a distinct view, and do not restate the previous speaker.",
+    "Address colleagues by name when natural. The student is lurking and may chime in. You may leave a thought hanging instead of asking a question.",
   ].join(" ");
 }
 
-function loungeEnterDirective(state: QuizState, speaker: string, teacherIds: string[]): string {
-  const colleagues = teacherIds.filter((id) => id !== speaker).map((id) => loungeTeacherName(state, id));
-  const colleagueLine = colleagues.length > 0
-    ? ` Open a quick chat thread with ${joinHumanList(colleagues)}; they will each chime in after.`
+function loungeEnterDirective(speaker: string, teacherIds: string[]): string {
+  const colleagueCount = teacherIds.filter((id) => id !== speaker).length;
+  const colleagueLine = colleagueCount > 0
+    ? " Open a quick chat thread with your faculty colleagues; the other teachers will each chime in after."
     : "";
   return `The student just walked in. You go first.${colleagueLine}`;
 }
@@ -1357,26 +1364,24 @@ function manualClassroomTurnPlan(args: {
   const manualAdvanceIntent = args.intent === "advance";
   const classReportBlocksBoard = classReportControlsBoard && !manualAdvanceIntent;
   const schedulerControlsBoard = !classReportBlocksBoard && schedulerOwnsBoard(bank);
-  const state = args.ruby.getOrCreate(args.sessionId);
-  const playerName = state.character?.name ?? "The player";
   let disableToolsForTurn = shouldDisableTools({ trigger: "manual", schedulerControlsBoard, classReportBlocksBoard });
   let directive = "";
   if (args.intent === "hint") {
     disableToolsForTurn = true;
     directive = args.playerLine
-      ? `${playerName} just said: "${clipped(args.playerLine, 260)}" Give ONE short hint that helps them reason, but do not reveal the answer, the correct choice, or any exact expected answer. Do not call tools or change the board.`
+      ? "The player's latest user-role message asks for help. Give ONE short hint that helps them reason, but do not reveal the answer, the correct choice, or any exact expected answer. Do not call tools or change the board."
       : "The player pressed Chat while a live challenge is on the blackboard. Give ONE short hint that helps them reason, but do not reveal the answer, the correct choice, or any exact expected answer. Do not call tools or change the board.";
   } else if (args.playerLine) {
     if (args.intent === "report") disableToolsForTurn = true;
     directive = args.intent === "report" || classReportBlocksBoard
-      ? `${playerName} just said: "${clipped(args.playerLine, 260)}" Reply directly in character about today's class report or the recent class. Do not call tools or put another question on the board.`
+      ? "Reply directly in character to the player's latest user-role message about today's class report or the recent class. Do not call tools or put another question on the board."
       : args.intent === "advance" && schedulerControlsBoard
-      ? `${playerName} just said: "${clipped(args.playerLine, 260)}" Reply directly in character in ONE short sentence. The Ruby High scheduler will put the next card on the board after your reply. ${schedulerBoundaryInstruction(bank)}`
+      ? `Reply directly in character to the player's latest user-role message in ONE short sentence. The Ruby High scheduler will put the next card on the board after your reply. ${schedulerBoundaryInstruction(bank)}`
       : args.intent === "advance"
-      ? `${playerName} just said: "${clipped(args.playerLine, 260)}" Reply directly in character in ONE short sentence, then put a fresh challenge on the board. ${requiredNextBoardInstruction(bank, "Call pick_from_bank exactly once to put the next scheduled question on the board.")}`
+      ? `Reply directly in character to the player's latest user-role message in ONE short sentence, then put a fresh challenge on the board. ${requiredNextBoardInstruction(bank, "Call pick_from_bank exactly once to put the next scheduled question on the board.")}`
       : schedulerControlsBoard
-      ? `${playerName} just said: "${clipped(args.playerLine, 260)}" Reply directly in character, explain the current or recent board if useful, or keep the room moving. ${schedulerBoundaryInstruction(bank)}`
-      : `${playerName} just said: "${clipped(args.playerLine, 260)}" Reply directly in character, then either keep the room moving or put a fresh challenge on the board. ${nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh banked question.")}`;
+      ? `Reply directly in character to the player's latest user-role message, explain the current or recent board if useful, or keep the room moving. ${schedulerBoundaryInstruction(bank)}`
+      : `Reply directly in character to the player's latest user-role message, then either keep the room moving or put a fresh challenge on the board. ${nextBoardInstruction(bank, "Use pick_from_bank if you want a fresh banked question.")}`;
   } else {
     if (args.intent === "report") disableToolsForTurn = true;
     directive = args.intent === "report" || classReportBlocksBoard
@@ -2988,7 +2993,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           // utterances in history.
           const turnDirective =
             trigger === "lounge-enter" && speaker === order[0]
-              ? loungeEnterDirective(loungeState, speaker, teacherIds)
+              ? loungeEnterDirective(speaker, teacherIds)
               : playerLine
               ? "The student just spoke in the lounge. Reply to them directly in character in 1-2 short sentences, then keep the faculty-room scene moving."
               : undefined;
@@ -3068,10 +3073,10 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         },
       );
       directive = classReportBlocksBoard
-        ? `Greet ${playerName} in ONE short sentence and acknowledge that today's class report is on the blackboard${bank.todayClass?.letterGrade ? ` with a ${bank.todayClass.letterGrade}` : ""}. Do not call tools or put another question on the board.`
+        ? `Greet the player in ONE short sentence and acknowledge that today's class report is on the blackboard${bank.todayClass?.letterGrade ? ` with a ${bank.todayClass.letterGrade}` : ""}. Do not call tools or put another question on the board.`
         : schedulerControlsBoard
-        ? `Greet ${playerName} in ONE short sentence. Do not mention UI controls. ${schedulerBoundaryInstruction(bank)}`
-        : `Greet ${playerName} in ONE short sentence. Do not mention a "Next question" button or tell the player to press a UI control. ${nextBoardInstruction(bank, "Then call pick_from_bank to put the first question on the board. Pick something fitting their year — your call, not theirs.")}`;
+        ? `Greet the player in ONE short sentence. Do not mention UI controls. ${schedulerBoundaryInstruction(bank)}`
+        : `Greet the player in ONE short sentence. Do not mention a "Next question" button or tell the player to press a UI control. ${nextBoardInstruction(bank, "Then call pick_from_bank to put the first question on the board. Pick something fitting their year — your call, not theirs.")}`;
     } else if (trigger === "answer-graded") {
       const c = body?.context;
       const state = ruby.getOrCreate(sessionId);
@@ -3107,18 +3112,17 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       );
       if (characterGraduated(state)) {
         disableToolsForTurn = true;
-        directive = `The player has completed Senior year and graduated. Congratulate ${playerName} in one or two short sentences. Do not call tools or put another question on the board.`;
+        directive = "The player has completed Senior year and graduated. Congratulate them in one or two short sentences. Do not call tools or put another question on the board.";
       } else if (graduationReady(state)) {
         disableToolsForTurn = true;
-        directive = `${playerName} has completed the year's requirements and is ready for the graduation ceremony. Congratulate them in one or two short sentences and remind them to choose a ceremony reward on their School Career card. Do not call tools or put another question on the board.`;
+        directive = "The player has completed the year's requirements and is ready for the graduation ceremony. Congratulate them in one or two short sentences and remind them to choose a ceremony reward on their School Career card. Do not call tools or put another question on the board.";
       } else if (classReportBlocksBoard) {
         disableToolsForTurn = true;
         const classGrade = bank.todayClass?.letterGrade ? ` The class report shows ${bank.todayClass.letterGrade}.` : "";
-        directive = `React in ONE short sentence to the round that just resolved: ${resolved.pickedLine}.${classGrade} The class report is on the blackboard now; do not call tools or put another question on the board.`;
+        directive = `React in ONE short sentence to the resolved round described in TURN CONTEXT DATA.${classGrade} The class report is on the blackboard now; do not call tools or put another question on the board.`;
       } else {
-        const pickedLine = resolved.pickedLine;
         disableToolsForTurn = true;
-        directive = `React in ONE short sentence to the round that just resolved: ${pickedLine} Name whoever did something interesting (the player or a classmate by name). Do not call tools or put another question on the board; the player will continue when ready.`;
+        directive = "React in ONE short sentence to the resolved round described in TURN CONTEXT DATA. Name whoever did something interesting (the player or a classmate by name). Do not call tools or put another question on the board; the player will continue when ready.";
       }
     } else if (trigger === "room-idle") {
       const state = ruby.getOrCreate(sessionId);
@@ -3141,7 +3145,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         { kind: "note", text: idle.eventText },
       );
       disableToolsForTurn = true;
-      directive = `The answer window elapsed, but it is soft. React in ONE short sentence as yourself: nudge ${playerName} to answer when ready, and if useful mention that classmates may already be locked in. Do not reveal the correct answer, do not resolve the round, and do not call tools or put another question on the board.`;
+      directive = "The answer window elapsed, but it is soft. React in ONE short sentence as yourself: nudge the player to answer when ready, and if useful mention that classmates may already be locked in. Do not reveal the correct answer, do not resolve the round, and do not call tools or put another question on the board.";
     } else if (trigger === "manual") {
       const manualPlan = manualClassroomTurnPlan({
         ruby,

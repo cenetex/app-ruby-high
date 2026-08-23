@@ -7,6 +7,7 @@ import type {
 } from "./runtime.js";
 import { createHash } from "node:crypto";
 import { RubyHighService } from "./services/ruby-high-service.js";
+import { ChatService } from "./services/chat-service.js";
 import { FacultyService } from "./services/faculty-service.js";
 import { renderViewerHtml } from "./viewer.js";
 import { handleChatRoutes } from "./chat-routes.js";
@@ -532,6 +533,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
     const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
     const faculty = tryGetService<FacultyService>(runtime, FacultyService.serviceType);
+    const chat = tryGetService<ChatService>(runtime, ChatService.serviceType);
     if (!access || !ruby) {
       ctx.error(
         ctx.res,
@@ -540,7 +542,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
       );
       return true;
     }
-    return handleAgentRoutes(ctx, { access, auth, ruby, faculty });
+    return handleAgentRoutes(ctx, { access, auth, ruby, faculty, chat });
   }
 
   if (ctx.pathname.startsWith("/api/apps/ruby-high/yearbook")) {

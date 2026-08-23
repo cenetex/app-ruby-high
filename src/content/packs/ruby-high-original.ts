@@ -115,6 +115,7 @@ async function loadOnce(): Promise<ContentPack> {
     return {
       ...meta,
       systemPrompt: t.systemPrompt,
+      loungePrompt: t.loungePrompt,
       defaultModel: t.defaultModel,
       questions,
       sourceCards: corpora.get(meta.id) ?? [],
