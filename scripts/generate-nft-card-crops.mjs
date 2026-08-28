@@ -37,6 +37,7 @@ const sourceArt = {
   ruby: ["teachers", "ruby-full.png"],
   "sally-science": ["teachers", "sally-science-full.png"],
   "professor-edward": ["teachers", "professor-edward-full.png"],
+  roko: ["teachers", "roko-full.png"],
 };
 
 const grokArt = {

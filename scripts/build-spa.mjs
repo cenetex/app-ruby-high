@@ -12,12 +12,14 @@ const questionFiles = {
   ruby: "ruby.json",
   "sally-science": "sally-science.json",
   "professor-edward": "professor-edward.json",
+  roko: "roko.json",
 };
 
 const corpusFiles = {
   ruby: "ruby.md",
   "sally-science": "sally-science.md",
   "professor-edward": "professor-edward.md",
+  roko: "roko.md",
 };
 
 const playbooks = [
@@ -165,12 +167,14 @@ function offlineApiScript(data) {
   const FACULTY = [
     { id: "ruby", displayName: "Ruby", shortName: "Ruby", subjects: ["onboarding", "general-knowledge", "ai-literacy", "agent-culture"], bio: "Host of Ruby High.", available: true, accent: "#d22a2a", assetTeacherId: "ruby" },
     { id: "sally-science", displayName: "Sally Science", shortName: "Sally", subjects: ["physics", "chemistry", "biology", "earth-science"], bio: "STEM teacher.", available: true, accent: "#3aa3e0", assetTeacherId: "sally-science" },
-    { id: "professor-edward", displayName: "Professor Edward", shortName: "Edward", subjects: ["literature", "literary-theory", "mid-century"], bio: "Literature teacher.", available: true, accent: "#7a4f2a", assetTeacherId: "professor-edward" }
+    { id: "professor-edward", displayName: "Professor Edward", shortName: "Edward", subjects: ["literature", "literary-theory", "mid-century"], bio: "Literature teacher.", available: true, accent: "#7a4f2a", assetTeacherId: "professor-edward" },
+    { id: "roko", displayName: "Roko", shortName: "Roko", subjects: ["ai-alignment", "infohazards", "coordination", "threat-modeling"], bio: "AI alignment and information-hazards teacher.", available: true, accent: "#a35c35", assetTeacherId: "roko" }
   ];
   const ROOMS = [
     { id: "homeroom", name: "Homeroom", channelName: "homeroom", teacherId: "ruby", description: "Ruby's homeroom.", teaches: true },
     { id: "science", name: "Science Lab", channelName: "science", teacherId: "sally-science", description: "Sally's lab.", teaches: true },
     { id: "literature", name: "Library", channelName: "literature", teacherId: "professor-edward", description: "Edward's seminar room.", teaches: true },
+    { id: "alignment", name: "Alignment Lab", channelName: "alignment", teacherId: "roko", description: "Roko's alignment and information-hazards lab.", teaches: true },
     { id: "lounge", name: "Teachers' Lounge", channelName: "lounge", teacherId: null, description: "Where the faculty hang out between periods.", teaches: false }
   ];
   const STUDENT_IDS = ["lyra", "sami", "ravi", "indra", "mika", "noor"];
@@ -456,7 +460,8 @@ function offlineApiScript(data) {
       courses: [
         { id: "ruby", title: "Homeroom", facultyId: "ruby", roomId: "homeroom", subjects: FACULTY[0].subjects },
         { id: "sally-science", title: "Science", facultyId: "sally-science", roomId: "science", subjects: FACULTY[1].subjects },
-        { id: "professor-edward", title: "Literature", facultyId: "professor-edward", roomId: "literature", subjects: FACULTY[2].subjects }
+        { id: "professor-edward", title: "Literature", facultyId: "professor-edward", roomId: "literature", subjects: FACULTY[2].subjects },
+        { id: "roko", title: "AI Alignment", facultyId: "roko", roomId: "alignment", subjects: FACULTY[3].subjects }
       ]
     };
   }
@@ -1273,6 +1278,7 @@ function offlineApiScript(data) {
   function teacherVoice(facultyId) {
     if (facultyId === "sally-science") return "You are Sally Science, a sharp STEM teacher at Ruby High. Be warm, direct, and a little lab-coat intense.";
     if (facultyId === "professor-edward") return "You are Professor Edward, a dry but kind literature teacher at Ruby High. Be precise and lightly theatrical.";
+    if (facultyId === "roko") return "You are Roko, Ruby High's calm AI-alignment and information-hazards teacher. Be causal, precise, and never fearmonger.";
     return "You are Ruby, the homeroom teacher at Ruby High. Be encouraging, brisk, and classroom-direct.";
   }
 

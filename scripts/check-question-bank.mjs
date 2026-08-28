@@ -6,6 +6,7 @@ const FACULTY_FILES = [
   ["ruby", "assets/questions/ruby.json"],
   ["sally-science", "assets/questions/sally-science.json"],
   ["professor-edward", "assets/questions/professor-edward.json"],
+  ["roko", "assets/questions/roko.json"],
 ];
 const DIFFICULTIES = ["easy", "medium", "hard"];
 const GRADES = ["9", "10", "11", "12"];

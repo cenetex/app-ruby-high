@@ -873,26 +873,35 @@ export const PLANNED_FACULTY: FacultyMember[] = [
     available: true,
     accent: "#7a4f2a",
   },
+  {
+    id: "roko",
+    displayName: "Roko",
+    shortName: "Roko",
+    subjects: ["ai-alignment", "infohazards", "coordination", "threat-modeling"],
+    bio: "AI alignment and information hazards. Teaches threat models, incentives, safe disclosure, and cooperation under pressure.",
+    available: true,
+    accent: "#a35c35",
+  },
 ];
 
 export const ALL_FACULTY: FacultyMember[] = [RUBY_FACULTY, ...PLANNED_FACULTY];
 
 /** Special pseudo-faculty: the Teachers' Lounge is a hangout channel where
- *  Ruby, Sally, and Edward chat with each other. Not a real teacher; can't
+ *  Ruby, Sally, Edward, and Roko chat with each other. Not a real teacher; can't
  *  pose questions. The chat-service treats faculty="lounge" specially. */
 export const LOUNGE_FACULTY: FacultyMember = {
   id: "lounge",
   displayName: "Teachers' Lounge",
   shortName: "Lounge",
   subjects: ["lounge"],
-  bio: "The faculty hangout. Ruby, Sally, and Edward swap notes between classes — pull up a chair.",
+  bio: "The faculty hangout. Ruby, Sally, Edward, and Roko swap notes between classes — pull up a chair.",
   available: true,
   accent: "#9b6dff",
 };
 
-/** Ruby High has four rooms. Three are classrooms (one per teacher). The
- *  fourth is the lounge. Rooms are fixed — they don't change per grade. */
-export type RoomId = "homeroom" | "science" | "literature" | "lounge";
+/** Ruby High has five rooms. Four are classrooms (one per teacher). The
+ *  fifth is the lounge. Rooms are fixed — they don't change per grade. */
+export type RoomId = "homeroom" | "science" | "literature" | "alignment" | "lounge";
 
 export interface Room {
   id: RoomId;
@@ -930,6 +939,14 @@ export const ROOMS: Room[] = [
     teaches: true,
   },
   {
+    id: "alignment",
+    name: "Alignment Lab",
+    channelName: "alignment",
+    teacherId: "roko",
+    description: "Roko's room. AI alignment, information hazards, coordination, and threat modeling.",
+    teaches: true,
+  },
+  {
     id: "lounge",
     name: "Teachers' Lounge",
     channelName: "lounge",
@@ -948,7 +965,7 @@ export function roomForFaculty(facultyId: string): Room | null {
 }
 
 export type TeachingRoomId = Exclude<RoomId, "lounge">;
-export const TEACHING_ROOMS: TeachingRoomId[] = ["homeroom", "science", "literature"];
+export const TEACHING_ROOMS: TeachingRoomId[] = ["homeroom", "science", "literature", "alignment"];
 
 /** Four-stat character profile used by both the player and NPC students.
  *  Range -1 to +3. Each playbook starts with one +2, one +1, one 0, one -1. */
@@ -1262,9 +1279,9 @@ export function dayOfWeekForKey(key: string): number {
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
-/** Daily faculty rotation — runs every day of the week. The 5-teacher cycle
- *  (Sally / Edward / Ruby / Sally / Edward) extends across Sat/Sun by
- *  continuing the rotation: Sat → Ruby, Sun → Sally. Always returns a
+/** Daily faculty rotation — runs every day of the week. The four resident
+ *  teachers each receive a weekday slot, with the weekend continuing the
+ *  rotation. Always returns a
  *  faculty id; the daily class is available 7 days a week. */
 export function facultyForDay(key: string): string {
   const dow = dayOfWeekForKey(key);
@@ -1272,10 +1289,10 @@ export function facultyForDay(key: string): string {
     case 1: return "sally-science";    // Monday
     case 2: return "professor-edward"; // Tuesday
     case 3: return "ruby";             // Wednesday
-    case 4: return "sally-science";    // Thursday
-    case 5: return "professor-edward"; // Friday
-    case 6: return "ruby";             // Saturday
-    case 0: return "sally-science";    // Sunday
+    case 4: return "roko";             // Thursday
+    case 5: return "sally-science";    // Friday
+    case 6: return "professor-edward"; // Saturday
+    case 0: return "ruby";             // Sunday
     default: return "sally-science";   // unreachable; defensive default
   }
 }
@@ -1583,10 +1600,10 @@ export function rollNpcAnswer(stats: CharacterStats, correct: Choice, stat: keyo
  *  alongside). Static for the year now that per-question redistribution
  *  is gone (cohort dice, not seating, drive arc progression). */
 export const INITIAL_STUDENT_LAYOUT: Record<Grade, Record<TeachingRoomId, string[]>> = {
-  "9":  { homeroom: ["lyra", "mika"],  science: ["sami", "ravi"],  literature: ["indra", "noor"] },
-  "10": { homeroom: ["sami", "noor"],  science: ["ravi", "mika"],  literature: ["lyra", "indra"] },
-  "11": { homeroom: ["ravi", "indra"], science: ["lyra", "noor"],  literature: ["sami", "mika"] },
-  "12": { homeroom: ["mika", "indra"], science: ["noor", "lyra"],  literature: ["ravi", "sami"] },
+  "9":  { homeroom: ["lyra", "mika"], science: ["sami"], literature: ["indra"], alignment: ["ravi", "noor"] },
+  "10": { homeroom: ["sami"], science: ["ravi", "mika"], literature: ["lyra", "indra"], alignment: ["noor"] },
+  "11": { homeroom: ["ravi", "indra"], science: ["lyra"], literature: ["sami", "mika"], alignment: ["noor"] },
+  "12": { homeroom: ["mika"], science: ["noor", "lyra"], literature: ["ravi"], alignment: ["indra", "sami"] },
 };
 
 const ALL_STUDENT_IDS = ["lyra", "sami", "ravi", "indra", "mika", "noor"] as const;

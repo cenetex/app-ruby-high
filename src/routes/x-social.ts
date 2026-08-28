@@ -94,7 +94,7 @@ function publicClassPhotoCandidates(candidates: readonly ClassPhotoCandidate[]):
 }
 
 function defaultTeacherPostImageUrl(teacherId: string): string | undefined {
-  if (teacherId === "ruby" || teacherId === "sally-science" || teacherId === "professor-edward") {
+  if (teacherId === "ruby" || teacherId === "sally-science" || teacherId === "professor-edward" || teacherId === "roko") {
     return `/api/apps/ruby-high/assets/teachers/${teacherId}-full.png`;
   }
   return undefined;

@@ -86,6 +86,23 @@ const facultyConfigs = [
       "Seminar ethics questions: how readers resist manipulative narration, handle authorial intention, and argue responsibly from evidence.",
     ],
   },
+  {
+    id: "roko",
+    prefix: "roko-gen",
+    jsonPath: "assets/questions/roko.json",
+    corpusPath: "assets/corpora/roko.md",
+    title: "Roko",
+    description: "Roko teaches AI alignment, information hazards, coordination failures, threat modeling, and Crownless dragon ecology as a causal case study.",
+    voice:
+      "Roko is calm, causal, and allergic to fearmongering. Ask what the system optimizes, what changed hands, who knows that everyone knows, and which link caused the harm. Shared threats create coordination pressure but do not erase free riding, failed commitments, or missing information. Keep information-hazard material defensive and non-operational. Use Crownless goblins and dragons precisely, never as generic monsters.",
+    lanes: [
+      "Alignment questions: objectives, proxies, specification gaming, goal misgeneralization, corrigibility, oversight, and distribution shift.",
+      "Coordination questions: public goods, free riding, common knowledge, commitment problems, mechanism design, and credible pledges.",
+      "Information-hazard questions: dual use, responsible disclosure, compartmentalization, epistemic security, and self-referential coercion.",
+      "Threat-model questions: attack surfaces, tripwires, defense in depth, monitoring, prompt injection, and incident response.",
+      "Crownless ecology questions: goblin material needs, delivered tribute, dragon state distinctions, fallible couriers, alliance supplies, and Afterdragon effects.",
+    ],
+  },
 ];
 
 await mkdir(resolve(root, ".tmp", "generated-question-banks"), { recursive: true });
@@ -790,6 +807,7 @@ function countBy(keys, values) {
 function subjectFromConfig(config) {
   if (config.id === "ruby") return "ai-literacy";
   if (config.id === "sally-science") return "physics";
+  if (config.id === "roko") return "ai-alignment";
   return "literature";
 }
 

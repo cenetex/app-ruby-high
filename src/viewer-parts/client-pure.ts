@@ -401,8 +401,8 @@ export const VIEWER_CONSTANTS = {
   GRADE_ORDER: ["9", "10", "11", "12"],
   WALLET_ACTION_TIMEOUT_MS: 120000,
   STREAK_REQUIRED: { "9": 1, "10": 2, "11": 3, "12": 4 },
-  TEACHING_FACULTY_IDS: ["ruby", "sally-science", "professor-edward"],
-  TEACHING_FACULTY_LABELS: { ruby: "Homeroom", "sally-science": "Science", "professor-edward": "Literature" },
+  TEACHING_FACULTY_IDS: ["ruby", "sally-science", "professor-edward", "roko"],
+  TEACHING_FACULTY_LABELS: { ruby: "Homeroom", "sally-science": "Science", "professor-edward": "Literature", roko: "AI Alignment" },
   LOUNGE_ID: "lounge",
   FIRST_BELL_PAGE_COUNT: 12,
   FIRST_BELL_PAGE_TITLES: {
@@ -1401,6 +1401,12 @@ export function hallPassCardProfile(cardInput: NullableRecord): AccountHallPassC
       teaches: "Postwar Literature · Literary Theory · Critical Thinking",
       stats: { head: 5, heart: 3, hustle: 1, honor: 4 },
       quote: "Context changes meaning. Curiosity finds truth.",
+    },
+    roko: {
+      subtitle: "AI Alignment Teacher",
+      teaches: "AI Alignment · Information Hazards · Coordination · Threat Modeling",
+      stats: { head: 5, heart: 2, hustle: 1, honor: 5 },
+      quote: "Name the objective. Then name what it eats.",
     },
     "captain-null": {
       subtitle: "Observatory",

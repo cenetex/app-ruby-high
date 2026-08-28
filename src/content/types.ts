@@ -35,7 +35,7 @@ export interface ContentPack {
   /** Faculty members. Each has its own chat persona + question bank. */
   faculty: PackFaculty[];
   /** Course layer: separates "what is being taught" from reusable teacher
-   *  templates such as Ruby/Sally/Edward. Optional for legacy persisted packs;
+   *  templates such as Ruby/Sally/Edward/Roko. Optional for legacy persisted packs;
    *  registry helpers derive courses from faculty+rooms when absent. */
   courses?: PackCourse[];
   /** Channel rail definitions. Should match faculty IDs (one room per

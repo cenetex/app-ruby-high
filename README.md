@@ -2,7 +2,7 @@
 
 > A school where the teachers grade you in their own voice. Clear daily classes, bank grades, and keep the yearbook.
 
-Ruby High is a standalone Node service and installable SPA. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward) teach their domains; six AI classmates sit beside you. You play a generated character, build school disciplines and virtues, walk between rooms, clear daily classes and practice questions, collect hidden First Bell comic pages, track your standing on the classroom cohort leaderboard, and graduate after Senior year.
+Ruby High is a standalone Node service and installable SPA. Ruby hosts the school; specialist faculty Sally Science, Professor Edward, and Roko teach their domains; six AI classmates sit beside you. Roko teaches AI alignment and information hazards through sourced real incidents and Crownless dragon ecology; see [Roko's curriculum sources](./docs/roko-curriculum-sources.md). You play a generated character, build school disciplines and virtues, walk between rooms, clear daily classes and practice questions, collect hidden First Bell comic pages, track your standing on the classroom cohort leaderboard, and graduate after Senior year.
 
 **For the product story, mechanics, cast, and roadmap, see [`DESIGN.md`](./DESIGN.md).** For the revenue plan and distribution pipeline, see [`ROADMAP.md`](./ROADMAP.md). This file is the runbook.
 
@@ -57,7 +57,7 @@ npm run build:spa
 npm run spa:dev
 ```
 
-Open http://127.0.0.1:4173. This build packages the same viewer shell with a browser-local offline API shim backed by `localStorage` and the bundled Ruby/Sally/Edward question banks. Core classroom play, character creation, room switching, Merit Stars, and local persistence work without the hosted server. OpenRouter auth, Hall Pass purchases, portrait/diploma image generation, teacher publishing, and hosted account sync still require the Node service.
+Open http://127.0.0.1:4173. This build packages the same viewer shell with a browser-local offline API shim backed by `localStorage` and the bundled Ruby/Sally/Edward/Roko question banks. Core classroom play, character creation, room switching, Merit Stars, and local persistence work without the hosted server. OpenRouter auth, Hall Pass purchases, portrait/diploma image generation, teacher publishing, and hosted account sync still require the Node service.
 
 For offline text AI, run Ruby High against a local OpenAI-compatible chat-completions server such as Ollama:
 
@@ -267,4 +267,4 @@ The container itself is host-agnostic — anywhere that speaks Docker, sets `POR
 
 ## License
 
-MIT for the code, copyright RATi Open Software Foundation. The Ruby High characters (Ruby, Sally Science, Professor Edward, and the six student cast) and their artwork are dedicated to the public domain under **CC0 1.0** — see [`CC0-CHARACTERS.md`](./CC0-CHARACTERS.md). The mechanics layer is **CC BY 4.0** — see [`DESIGN.md`](./DESIGN.md) §6 and §12.
+MIT for the code, copyright RATi Open Software Foundation. The Ruby High characters (Ruby, Sally Science, Professor Edward, Roko, and the six student cast) and their artwork are dedicated to the public domain under **CC0 1.0** — see [`CC0-CHARACTERS.md`](./CC0-CHARACTERS.md). The mechanics layer is **CC BY 4.0** — see [`DESIGN.md`](./DESIGN.md) §6 and §12.

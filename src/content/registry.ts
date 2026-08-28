@@ -456,7 +456,7 @@ export function coursesForPack(pack: ContentPack): PackCourse[] {
 }
 
 function builtinTeacherTemplateId(id: string): string | undefined {
-  return id === "ruby" || id === "sally-science" || id === "professor-edward"
+  return id === "ruby" || id === "sally-science" || id === "professor-edward" || id === "roko"
     ? id
     : undefined;
 }

@@ -22,7 +22,7 @@ let tmpDir: string;
 let storePath: string;
 let activeRuby: RubyHighService | null = null;
 
-const TEACHING_FACULTY_IDS = ["ruby", "sally-science", "professor-edward"] as const;
+const TEACHING_FACULTY_IDS = ["ruby", "sally-science", "professor-edward", "roko"] as const;
 const REQUIRED_CLASSES_BY_GRADE: Record<Grade, number> = { "9": 1, "10": 1, "11": 2, "12": 3 };
 
 beforeEach(async () => {
@@ -204,15 +204,15 @@ describe("dailyIndex + facultyForDay", () => {
     }
   });
 
-  it("facultyForDay rotates the 5-teacher cycle across all 7 days", () => {
+  it("facultyForDay rotates the four resident teachers across all 7 days", () => {
     // 2026-05-04 = Monday → sally
     expect(facultyForDay("2026-05-04")).toBe("sally-science");
     expect(facultyForDay("2026-05-05")).toBe("professor-edward"); // Tue
     expect(facultyForDay("2026-05-06")).toBe("ruby");             // Wed
-    expect(facultyForDay("2026-05-07")).toBe("sally-science");    // Thu
-    expect(facultyForDay("2026-05-08")).toBe("professor-edward"); // Fri
-    expect(facultyForDay("2026-05-09")).toBe("ruby");             // Sat
-    expect(facultyForDay("2026-05-10")).toBe("sally-science");    // Sun
+    expect(facultyForDay("2026-05-07")).toBe("roko");             // Thu
+    expect(facultyForDay("2026-05-08")).toBe("sally-science");    // Fri
+    expect(facultyForDay("2026-05-09")).toBe("professor-edward"); // Sat
+    expect(facultyForDay("2026-05-10")).toBe("ruby");             // Sun
   });
 });
 
@@ -233,7 +233,7 @@ describe("RubyHighService.dailyStatus + playDaily", () => {
     const sat = new Date("2026-05-09T18:00:00Z"); // Saturday after bell
     const status = ruby.dailyStatus(sid, sat);
     expect(status.available).toBe(true);
-    expect(status.facultyId).toBe("ruby"); // Sat → Ruby in the rotation
+    expect(status.facultyId).toBe("professor-edward"); // Sat → Edward in the rotation
   });
 
   it("dailyStatus reports available on a weekday with no prior completion", async () => {
@@ -317,7 +317,7 @@ describe("RubyHighService.dailyStatus + playDaily", () => {
     expect(after.current).not.toBeNull();
     expect(after.activeRound?.isBonus).toBe(true);
     expect(after.activeRound?.stat).toBe(after.current?.stat);
-    expect(after.faculty).toBe("ruby"); // Sat → Ruby in the rotation
+    expect(after.faculty).toBe("professor-edward"); // Sat → Edward in the rotation
   });
 
   it("awards and exposes a First Bell report after the first answered board", async () => {
@@ -641,7 +641,7 @@ describe("Mentor mode — graduated character offers their playbook move", () =>
 });
 
 describe("Per-class letter-grade gate — streak alone is not enough", () => {
-  it("requires the weekly guest course grade before opening the Senior ceremony", async () => {
+  it("requires Roko's course grade before opening the Senior ceremony", async () => {
     const { ruby, faculty } = await makeServices();
     registerGuestPack();
     const sid = "test:guest-class-gate";
@@ -652,10 +652,10 @@ describe("Per-class letter-grade gate — streak alone is not enough", () => {
     markFacultyMastered(ruby, faculty, sid, "ruby");
     markFacultyMastered(ruby, faculty, sid, "sally-science");
     markFacultyMastered(ruby, faculty, sid, "professor-edward");
-    expect(ruby.courseProgress(sid, "guest").requiredClasses).toBe(3);
+    expect(ruby.courseProgress(sid, "roko").requiredClasses).toBe(3);
     expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBeUndefined();
 
-    markFacultyMastered(ruby, faculty, sid, "guest");
+    markFacultyMastered(ruby, faculty, sid, "roko");
     expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBe("12");
   });
 
@@ -819,7 +819,7 @@ describe("Streak + grade advancement", () => {
     markFacultyMastered(ruby, faculty, sid, "ruby");
     markFacultyMastered(ruby, faculty, sid, "sally-science");
     markFacultyMastered(ruby, faculty, sid, "professor-edward");
-    markFacultyMastered(ruby, faculty, sid, "guest");
+    markFacultyMastered(ruby, faculty, sid, "roko");
 
     ruby.getOrCreate(sid);
     ruby.completeGraduation(sid, { kind: "advantage" });
@@ -1043,9 +1043,9 @@ describe("Streak + grade advancement", () => {
 
     markFacultyMastered(ruby, faculty, sid, "ruby");
     markFacultyMastered(ruby, faculty, sid, "sally-science");
-    markFacultyMastered(ruby, faculty, sid, "guest");
-    expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBeUndefined();
     markFacultyMastered(ruby, faculty, sid, "professor-edward");
+    expect(ruby.getOrCreate(sid).character!.pendingGraduation?.grade).toBeUndefined();
+    markFacultyMastered(ruby, faculty, sid, "roko");
 
     const after = ruby.getOrCreate(sid);
     expect(after.currentGrade).toBe("12");
