@@ -41,6 +41,8 @@ export interface GeneralSchedulerState {
   lastTweetId: string | null;
   lastTeacherId: string | null;
   lastContextFingerprint: string | null;
+  lastAnnouncedGuestKey: string | null;
+  lastGuestAnnouncementTweetId: string | null;
   tweetPlan: ScheduledTweetPlan | null;
   recentPosts: RecentPlannedPost[];
   lastSkipReason: ScheduledPostSkipReason | null;
@@ -81,6 +83,8 @@ export function defaultSchedulerState(): GeneralSchedulerState {
     lastTweetId: null,
     lastTeacherId: null,
     lastContextFingerprint: null,
+    lastAnnouncedGuestKey: null,
+    lastGuestAnnouncementTweetId: null,
     tweetPlan: null,
     recentPosts: [],
     lastSkipReason: null,
@@ -92,7 +96,7 @@ export function hydrateScheduledPostSchedulerState(
 ): GeneralSchedulerState {
   const state = defaultSchedulerState();
   const data = record?.data;
-  if (!data || (data.version !== 1 && data.version !== 2)) return state;
+  if (!data || (data.version !== 1 && data.version !== 2 && data.version !== 3)) return state;
   state.lastAttemptAt = finiteTimestamp(data.lastAttemptAt);
   state.lastPlanAttemptAt = finiteTimestamp(data.lastPlanAttemptAt);
   state.lastPlanAttemptKey = storedText(data.lastPlanAttemptKey, 256);
@@ -100,7 +104,11 @@ export function hydrateScheduledPostSchedulerState(
   state.lastTweetId = storedText(data.lastTweetId, 128);
   state.lastTeacherId = storedText(data.lastTeacherId, 128);
   state.lastContextFingerprint = storedText(data.lastContextFingerprint, 128);
-  if (data.version === 2) {
+  if (data.version === 3) {
+    state.lastAnnouncedGuestKey = storedText(data.lastAnnouncedGuestKey, 256);
+    state.lastGuestAnnouncementTweetId = storedText(data.lastGuestAnnouncementTweetId, 128);
+  }
+  if (data.version === 2 || data.version === 3) {
     state.tweetPlan = normalizeStoredTweetPlan(data.tweetPlan);
     state.recentPosts = normalizeStoredRecentPosts(data.recentPosts);
   }
@@ -116,7 +124,7 @@ export function scheduledPostSchedulerStateRecord(
     id: SCHEDULED_POST_SCHEDULER_STATE_ID,
     updatedAt: now,
     data: {
-      version: 2,
+      version: 3,
       lastAttemptAt: state.lastAttemptAt,
       lastPlanAttemptAt: state.lastPlanAttemptAt,
       lastPlanAttemptKey: state.lastPlanAttemptKey,
@@ -124,6 +132,8 @@ export function scheduledPostSchedulerStateRecord(
       lastTweetId: state.lastTweetId,
       lastTeacherId: state.lastTeacherId,
       lastContextFingerprint: state.lastContextFingerprint,
+      lastAnnouncedGuestKey: state.lastAnnouncedGuestKey,
+      lastGuestAnnouncementTweetId: state.lastGuestAnnouncementTweetId,
       tweetPlan: state.tweetPlan,
       recentPosts: state.recentPosts.slice(-MAX_RECENT_PLANNED_POSTS),
       lastSkipReason: state.lastSkipReason,
@@ -146,6 +156,10 @@ export class TweetPlanningScheduler {
     if (!this.enabled) return this.skip("disabled");
     const fingerprint = scheduledSchoolUpdateFingerprint(context);
     if (fingerprint === this.state.lastContextFingerprint) return this.skip("duplicate-context");
+    return this.canPostAtCadence(now);
+  }
+
+  private canPostAtCadence(now: number): boolean {
     if (this.state.lastPostAt && now - this.state.lastPostAt < MIN_POST_INTERVAL_MS) {
       return this.skip("daily-cooldown");
     }
@@ -165,6 +179,48 @@ export class TweetPlanningScheduler {
     if (!this.enabled) {
       this.skip("disabled");
       return null;
+    }
+    const guestAnnouncementKey = featuredGuestAnnouncementKey(context);
+    if (guestAnnouncementKey && guestAnnouncementKey !== this.state.lastAnnouncedGuestKey) {
+      if (!options.force && !this.canPostAtCadence(now)) return null;
+      const contextFingerprint = scheduledSchoolUpdateFingerprint(context);
+      this.state.lastAttemptAt = now;
+      this.state.lastSkipReason = null;
+      const result = await xSocial.postScheduledSchoolUpdateWithFallback(
+        teacher,
+        context,
+        {
+          editorialMode: "guest-welcome",
+          recentPosts: this.state.recentPosts.map((post) => ({ ...post })),
+        },
+      );
+      if (!result) {
+        this.state.lastSkipReason = "post-failed";
+        return null;
+      }
+
+      const guest = context.featuredGuest!;
+      this.state.lastPostAt = now;
+      this.state.lastTweetId = result.tweetId;
+      this.state.lastTeacherId = result.teacherId;
+      this.state.lastContextFingerprint = contextFingerprint;
+      this.state.lastAnnouncedGuestKey = guestAnnouncementKey;
+      this.state.lastGuestAnnouncementTweetId = result.tweetId;
+      this.state.recentPosts.push({
+        publishDate: context.date,
+        pillar: "guest-spotlight",
+        angle: `Guest teacher flip: ${guest.displayName}`,
+        text: result.text,
+      });
+      this.state.recentPosts = this.state.recentPosts.slice(-MAX_RECENT_PLANNED_POSTS);
+      return {
+        tweetId: result.tweetId,
+        teacherId: result.teacherId,
+        contextFingerprint,
+        planId: `guest-welcome:${guest.weekKey}`,
+        planSlotId: `guest-welcome:${guestAnnouncementKey}`,
+        pillar: "guest-spotlight",
+      };
     }
     const planNeedsRefresh = shouldRefreshScheduledTweetPlan(this.state.tweetPlan, teacher.id, context);
     if (planNeedsRefresh) {
@@ -292,6 +348,12 @@ function isSkipReason(value: unknown): value is ScheduledPostSkipReason {
     value === "plan-failed" ||
     value === "no-due-plan" ||
     value === "post-failed";
+}
+
+function featuredGuestAnnouncementKey(context: ScheduledSchoolUpdateContext): string | null {
+  const guest = context.featuredGuest;
+  if (!guest?.weekKey || !guest.packId) return null;
+  return `${guest.weekKey}:${guest.packId}`.slice(0, 256);
 }
 
 function normalizeStoredTweetPlan(value: unknown): ScheduledTweetPlan | null {

@@ -1,10 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   appendScheduledSchoolUpdateLink,
   buildDeterministicPostText,
   isLowSignalMilestone,
   buildFallbackPostText,
   buildScheduledGuestWelcomeText,
+  generateScheduledSchoolUpdateText,
   hasMeaningfulScheduledSchoolActivity,
   normalizeScheduledSchoolUpdateText,
   scheduledSchoolUpdateFingerprint,
@@ -34,6 +35,10 @@ const PLAYFUL_TEACHER: TeacherCharacter = {
   defaultModel: "test-model",
   systemPrompt: "You are Sally Science, a playful trickster who loves chaos and experiments gone wrong.",
 };
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("isLowSignalMilestone", () => {
   it("returns true for character-created, class-passed, grade-advanced", () => {
@@ -161,6 +166,32 @@ describe("scheduled school update safety", () => {
         xHandle: "elizaOS",
       },
     })).toBe(
+      "Welcome this week's featured guest teacher, Eliza (@elizaOS), to Ruby High! This week's course: elizaOS Systems Lab. #RubyHigh",
+    );
+  });
+
+  it("can announce a verified guest flip without a text model", async () => {
+    vi.stubEnv("RUBY_HIGH_LLM_PROVIDER", "openrouter");
+    vi.stubEnv("RUBY_HIGH_LLM_BASE_URL", "");
+    vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "");
+    const guestContext = {
+      ...context,
+      featuredGuest: {
+        weekKey: "2026-W30",
+        packId: "teacher:eliza-elizaos-systems-lab",
+        facultyId: "eliza",
+        displayName: "Eliza",
+        courseTitle: "elizaOS Systems Lab",
+        bio: "Guest systems teacher.",
+        xHandle: "elizaOS",
+      },
+    };
+
+    await expect(generateScheduledSchoolUpdateText(
+      WARM_TEACHER,
+      guestContext,
+      { editorialMode: "guest-welcome" },
+    )).resolves.toBe(
       "Welcome this week's featured guest teacher, Eliza (@elizaOS), to Ruby High! This week's course: elizaOS Systems Lab. #RubyHigh",
     );
   });

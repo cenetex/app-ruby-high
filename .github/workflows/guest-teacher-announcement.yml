@@ -1,0 +1,38 @@
+name: guest-teacher-announcement
+
+on:
+  schedule:
+    # 9:05 AM Vancouver during daylight saving time. GitHub cron uses UTC.
+    - cron: "5 16 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: guest-teacher-announcement-production
+  cancel-in-progress: false
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - name: Wake Ruby High and run the normal daily X scheduler
+        env:
+          RUBY_HIGH_SCHEDULER_TOKEN: ${{ secrets.RUBY_HIGH_SCHEDULER_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$RUBY_HIGH_SCHEDULER_TOKEN"
+          curl \
+            --silent \
+            --show-error \
+            --fail-with-body \
+            --retry 3 \
+            --retry-all-errors \
+            --connect-timeout 20 \
+            --max-time 180 \
+            --request POST \
+            --header "Authorization: Bearer $RUBY_HIGH_SCHEDULER_TOKEN" \
+            https://ruby-high.ai/api/apps/ruby-high/x/tick-scheduled/ruby

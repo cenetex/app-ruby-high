@@ -138,8 +138,8 @@ export function appendScheduledSchoolUpdateLink(text: string, url: string): stri
 
 /** Generate one privacy-safe school update from aggregate classroom signals.
  *  Aggregate updates and guest insights deliberately have no deterministic
- *  fallback. A guest welcome may fall back to verified roster metadata because
- *  it is an announcement, not a generated claim or interpretation. */
+ *  fallback. A guest welcome always uses verified roster metadata because it
+ *  is an announcement, not a generated claim or interpretation. */
 export async function generateScheduledSchoolUpdateText(
   teacher: TeacherCharacter,
   context: ScheduledSchoolUpdateContext,
@@ -149,11 +149,12 @@ export async function generateScheduledSchoolUpdateText(
     recentPosts?: RecentPlannedPost[];
   } = {},
 ): Promise<string | null> {
-  if (!hasConfiguredLlmCredential()) return null;
-
   const editorialMode = options.editorialMode ?? "school-update";
+  if (editorialMode === "guest-welcome") {
+    return buildScheduledGuestWelcomeText(context);
+  }
   const featuredGuest = context.featuredGuest;
-  if (editorialMode === "guest-welcome" && !featuredGuest) return null;
+  if (!hasConfiguredLlmCredential()) return null;
   const plannedSlot = options.plannedSlot;
   const guestGrounded = editorialMode === "guest-insights" || plannedSlot?.pillar === "guest-spotlight";
   if (
@@ -165,11 +166,6 @@ export async function generateScheduledSchoolUpdateText(
   const guestHandle = featuredGuest?.xHandle?.replace(/^@/, "");
   const editorialInstruction = plannedSlot
     ? plannedTweetInstruction(plannedSlot, guestHandle)
-    : editorialMode === "guest-welcome"
-    ? [
-        `Welcome this week's new featured guest teacher, ${featuredGuest!.displayName}${guestHandle ? ` (@${guestHandle})` : ""}.`,
-        `Name the course "${featuredGuest!.courseTitle}" and use only the supplied guest metadata.`,
-      ].join(" ")
     : editorialMode === "guest-insights"
       ? [
           `Write an "Insights from @${guestHandle}" post about one useful theme in the supplied recent X posts.`,
@@ -220,9 +216,7 @@ export async function generateScheduledSchoolUpdateText(
     });
     if (!response.ok) {
       log.event("x-social.scheduled-llm-skipped", { status: response.status });
-      return editorialMode === "guest-welcome"
-        ? buildScheduledGuestWelcomeText(context)
-        : null;
+      return null;
     }
     const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
     const normalized = normalizeScheduledSchoolUpdateText(
@@ -230,20 +224,13 @@ export async function generateScheduledSchoolUpdateText(
       { allowedHandle: guestHandle },
     );
     if (!normalized) {
-      return editorialMode === "guest-welcome"
-        ? buildScheduledGuestWelcomeText(context)
-        : null;
-    }
-    if (editorialMode === "guest-welcome" && !/\bwelcome\b/i.test(normalized)) {
-      return buildScheduledGuestWelcomeText(context);
+      return null;
     }
     if (guestGrounded && /["“”]/.test(normalized)) return null;
     return normalized;
   } catch (err) {
     log.error("x-social.scheduled-llm-failed", err, { teacherId: teacher.id });
-    return editorialMode === "guest-welcome"
-      ? buildScheduledGuestWelcomeText(context)
-      : null;
+    return null;
   }
 }
 
