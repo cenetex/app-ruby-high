@@ -18,9 +18,11 @@ describe("Roko", () => {
   it("ships a full course with Crownless and incident case studies", async () => {
     const pack = await getActivePack();
     const roko = pack.faculty.find((faculty) => faculty.id === "roko");
+    const room = pack.rooms.find((candidate) => candidate.teacherId === "roko");
 
     expect(roko?.questions.length).toBe(216);
     expect(roko?.sourceCards?.length).toBe(96);
+    expect(room?.channelName).toBe("alignment");
     expect(roko?.questions).toEqual(expect.arrayContaining([
       expect.objectContaining({ prompt: expect.stringContaining("Crownless") }),
       expect.objectContaining({ prompt: expect.stringContaining("OpenAI / Hugging Face incident") }),

@@ -33,7 +33,6 @@ import { getProject89SignalTimelineLab } from "./packs/project89-signal-timeline
 export const ORIGINAL_PACK_ID = "ruby-high-original";
 export const GUEST_COURSE_ID = "guest";
 export const GUEST_ROOM_ID = "guest-room";
-export const GUEST_CHANNEL_NAME = "guest";
 
 /** Per-owner soft cap on registered packs. When an owner exceeds this,
  *  their oldest pack evicts. Built-in packs (owner=null) are PINNED and
@@ -414,7 +413,8 @@ function composeGuestPack(base: ContentPack, guestPack: ContentPack): ContentPac
       {
         id: GUEST_ROOM_ID,
         name: sourceRoom?.name ?? sourceFaculty.displayName,
-        channelName: GUEST_CHANNEL_NAME,
+        channelName: sourceRoom?.channelName
+          ?? slugForId(sourceCourse?.title ?? sourceFaculty.displayName),
         teacherId: GUEST_COURSE_ID,
         description: sourceRoom?.description ?? sourceFaculty.bio,
         teaches: true,
