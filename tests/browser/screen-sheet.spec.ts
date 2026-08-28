@@ -293,11 +293,23 @@ test("generates the complete Ruby High app screen sheet", async ({ page }) => {
   await openNavigation(page);
   await capture("School navigation", "School");
 
-  const scienceRoom = page.getByRole("button", { name: /open science classroom/i });
-  if (await scienceRoom.isVisible().catch(() => false)) {
-    await scienceRoom.click();
-    await expect(page.locator("#channel-title")).toContainText(/science/i);
-    await capture("Science classroom", "School");
+  const dailyFacultyId = await page.evaluate(async () => {
+    const response = await fetch("/api/apps/ruby-high/session/browser-smoke", {
+      credentials: "same-origin",
+    });
+    const session = await response.json();
+    return String(session?.telemetry?.guest_access?.dailyFacultyId || "ruby");
+  });
+  const dailyRoom = page.locator(
+    `.room-row-group[data-faculty="${dailyFacultyId}"] .room-row-button`,
+  );
+  if (await dailyRoom.isVisible().catch(() => false)) {
+    const dailyRoomName = String(
+      await dailyRoom.locator(".room-row-name").textContent() || "classroom",
+    );
+    await dailyRoom.click();
+    await expect(page.locator("#channel-title")).toHaveText(dailyRoomName);
+    await capture("Today's classroom", "School");
   }
 
   await openNavigation(page);
@@ -439,6 +451,9 @@ test("generates the complete Ruby High app screen sheet", async ({ page }) => {
   await page.locator("#you-profile").click();
   await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
   await capture("Student progress", "Progress");
+  await expect(page.locator(".mash-grid-wrap")).toBeVisible();
+  await page.locator(".mash-grid-wrap").scrollIntoViewIfNeeded();
+  await capture("Social Card", "Progress");
   await closeStudentSheet(page);
 
   await tickGrade(page);
