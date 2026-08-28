@@ -3638,9 +3638,106 @@ export function runViewerClient(bootstrap) {
   // teacher-picked questions; the /chat/play-bonus endpoint stays available
   // server-side if we ever want a separate daily warm-up affordance.
 
+  function buildCaseActionResult(action, compact) {
+    if (!action || !action.report) return null;
+    const wrap = document.createElement("article");
+    wrap.className = "case-action-result" + (compact ? " is-compact" : "");
+    const top = document.createElement("div");
+    top.className = "case-action-result-top";
+    const label = document.createElement("strong");
+    label.textContent = action.reportLabel || ((action.actorName || "Investigator") + " report");
+    const confidence = document.createElement("span");
+    const confidenceValue = ["low", "medium", "high"].includes(String(action.confidence))
+      ? String(action.confidence)
+      : "medium";
+    confidence.className = "case-action-confidence is-" + confidenceValue;
+    confidence.textContent = confidenceValue + " confidence";
+    top.append(label, confidence);
+    wrap.appendChild(top);
+    if (action.actionLabel) {
+      const move = document.createElement("p");
+      move.className = "case-action-move";
+      move.textContent = (action.actorName || "Investigator") + " · " + action.actionLabel;
+      wrap.appendChild(move);
+    }
+    const report = document.createElement("p");
+    report.className = "case-action-report";
+    report.textContent = action.report;
+    wrap.appendChild(report);
+    if (action.revealedEvidence && action.revealedEvidence.detail) {
+      const evidence = document.createElement("div");
+      evidence.className = "case-action-new-evidence";
+      const evidenceLabel = document.createElement("strong");
+      evidenceLabel.textContent = action.revealedEvidence.label || "New evidence";
+      const evidenceSource = document.createElement("span");
+      evidenceSource.textContent = action.revealedEvidence.source || action.actorName || "Investigation";
+      const evidenceDetail = document.createElement("p");
+      evidenceDetail.textContent = action.revealedEvidence.detail;
+      evidence.append(evidenceLabel, evidenceSource, evidenceDetail);
+      wrap.appendChild(evidence);
+    }
+    if (action.verificationPrompt) {
+      const verify = document.createElement("p");
+      verify.className = "case-action-verify";
+      verify.textContent = "Verify before relying on it: " + action.verificationPrompt;
+      wrap.appendChild(verify);
+    }
+    return wrap;
+  }
+
   function renderQuestionPrompt(question) {
     const view = questionPromptView(question);
     els.boardPrompt.replaceChildren();
+    if (view.caseStudy) {
+      const caseWrap = document.createElement("section");
+      caseWrap.className = "case-study-card case-stage-" + view.caseStudy.stage;
+      const top = document.createElement("div");
+      top.className = "case-study-topline";
+      const stage = document.createElement("span");
+      stage.className = "case-study-stage";
+      stage.textContent = view.caseStudy.stage === "investigate"
+        ? "1 · Investigate"
+        : view.caseStudy.stage === "decide"
+          ? "2 · Decide"
+          : "3 · Explain";
+      const title = document.createElement("strong");
+      title.className = "case-study-title";
+      title.textContent = view.caseStudy.title;
+      top.append(stage, title);
+      caseWrap.appendChild(top);
+      if (view.caseStudy.hook) {
+        const hook = document.createElement("p");
+        hook.className = "case-study-hook";
+        hook.textContent = view.caseStudy.hook;
+        caseWrap.appendChild(hook);
+      }
+      const scene = document.createElement("p");
+      scene.className = "case-study-scene";
+      scene.textContent = view.caseStudy.scene;
+      caseWrap.appendChild(scene);
+      if (view.caseStudy.evidence.length > 0) {
+        const evidence = document.createElement("div");
+        evidence.className = "case-study-evidence";
+        view.caseStudy.evidence.forEach((item) => {
+          const card = document.createElement("article");
+          card.className = "case-study-evidence-item";
+          const label = document.createElement("strong");
+          label.textContent = item.label;
+          const source = document.createElement("span");
+          source.textContent = item.source;
+          const detail = document.createElement("p");
+          detail.textContent = item.detail;
+          card.append(label, source, detail);
+          evidence.appendChild(card);
+        });
+        caseWrap.appendChild(evidence);
+      }
+      if (view.caseStudy.investigation) {
+        const investigation = buildCaseActionResult(view.caseStudy.investigation, false);
+        if (investigation) caseWrap.appendChild(investigation);
+      }
+      els.boardPrompt.appendChild(caseWrap);
+    }
     if (view.images.length > 0) {
       const wrap = document.createElement("div");
       wrap.className = "anki-media-grid";
@@ -4004,6 +4101,20 @@ export function runViewerClient(bootstrap) {
       expl.className = "reveal-explanation";
       renderMarkdownInto(expl, reveal.explanation);
       els.boardReveal.appendChild(expl);
+    }
+    if (reveal.caseConsequence && reveal.caseConsequence.detail) {
+      const consequence = document.createElement("div");
+      consequence.className = "reveal-case-consequence";
+      const label = document.createElement("strong");
+      label.textContent = reveal.caseConsequence.label || "What changed";
+      const detail = document.createElement("span");
+      detail.textContent = reveal.caseConsequence.detail;
+      consequence.append(label, detail);
+      els.boardReveal.appendChild(consequence);
+    }
+    if (reveal.caseActionResult) {
+      const actionResult = buildCaseActionResult(reveal.caseActionResult, true);
+      if (actionResult) els.boardReveal.appendChild(actionResult);
     }
     els.nextBtn.focus();
   }
