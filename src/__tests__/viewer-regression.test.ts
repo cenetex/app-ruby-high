@@ -819,7 +819,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function nftHttpErrorMessage(action, response, data, unchanged)");
     expectScriptToContain(script, "function friendlySolanaActionError(err, unchanged)");
     expectScriptToContain(script, "Ruby High never asks for a seed phrase.");
-    expectScriptToContain(script, "Your card is still face-down; try again in a minute.");
+    expectScriptToContain(script, "Your card was not minted; try again in a minute.");
     expectScriptToContain(script, "accountHallPassCards");
     expectScriptToContain(script, 'buy.addEventListener("click", () => deps.onSelectProduct(recordValue(product, "id")))');
     expectScriptToContain(script, 'mode === "card-packs"');
@@ -873,7 +873,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'void syncWalletPackNftsFromAccount({ force: true })');
     expectScriptToContain(script, 'return kind === "active" ? PACK_NFT_ART_URL : PACK_OPENED_NFT_ART_URL;');
     expectScriptToContain(script, "item.className = view.className");
-    expectScriptToContain(script, '"These collectible packs are stored on Solana. Open one to get five face-down Ruby High cards."');
+    expectScriptToContain(script, '"These collectible packs are stored on Solana. Open one to reveal five Ruby High cards immediately."');
     expectScriptToContain(script, '"Opened collectible pack"');
     expectScriptToContain(script, '"View pack on Solscan"');
     expectScriptToContain(script, "item.className = view.className");
@@ -888,7 +888,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "render(revealedCard, { flip: true, revealed: true })");
     expectScriptToContain(script, "function hallPassCardById(cardId)");
     expectScriptToContain(script, "function hallPassCardNftImageUrl(card)");
-    expectScriptToContain(script, "Opening your pack and adding five face-down collectible cards...");
+    expectScriptToContain(script, "Opening your pack and revealing five collectible cards...");
     expectScriptToContain(script, 'const PACK_NFT_ART_URL = apiBase + "/assets/nft/ruby-high-pack.png?v=pack-nft-v2"');
     expectScriptToContain(script, 'const PACK_OPENED_NFT_ART_URL = apiBase + "/assets/nft/ruby-high-pack-opened.png?v=opened-v2"');
     expectScriptToContain(script, 'const CARD_BACK_ART_URL = apiBase + "/assets/nft/ruby-high-card-back.png?v=card-back-v1"');
@@ -943,10 +943,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "client.signSolanaTransaction(preparedData.mint)");
     expectScriptToContain(script, "signedTransactionBase64: signed.signedTransactionBase64");
     expect(script).not.toContain('prompt: "Your wallet should show one card-mint transaction."');
-    expectScriptToContain(script, "Reveal Collectible");
+    expectScriptToContain(script, "Mint Collectible");
     expectScriptToContain(script, "return hallPassCardById(cleanCardId) || data.card || null");
     expect(script).not.toContain("remove();\n        void mintHallPassCardFromAccount(card.id);");
-    expectScriptToContain(script, "Create the next collectible card on Solana to reveal it.");
+    expectScriptToContain(script, "Mint the next revealed collectible card on Solana.");
     expect(script).not.toContain("unmintedCardCount");
     expect(script).not.toContain("/nft/mint-pending");
     expect(script).not.toContain("Mint \" + mintableCount + \" Pending");

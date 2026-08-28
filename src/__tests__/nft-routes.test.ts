@@ -1130,7 +1130,7 @@ describe("Hall Pass NFT routes", () => {
     });
   });
 
-  it("opens an active Pack NFT into deterministic face-down cards", async () => {
+  it("opens an active Pack NFT into deterministic revealed cards", async () => {
     const stateKey = signInUser("open-pack");
     const openedMetadataUri = "https://ruby-high.ai/api/apps/ruby-high/nft/metadata/core/pack/card-pack-1/123456.json?packs=1&cards=5&opened=1";
     process.env.RUBY_HIGH_SOLANA_CORE_COLLECTION_ADDRESS = "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q";
@@ -1180,7 +1180,7 @@ describe("Hall Pass NFT routes", () => {
         pack: {
           id: pack.id,
           status: "opened",
-          packRevealVersion: "ruby-high-pack-reveal-v1.1",
+          packRevealVersion: "ruby-high-pack-reveal-v1.2",
           catalogHash: expect.any(String),
           commitment: expect.any(String),
           entropySource: "ruby-high-server-commit-v1",
@@ -1200,19 +1200,20 @@ describe("Hall Pass NFT routes", () => {
       packCount: 1,
       cardCount: 5,
       serial: 123456,
-      packRevealVersion: "ruby-high-pack-reveal-v1.1",
+      packRevealVersion: "ruby-high-pack-reveal-v1.2",
       revealSeed: expect.any(String),
     }));
     expect(lastResponse?.body.cards).toHaveLength(5);
     expect(lastResponse?.body.cards[0]).toMatchObject({
-      title: "Ruby High Mystery Card",
-      characterId: "card-back",
-      characterName: "Mystery Card",
+      title: expect.any(String),
+      characterId: expect.any(String),
+      characterName: expect.any(String),
+      role: "teacher",
       mintAddress: null,
       mintSignature: null,
       packId: pack.id,
       slotIndex: 0,
-      packRevealVersion: "ruby-high-pack-reveal-v1.1",
+      packRevealVersion: "ruby-high-pack-reveal-v1.2",
       catalogHash: expect.any(String),
       commitment: expect.any(String),
       entropySource: "ruby-high-server-commit-v1",
@@ -1220,6 +1221,11 @@ describe("Hall Pass NFT routes", () => {
       revealProof: expect.any(String),
       packAssetAddress: pack.assetAddress,
     });
+    const studentIds = lastResponse?.body.cards
+      .filter((card: { role?: string }) => card.role === "student")
+      .map((card: { characterId?: string }) => card.characterId);
+    expect(studentIds).toHaveLength(3);
+    expect(new Set(studentIds).size).toBe(3);
     expect(lastResponse?.body.minted).toHaveLength(0);
     expect(lastResponse?.body.remaining).toBe(5);
     expect(ruby.getOrCreate(stateKey).wallet.hallPassPacks?.[0]).toMatchObject({
@@ -1264,7 +1270,7 @@ describe("Hall Pass NFT routes", () => {
     expectNoVisibleProvenanceTraits(lastResponse?.body);
     expect(lastResponse?.body.properties.provenance).toMatchObject({
       algorithm: "sha256(version + commitment + revealSeed + assetAddress + slotIndex)",
-      packRevealVersion: "ruby-high-pack-reveal-v1.1",
+      packRevealVersion: "ruby-high-pack-reveal-v1.2",
       revealSeed: expect.any(String),
       packAssetAddress: pack.assetAddress,
     });
@@ -1296,7 +1302,7 @@ describe("Hall Pass NFT routes", () => {
     expectNoVisibleProvenanceTraits(lastResponse?.body);
     expect(lastResponse?.body.properties.provenance).toMatchObject({
       algorithm: "sha256(version + commitment + revealSeed + assetAddress + slotIndex)",
-      packRevealVersion: "ruby-high-pack-reveal-v1.1",
+      packRevealVersion: "ruby-high-pack-reveal-v1.2",
       revealSeed: expect.any(String),
       packAssetAddress: pack.assetAddress,
     });
@@ -1864,7 +1870,7 @@ describe("Hall Pass NFT routes", () => {
     expect(fetchOwned).toHaveBeenCalledTimes(30);
   });
 
-  it("prepares one owner-paid card mint without recording the reveal", async () => {
+  it("prepares one owner-paid card mint without hiding the in-app reveal", async () => {
     const stateKey = signInUser("alice");
     const grant = ruby.grantHallPassCards(stateKey, {
       cardCount: 20,
@@ -1885,8 +1891,8 @@ describe("Hall Pass NFT routes", () => {
     expect(lastResponse?.status).toBe(200);
     expect(lastResponse?.body.card).toMatchObject({
       id: grant.cards![0]!.id,
-      characterId: "card-back",
-      characterName: "Mystery Card",
+      characterId: grant.cards![0]!.characterId,
+      characterName: grant.cards![0]!.characterName,
       mintAddress: null,
       mintSignature: null,
     });

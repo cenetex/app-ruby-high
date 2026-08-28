@@ -114,7 +114,7 @@ describe("account card and pack tile views", () => {
     });
   });
 
-  it("renders face-down card reader copy and reveal action state", () => {
+  it("keeps invalid card-back records hidden without a mint action", () => {
     const view = accountHallPassCardReaderView({
       id: "card-abcdef",
       status: "active",
@@ -133,11 +133,11 @@ describe("account card and pack tile views", () => {
       artAlt: "Mystery Card",
       proofAddress: "",
       teachesVisible: false,
-      noteText: "Create this collectible card on Solana to reveal it.",
-      revealVisible: true,
-      revealText: "Reveal on Solana",
+      noteText: "This card's reveal data is not available.",
+      revealVisible: false,
+      revealText: "Mint on Solana",
       revealDisabled: false,
-      revealTitle: "Create this collectible card with your Solana wallet to reveal it.",
+      revealTitle: "Mint this revealed collectible card with your Solana wallet.",
     });
   });
 
@@ -176,8 +176,31 @@ describe("account card and pack tile views", () => {
       quoteText: "\"If the answer exists, this helps you find it.\"",
       noteText: "",
       revealVisible: false,
-      revealText: "Revealing...",
+      revealText: "Minting...",
       revealDisabled: true,
+    });
+  });
+
+  it("reveals an in-app card before it is minted on Solana", () => {
+    const card = {
+      id: "card-unminted",
+      status: "active",
+      role: "student",
+      rarity: "rare",
+      characterId: "mika",
+      characterName: "Mika",
+    };
+    expect(hallPassCardIsFaceDown(card)).toBe(false);
+    expect(accountHallPassCardTileView(card)).toMatchObject({
+      faceDown: false,
+      title: "Mika",
+      detail: expect.stringContaining("In-app collectible · rare"),
+    });
+    expect(accountHallPassCardReaderView(card, { authed: true })).toMatchObject({
+      faceDown: false,
+      noteText: "Revealed in Ruby High. Minting on Solana is optional.",
+      revealVisible: true,
+      revealText: "Mint on Solana",
     });
   });
 

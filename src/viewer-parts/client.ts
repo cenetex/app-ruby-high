@@ -325,7 +325,7 @@ export function runViewerClient(bootstrap) {
     "Checking the card details...",
     "Waiting for wallet approval...",
     "Sending the approved transaction...",
-    "Revealing the card...",
+    "Finishing the mint...",
   ];
   function authStorage(kind) {
     try { return kind === "local" ? window.localStorage : window.sessionStorage; } catch (e) { return null; }
@@ -1578,11 +1578,13 @@ export function runViewerClient(bootstrap) {
     formatSealedDate,
     clipEssayText,
   });
+  let socialFocusBusy = false;
   const mashGridRenderer = createMashGridRenderer({
     document,
     students: STUDENTS,
     recentRelationshipEvents,
     mashTickStory,
+    setFocus: updateSocialFocus,
   });
   const revealFeedbackRenderer = createRevealFeedbackRenderer({
     document,
@@ -2770,7 +2772,7 @@ export function runViewerClient(bootstrap) {
       cost: "No payment",
       pack: "Ruby High Pack",
       prompt: "You should not need to sign a wallet transaction to open this pack.",
-      copy: "Ruby High will open a pack you own and add five face-down collectible cards to your account.",
+      copy: "Ruby High will open a pack you own and reveal five collectible cards in your account.",
       confirmText: "Open pack",
     });
     if (!approved) {
@@ -2779,7 +2781,7 @@ export function runViewerClient(bootstrap) {
     }
     billingBusy = true;
     renderAccountHallPassCards();
-    showPackMintProgress("Opening your pack and adding five face-down collectible cards...");
+    showPackMintProgress("Opening your pack and revealing five collectible cards...");
     setPrivyStatus("Opening pack...", false);
     try {
       const r = await apiFetch(apiBase + "/nft/open-pack", {
@@ -2796,7 +2798,7 @@ export function runViewerClient(bootstrap) {
       const count = Math.max(0, Math.floor(Number(data.cardCount || (Array.isArray(data.cards) ? data.cards.length : 0))));
       const openedText = data.applied ? "Pack opened." : "Pack was already opened.";
       updatePackMintProgress("Pack opened. Updating your locker...");
-      setPrivyStatus(openedText + " " + formatWholeNumber(count) + " face-down card" + (count === 1 ? "" : "s") + " ready to reveal.", false);
+      setPrivyStatus(openedText + " " + formatWholeNumber(count) + " card" + (count === 1 ? "" : "s") + " revealed.", false);
       await fetchSession();
       renderAccountPage();
     } catch (err) {
@@ -2819,14 +2821,14 @@ export function runViewerClient(bootstrap) {
     billingBusy = true;
     renderAccountHallPassCards();
     showPackMintProgress("Creating your collectible card on Solana...", {
-      title: "Revealing your collectible card",
+      title: "Minting your collectible card",
       lines: CARD_MINT_STATUS_LINES,
       rotate: false,
     });
     setPrivyStatus("Creating your collectible card on Solana...", false);
     try {
       const ownerWalletAddress = knownSolanaOwnerWalletAddress();
-      if (!ownerWalletAddress) throw new Error("Connect a Solana wallet before revealing collectible cards.");
+      if (!ownerWalletAddress) throw new Error("Connect a Solana wallet before minting collectible cards.");
       updatePackMintProgress("Preparing wallet transaction...");
       const prepared = await apiFetch(apiBase + "/nft/mint-card-prepare", {
         method: "POST",
@@ -2836,12 +2838,12 @@ export function runViewerClient(bootstrap) {
       });
       const preparedData = await prepared.json().catch(() => ({}));
       if (!prepared.ok || !preparedData || !preparedData.ok || !preparedData.mint) {
-        throw new Error(nftHttpErrorMessage("Creating the collectible card", prepared, preparedData, "Your card is still face-down; try again in a minute."));
+        throw new Error(nftHttpErrorMessage("Minting the collectible card", prepared, preparedData, "Your card was not minted; try again in a minute."));
       }
       if (preparedData.mint.serverMinted || !preparedData.mint.transactionBase64) {
         const name = preparedData.card && preparedData.card.characterName ? preparedData.card.characterName : "Collectible card";
-        updatePackMintProgress("Card created. Revealing it...");
-        setPrivyStatus(name + " revealed.", false);
+        updatePackMintProgress("Card minted on Solana.");
+        setPrivyStatus(name + " minted on Solana.", false);
         await fetchSession();
         renderAccountPage();
         hidePackMintProgress(900);
@@ -2855,7 +2857,7 @@ export function runViewerClient(bootstrap) {
       setPrivyStatus("Review the collectible-card transaction in your wallet.", false);
       const signed = await withWalletActionTimeout(
         client.signSolanaTransaction(preparedData.mint),
-        "Wallet approval timed out. Your card is still face-down; try again when your wallet is ready.",
+        "Wallet approval timed out. Your card is still safe in Ruby High; try again when your wallet is ready.",
       );
       updatePackMintProgress("Sending the card transaction to Solana...");
       const confirmed = await apiFetch(apiBase + "/nft/mint-card-submit", {
@@ -2873,16 +2875,16 @@ export function runViewerClient(bootstrap) {
       });
       const data = await confirmed.json().catch(() => ({}));
       if (!confirmed.ok || !data || !data.ok) {
-        throw new Error(nftHttpErrorMessage("Confirming the collectible card", confirmed, data, "Your card reveal is not recorded yet; try again in a minute."));
+        throw new Error(nftHttpErrorMessage("Confirming the collectible card", confirmed, data, "Your card mint is not recorded yet; try again in a minute."));
       }
       const name = data.card && data.card.characterName ? data.card.characterName : "Collectible card";
-      setPrivyStatus(name + " revealed.", false);
+      setPrivyStatus(name + " minted on Solana.", false);
       await fetchSession();
       renderAccountPage();
       return hallPassCardById(cleanCardId) || data.card || null;
     } catch (err) {
       hidePackMintProgress();
-      setPrivyStatus("Card reveal failed · " + friendlySolanaActionError(err, "Your card is still face-down; try again in a minute."), true);
+      setPrivyStatus("Card mint failed · " + friendlySolanaActionError(err, "Your card is still safe in Ruby High; try again in a minute."), true);
       return null;
     } finally {
       hidePackMintProgress(900);
@@ -2908,7 +2910,7 @@ export function runViewerClient(bootstrap) {
       if (attempt > 0) {
         await waitForSolanaConfirmation(1200 + attempt * 500);
         updatePackMintProgress("Waiting for Solana confirmation...");
-        setPrivyStatus("Waiting for card reveal confirmation...", false);
+        setPrivyStatus("Waiting for card mint confirmation...", false);
       }
       const confirmed = await apiFetch(apiBase + "/nft/mint-card-confirm", {
         method: "POST",
@@ -2918,8 +2920,8 @@ export function runViewerClient(bootstrap) {
       });
       const data = await confirmed.json().catch(() => ({}));
       if (confirmed.ok && data && data.ok) return data;
-      const errorMessage = nftHttpErrorMessage("Confirming the collectible card", confirmed, data, "Your card reveal is not recorded yet; try again in a minute.");
-      if (confirmed.status === 404 && /No face-down card matches this mint\./i.test(errorMessage)) {
+      const errorMessage = nftHttpErrorMessage("Confirming the collectible card", confirmed, data, "Your card mint is not recorded yet; try again in a minute.");
+      if (confirmed.status === 404 && /No collectible card ready to mint matches this request\./i.test(errorMessage)) {
         await fetchSession();
         const alreadyRevealed = hallPassCardById(input.cardId);
         if (alreadyRevealed && alreadyRevealed.mintAddress && alreadyRevealed.mintSignature) {
@@ -4092,6 +4094,10 @@ export function runViewerClient(bootstrap) {
       : event.circled ? " (circled)"
       : "";
     switch (event.reason) {
+      case "social-focus":
+        return event.delta > 0
+          ? "You made time for " + name + "." + tail
+          : "Things felt off with " + name + "." + tail;
       case "best-responder":
         return "The teacher singled out " + name + "'s essay; you took notice." + tail;
       case "applauder":
@@ -4106,6 +4112,17 @@ export function runViewerClient(bootstrap) {
         if (delta < 0) return "You and " + name + " drifted a step apart." + tail;
         return "Things stayed even with " + name + "." + tail;
       }
+    }
+  }
+
+  async function updateSocialFocus(studentId) {
+    if (socialFocusBusy) return;
+    socialFocusBusy = true;
+    try {
+      const data = await command({ type: "set-social-focus", studentId: studentId || null });
+      if (data) showCongrats(studentId ? "Classmate focus set." : "Classmate focus cleared.", true);
+    } finally {
+      socialFocusBusy = false;
     }
   }
 
@@ -9574,7 +9591,7 @@ export function runViewerClient(bootstrap) {
       els.privyLoginWidget.hidden = !privyState.configured || (privyState.authenticated && !needsWalletConnect);
       els.privyLoginWidget.textContent = needsWalletConnect ? "Connect Wallet" : "Sign in";
       els.privyLoginWidget.title = needsWalletConnect
-        ? "Connect a Solana wallet to open packs and reveal collectible cards."
+        ? "Connect a Solana wallet to open packs or mint collectible cards."
         : "Sign in";
     }
     if (els.privySignout) els.privySignout.hidden = !privyState.authenticated;
@@ -10285,7 +10302,8 @@ export function runViewerClient(bootstrap) {
       const inRoomStudents = studentsForGrade(lastTelemetry && lastTelemetry.current_grade);
       const mentionedIds = new Set();
       for (const s of inRoomStudents) {
-        const re = new RegExp("\b" + s.name + "\b", "i");
+        const escapedName = String(s.name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const re = new RegExp("\\b" + escapedName + "\\b", "i");
         if (re.test(text)) mentionedIds.add(s.id);
       }
       let mentionDelayBase = 600;

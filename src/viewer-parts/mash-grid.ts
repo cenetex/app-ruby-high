@@ -18,6 +18,7 @@ export interface MashGridResolvedLine {
 export interface MashGridCard {
   cells?: Record<string, MashGridCell | undefined>;
   resolved?: Record<string, MashGridResolvedLine | undefined>;
+  focusStudentId?: string;
 }
 
 export interface MashGridCharacter {
@@ -29,6 +30,7 @@ export interface MashGridRendererDeps {
   students: MashGridStudent[];
   recentRelationshipEvents: () => unknown[];
   mashTickStory: (event: unknown) => string;
+  setFocus: (studentId: string | null) => Promise<unknown> | unknown;
 }
 
 export interface MashGridRenderer {
@@ -62,18 +64,34 @@ export function createMashGridRenderer(deps: MashGridRendererDeps): MashGridRend
       heading.textContent = graduated ? "Social Card · completed" : "Social Card";
       wrap.appendChild(heading);
 
+      const helper = deps.document.createElement("div");
+      helper.className = "mash-grid-helper";
+      const focusedStudent = deps.students.find((student) => student.id === card.focusStudentId);
+      helper.textContent = graduated
+        ? "Your final classmate connections."
+        : focusedStudent
+          ? "Focused on " + focusedStudent.name + ". Pick again to clear."
+          : "Pick a classmate. Your next essay affects that relationship.";
+      wrap.appendChild(helper);
+
       const grid = deps.document.createElement("div");
       grid.className = "mash-grid";
       deps.students.forEach((student) => {
         const cell = card.cells ? card.cells[student.id] : undefined;
-        const tile = deps.document.createElement("div");
+        const tile = deps.document.createElement("button") as HTMLButtonElement;
+        tile.type = "button";
         tile.className = "mash-tile";
         const affinity = cell && typeof cell.affinity === "number" ? cell.affinity : 0;
+        const focused = card.focusStudentId === student.id;
+        if (focused) tile.classList.add("is-focused");
         if (cell && cell.scratched) tile.classList.add("is-scratched");
         else if (cell && cell.circled) tile.classList.add("is-circled");
         else if (affinity > 0) tile.classList.add("is-warm");
         else if (affinity < 0) tile.classList.add("is-cool");
         tile.style.setProperty("--mash-accent", student.color);
+        tile.disabled = graduated || !!(cell && cell.scratched);
+        tile.setAttribute("aria-pressed", focused ? "true" : "false");
+        tile.setAttribute("aria-label", (focused ? "Clear focus on " : "Focus on ") + student.name);
 
         const dot = deps.document.createElement("span");
         dot.className = "mash-tile-dot";
@@ -89,6 +107,15 @@ export function createMashGridRenderer(deps: MashGridRendererDeps): MashGridRend
         meter.setAttribute("aria-label", "affinity " + affinity);
         meter.textContent = meterText(cell, affinity);
         tile.appendChild(meter);
+
+        tile.addEventListener("click", async () => {
+          tile.disabled = true;
+          try {
+            await deps.setFocus(focused ? null : student.id);
+          } finally {
+            if (tile.isConnected) tile.disabled = graduated || !!(cell && cell.scratched);
+          }
+        });
 
         grid.appendChild(tile);
       });

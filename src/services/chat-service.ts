@@ -1575,7 +1575,9 @@ function describeRelationshipStateForTeacher(state: QuizState): string[] {
 function formatSchoolEventForTeacher(event: NonNullable<QuizState["schoolEvents"]>[number]): string {
   if (event.kind === "relationship.ticked") {
     const name = studentNameFor(event.studentId);
-    const reason = event.reason === "best-responder"
+    const reason = event.reason === "social-focus"
+      ? "the player chose to spend time with them"
+      : event.reason === "best-responder"
       ? "teacher picked them as best responder"
       : event.reason === "applauder"
         ? "they applauded the player's essay"

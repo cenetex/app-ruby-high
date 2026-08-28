@@ -5,7 +5,7 @@
 - Merit Stars are earned through play and should stay non-purchasable.
 - Hall Passes are the paid/entitlement currency for hosted AI, creator slots,
   extra character slots, and hosted image generation.
-- Card packs are Solana pack NFTs. Opening a pack creates five face-down cards.
+- Card packs are Solana pack NFTs. Opening a pack reveals five in-app cards immediately.
 - Revealed card NFTs can be burned into Hall Passes. The live conversion target
   is now `1 Card = 5 Hall Passes`.
 - Direct burn-to-use flows now credit the card burn first, then spend the Hall
@@ -41,9 +41,9 @@
    the in-code values are development fallbacks only.
 
 4. **Captain Null should remain upside, not burn inventory.**
-   Captain Null is ultra-rare/special and guaranteed only in larger bundles.
-   The UI should keep burn convenient for ordinary cards but should not push
-   players to burn rare/special cards blindly.
+   Captain Null is ultra-rare/special. Every complete five-pack block guarantees
+   an ultra-rare special. Rare, super-rare, and ultra-rare burns show a warning
+   and require a second confirmation.
 
 5. **V1 sink coverage is reasonable.**
    Current Hall Pass sinks are hosted AI access, hosted images, extra character
@@ -60,4 +60,4 @@
 - Put Card Pack purchase entry points beside the card/pack surfaces.
 - Keep direct burn flows value-preserving: burn first, credit Hall Passes, then
   spend from the wallet.
-- Add a later confirmation warning for rare, super-rare, and ultra-rare burns.
+- Keep the extra confirmation warning for rare, super-rare, and ultra-rare burns.

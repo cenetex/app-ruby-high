@@ -43,6 +43,18 @@ describe("ensureMashCard", () => {
     });
     expect(card.cells.lyra!.scratched).toBe(true);
   });
+  it("keeps a valid classmate focus and drops a scratched one", () => {
+    const focused = ensureMashCard({
+      cells: { lyra: { affinity: 1, scratched: false, circled: false, ticks: 1 } },
+      focusStudentId: "lyra",
+      resolved: {},
+    });
+    expect(focused.focusStudentId).toBe("lyra");
+
+    focused.cells.lyra!.affinity = -3;
+    focused.cells.lyra!.scratched = true;
+    expect(ensureMashCard(focused).focusStudentId).toBeUndefined();
+  });
 });
 
 describe("applyTick", () => {
@@ -97,12 +109,11 @@ describe("computeAffinityTicks", () => {
     expect(ticks[0]!.reason).toBe("pep-talk");
   });
 
-  it("bestResponder NPC gets +1 on top of the applauder pass tick", () => {
+  it("bestResponder NPC is the only classmate tick", () => {
     const ticks = computeAffinityTicks({
       ...base, playerScore: 9, playerPassed: true, bestResponder: "indra", isHeart: false,
     });
-    expect(ticks.find((t) => t.reason === "best-responder" && t.studentId === "indra")?.delta).toBe(1);
-    expect(ticks.find((t) => t.reason === "applauder")?.delta).toBe(1);
+    expect(ticks).toEqual([{ studentId: "indra", delta: 1, reason: "best-responder" }]);
   });
 
   it("ignores bestResponder='player' (player isn't a classmate)", () => {
@@ -117,6 +128,28 @@ describe("computeAffinityTicks", () => {
     const a = computeAffinityTicks({ ...base, playerScore: 8, playerPassed: true, bestResponder: null, isHeart: false });
     const b = computeAffinityTicks({ ...base, playerScore: 8, playerPassed: true, bestResponder: null, isHeart: false });
     expect(a.map((t) => t.studentId)).toEqual(b.map((t) => t.studentId));
+  });
+
+  it("uses the player-selected focus before automatic reactions", () => {
+    const pass = computeAffinityTicks({
+      ...base,
+      playerScore: 9,
+      playerPassed: true,
+      bestResponder: "indra",
+      isHeart: false,
+      focusStudentId: "mika",
+    });
+    expect(pass).toEqual([{ studentId: "mika", delta: 1, reason: "social-focus" }]);
+
+    const miss = computeAffinityTicks({
+      ...base,
+      playerScore: 3,
+      playerPassed: false,
+      bestResponder: null,
+      isHeart: false,
+      focusStudentId: "mika",
+    });
+    expect(miss).toEqual([{ studentId: "mika", delta: -1, reason: "social-focus" }]);
   });
 });
 

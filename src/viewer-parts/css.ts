@@ -7332,6 +7332,15 @@ export const VIEWER_CSS = `
     font-size: 14px;
     line-height: 1.45;
   }
+  .card-burn-warning {
+    border: 1px solid rgba(255, 155, 70, 0.55);
+    border-radius: 10px;
+    background: rgba(255, 120, 40, 0.12);
+    color: #ffd5b0 !important;
+    padding: 9px 10px;
+    font-weight: 650;
+  }
+  .card-burn-warning[hidden] { display: none; }
   .card-burn-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
@@ -7416,6 +7425,10 @@ export const VIEWER_CSS = `
     border-color: rgba(255,110,110,0.72);
     background: #b92b2b;
     color: #fff;
+  }
+  .card-burn-actions button.primary.is-danger {
+    background: #9f2f24;
+    border-color: #d75d4d;
   }
   .card-burn-actions button:disabled {
     cursor: not-allowed;
@@ -7961,6 +7974,11 @@ export const VIEWER_CSS = `
     letter-spacing: 0.08em;
     opacity: 0.7;
   }
+  .mash-grid-helper {
+    color: var(--text-soft);
+    font-size: 11px;
+    line-height: 1.35;
+  }
   .mash-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -7978,6 +7996,16 @@ export const VIEWER_CSS = `
     border: 1px solid rgba(255, 255, 255, 0.08);
     font-size: 12px;
     line-height: 1.1;
+    color: inherit;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .mash-tile:focus-visible { outline: 2px solid var(--mash-accent); outline-offset: 2px; }
+  .mash-tile:disabled { cursor: default; }
+  .mash-tile.is-focused {
+    border-color: var(--mash-accent);
+    box-shadow: 0 0 0 1px var(--mash-accent), 0 0 14px color-mix(in oklab, var(--mash-accent) 30%, transparent);
   }
   .mash-tile-dot {
     width: 8px;

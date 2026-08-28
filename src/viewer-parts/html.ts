@@ -337,7 +337,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
             </div>
             <div class="account-section-actions">
 	              <button type="button" id="account-buy-card-packs">Buy Collectible Packs</button>
-              <button type="button" class="secondary" id="account-mint-cards">Reveal Collectible</button>
+              <button type="button" class="secondary" id="account-mint-cards">Mint Collectible</button>
             </div>
           </div>
           <div class="account-hall-pass-cards" id="account-hall-pass-cards"></div>

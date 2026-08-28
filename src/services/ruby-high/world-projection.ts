@@ -16,6 +16,7 @@ const COMIC_PAGE_UNLOCK_REASONS: readonly ComicPageUnlockReason[] = [
   "legacy",
 ];
 const MASH_TICK_REASONS: readonly MashTickReason[] = [
+  "social-focus",
   "best-responder",
   "applauder",
   "rub",

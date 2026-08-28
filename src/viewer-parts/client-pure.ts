@@ -1143,11 +1143,11 @@ export function accountHallPassCardsPanelView(
     pieces.push(activeCards.length + " active collectible card" + (activeCards.length === 1 ? "" : "s"));
     if (mintedCards.length > 0) pieces.push(mintedCards.length + " collectible card" + (mintedCards.length === 1 ? "" : "s") + " on Solana");
     if (pendingMints.length > 0) {
-      pieces.push(pendingMints.length + " face-down collectible card" + (pendingMints.length === 1 ? "" : "s") + " to reveal");
+      pieces.push(pendingMints.length + " revealed collectible card" + (pendingMints.length === 1 ? "" : "s") + " ready to mint");
     }
   }
   let summaryText = needsWalletConnection
-    ? "Connect a Solana wallet to open packs and reveal collectible cards."
+    ? "Connect a Solana wallet to open packs or mint collectible cards."
     : pieces.length === 0
       ? "No collectible packs or cards in this wallet yet."
       : pieces.join(" · ");
@@ -1158,14 +1158,14 @@ export function accountHallPassCardsPanelView(
   const authed = !!(opts && opts.authed);
   const billingBusy = !!(opts && opts.billingBusy);
   const billingMode = String((opts && opts.billingMode) || "");
-  let mintText = "Reveal Collectible";
-  let mintTitle = "No face-down collectible cards are ready to reveal.";
+  let mintText = "Mint Collectible";
+  let mintTitle = "No revealed collectible cards are ready to mint.";
   if (needsWalletConnection) {
     mintText = billingBusy ? "Connecting..." : "Connect Wallet";
-    mintTitle = "Connect a Solana wallet before opening packs or revealing collectible cards.";
+    mintTitle = "Connect a Solana wallet before opening packs or minting collectible cards.";
   } else if (pendingMints.length > 0) {
-    mintText = billingBusy ? "Revealing..." : "Reveal Collectible";
-    mintTitle = "Create the next collectible card on Solana to reveal it.";
+    mintText = billingBusy ? "Minting..." : "Mint Collectible";
+    mintTitle = "Mint the next revealed collectible card on Solana.";
   }
   return {
     summaryText,
@@ -1331,7 +1331,7 @@ export function packQuestionListView(teacherInput: NullableRecord): PackQuestion
 }
 
 export function hallPassCardIsFaceDown(card: NullableRecord): boolean {
-  return !card || !card.mintAddress || !card.mintSignature || card.characterId === "card-back";
+  return !card || !card.characterId || card.characterId === "card-back";
 }
 
 export function hallPassCardTitle(card: NullableRecord, faceDown?: unknown): string {
@@ -1540,7 +1540,8 @@ export function accountHallPassCardReaderView(cardInput: NullableRecord, opts?: 
   const authed = !!(opts && opts.authed);
   const revealed = !!(opts && opts.revealed);
   const flip = !!(opts && opts.flip);
-  const revealVisible = faceDown && card.status === "active";
+  const minted = !!(card.mintAddress && card.mintSignature);
+  const revealVisible = !faceDown && !minted && card.status === "active";
   return {
     panelClassName: "account-card-reader-panel" + (revealed ? " is-revealed" : ""),
     artClassName: "account-card-reader-art" + (flip ? " is-flipped" : ""),
@@ -1554,11 +1555,15 @@ export function accountHallPassCardReaderView(cardInput: NullableRecord, opts?: 
     teachesLabel: hallPassCardDetailLabel(card),
     teachesText: profile ? String(profile.teaches || profile.subtitle || "Ruby High") : "",
     quoteText: !faceDown && profile && profile.quote ? "\"" + String(profile.quote) + "\"" : "",
-    noteText: faceDown ? "Create this collectible card on Solana to reveal it." : "",
+    noteText: faceDown
+      ? "This card's reveal data is not available."
+      : !minted
+        ? "Revealed in Ruby High. Minting on Solana is optional."
+        : "",
     revealVisible,
-    revealText: billingBusy ? "Revealing..." : "Reveal on Solana",
+    revealText: billingBusy ? "Minting..." : "Mint on Solana",
     revealDisabled: !authed || billingBusy,
-    revealTitle: "Create this collectible card with your Solana wallet to reveal it.",
+    revealTitle: "Mint this revealed collectible card with your Solana wallet.",
   };
 }
 
@@ -2143,11 +2148,14 @@ export function billingProductsPanelView(
   return {
     titleText: isCardPacks ? "Buy Collectible Packs" : "Buy Hall Passes",
     subtitleText: isCardPacks
-      ? "These collectible packs are stored on Solana. Open one to get five face-down Ruby High cards."
+      ? "These collectible packs are stored on Solana. Open one to reveal five Ruby High cards immediately."
       : "Buy Hall Passes or permanently destroy one collectible card to get 5.",
     cardPackCostLabels: isCardPacks
       ? [
         "Each collectible pack: " + VIEWER_CONSTANTS.HALL_PASS_CARDS_PER_PACK + " cards",
+        "Pack shape: 1 teacher · 3 different students · 1 campus or special card",
+        "Super Rare teacher: 1 in 64 · Ultra Rare special: 1 in 64",
+        "Every complete 5-pack block guarantees an Ultra Rare special",
         "Permanently destroy 1 collectible card: get " + hallPassCostLabel(hallPassesPerBurnedCard),
       ]
       : [],

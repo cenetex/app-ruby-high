@@ -24,9 +24,12 @@ describe("billingProductsPanelView", () => {
       hallPassesPerBurnedCard: 7,
     })).toEqual({
       titleText: "Buy Collectible Packs",
-      subtitleText: "These collectible packs are stored on Solana. Open one to get five face-down Ruby High cards.",
+      subtitleText: "These collectible packs are stored on Solana. Open one to reveal five Ruby High cards immediately.",
       cardPackCostLabels: [
         "Each collectible pack: 5 cards",
+        "Pack shape: 1 teacher · 3 different students · 1 campus or special card",
+        "Super Rare teacher: 1 in 64 · Ultra Rare special: 1 in 64",
+        "Every complete 5-pack block guarantees an Ultra Rare special",
         "Permanently destroy 1 collectible card: get 7 Hall Passes",
       ],
       showGetRubyCostLink: false,

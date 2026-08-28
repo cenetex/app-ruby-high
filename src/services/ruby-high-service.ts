@@ -176,6 +176,7 @@ import {
 import { rewriteGeneratedPortraitS3Url } from "./generated-portrait-assets.js";
 import { PLAYBOOKS } from "../characters/playbooks.js";
 import {
+  AXIS_BY_GRADE,
   applyTick as applyMashTick,
   buildSuperlatives as buildMashSuperlatives,
   computeAffinityTicks as computeMashTicks,
@@ -253,7 +254,9 @@ import {
 } from "./hall-pass-card-catalog.js";
 import {
   HALL_PASS_PACK_REVEAL_ENTROPY_SOURCE,
+  HALL_PASS_PACK_REVEAL_LEGACY_VERSION,
   HALL_PASS_PACK_REVEAL_VERSION,
+  HALL_PASS_PACK_REVEAL_VERSIONS,
   hallPassCatalogHash,
   packRevealCommitment,
   packRevealSeed,
@@ -4541,7 +4544,8 @@ export class RubyHighService extends Service {
       ownerWalletAddress,
       productId: input.productId.trim().slice(0, 96) || `card-pack-${packCount}`,
       cardCount,
-      nonce: packRevealNonce(id, assetAddress, mintSignature, ownerWalletAddress),
+      nonce: packRevealNonce(HALL_PASS_PACK_REVEAL_VERSION, id, assetAddress, mintSignature, ownerWalletAddress),
+      packRevealVersion: HALL_PASS_PACK_REVEAL_VERSION,
     });
     const pack: RubyHighHallPassPack = {
       id: hallPassPackId(id, assetAddress),
@@ -4626,17 +4630,18 @@ export class RubyHighService extends Service {
     if (pack.status !== "active") throw new Error("Pack is already opened.");
     const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
     const openSignature = typeof input.openSignature === "string" ? input.openSignature.trim() : "";
+    const packRevealVersion = cleanRevealString(pack.packRevealVersion) || HALL_PASS_PACK_REVEAL_VERSION;
+    const catalogHash = cleanRevealString(pack.catalogHash) || hallPassCatalogHash(packRevealVersion);
     const fallbackCommitment = packRevealCommitment({
-      catalogHash: hallPassCatalogHash(),
+      catalogHash,
       assetAddress: pack.assetAddress,
       mintSignature: pack.mintSignature,
       ownerWalletAddress: pack.ownerWalletAddress,
       productId: pack.productId,
       cardCount: pack.cardCount,
-      nonce: packRevealNonce(pack.grantTransactionId ?? pack.id, pack.assetAddress, pack.mintSignature, pack.ownerWalletAddress),
+      nonce: packRevealNonce(packRevealVersion, pack.grantTransactionId ?? pack.id, pack.assetAddress, pack.mintSignature, pack.ownerWalletAddress),
+      packRevealVersion,
     });
-    const packRevealVersion = cleanRevealString(pack.packRevealVersion) || HALL_PASS_PACK_REVEAL_VERSION;
-    const catalogHash = cleanRevealString(pack.catalogHash) || hallPassCatalogHash();
     const commitment = cleanRevealString(pack.commitment) || fallbackCommitment;
     const entropySource = cleanRevealString(input.entropySource) || cleanRevealString(pack.entropySource) || HALL_PASS_PACK_REVEAL_ENTROPY_SOURCE;
     const revealSeed = cleanRevealString(input.revealSeed, 256) || packRevealSeed({
@@ -4644,7 +4649,8 @@ export class RubyHighService extends Service {
       assetAddress: pack.assetAddress,
       transactionId: id,
       openSignature,
-      nonce: packRevealNonce(id, pack.assetAddress, pack.mintSignature, pack.ownerWalletAddress),
+      nonce: packRevealNonce(packRevealVersion, id, pack.assetAddress, pack.mintSignature, pack.ownerWalletAddress),
+      packRevealVersion,
     });
     const revealSlot = Math.floor(Number(input.revealSlot));
     const randomnessAccount = cleanRevealString(input.randomnessAccount);
@@ -8330,9 +8336,9 @@ export class RubyHighService extends Service {
     throw new Error(`Unknown graduation reward: ${(reward as { kind?: string }).kind ?? "?"}`);
   }
 
-  /** Apply MASH affinity ticks for one just-graded essay. Pure compute,
+  /** Apply the MASH affinity tick for one just-graded essay. Pure compute,
    *  then mutates the player's card. Returns the array of ticks applied
-   *  for the event log. Cap is two non-zero ticks per essay; this function
+   *  for the event log. Cap is one tick per essay; this function
    *  is the only thing that ever ticks the card during normal play. */
   private applyMashTicksForEssay(
     state: QuizState,
@@ -8348,6 +8354,7 @@ export class RubyHighService extends Service {
       questionId: inputs.questionId,
       date: dailyKey(),
       isHeart: ch.playbookId === "heart",
+      focusStudentId: card.focusStudentId,
     });
     const applied: Array<{ studentId: string; delta: -1 | 0 | 1; reason: MashTickReason; affinity: number; circled: boolean; scratched: boolean; befriended: boolean }> = [];
     for (const t of ticks) {
@@ -8358,6 +8365,9 @@ export class RubyHighService extends Service {
       if (cell.scratched && t.delta !== 0) continue;
       const wasCircled = cell.circled;
       applyMashTick(cell, t.delta, dailyKey());
+      if (cell.scratched && card.focusStudentId === t.studentId) {
+        delete card.focusStudentId;
+      }
       applied.push({
         studentId: t.studentId,
         delta: t.delta,
@@ -8380,10 +8390,14 @@ export class RubyHighService extends Service {
   ): import("../types.js").MashResolution[] {
     const card = (ch.mashCard = ensureMashCard(ch.mashCard));
     const out: import("../types.js").MashResolution[] = [];
-    const primary = resolveMashAxisForGrade(card, grade, ch.name);
-    if (primary) {
-      card.resolved[primary.axis] = primary;
-      out.push(primary);
+    const gradesToResolve: Grade[] = grade === "12" ? ["9", "10", "11", "12"] : [grade];
+    for (const axisGrade of gradesToResolve) {
+      const axis = AXIS_BY_GRADE[axisGrade];
+      if (card.resolved[axis]) continue;
+      const resolution = resolveMashAxisForGrade(card, axisGrade, ch.name);
+      if (!resolution) continue;
+      card.resolved[resolution.axis] = resolution;
+      out.push(resolution);
     }
     if (grade === "12") {
       for (const r of resolveMashSeniorBonusAxes(card, ch.name)) {
@@ -9010,11 +9024,9 @@ export class RubyHighService extends Service {
         affinitySave,
       };
     }
-    // MASH affinity ticks. After every essay, up to two classmates react.
-    // The teacher-named bestResponder gets +1, and a deterministic
-    // applauder/rubber gets +1 or -1 depending on whether the player
-    // passed. Heart playbook converts the rub into a no-op (Pep Talk
-    // passive). Pure compute → mutate the card → log.
+    // MASH affinity tick. The player's Social Card focus reacts first.
+    // Without one, a teacher-named best responder or deterministic
+    // classmate reacts. Heart converts a negative reaction into Pep Talk.
     const mashTicksApplied = this.applyMashTicksForEssay(state, {
       questionId: round.questionId,
       bestResponder,
@@ -9843,6 +9855,25 @@ export class RubyHighService extends Service {
   markIntroSeen(sessionId: string): QuizState {
     const state = this.getOrCreate(sessionId);
     state.hasSeenIntro = true;
+    state.updatedAt = Date.now();
+    void this.persistSession(sessionId);
+    return state;
+  }
+
+  setSocialFocus(sessionId: string, studentId: string | null): QuizState {
+    const state = this.getOrCreate(sessionId);
+    const ch = state.character;
+    if (!ch) throw new Error("No student to update.");
+    const card = (ch.mashCard = ensureMashCard(ch.mashCard));
+    const cleanStudentId = typeof studentId === "string" ? studentId.trim() : "";
+    if (!cleanStudentId) {
+      delete card.focusStudentId;
+    } else {
+      const cell = card.cells[cleanStudentId];
+      if (!cell) throw new Error("Choose a classmate from the Social Card.");
+      if (cell.scratched) throw new Error("That relationship is already scratched off.");
+      card.focusStudentId = cleanStudentId;
+    }
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
@@ -11861,8 +11892,8 @@ function secretHashInteger(seed: string): number {
   return Number.parseInt(secretHash(seed).slice(0, 8), 16);
 }
 
-function packRevealNonce(...parts: string[]): string {
-  return secretHash([HALL_PASS_PACK_REVEAL_VERSION, ...parts].join("|"));
+function packRevealNonce(packRevealVersion: string, ...parts: string[]): string {
+  return secretHash([packRevealVersion, ...parts].join("|"));
 }
 
 function hallPassPackId(transactionId: string, assetAddress: string): string {
@@ -11920,18 +11951,26 @@ function pickPlayerStudentCard(
 
 function hallPassCardPackEntries(
   seed: string,
-  options: { forceSpecialCard?: boolean; sessions?: Map<string, QuizState> } = {},
+  options: {
+    forceSpecialCard?: boolean;
+    sessions?: Map<string, QuizState>;
+    uniqueStaticStudents?: boolean;
+  } = {},
   seedInteger: SeedIntegerFn = secretHashInteger,
 ): HallPassCardCatalogEntry[] {
   const teacher = seedInteger(`${seed}:super-rare-teacher`) % 64 === 0 && HALL_PASS_CARD_SUPER_RARE_TEACHERS.length > 0
     ? pickCatalogEntry(HALL_PASS_CARD_SUPER_RARE_TEACHERS, `${seed}:super-teacher`, seedInteger)
     : pickCatalogEntry(HALL_PASS_CARD_TEACHERS, `${seed}:teacher`, seedInteger);
-  const npcStudents = HALL_PASS_CARD_STUDENTS
+  const rankedStudents = HALL_PASS_CARD_STUDENTS
     .slice()
-    .sort((a, b) => seedInteger(`${seed}:student:${a.characterId}`) - seedInteger(`${seed}:student:${b.characterId}`))
-    .slice(0, 2);
+    .sort((a, b) => seedInteger(`${seed}:student:${a.characterId}`) - seedInteger(`${seed}:student:${b.characterId}`));
+  const npcStudents = rankedStudents.slice(0, 2);
   const playerStudent = pickPlayerStudentCard(`${seed}:player-student`, options.sessions ?? new Map(), seedInteger);
-  const students = playerStudent ? [...npcStudents, playerStudent] : [...npcStudents, ...HALL_PASS_CARD_STUDENTS.slice(2, 3)];
+  const students = playerStudent
+    ? [...npcStudents, playerStudent]
+    : options.uniqueStaticStudents
+      ? rankedStudents.slice(0, 3)
+      : [...npcStudents, ...HALL_PASS_CARD_STUDENTS.slice(2, 3)];
   const specialCard = (options.forceSpecialCard || seedInteger(`${seed}:special-card`) % 64 === 0) && HALL_PASS_CARD_SPECIALS.length > 0
     ? pickCatalogEntry(HALL_PASS_CARD_SPECIALS, `${seed}:special`, seedInteger)
     : null;
@@ -11972,7 +12011,7 @@ function issueHallPassCardsForTransaction(
     || transactionMetadataString(transaction, "openSignature")
     || transaction.id;
   const revealSlot = Math.floor(Number(transaction.metadata?.revealSlot));
-  const usesPackReveal = packRevealVersion === HALL_PASS_PACK_REVEAL_VERSION
+  const usesPackReveal = (HALL_PASS_PACK_REVEAL_VERSIONS as readonly string[]).includes(packRevealVersion)
     && !!catalogHash
     && !!commitment
     && !!revealSeed
@@ -11990,20 +12029,31 @@ function issueHallPassCardsForTransaction(
           revealSeed,
           assetAddress: packAssetAddress,
           slotIndex: packIndex * HALL_PASS_CARDS_PER_PACK,
+          packRevealVersion,
         })
         : packIndex === 0 ? transaction.id : `${transaction.id}:pack:${packIndex}`;
       // Provably-fair packs must only use the static catalog — live
       // session state (player cards) would break verifiable commitment.
+      const usesBlockGuarantees = usesPackReveal && packRevealVersion !== HALL_PASS_PACK_REVEAL_LEGACY_VERSION;
       packEntries = hallPassCardPackEntries(packSeed, {
-        forceSpecialCard: packIndex === guaranteedSpecialPackIndex,
+        forceSpecialCard: usesBlockGuarantees
+          ? (packIndex + 1) % 5 === 0
+          : packIndex === guaranteedSpecialPackIndex,
         sessions: usesPackReveal ? undefined : sessions,
+        uniqueStaticStudents: usesPackReveal && packRevealVersion !== HALL_PASS_PACK_REVEAL_LEGACY_VERSION,
       }, seedInteger);
       packCache.set(packIndex, packEntries);
     }
     const catalog = packEntries[i % packEntries.length]!;
     const issuedAt = transaction.at;
     const revealProof = usesPackReveal
-      ? packSlotRevealProof({ commitment, revealSeed, assetAddress: packAssetAddress, slotIndex: i })
+      ? packSlotRevealProof({
+        commitment,
+        revealSeed,
+        assetAddress: packAssetAddress,
+        slotIndex: i,
+        packRevealVersion,
+      })
       : sha256Hex(secretHash(`${transaction.id}:${i}`));
     const card: RubyHighHallPassCard = {
       id,
@@ -12247,7 +12297,7 @@ function normalizeSchoolEvents(value: unknown): SchoolEvent[] {
     const grade = typeof e.grade === "string" && (GRADES as string[]).includes(e.grade) ? (e.grade as Grade) : null;
     if (kind === "relationship.ticked") {
       const delta = e.delta === -1 || e.delta === 0 || e.delta === 1 ? e.delta : 0;
-      const reason = typeof e.reason === "string" && ["best-responder", "applauder", "rub", "pep-talk"].includes(e.reason)
+      const reason = typeof e.reason === "string" && ["social-focus", "best-responder", "applauder", "rub", "pep-talk"].includes(e.reason)
         ? e.reason as MashTickReason
         : "applauder";
       if (typeof e.questionId !== "string" || typeof e.studentId !== "string") continue;
@@ -12476,7 +12526,7 @@ function normalizePublicWorldEventPayload(value: unknown): SchoolWorldEvent | nu
   }
   if (source.kind === "relationship.ticked") {
     const reason = source.reason;
-    if (reason !== "best-responder" && reason !== "applauder" && reason !== "rub" && reason !== "pep-talk") return null;
+    if (reason !== "social-focus" && reason !== "best-responder" && reason !== "applauder" && reason !== "rub" && reason !== "pep-talk") return null;
     return {
       ...base,
       kind: "relationship.ticked",

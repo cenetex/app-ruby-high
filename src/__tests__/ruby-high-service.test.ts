@@ -22,8 +22,13 @@ import {
 import type { ContentPack } from "../content/types.js";
 import { PROJECT89_SIGNAL_TIMELINE_LAB_PACK_ID } from "../content/packs/project89-signal-timeline-lab.js";
 import { FIRST_BELL_SET_CODE, FIRST_BELL_SET_NAME } from "../services/hall-pass-card-catalog.js";
+import {
+  HALL_PASS_PACK_REVEAL_LEGACY_VERSION,
+  hallPassCatalogHash,
+} from "../services/hall-pass-reveal-provenance.js";
 import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 import { cardMemoryKey, defaultCardMemory } from "../services/ruby-high/helpers.js";
+import { applyTick as applyMashTick, emptyMashCard } from "../characters/mash.js";
 import { dailyKey, type AnswerRecord, type QuizState } from "../types.js";
 
 let tmpDir: string;
@@ -128,6 +133,42 @@ function serviceStateOnlyStore(record: StoredServiceStateRecord | StoredServiceS
     flush: async () => undefined,
   };
 }
+
+describe("Social Card service", () => {
+  it("stores a player focus and refuses scratched classmates", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:social-focus";
+    const state = attachTestCharacter(ruby, sid);
+
+    ruby.setSocialFocus(sid, "mika");
+    expect(state.character?.mashCard?.focusStudentId).toBe("mika");
+    state.character!.mashCard!.cells.noor!.scratched = true;
+    expect(() => ruby.setSocialFocus(sid, "noor")).toThrow("already scratched off");
+    ruby.setSocialFocus(sid, null);
+    expect(state.character?.mashCard?.focusStudentId).toBeUndefined();
+  });
+
+  it("retries unresolved earlier fortune axes at Senior graduation", async () => {
+    const { ruby } = await makeServices();
+    const state = attachTestCharacter(ruby, "rh:user:senior-fortunes");
+    const card = emptyMashCard();
+    ["lyra", "sami", "ravi", "mika"].forEach((studentId) => {
+      applyMashTick(card.cells[studentId]!, 1);
+      applyMashTick(card.cells[studentId]!, 1);
+    });
+    state.character!.mashCard = card;
+
+    const resolutions = ruby["resolveMashAxesForGrade"](state.character!, "12");
+    expect(resolutions.map((entry) => entry.axis)).toEqual([
+      "crush",
+      "job",
+      "lives",
+      "pet",
+      "money",
+      "lucky",
+    ]);
+  });
+});
 
 describe("Hall Pass wallet", () => {
   it("starts accounts without Hall Passes and claims the welcome grant once", async () => {
@@ -670,7 +711,7 @@ describe("Hall Pass wallet", () => {
 
     expect(recorded.pack?.serial).toBe(123456);
     expect(recorded.pack).toMatchObject({
-      packRevealVersion: "ruby-high-pack-reveal-v1.1",
+      packRevealVersion: "ruby-high-pack-reveal-v1.2",
       catalogHash: expect.any(String),
       commitment: expect.any(String),
       entropySource: "ruby-high-server-commit-v1",
@@ -685,7 +726,7 @@ describe("Hall Pass wallet", () => {
     expect(opened.pack).toMatchObject({
       status: "opened",
       openTransactionId: `hall-pass-pack-open:${recorded.pack!.id}`,
-      packRevealVersion: "ruby-high-pack-reveal-v1.1",
+      packRevealVersion: "ruby-high-pack-reveal-v1.2",
       catalogHash: recorded.pack!.catalogHash,
       commitment: recorded.pack!.commitment,
       entropySource: "ruby-high-server-commit-v1",
@@ -699,7 +740,7 @@ describe("Hall Pass wallet", () => {
         packId: recorded.pack!.id,
         cardCount: HALL_PASS_CARDS_PER_PACK,
         hallPassCardCount: HALL_PASS_CARDS_PER_PACK,
-        packRevealVersion: "ruby-high-pack-reveal-v1.1",
+        packRevealVersion: "ruby-high-pack-reveal-v1.2",
         catalogHash: recorded.pack!.catalogHash,
         commitment: recorded.pack!.commitment,
         entropySource: "ruby-high-server-commit-v1",
@@ -707,6 +748,7 @@ describe("Hall Pass wallet", () => {
       },
     });
     expect(opened.cards?.filter((card) => card.role === "student")).toHaveLength(3);
+    expect(new Set(opened.cards?.filter((card) => card.role === "student").map((card) => card.characterId)).size).toBe(3);
     expect(opened.cards?.filter((card) => card.role === "teacher")).toHaveLength(1);
     expect(opened.cards?.filter((card) => card.role === "item" || card.role === "location" || card.role === "special")).toHaveLength(1);
     expect(opened.cards?.[0]).toMatchObject({
@@ -716,7 +758,7 @@ describe("Hall Pass wallet", () => {
       profileId: expect.any(String),
       cardName: expect.any(String),
       subject: expect.any(String),
-      packRevealVersion: "ruby-high-pack-reveal-v1.1",
+      packRevealVersion: "ruby-high-pack-reveal-v1.2",
       catalogHash: recorded.pack!.catalogHash,
       commitment: recorded.pack!.commitment,
       entropySource: "ruby-high-server-commit-v1",
@@ -733,6 +775,54 @@ describe("Hall Pass wallet", () => {
     expect(repeat.applied).toBe(false);
     expect(repeat.cards).toHaveLength(HALL_PASS_CARDS_PER_PACK);
     expect(ruby.getOrCreate(sid).wallet.hallPassCards).toHaveLength(HALL_PASS_CARDS_PER_PACK);
+  });
+
+  it("guarantees one Ultra Rare special in every complete five-pack block", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:ten-pack";
+    const recorded = ruby.recordHallPassPackMint(sid, {
+      productId: "card-pack-10",
+      packCount: 10,
+      cardCount: HALL_PASS_CARDS_PER_PACK * 10,
+      ownerWalletAddress: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY",
+      assetAddress: "GMDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4Q",
+      mintSignature: "5mTenPackMintSignature111111111111111111111111111111111111",
+      metadataUri: "https://ruby-high.ai/packs/ten.json",
+      idempotencyKey: "solana:ten-pack",
+    });
+    const opened = ruby.openHallPassPack(sid, { packId: recorded.pack!.id });
+
+    expect(opened.cards).toHaveLength(50);
+    for (let packIndex = 0; packIndex < 10; packIndex += 1) {
+      const pack = opened.cards!.slice(packIndex * 5, packIndex * 5 + 5);
+      const students = pack.filter((card) => card.role === "student");
+      expect(new Set(students.map((card) => card.characterId)).size).toBe(3);
+    }
+    expect(opened.cards?.[24]?.rarity).toBe("ultra-rare");
+    expect(opened.cards?.[49]?.rarity).toBe("ultra-rare");
+  });
+
+  it("keeps legacy unopened packs on their original reveal version", async () => {
+    const { ruby } = await makeServices();
+    const sid = "rh:user:legacy-pack";
+    const recorded = ruby.recordHallPassPackMint(sid, {
+      productId: "card-pack-1",
+      packCount: 1,
+      cardCount: HALL_PASS_CARDS_PER_PACK,
+      ownerWalletAddress: "1cfpmRU4oriteHQ9vPEN1GGuvTGuHiuX7MQCotKnHxY",
+      assetAddress: "7MDKdHw2uSDroARQfGoZvZHWVYj6x8C1Qekn1NLu7D4R",
+      mintSignature: "5mLegacyPackMintSignature111111111111111111111111111111111",
+      metadataUri: "https://ruby-high.ai/packs/legacy.json",
+      idempotencyKey: "solana:legacy-pack",
+    });
+    const storedPack = ruby.getOrCreate(sid).wallet.hallPassPacks?.[0];
+    if (!storedPack) throw new Error("Legacy pack was not recorded.");
+    storedPack.packRevealVersion = HALL_PASS_PACK_REVEAL_LEGACY_VERSION;
+    storedPack.catalogHash = hallPassCatalogHash(HALL_PASS_PACK_REVEAL_LEGACY_VERSION);
+
+    const opened = ruby.openHallPassPack(sid, { packId: recorded.pack!.id });
+    expect(opened.cards).toHaveLength(5);
+    expect(opened.cards?.every((card) => card.packRevealVersion === HALL_PASS_PACK_REVEAL_LEGACY_VERSION)).toBe(true);
   });
 
   it("does not backfill legacy Hall Pass balances into mintable cards", async () => {

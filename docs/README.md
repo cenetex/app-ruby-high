@@ -26,4 +26,5 @@ Reference docs. The entry points stay at the repo root:
 - [`nft/NFT_FIRST_BELL_SET_DRAFT.md`](./nft/NFT_FIRST_BELL_SET_DRAFT.md) — the First Bell set definition
 - [`nft/NFT_METADATA_CATALOG.md`](./nft/NFT_METADATA_CATALOG.md) — metadata catalog (mirrors the source tree)
 - [`nft/NFT_MARKETPLACE_VERIFICATION.md`](./nft/NFT_MARKETPLACE_VERIFICATION.md) — canonical marketplace copy + Magic Eden verification
-- [`nft/NFT_PROVABLY_FAIR_V1_1.md`](./nft/NFT_PROVABLY_FAIR_V1_1.md) — pack reveal / provable-fairness algorithm
+- [`nft/NFT_PROVABLY_FAIR_V1_2.md`](./nft/NFT_PROVABLY_FAIR_V1_2.md) — current pack reveal / provable-fairness algorithm
+- [`nft/NFT_PROVABLY_FAIR_V1_1.md`](./nft/NFT_PROVABLY_FAIR_V1_1.md) — legacy unopened-pack algorithm

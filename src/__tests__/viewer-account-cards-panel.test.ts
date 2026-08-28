@@ -15,8 +15,8 @@ describe("account Hall Pass cards panel view", () => {
       buyDisabled: true,
       mintHidden: true,
       mintDisabled: true,
-      mintText: "Reveal Collectible",
-      mintTitle: "No face-down collectible cards are ready to reveal.",
+      mintText: "Mint Collectible",
+      mintTitle: "No revealed collectible cards are ready to mint.",
       needsWalletConnection: false,
     });
   });
@@ -39,13 +39,13 @@ describe("account Hall Pass cards panel view", () => {
     });
 
     expect(view).toMatchObject({
-      summaryText: "1 unopened collectible pack · 2 active collectible cards · 1 collectible card on Solana · 1 face-down collectible card to reveal",
+      summaryText: "1 unopened collectible pack · 2 active collectible cards · 1 collectible card on Solana · 1 revealed collectible card ready to mint",
       buyDisabled: false,
       buyTitle: "Buy Ruby High collectible packs.",
       mintHidden: false,
       mintDisabled: false,
-      mintText: "Reveal Collectible",
-      mintTitle: "Create the next collectible card on Solana to reveal it.",
+      mintText: "Mint Collectible",
+      mintTitle: "Mint the next revealed collectible card on Solana.",
       needsWalletConnection: false,
     });
   });
@@ -61,10 +61,10 @@ describe("account Hall Pass cards panel view", () => {
     });
 
     expect(view).toMatchObject({
-      summaryText: "Connect a Solana wallet to open packs and reveal collectible cards.",
+      summaryText: "Connect a Solana wallet to open packs or mint collectible cards.",
       mintHidden: false,
       mintText: "Connect Wallet",
-      mintTitle: "Connect a Solana wallet before opening packs or revealing collectible cards.",
+      mintTitle: "Connect a Solana wallet before opening packs or minting collectible cards.",
       needsWalletConnection: true,
     });
   });
@@ -98,7 +98,7 @@ describe("account Hall Pass cards panel view", () => {
     })).toMatchObject({
       buyText: "Loading...",
       buyDisabled: true,
-      mintText: "Revealing...",
+      mintText: "Minting...",
       mintDisabled: true,
     });
   });

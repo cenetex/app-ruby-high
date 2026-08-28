@@ -27,6 +27,14 @@ export function createCardBurnSelector(deps: CardBurnSelectorDeps): CardBurnSele
     return String(recordValue(card, "id") || "");
   }
 
+  function isProtectedCard(card: unknown): boolean {
+    const rarity = String(recordValue(card, "rarity") || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_]+/g, "-");
+    return rarity === "rare" || rarity === "super-rare" || rarity === "ultra-rare";
+  }
+
   function restoreFocus(previousFocus: Element | null): void {
     if (!previousFocus || !(previousFocus as Element & { isConnected?: boolean }).isConnected) return;
     const focusable = previousFocus as Element & { focus?: (opts?: { preventScroll?: boolean }) => void };
@@ -62,6 +70,10 @@ export function createCardBurnSelector(deps: CardBurnSelectorDeps): CardBurnSele
         title.textContent = count === 1 ? "Choose a collectible card" : "Choose " + count + " collectible cards";
         const copy = deps.document.createElement("p");
         copy.textContent = "Each selected collectible card will be permanently destroyed. You will get 5 Hall Passes for each card.";
+        const warning = deps.document.createElement("p");
+        warning.className = "card-burn-warning";
+        warning.textContent = "Warning: this selection includes a Rare, Super Rare, or Ultra Rare card. Every rarity gives the same 5 Hall Passes.";
+        warning.hidden = true;
         const grid = deps.document.createElement("div");
         grid.className = "card-burn-grid";
         const actions = deps.document.createElement("div");
@@ -74,7 +86,9 @@ export function createCardBurnSelector(deps: CardBurnSelectorDeps): CardBurnSele
         confirm.type = "button";
         confirm.className = "primary";
         confirm.disabled = true;
-        confirm.textContent = count === 1 ? "Permanently Destroy Card" : "Permanently Destroy " + count + " Cards";
+        const normalConfirmText = count === 1 ? "Permanently Destroy Card" : "Permanently Destroy " + count + " Cards";
+        confirm.textContent = normalConfirmText;
+        let protectedConfirmArmed = false;
 
         function cleanup(result: unknown[] | null): void {
           deps.document.removeEventListener("keydown", onKeyDown);
@@ -85,12 +99,19 @@ export function createCardBurnSelector(deps: CardBurnSelectorDeps): CardBurnSele
         }
         function updateConfirm(): void {
           confirm.disabled = selectedIds.size !== count;
+          const hasProtectedCard = choices.some((card) => selectedIds.has(cardId(card)) && isProtectedCard(card));
+          warning.hidden = !hasProtectedCard;
+          confirm.classList.toggle("is-danger", hasProtectedCard);
+          confirm.textContent = hasProtectedCard
+            ? protectedConfirmArmed ? "Confirm Rare Card Destruction" : "Review Rare Card Destruction"
+            : normalConfirmText;
         }
         function setButtonSelected(button: HTMLElement, selected: boolean): void {
           button.classList.toggle("is-selected", selected);
           button.setAttribute("aria-pressed", selected ? "true" : "false");
         }
         function toggleCard(card: unknown, button: HTMLElement): void {
+          protectedConfirmArmed = false;
           const id = cardId(card);
           if (selectedIds.has(id)) {
             selectedIds.delete(id);
@@ -148,6 +169,12 @@ export function createCardBurnSelector(deps: CardBurnSelectorDeps): CardBurnSele
         });
         cancel.addEventListener("click", () => cleanup(null));
         confirm.addEventListener("click", () => {
+          const hasProtectedCard = choices.some((card) => selectedIds.has(cardId(card)) && isProtectedCard(card));
+          if (hasProtectedCard && !protectedConfirmArmed) {
+            protectedConfirmArmed = true;
+            updateConfirm();
+            return;
+          }
           const selected = choices.filter((card) => selectedIds.has(cardId(card))).slice(0, count);
           cleanup(selected.length === count ? selected : null);
         });
@@ -156,6 +183,7 @@ export function createCardBurnSelector(deps: CardBurnSelectorDeps): CardBurnSele
         panel.appendChild(kicker);
         panel.appendChild(title);
         panel.appendChild(copy);
+        panel.appendChild(warning);
         panel.appendChild(grid);
         panel.appendChild(actions);
         overlay.appendChild(panel);

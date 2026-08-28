@@ -591,7 +591,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         ownerWalletAddress,
         pack: result.pack ? packPayload(result.pack) : null,
         packNftUpdate: result.packUpdate,
-        cards: result.cards.map(hiddenCardPayload),
+        cards: result.cards.map(revealedCardPayload),
         minted: [],
         remaining: deps.ruby.mintableHallPassCards(stateKey).length,
         status: publicHallPassNftStatus(),
@@ -653,7 +653,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     }
     const card = deps.ruby.mintableHallPassCards(stateKey).find((candidate) => candidate.id === cardId);
     if (!card) {
-      ctx.error(ctx.res, "No face-down collectible card is ready to reveal.", 404);
+      ctx.error(ctx.res, "No revealed collectible card is ready to mint.", 404);
       return true;
     }
     if (card.ownerWalletAddress && card.ownerWalletAddress !== ownerWalletAddress) {
@@ -706,7 +706,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
       });
       ctx.json(ctx.res, {
         ok: true,
-        card: hiddenCardPayload(preparedCard),
+        card: revealedCardPayload(preparedCard),
         minted: [],
         mint: {
           cardId: card.id,
@@ -774,7 +774,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     }
     const card = deps.ruby.mintableHallPassCards(stateKey).find((candidate) => candidate.id === cardId);
     if (!card) {
-      ctx.error(ctx.res, "No face-down collectible card matches this request.", 404);
+      ctx.error(ctx.res, "No collectible card ready to mint matches this request.", 404);
       return true;
     }
     if (card.ownerWalletAddress && card.ownerWalletAddress !== ownerWalletAddress) {
@@ -897,7 +897,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
     }
     const card = deps.ruby.mintableHallPassCards(stateKey).find((candidate) => candidate.id === cardId);
     if (!card) {
-      ctx.error(ctx.res, "No face-down collectible card matches this request.", 404);
+      ctx.error(ctx.res, "No collectible card ready to mint matches this request.", 404);
       return true;
     }
     if (card.ownerWalletAddress && card.ownerWalletAddress !== ownerWalletAddress) {
@@ -1005,7 +1005,7 @@ export async function handleNftRoutes(ctx: RouteContext, deps: NftDeps): Promise
         ok: true,
         ownerWalletAddress,
         minted: [],
-        card: hiddenCardPayload(preparedCard),
+        card: revealedCardPayload(preparedCard),
         mint: {
           cardId: card.id,
           ownerWalletAddress: mint.ownerWalletAddress,
@@ -1557,33 +1557,6 @@ function revealProvenanceFromPack(pack: RubyHighHallPassPack | null | undefined)
 
 function revealProvenanceFromCard(card: RubyHighHallPassCard | null | undefined): Record<string, string | number> {
   return revealProvenancePayload(card) as Record<string, string | number>;
-}
-
-function hiddenCardPayload(card: RubyHighHallPassCard): Record<string, unknown> {
-  return {
-    id: card.id,
-    serial: card.serial,
-    title: "Ruby High Mystery Card",
-    characterId: "card-back",
-    characterName: "Mystery Card",
-    setName: FIRST_BELL_SET_NAME,
-    setCode: FIRST_BELL_SET_CODE,
-    role: "special",
-    rarity: "common",
-    blurb: "Create this collectible card on Solana to reveal it.",
-    color: "#8f1d1d",
-    status: card.status,
-    issuedAt: card.issuedAt,
-    updatedAt: card.updatedAt,
-    mintAddress: null,
-    mintSignature: null,
-    metadataUri: null,
-    ...(card.grantTransactionId ? { grantTransactionId: card.grantTransactionId } : {}),
-    ...(card.packId ? { packId: card.packId } : {}),
-    ...(typeof card.slotIndex === "number" ? { slotIndex: card.slotIndex } : {}),
-    ...(card.ownerWalletAddress ? { ownerWalletAddress: card.ownerWalletAddress } : {}),
-    ...revealProvenancePayload(card),
-  };
 }
 
 function revealedCardPayload(card: RubyHighHallPassCard): Record<string, unknown> {

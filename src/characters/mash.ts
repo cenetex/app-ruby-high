@@ -165,6 +165,13 @@ export function ensureMashCard(card: MashCard | undefined | null): MashCard {
       };
     }
   }
+  if (
+    card.focusStudentId
+    && MASH_STUDENT_IDS.includes(card.focusStudentId)
+    && !fresh.cells[card.focusStudentId]?.scratched
+  ) {
+    fresh.focusStudentId = card.focusStudentId;
+  }
   fresh.resolved = card.resolved ? { ...card.resolved } : {};
   return fresh;
 }
@@ -193,6 +200,9 @@ export interface AffinityInputs {
    *  relationship from souring). Net: Heart accumulates affinity faster
    *  than other playbooks. Closes the §3.4 P2 gap for the Heart move. */
   isHeart: boolean;
+  /** Optional player choice. When set, this classmate is the only person
+   *  who reacts to the essay. */
+  focusStudentId?: string;
 }
 
 /** A single tick the service should apply to one cell. */
@@ -202,43 +212,49 @@ export interface AffinityTick {
   reason: MashTickReason;
 }
 
-/** Compute up to two ticks for one essay. Pure: returns the deltas to
+/** Compute one tick for one essay. Pure: returns the delta to
  *  apply, doesn't mutate. Rules:
  *
- *    1. If `bestResponder` is an NPC, that NPC gets +1 ("the teacher
- *       liked their essay better than yours — you noticed them").
- *    2. If the player passed, a deterministic "applauder" picked from
+ *    1. A player-selected classmate reacts first: +1 on a pass, or -1 on
+ *       a miss. Heart converts that -1 into a Pep Talk no-op.
+ *    2. Without a focus, a named NPC best responder gets +1.
+ *    3. Otherwise, if the player passed, a deterministic "applauder" picked from
  *       the question id gets +1 (they're paying attention).
- *    3. If the player missed, a deterministic "rubber" gets -1 — UNLESS
+ *    4. If the player missed, a deterministic "rubber" gets -1 — UNLESS
  *       the player is on the Heart playbook, in which case the rub is
  *       converted to 0 (Pep Talk passive, returned as a `pep-talk` tick
  *       so the UI can surface it).
  *
- *  Caps at two non-zero ticks per essay so a single round can't ratchet
- *  more than a couple of cells. Same NPC can get both rule-1 and rule-2
- *  ticks: their cell goes +2 in one shot, which is exactly when they
- *  start to feel like a candidate.
+ *  One essay can move only one relationship. This keeps choices readable
+ *  and prevents a classmate from being circled in a single result.
  */
 export function computeAffinityTicks(inputs: AffinityInputs): AffinityTick[] {
-  const ticks: AffinityTick[] = [];
+  if (inputs.focusStudentId && MASH_STUDENT_IDS.includes(inputs.focusStudentId)) {
+    if (inputs.playerPassed) {
+      return [{ studentId: inputs.focusStudentId, delta: 1, reason: "social-focus" }];
+    }
+    return [{
+      studentId: inputs.focusStudentId,
+      delta: inputs.isHeart ? 0 : -1,
+      reason: inputs.isHeart ? "pep-talk" : "social-focus",
+    }];
+  }
 
   if (inputs.bestResponder && MASH_STUDENT_IDS.includes(inputs.bestResponder)) {
-    ticks.push({ studentId: inputs.bestResponder, delta: 1, reason: "best-responder" });
+    return [{ studentId: inputs.bestResponder, delta: 1, reason: "best-responder" }];
   }
 
   if (inputs.playerPassed) {
     const id = pickClassmate(inputs.questionId, "applauder");
-    ticks.push({ studentId: id, delta: 1, reason: "applauder" });
-  } else {
-    const id = pickClassmate(inputs.questionId, "rub");
-    if (inputs.isHeart) {
-      ticks.push({ studentId: id, delta: 0, reason: "pep-talk" });
-    } else {
-      ticks.push({ studentId: id, delta: -1, reason: "rub" });
-    }
+    return [{ studentId: id, delta: 1, reason: "applauder" }];
   }
 
-  return ticks;
+  const id = pickClassmate(inputs.questionId, "rub");
+  return [{
+    studentId: id,
+    delta: inputs.isHeart ? 0 : -1,
+    reason: inputs.isHeart ? "pep-talk" : "rub",
+  }];
 }
 
 function pickClassmate(seed: string, salt: string): string {
