@@ -3638,6 +3638,53 @@ export function runViewerClient(bootstrap) {
   // teacher-picked questions; the /chat/play-bonus endpoint stays available
   // server-side if we ever want a separate daily warm-up affordance.
 
+  function buildCaseActionResult(action, compact) {
+    if (!action || !action.report) return null;
+    const wrap = document.createElement("article");
+    wrap.className = "case-action-result" + (compact ? " is-compact" : "");
+    const top = document.createElement("div");
+    top.className = "case-action-result-top";
+    const label = document.createElement("strong");
+    label.textContent = action.reportLabel || ((action.actorName || "Investigator") + " report");
+    const confidence = document.createElement("span");
+    const confidenceValue = ["low", "medium", "high"].includes(String(action.confidence))
+      ? String(action.confidence)
+      : "medium";
+    confidence.className = "case-action-confidence is-" + confidenceValue;
+    confidence.textContent = confidenceValue + " confidence";
+    top.append(label, confidence);
+    wrap.appendChild(top);
+    if (action.actionLabel) {
+      const move = document.createElement("p");
+      move.className = "case-action-move";
+      move.textContent = (action.actorName || "Investigator") + " · " + action.actionLabel;
+      wrap.appendChild(move);
+    }
+    const report = document.createElement("p");
+    report.className = "case-action-report";
+    report.textContent = action.report;
+    wrap.appendChild(report);
+    if (action.revealedEvidence && action.revealedEvidence.detail) {
+      const evidence = document.createElement("div");
+      evidence.className = "case-action-new-evidence";
+      const evidenceLabel = document.createElement("strong");
+      evidenceLabel.textContent = action.revealedEvidence.label || "New evidence";
+      const evidenceSource = document.createElement("span");
+      evidenceSource.textContent = action.revealedEvidence.source || action.actorName || "Investigation";
+      const evidenceDetail = document.createElement("p");
+      evidenceDetail.textContent = action.revealedEvidence.detail;
+      evidence.append(evidenceLabel, evidenceSource, evidenceDetail);
+      wrap.appendChild(evidence);
+    }
+    if (action.verificationPrompt) {
+      const verify = document.createElement("p");
+      verify.className = "case-action-verify";
+      verify.textContent = "Verify before relying on it: " + action.verificationPrompt;
+      wrap.appendChild(verify);
+    }
+    return wrap;
+  }
+
   function renderQuestionPrompt(question) {
     const view = questionPromptView(question);
     els.boardPrompt.replaceChildren();
@@ -3684,6 +3731,10 @@ export function runViewerClient(bootstrap) {
           evidence.appendChild(card);
         });
         caseWrap.appendChild(evidence);
+      }
+      if (view.caseStudy.investigation) {
+        const investigation = buildCaseActionResult(view.caseStudy.investigation, false);
+        if (investigation) caseWrap.appendChild(investigation);
       }
       els.boardPrompt.appendChild(caseWrap);
     }
@@ -4060,6 +4111,10 @@ export function runViewerClient(bootstrap) {
       detail.textContent = reveal.caseConsequence.detail;
       consequence.append(label, detail);
       els.boardReveal.appendChild(consequence);
+    }
+    if (reveal.caseActionResult) {
+      const actionResult = buildCaseActionResult(reveal.caseActionResult, true);
+      if (actionResult) els.boardReveal.appendChild(actionResult);
     }
     els.nextBtn.focus();
   }

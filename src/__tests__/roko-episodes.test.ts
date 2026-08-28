@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ROKO_EPISODES,
+  rokoOnboardingEpisode,
   rokoEpisodeForClass,
   rokoEpisodeQuestion,
   rokoEpisodeTake,
@@ -34,5 +35,27 @@ describe("Roko case episodes", () => {
       caseStudy: { episodeId: episode.id, stage: "explain" },
       caseOutcome: { episodeId: episode.id, title: episode.title },
     });
+  });
+
+  it("uses the agentic treasure case for onboarding and carries its investigation forward", () => {
+    const episode = rokoOnboardingEpisode();
+    expect(episode.id).toBe("exact-treasure");
+
+    const investigation = rokoEpisodeQuestion(episode, "investigate", "9");
+    const action = investigation.caseActionResults?.[investigation.correct!];
+    expect(action).toMatchObject({
+      kind: "delegate",
+      actorId: "lyra",
+      confidence: "high",
+      revealedEvidence: { source: "Lyra" },
+    });
+
+    const progress = { episodeId: episode.id, action: action!, actedAt: 123 };
+    const decision = rokoEpisodeQuestion(episode, "decide", "9", progress);
+    const take = rokoEpisodeTake(episode, progress);
+    expect(decision.caseStudy?.investigation).toEqual(action);
+    expect(take.prompt).toContain("verify Lyra's report");
+    expect(take.rubric).toContain("confirm or challenge");
+    expect(take.caseOutcome.investigation).toEqual(action);
   });
 });

@@ -5378,16 +5378,29 @@ describe("RubyHighService Phase 1", () => {
     expect(investigate.current).toMatchObject({
       type: "multiple-choice",
       faculty: "roko",
-      caseStudy: { stage: "investigate" },
+      caseStudy: { episodeId: "exact-treasure", stage: "investigate" },
     });
     const episodeId = investigate.current!.caseStudy!.episodeId;
-    ruby.submitAnswer(sid, investigate.current!.correctChoice!);
+    const investigationReveal = ruby.submitAnswer(sid, investigate.current!.correctChoice!);
+    expect(investigationReveal.lastReveal?.caseActionResult).toMatchObject({
+      actionId: "lyra-measurement-audit",
+      actorId: "lyra",
+      confidence: "high",
+    });
+    expect(investigationReveal.caseStudyProgress).toMatchObject({
+      episodeId,
+      action: { actionId: "lyra-measurement-audit" },
+    });
     ruby.clearBoard(sid);
 
     const decide = ruby.pickAndPose(sid, { faculty: "roko" });
     expect(decide.current).toMatchObject({
       type: "multiple-choice",
-      caseStudy: { episodeId, stage: "decide" },
+      caseStudy: {
+        episodeId,
+        stage: "decide",
+        investigation: { actionId: "lyra-measurement-audit" },
+      },
     });
     expect(decide.current!.answerConsequences?.[decide.current!.correct!]).toBeTruthy();
     const decisionReveal = ruby.submitAnswer(sid, decide.current!.correctChoice!);
@@ -5398,8 +5411,13 @@ describe("RubyHighService Phase 1", () => {
     expect(explain.current).toMatchObject({
       type: "opinion",
       opinionPurpose: "daily-take",
-      caseStudy: { episodeId, stage: "explain" },
-      caseOutcome: { episodeId },
+      prompt: expect.stringContaining("verify Lyra's report"),
+      caseStudy: {
+        episodeId,
+        stage: "explain",
+        investigation: { actionId: "lyra-measurement-audit" },
+      },
+      caseOutcome: { episodeId, investigation: { actionId: "lyra-measurement-audit" } },
     });
     ruby.recordOpinion(sid, "player", "I would create one shared record because it gives both sides evidence and delays retaliation.");
     ruby.recordGrades(sid, [{ responder: "player", score: 8, comment: "You named the evidence and the delayed action." }], "player");
@@ -5415,6 +5433,9 @@ describe("RubyHighService Phase 1", () => {
         memoryTitle: expect.any(String),
         memoryDetail: expect.any(String),
         followUp: expect.any(String),
+        investigationLabel: "Lyra's measurement audit",
+        investigationDetail: expect.stringContaining("Verify it:"),
+        investigationConfidence: "high",
       },
     });
 

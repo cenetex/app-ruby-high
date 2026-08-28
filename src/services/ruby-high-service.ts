@@ -52,6 +52,7 @@ import {
 } from "../question-choices.js";
 import { teacherById, type TeacherCharacter } from "../characters/teachers.js";
 import {
+  rokoOnboardingEpisode,
   rokoEpisodeForClass,
   rokoEpisodeQuestion,
   rokoEpisodeTake,
@@ -95,6 +96,7 @@ import {
   type CardReviewRating,
   type CaseStudyCard,
   type CaseStudyOutcome,
+  type CaseStudyProgress,
   type CharacterSlotEntitlements,
   type CharacterStats,
   type ClassPhotoArchive,
@@ -6241,6 +6243,7 @@ export class RubyHighService extends Service {
         },
         comicCollection: normalizeComicCollection(null),
         schoolEvents: [],
+        caseStudyProgress: null,
         publicWorldHiddenEventIds: [],
         publicWorldEventReports: [],
         essayReports: [],
@@ -7171,6 +7174,11 @@ export class RubyHighService extends Service {
         memoryTitle: caseOutcome.memoryTitle,
         memoryDetail: caseOutcome.memoryDetail,
         followUp: caseOutcome.followUp,
+        ...(caseOutcome.investigation ? {
+          investigationLabel: caseOutcome.investigation.reportLabel,
+          investigationDetail: `${caseOutcome.investigation.report} Verify it: ${caseOutcome.investigation.verificationPrompt}`,
+          investigationConfidence: caseOutcome.investigation.confidence,
+        } : {}),
       } : {}),
       completedClasses: standing.completed,
       requiredClasses: standing.required,
@@ -7893,6 +7901,23 @@ export class RubyHighService extends Service {
     };
     const selectedAnswer = picked == null ? undefined : q.options?.[picked];
     const caseConsequence = selectedAnswer ? q.answerConsequences?.[selectedAnswer] : undefined;
+    const caseActionResult = selectedAnswer ? q.caseActionResults?.[selectedAnswer] : undefined;
+    if (caseActionResult && q.caseStudy) {
+      const progress: CaseStudyProgress = {
+        episodeId: q.caseStudy.episodeId,
+        action: { ...caseActionResult },
+        actedAt: reviewAt,
+      };
+      state.caseStudyProgress = progress;
+      log.event("case.action-resolved", {
+        sessionId: state.sessionId,
+        episodeId: progress.episodeId,
+        actionId: progress.action.actionId,
+        actorId: progress.action.actorId,
+        kind: progress.action.kind,
+        confidence: progress.action.confidence,
+      });
+    }
     state.lastReveal = {
       questionId: q.id,
       ...questionSnapshot,
@@ -7914,6 +7939,7 @@ export class RubyHighService extends Service {
           detail: caseConsequence,
         },
       } : {}),
+      ...(caseActionResult ? { caseActionResult: { ...caseActionResult } } : {}),
       scoreMultiplier,
       scoreAward,
       classProgress,
@@ -9106,13 +9132,27 @@ export class RubyHighService extends Service {
     return state;
   }
 
+  private rokoEpisodeForState(state: QuizState, date: string, grade: Grade) {
+    const dailyClasses = Object.values(state.character?.dailyClasses ?? {});
+    const hasCompletedRokoCase = dailyClasses.some(
+      (dailyClass) =>
+        dailyClass.facultyId === "roko" &&
+        dailyClass.status === "complete" &&
+        Boolean(dailyClass.result?.episodeId),
+    );
+
+    return hasCompletedRokoCase
+      ? rokoEpisodeForClass(date, grade)
+      : rokoOnboardingEpisode();
+  }
+
   private poseDailyClassTake(sessionId: string, state: QuizState, facultyId: string): QuizState {
     const date = dailyKey();
     const grade = state.currentGrade ?? DEFAULT_GRADE;
     const record = this.dailyClassRecord(state, facultyId, date);
     const socialIndex = (record?.socialCount ?? 0) + 1;
     const rokoTake = facultyId === "roko"
-      ? rokoEpisodeTake(rokoEpisodeForClass(date, grade))
+      ? rokoEpisodeTake(this.rokoEpisodeForState(state, date, grade), state.caseStudyProgress)
       : null;
     const pool = DAILY_CLASS_TAKE_CARDS[facultyId] ?? DAILY_CLASS_TAKE_CARDS.ruby!;
     let seed = 0;
@@ -9188,15 +9228,16 @@ export class RubyHighService extends Service {
     const displayDifficulty = explicitDifficulty
       ?? (state.currentGrade && !importedReviewCourse ? difficultyForGrade(state.currentGrade) : undefined);
     const rokoEpisode = facultyId === "roko" && cardRole === "class" && !importedReviewCourse
-      ? rokoEpisodeForClass(dailyKey(), grade)
+      ? this.rokoEpisodeForState(state, dailyKey(), grade)
       : null;
     const rokoStage = rokoEpisode && (classRecord?.questionCount ?? 0) < 2
       ? (classRecord?.questionCount ?? 0) === 0 ? "investigate" as const : "decide" as const
       : null;
+    if (rokoStage === "investigate") state.caseStudyProgress = null;
     const question = cardRole === "social"
       ? undefined
       : rokoEpisode && rokoStage
-        ? rokoEpisodeQuestion(rokoEpisode, rokoStage, grade)
+        ? rokoEpisodeQuestion(rokoEpisode, rokoStage, grade, state.caseStudyProgress)
       : this.pickReviewQuestion(state, facultyId, {
           subject: filter.subject,
           difficulty: explicitDifficulty,
@@ -9626,6 +9667,7 @@ export class RubyHighService extends Service {
     state.completedGrades = [];
     state.hasSeenIntro = true;
     state.schoolEvents = [];
+    state.caseStudyProgress = null;
     state.essayReports = [];
     state.npcRosters = {};
     state.npcCohort = initialNpcCohort();
@@ -13479,6 +13521,9 @@ function normalizeLoaded(s: QuizState): QuizState {
     characterSlots: normalizeCharacterSlots((s as { characterSlots?: unknown }).characterSlots),
     comicCollection: normalizeComicCollection((s as { comicCollection?: unknown }).comicCollection),
     schoolEvents: normalizeSchoolEvents((s as { schoolEvents?: unknown }).schoolEvents),
+    caseStudyProgress: s.caseStudyProgress?.episodeId && s.caseStudyProgress.action
+      ? s.caseStudyProgress
+      : null,
     publicWorldHiddenEventIds: normalizePublicWorldHiddenEventIds((s as { publicWorldHiddenEventIds?: unknown }).publicWorldHiddenEventIds),
     publicWorldEventReports: normalizePublicWorldEventReports((s as { publicWorldEventReports?: unknown }).publicWorldEventReports),
     essayReports: normalizeEssayReports((s as { essayReports?: unknown }).essayReports),

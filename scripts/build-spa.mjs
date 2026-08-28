@@ -257,6 +257,7 @@ function offlineApiScript(data) {
       characterSlots: { unlockedSlots: 1, photoDayCredits: 0 },
       comicCollection: defaultComicCollection(),
       schoolEvents: [],
+      caseStudyProgress: null,
       npcRosters: {
         "9": buildNpcRoster("9"),
         "10": buildNpcRoster("10"),
@@ -568,8 +569,26 @@ function offlineApiScript(data) {
     return episodes.length ? episodes[stableIndex(date + ":" + grade, episodes.length)] : null;
   }
 
-  function rokoCaseQuestion(episode, stage, grade) {
+  function rokoEpisodeForState(state, date, grade) {
+    var dailyClasses = Object.values(state.character && state.character.dailyClasses || {});
+    var hasCompletedRokoCase = dailyClasses.some(function(dailyClass) {
+      return dailyClass &&
+        dailyClass.facultyId === "roko" &&
+        dailyClass.status === "complete" &&
+        dailyClass.result &&
+        dailyClass.result.episodeId;
+    });
+    if (!hasCompletedRokoCase) {
+      var episodes = Array.isArray(DATA.rokoEpisodes) ? DATA.rokoEpisodes : [];
+      var onboarding = episodes.find(function(episode) { return episode.id === "exact-treasure"; });
+      if (onboarding) return onboarding;
+    }
+    return rokoEpisodeForClass(date, grade);
+  }
+
+  function rokoCaseQuestion(episode, stage, grade, progress) {
     var choice = stage === "investigate" ? episode.investigation : episode.decision;
+    var investigation = progress && progress.episodeId === episode.id ? progress.action : null;
     return {
       id: "roko_case_" + episode.id + "_" + stage + "_" + grade,
       prompt: choice.prompt,
@@ -578,13 +597,15 @@ function offlineApiScript(data) {
       decoys: choice.decoys,
       explanation: choice.explanation,
       answerConsequences: choice.consequences || null,
+      caseActionResults: choice.actionResults || null,
       caseStudy: {
         episodeId: episode.id,
         title: episode.title,
         hook: episode.hook,
         scene: episode.scene,
         stage: stage,
-        evidence: episode.evidence
+        evidence: episode.evidence,
+        investigation: investigation
       },
       subject: episode.subject,
       stat: episode.stat,
@@ -593,21 +614,33 @@ function offlineApiScript(data) {
     };
   }
 
-  function rokoCaseTake(episode, grade) {
+  function rokoCaseTake(episode, grade, progress) {
+    var investigation = progress && progress.episodeId === episode.id ? progress.action : null;
+    var verificationSuffix = investigation
+      ? " Also say how you would verify " + investigation.actorName + "'s report before relying on it."
+      : "";
+    var verificationRubric = investigation
+      ? " Names a concrete check that could confirm or challenge the investigation report."
+      : "";
     return {
       id: "take_roko_" + episode.id + "_" + grade,
-      prompt: episode.take.prompt,
+      prompt: episode.take.prompt + verificationSuffix,
       type: "opinion",
-      rubric: episode.take.rubric,
+      rubric: episode.take.rubric + verificationRubric,
       opinionPurpose: "daily-take",
-      caseOutcome: Object.assign({ episodeId: episode.id, title: episode.title }, episode.outcome),
+      caseOutcome: Object.assign(
+        { episodeId: episode.id, title: episode.title },
+        episode.outcome,
+        investigation ? { investigation: investigation } : {}
+      ),
       caseStudy: {
         episodeId: episode.id,
         title: episode.title,
         hook: episode.hook,
         scene: episode.scene,
         stage: "explain",
-        evidence: episode.evidence
+        evidence: episode.evidence,
+        investigation: investigation
       },
       subject: episode.subject,
       stat: episode.stat,
@@ -626,7 +659,7 @@ function offlineApiScript(data) {
     if (dailyClass) dailyClass.status = "active";
     const grade = state.currentGrade || "9";
     const rokoEpisode = dailyClass && facultyId === "roko" && Number(dailyClass.questionCount || 0) < 3
-      ? rokoEpisodeForClass(dailyClass.date, grade)
+      ? rokoEpisodeForState(state, dailyClass.date, grade)
       : null;
     const rokoStage = rokoEpisode
       ? Number(dailyClass.questionCount || 0) === 0
@@ -635,10 +668,11 @@ function offlineApiScript(data) {
           ? "decide"
           : "explain"
       : null;
+    if (rokoStage === "investigate") state.caseStudyProgress = null;
     const bank = rokoEpisode && rokoStage
       ? [rokoStage === "explain"
-          ? rokoCaseTake(rokoEpisode, grade)
-          : rokoCaseQuestion(rokoEpisode, rokoStage, grade)]
+          ? rokoCaseTake(rokoEpisode, grade, state.caseStudyProgress)
+          : rokoCaseQuestion(rokoEpisode, rokoStage, grade, state.caseStudyProgress)]
       : questionBank(facultyId);
     const gradeDifficulty = difficultyForGrade(grade);
     const allowed = difficultiesForGrade(grade);
@@ -685,6 +719,7 @@ function offlineApiScript(data) {
       media: [],
       caseStudy: q.caseStudy || null,
       answerConsequences: q.answerConsequences || null,
+      caseActionResults: q.caseActionResults || null,
       caseOutcome: q.caseOutcome || null
     };
     state.lastReveal = null;
@@ -827,6 +862,14 @@ function offlineApiScript(data) {
     }
     const selectedAnswer = q.options && q.options[picked];
     const caseConsequence = selectedAnswer && q.answerConsequences && q.answerConsequences[selectedAnswer];
+    const caseActionResult = selectedAnswer && q.caseActionResults && q.caseActionResults[selectedAnswer];
+    if (caseActionResult && q.caseStudy) {
+      state.caseStudyProgress = {
+        episodeId: q.caseStudy.episodeId,
+        action: clone(caseActionResult),
+        actedAt: answeredAt
+      };
+    }
     state.lastReveal = {
       questionId: q.id,
       questionPrompt: q.prompt,
@@ -840,6 +883,7 @@ function offlineApiScript(data) {
       explanation: q.explanation || null,
       encouragement: wasCorrect ? "Correct." : "Not quite.",
       caseConsequence: caseConsequence ? { label: "What your choice changed", detail: caseConsequence } : undefined,
+      caseActionResult: caseActionResult ? clone(caseActionResult) : undefined,
       scoreAward: wasCorrect ? { base: outcome === "hit" ? 100 : outcome === "mixed" ? 90 : 80, multiplier: 1, points: outcome === "hit" ? 100 : outcome === "mixed" ? 90 : 80, possible: 100 } : { base: 0, multiplier: 1, points: 0, possible: 100 },
       playerRoll: { stat, dice: roll.dice, total, outcome },
       classProgress: {
@@ -1430,12 +1474,32 @@ function offlineApiScript(data) {
     if (!response) return sseResponse([sse("waiting", { ok: true })]);
     const submittedAt = now();
     const hasReasoning = /\\b(because|so that|therefore|while|if|when|by)\\b/i.test(response);
-    const playerScore = response.length >= 45 && hasReasoning ? 8 : 6;
+    const hasConcreteAction = /\\b(stop|pause|test|audit|check|verify|inspect|compare|measure|monitor|require|preserve|publish|send|delay|appoint|record)\\b/i.test(response);
+    const hasBoundary = /\\b(limit|constraint|approval|forbid|forbidden|must not|cannot|never|only if|unless|stop condition|boundary)\\b/i.test(response);
+    const needsVerification = !!(q.caseOutcome && q.caseOutcome.investigation);
+    const hasVerification = /\\b(verify|check|audit|repeat|sample|compare|measure|test|confirm|challenge|reproduce)\\b/i.test(response);
+    const playerScore = needsVerification
+      ? Math.min(9,
+          5
+          + (response.length >= 45 ? 1 : 0)
+          + (hasReasoning ? 1 : 0)
+          + (hasConcreteAction || hasBoundary ? 1 : 0)
+          + (hasVerification ? 1 : 0)
+        )
+      : response.length >= 45 && hasReasoning ? 8 : 6;
     const passedTake = playerScore >= 7;
+    const npcTakes = {
+      lyra: "I would compare the report with a second source, then name the limit the evidence actually supports.",
+      sami: "I would try to break the rule on a small test first, because a clean sentence can still hide an easy exploit.",
+      ravi: "I would write down the prediction, the measurement, and the result before changing the system.",
+      indra: "I would name who owns the next action and what record proves they completed it.",
+      mika: "I would separate what the evidence shows from the story we want it to tell.",
+      noor: "I would keep the next move reversible until another observer can reproduce the report."
+    };
     round.player = { picked: "A", answerText: response, answeredAt: submittedAt };
     round.opinionResponses = [{ responder: "player", text: response, submittedAt }]
       .concat((round.npcs || []).map(function(npc) {
-        return { responder: npc.studentId, text: "I would name the evidence, the limit, and what changes next.", submittedAt };
+        return { responder: npc.studentId, text: npcTakes[npc.studentId] || "I would name the evidence, the limit, and what changes next.", submittedAt };
       }));
     round.opinionGrades = [{
       responder: "player",
@@ -1486,6 +1550,11 @@ function offlineApiScript(data) {
         memoryTitle: outcome && outcome.memoryTitle,
         memoryDetail: outcome && outcome.memoryDetail,
         followUp: outcome && outcome.followUp,
+        investigationLabel: outcome && outcome.investigation && outcome.investigation.reportLabel,
+        investigationDetail: outcome && outcome.investigation
+          ? outcome.investigation.report + " Verify it: " + outcome.investigation.verificationPrompt
+          : undefined,
+        investigationConfidence: outcome && outcome.investigation && outcome.investigation.confidence,
         completedClasses: completedClasses,
         requiredClasses: 1
       };

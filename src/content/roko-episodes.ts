@@ -2,8 +2,10 @@ import episodeData from "../../assets/episodes/roko.json";
 import {
   difficultyForGrade,
   type BankedQuestion,
+  type CaseStudyActionResult,
   type CaseStudyCard,
   type CaseStudyOutcome,
+  type CaseStudyProgress,
   type CharacterStats,
   type Grade,
 } from "../types.js";
@@ -14,6 +16,7 @@ export interface RokoEpisodeChoice {
   decoys: string[];
   explanation: string;
   consequences?: Record<string, string>;
+  actionResults?: Record<string, CaseStudyActionResult>;
 }
 
 export interface RokoEpisode {
@@ -43,6 +46,10 @@ if (parsed.version !== 1 || !Array.isArray(parsed.episodes) || parsed.episodes.l
 
 export const ROKO_EPISODES: readonly RokoEpisode[] = parsed.episodes;
 
+export function rokoOnboardingEpisode(): RokoEpisode {
+  return ROKO_EPISODES.find((episode) => episode.id === "exact-treasure") ?? ROKO_EPISODES[0]!;
+}
+
 function stableIndex(value: string, length: number): number {
   let hash = 0;
   for (let i = 0; i < value.length; i += 1) {
@@ -56,7 +63,11 @@ export function rokoEpisodeForClass(date: string, grade: Grade): RokoEpisode {
   return ROKO_EPISODES[stableIndex(`${date}:${grade}`, ROKO_EPISODES.length)]!;
 }
 
-function caseCard(episode: RokoEpisode, stage: CaseStudyCard["stage"]): CaseStudyCard {
+function caseCard(
+  episode: RokoEpisode,
+  stage: CaseStudyCard["stage"],
+  progress?: CaseStudyProgress | null,
+): CaseStudyCard {
   return {
     episodeId: episode.id,
     title: episode.title,
@@ -64,6 +75,7 @@ function caseCard(episode: RokoEpisode, stage: CaseStudyCard["stage"]): CaseStud
     scene: episode.scene,
     stage,
     evidence: episode.evidence.map((item) => ({ ...item })),
+    ...(progress?.episodeId === episode.id ? { investigation: { ...progress.action } } : {}),
   };
 }
 
@@ -71,6 +83,7 @@ export function rokoEpisodeQuestion(
   episode: RokoEpisode,
   stage: "investigate" | "decide",
   grade: Grade,
+  progress?: CaseStudyProgress | null,
 ): BankedQuestion {
   const card = stage === "investigate" ? episode.investigation : episode.decision;
   return {
@@ -81,7 +94,8 @@ export function rokoEpisodeQuestion(
     decoys: [...card.decoys],
     explanation: card.explanation,
     ...(card.consequences ? { answerConsequences: { ...card.consequences } } : {}),
-    caseStudy: caseCard(episode, stage),
+    ...(card.actionResults ? { caseActionResults: { ...card.actionResults } } : {}),
+    caseStudy: caseCard(episode, stage, progress),
     subject: episode.subject,
     stat: episode.stat,
     difficulty: difficultyForGrade(grade),
@@ -90,22 +104,30 @@ export function rokoEpisodeQuestion(
   };
 }
 
-export function rokoEpisodeTake(episode: RokoEpisode): {
+export function rokoEpisodeTake(episode: RokoEpisode, progress?: CaseStudyProgress | null): {
   prompt: string;
   rubric: string;
   subject: string;
   caseStudy: CaseStudyCard;
   caseOutcome: CaseStudyOutcome;
 } {
+  const investigation = progress?.episodeId === episode.id ? progress.action : null;
+  const verificationSuffix = investigation
+    ? ` Also say how you would verify ${investigation.actorName}'s report before relying on it.`
+    : "";
+  const verificationRubric = investigation
+    ? " Names a concrete check that could confirm or challenge the investigation report."
+    : "";
   return {
-    prompt: episode.take.prompt,
-    rubric: episode.take.rubric,
+    prompt: `${episode.take.prompt}${verificationSuffix}`,
+    rubric: `${episode.take.rubric}${verificationRubric}`,
     subject: episode.subject,
-    caseStudy: caseCard(episode, "explain"),
+    caseStudy: caseCard(episode, "explain", progress),
     caseOutcome: {
       episodeId: episode.id,
       title: episode.title,
       ...episode.outcome,
+      ...(investigation ? { investigation: { ...investigation } } : {}),
     },
   };
 }

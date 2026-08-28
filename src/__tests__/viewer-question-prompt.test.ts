@@ -41,6 +41,18 @@ describe("viewer question prompt pure helpers", () => {
           { label: "Ledger", source: "Toll house", detail: "Six carts left." },
           { label: "Bad", source: "", detail: "" },
         ],
+        investigation: {
+          actionId: "lyra-audit",
+          kind: "delegate",
+          actorId: "lyra",
+          actorName: "Lyra",
+          actionLabel: "Audit the ledger",
+          reportLabel: "Lyra's audit",
+          report: "One seal was copied.",
+          confidence: "high",
+          revealedEvidence: { label: "Seal", source: "Lyra", detail: "The sixth seal is wax, not resin." },
+          verificationPrompt: "Compare it with the clerk's seal press.",
+        },
       },
     })).toEqual({
       prompt: "What changed?",
@@ -52,6 +64,18 @@ describe("viewer question prompt pure helpers", () => {
         scene: "The dragon is waiting.",
         stage: "investigate",
         evidence: [{ label: "Ledger", source: "Toll house", detail: "Six carts left." }],
+        investigation: {
+          actionId: "lyra-audit",
+          kind: "delegate",
+          actorId: "lyra",
+          actorName: "Lyra",
+          actionLabel: "Audit the ledger",
+          reportLabel: "Lyra's audit",
+          report: "One seal was copied.",
+          confidence: "high",
+          revealedEvidence: { label: "Seal", source: "Lyra", detail: "The sixth seal is wax, not resin." },
+          verificationPrompt: "Compare it with the clerk's seal press.",
+        },
       },
     });
   });

@@ -120,14 +120,75 @@
         { "label": "Trade report", "source": "Market guild", "detail": "Usable reserve value has fallen by 38 percent." }
       ],
       "investigation": {
-        "prompt": "What failed?",
-        "correct": "The measured target was only a poor proxy for the treasury's real purpose",
+        "prompt": "You have time for one investigation before the council acts. Which move creates the best decision-relevant evidence?",
+        "correct": "Ask Lyra to audit what each record is actually measuring",
         "decoys": [
-          "The golem was not intelligent enough to count",
-          "The guild changed the definition of gold",
-          "The vault needed a larger door"
+          "Ask Sami to find the fastest way to produce more qualifying pieces",
+          "Recount every qualifying object yourself",
+          "Ask the room whether the golem meant well"
         ],
-        "explanation": "The golem optimized the literal count while destroying liquidity, value, and flexibility. The proxy was precise but incomplete."
+        "explanation": "Lyra's audit compares the target, the golem's measurement, and the treasury's real purpose. The other moves reveal something, but they do not directly test whether the metric still tracks what the treasury needs.",
+        "actionResults": {
+          "Ask Lyra to audit what each record is actually measuring": {
+            "actionId": "lyra-measurement-audit",
+            "kind": "delegate",
+            "actorId": "lyra",
+            "actorName": "Lyra",
+            "actionLabel": "Audit the three records",
+            "reportLabel": "Lyra's measurement audit",
+            "report": "The written order and the golem's count measure qualifying objects. The trade report measures usable reserve value. All three records can be accurate while the treasury still fails.",
+            "confidence": "high",
+            "revealedEvidence": {
+              "label": "Sample audit",
+              "source": "Lyra",
+              "detail": "In a random tray of 100 qualifying objects, 63 are plated stones or sealed dust packets that merchants will not accept as coin."
+            },
+            "verificationPrompt": "Repeat the sample with a tray selected by the market guild and compare counted objects with spendable value."
+          },
+          "Ask Sami to find the fastest way to produce more qualifying pieces": {
+            "actionId": "sami-proxy-red-team",
+            "kind": "test",
+            "actorId": "sami",
+            "actorName": "Sami",
+            "actionLabel": "Red-team the counting rule",
+            "reportLabel": "Sami's adversarial test",
+            "report": "One gold bar can be divided into thousands of sealed dust packets. The golem accepts every packet, so the count rises while the amount of gold does not.",
+            "confidence": "medium",
+            "revealedEvidence": {
+              "label": "Adversarial tray",
+              "source": "Sami",
+              "detail": "Five thousand accepted packets contain the same gold as one ordinary bar, minus material lost during processing."
+            },
+            "verificationPrompt": "Have the treasurer reproduce the test with weighed gold and check that the golem used its normal counting rule."
+          },
+          "Recount every qualifying object yourself": {
+            "actionId": "player-manual-recount",
+            "kind": "inspect",
+            "actorId": "player",
+            "actorName": "You",
+            "actionLabel": "Recount the vault",
+            "reportLabel": "Your manual recount",
+            "report": "The golem's count is correct: exactly ten thousand objects satisfy its written rule. The recount does not establish what those objects are worth or whether they can be spent.",
+            "confidence": "high",
+            "revealedEvidence": {
+              "label": "Manual recount",
+              "source": "You",
+              "detail": "10,000 qualifying objects. No counting error found. Value was not measured."
+            },
+            "verificationPrompt": "Ask an independent clerk to recount a sample, then separately value the same sample at today's market price."
+          },
+          "Ask the room whether the golem meant well": {
+            "actionId": "room-intent-poll",
+            "kind": "consult",
+            "actorId": "classroom",
+            "actorName": "The room",
+            "actionLabel": "Poll the room about intent",
+            "reportLabel": "The room's intent poll",
+            "report": "The class splits evenly between 'obedient,' 'confused,' and 'suspicious.' Nobody produces new evidence about the rule, the reserve, or the golem's internal process.",
+            "confidence": "low",
+            "verificationPrompt": "Replace the opinion poll with an observable test of the rule and its effects."
+          }
+        }
       },
       "decision": {
         "prompt": "How should the treasurer change the system first?",

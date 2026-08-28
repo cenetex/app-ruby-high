@@ -11,6 +11,18 @@ type NullableRecord = LooseRecord | null | undefined;
 type MarkdownRenderOptions = { inline?: boolean };
 type LegacyCryptoWindow = Window & { msCrypto?: Crypto };
 type QuestionPromptImageView = { src: string; alt: string };
+export type QuestionPromptCaseActionView = {
+  actionId: string;
+  kind: "delegate" | "inspect" | "test" | "consult";
+  actorId: string;
+  actorName: string;
+  actionLabel: string;
+  reportLabel: string;
+  report: string;
+  confidence: "low" | "medium" | "high";
+  revealedEvidence?: { label: string; source: string; detail: string };
+  verificationPrompt: string;
+};
 export type QuestionPromptCaseView = {
   episodeId: string;
   title: string;
@@ -18,6 +30,7 @@ export type QuestionPromptCaseView = {
   scene: string;
   stage: "investigate" | "decide" | "explain";
   evidence: Array<{ label: string; source: string; detail: string }>;
+  investigation?: QuestionPromptCaseActionView;
 };
 export type LeaderboardGradeChipView = { className: string; text: string };
 export type LeaderboardRowView = {
@@ -1852,6 +1865,44 @@ export function questionPromptView(question: unknown): {
         })
         .filter((item) => item.detail.length > 0)
     : [];
+  const rawInvestigation = rawCase?.investigation && typeof rawCase.investigation === "object"
+    ? rawCase.investigation as LooseRecord
+    : null;
+  const rawRevealedEvidence = rawInvestigation?.revealedEvidence && typeof rawInvestigation.revealedEvidence === "object"
+    ? rawInvestigation.revealedEvidence as LooseRecord
+    : null;
+  const revealedEvidence = rawRevealedEvidence && String(rawRevealedEvidence.detail || "").trim()
+    ? {
+        label: String(rawRevealedEvidence.label || "New evidence"),
+        source: String(rawRevealedEvidence.source || "Investigation"),
+        detail: String(rawRevealedEvidence.detail),
+      }
+    : null;
+  const actionKind = rawInvestigation && ["delegate", "inspect", "test", "consult"].includes(String(rawInvestigation.kind))
+    ? String(rawInvestigation.kind) as QuestionPromptCaseActionView["kind"]
+    : null;
+  const confidence = rawInvestigation && ["low", "medium", "high"].includes(String(rawInvestigation.confidence))
+    ? String(rawInvestigation.confidence) as QuestionPromptCaseActionView["confidence"]
+    : null;
+  const investigation = rawInvestigation
+    && actionKind
+    && confidence
+    && String(rawInvestigation.actorName || "").trim()
+    && String(rawInvestigation.report || "").trim()
+    && String(rawInvestigation.verificationPrompt || "").trim()
+    ? {
+        actionId: String(rawInvestigation.actionId || "case-action"),
+        kind: actionKind,
+        actorId: String(rawInvestigation.actorId || "actor"),
+        actorName: String(rawInvestigation.actorName),
+        actionLabel: String(rawInvestigation.actionLabel || "Investigation"),
+        reportLabel: String(rawInvestigation.reportLabel || `${String(rawInvestigation.actorName)}'s report`),
+        report: String(rawInvestigation.report),
+        confidence,
+        ...(revealedEvidence ? { revealedEvidence } : {}),
+        verificationPrompt: String(rawInvestigation.verificationPrompt),
+      }
+    : null;
   const caseStudy = rawCase && stage && String(rawCase.title || "").trim() && String(rawCase.scene || "").trim()
     ? {
         episodeId: String(rawCase.episodeId || ""),
@@ -1860,6 +1911,7 @@ export function questionPromptView(question: unknown): {
         scene: String(rawCase.scene),
         stage,
         evidence,
+        ...(investigation ? { investigation } : {}),
       }
     : null;
   return {

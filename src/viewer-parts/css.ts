@@ -2877,6 +2877,71 @@ export const VIEWER_CSS = `
     font-size: 10px;
     line-height: 1.3;
   }
+  .board .case-action-result {
+    display: grid;
+    gap: 6px;
+    margin-top: 3px;
+    padding: 9px;
+    border: 1px solid rgba(126,214,255,0.34);
+    border-radius: 7px;
+    background: rgba(55,151,199,0.10);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+  }
+  .board .case-action-result.is-compact {
+    margin-top: 9px;
+  }
+  .board .case-action-result-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .board .case-action-result-top strong {
+    color: #b9e9ff;
+    font-size: 12px;
+  }
+  .board .case-action-confidence {
+    flex: 0 0 auto;
+    padding: 2px 6px;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 999px;
+    color: var(--ink-soft);
+    font-size: 8px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .board .case-action-confidence.is-high { border-color: rgba(91,218,132,0.55); color: #baf7ce; }
+  .board .case-action-confidence.is-low { border-color: rgba(255,183,77,0.55); color: #ffd69a; }
+  .board .case-action-move,
+  .board .case-action-report,
+  .board .case-action-verify,
+  .board .case-action-new-evidence p {
+    margin: 0;
+    font-size: 10px;
+    line-height: 1.35;
+  }
+  .board .case-action-move { color: var(--ink-soft); font-weight: 800; }
+  .board .case-action-report { color: var(--ink); }
+  .board .case-action-new-evidence {
+    padding: 7px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.07);
+  }
+  .board .case-action-new-evidence strong,
+  .board .case-action-new-evidence span {
+    display: block;
+    font-size: 9px;
+  }
+  .board .case-action-new-evidence strong { color: #fff0a6; }
+  .board .case-action-new-evidence span { margin: 1px 0 4px; color: var(--ink-soft); }
+  .board .case-action-verify {
+    padding-top: 6px;
+    border-top: 1px solid rgba(255,255,255,0.12);
+    color: #fff0a6;
+    font-weight: 800;
+  }
   .anki-media-grid {
     display: flex;
     flex-wrap: wrap;
@@ -5749,6 +5814,11 @@ export const VIEWER_CSS = `
     grid-column: 1 / -1;
     border-color: rgba(184,228,255,0.30);
     background: rgba(184,228,255,0.09);
+  }
+  .board .class-result-section.investigation {
+    grid-column: 1 / -1;
+    border-color: rgba(126,214,255,0.30);
+    background: rgba(55,151,199,0.09);
   }
   .board .class-result-section.relationship {
     border-color: rgba(255,192,221,0.30);

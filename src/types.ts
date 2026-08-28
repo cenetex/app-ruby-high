@@ -182,6 +182,32 @@ export interface CaseStudyEvidence {
   detail: string;
 }
 
+export type CaseStudyActionKind = "delegate" | "inspect" | "test" | "consult";
+export type CaseStudyConfidence = "low" | "medium" | "high";
+
+/** Authored, bounded result of one investigation move. The engine selects this
+ *  from an answer-text key; an LLM may narrate it, but cannot invent or change
+ *  the report, evidence, confidence, or verification requirement. */
+export interface CaseStudyActionResult {
+  actionId: string;
+  kind: CaseStudyActionKind;
+  actorId: string;
+  actorName: string;
+  actionLabel: string;
+  reportLabel: string;
+  report: string;
+  confidence: CaseStudyConfidence;
+  revealedEvidence?: CaseStudyEvidence;
+  verificationPrompt: string;
+}
+
+/** Private per-player progress for the current case. */
+export interface CaseStudyProgress {
+  episodeId: string;
+  action: CaseStudyActionResult;
+  actedAt: number;
+}
+
 /** Authored context shown above a question in a case-based lesson. */
 export interface CaseStudyCard {
   episodeId: string;
@@ -190,6 +216,9 @@ export interface CaseStudyCard {
   scene: string;
   stage: "investigate" | "decide" | "explain";
   evidence: CaseStudyEvidence[];
+  /** The investigation selected earlier in this case. It appears only after
+   *  the move has resolved, so later stages can ask the player to verify it. */
+  investigation?: CaseStudyActionResult;
 }
 
 /** Final story and relationship beat attached to a completed case. */
@@ -204,6 +233,7 @@ export interface CaseStudyOutcome {
   memoryTitle: string;
   memoryDetail: string;
   followUp: string;
+  investigation?: CaseStudyActionResult;
 }
 
 /**
@@ -278,6 +308,8 @@ export interface Question {
   /** Story result for each authored answer. Keys are semantic answer text,
    *  not shuffled A/B/C/D positions. */
   answerConsequences?: Record<string, string>;
+  /** Bounded investigation reports keyed by semantic answer text. */
+  caseActionResults?: Record<string, CaseStudyActionResult>;
   /** Stored on a case's final explanation card so the class report can show
    *  the consequence, relationship beat, and durable memory. */
   caseOutcome?: CaseStudyOutcome;
@@ -377,6 +409,7 @@ export interface LastReveal {
     label: string;
     detail: string;
   };
+  caseActionResult?: CaseStudyActionResult;
   answerText?: string;
   expectedAnswer?: string;
   answerJudge?: {
@@ -787,6 +820,10 @@ export interface QuizState {
    *  counterpart to volatile chat room events; AI can react to these but must
    *  not invent or mutate them. */
   schoolEvents: SchoolEvent[];
+  /** Private action trail for the current authored case. This is deliberately
+   *  separate from public school events: a student's investigation is not a
+   *  school-wide announcement. */
+  caseStudyProgress?: CaseStudyProgress | null;
   /** Per-player school activity safety controls. Hidden event ids are filtered
    *  from this player's feed immediately; reports are kept on the session for
    *  moderation/admin review surfaces. */
@@ -1539,6 +1576,9 @@ export interface DailyClassResult {
   memoryTitle?: string;
   memoryDetail?: string;
   followUp?: string;
+  investigationLabel?: string;
+  investigationDetail?: string;
+  investigationConfidence?: CaseStudyConfidence;
   completedClasses: number;
   requiredClasses: number;
 }

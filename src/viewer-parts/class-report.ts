@@ -23,6 +23,8 @@ export interface ClassResultViewModel {
   observation: string;
   consequenceLabel: string;
   consequence: string;
+  investigationLabel?: string;
+  investigation?: string;
   relationshipLabel?: string;
   relationship?: string;
   memoryLabel?: string;
@@ -110,6 +112,8 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
         ? `You passed ${teacherName}’s ${grade} course. You completed ${completedClasses} of ${requiredClasses} required class days.`
         : `You completed ${completedClasses} of ${requiredClasses} required ${teacherName} class days for ${grade}. Pass ${remainingClasses} more ${remainingClasses === 1 ? "day" : "days"} to finish the course.`;
     const relationship = String(recordValue(result, "relationshipDetail") || "").trim();
+    const investigation = String(recordValue(result, "investigationDetail") || "").trim();
+    const investigationConfidence = String(recordValue(result, "investigationConfidence") || "").trim();
     const memory = String(recordValue(result, "memoryDetail") || "").trim();
     const followUp = String(recordValue(result, "followUp") || "").trim();
     return {
@@ -123,6 +127,10 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
       observation: String(recordValue(result, "teacherObservation") || `${teacherName} recorded ${correctSummary.value} for today’s class.`),
       consequenceLabel: String(recordValue(result, "consequenceLabel") || (passedToday ? "Class saved" : "Saved for review")),
       consequence: String(recordValue(result, "consequenceDetail") || `${grade} with ${teacherName}: ${classLetter}, ${correctSummary.value}.`),
+      ...(investigation ? {
+        investigationLabel: `${String(recordValue(result, "investigationLabel") || "How you investigated")}${investigationConfidence ? ` · ${investigationConfidence} confidence` : ""}`,
+        investigation,
+      } : {}),
       ...(relationship ? {
         relationshipLabel: String(recordValue(result, "relationshipLabel") || `${teacherName} remembers`),
         relationship,
@@ -188,6 +196,9 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
       const sections = deps.document.createElement("div");
       sections.className = "class-result-sections";
       addResultSection(sections, "observation", view.observationLabel, view.observation);
+      if (view.investigationLabel && view.investigation) {
+        addResultSection(sections, "investigation", view.investigationLabel, view.investigation);
+      }
       addResultSection(sections, "consequence", view.consequenceLabel, view.consequence);
       if (view.relationshipLabel && view.relationship) {
         addResultSection(sections, "relationship", view.relationshipLabel, view.relationship);
