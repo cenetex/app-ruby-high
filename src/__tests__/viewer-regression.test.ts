@@ -186,8 +186,10 @@ describe("viewer regression guardrails", () => {
     expect(VIEWER_CSS).toContain("--bg-card:");
     expect(VIEWER_CSS).toContain("--focus-ring:");
     expect(VIEWER_CSS).toContain("--text-mute: #9ba4ba");
-    expect(cssRule(".response-card-grid button")).toContain("min-height: 58px");
+    expect(cssRule(".response-card-grid button")).toContain("min-height: 62px");
     expect(cssRule(".response-privacy")).toContain("text-transform: uppercase");
+    expect(html).toContain('class="response-stepper"');
+    expect(html).toContain('data-response-summary="stance"');
     expect(VIEWER_CSS).toContain('body :focus-visible:not([disabled]):not([tabindex="-1"])');
     expect(cssRule(".congrats-toast")).toContain("white-space: normal");
     expect(cssRule(".announcements-panel")).toContain("max-height: calc(100dvh");

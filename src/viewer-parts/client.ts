@@ -510,6 +510,9 @@ export function runViewerClient(bootstrap) {
     responseBuilder: $("response-builder"),
     responseBuildStatus: $("response-build-status"),
     responseCardButtons: Array.from(document.querySelectorAll("[data-response-card]")),
+    responseCardGroups: Array.from(document.querySelectorAll("[data-response-group]")),
+    responseStepButtons: Array.from(document.querySelectorAll("[data-response-step]")),
+    responseSummaryButtons: Array.from(document.querySelectorAll("[data-response-summary]")),
     advantageBar: $("advantage-bar"),
     advantageBtn: $("advantage-btn"),
     advantageResult: $("advantage-result"),
@@ -1024,6 +1027,7 @@ export function runViewerClient(bootstrap) {
   let generatingMc = false;
   let takeStartedQuestionId = null;
   let responseCardSelection = {};
+  let responseBuilderActiveGroup = "stance";
   const viewedClassReportKeys = new Set();
   const renderedOpinionIds = new Set(); // responder ids whose text we've appended to chat
   const gradedResponderIds = new Set(); // responders whose grade-tag we've stamped on
@@ -1057,8 +1061,10 @@ export function runViewerClient(bootstrap) {
     opinionSubmittedQuestionId = null;
   }
   const RESPONSE_CARD_GROUPS = ["stance", "evidence", "impact"];
+  const RESPONSE_CARD_GROUP_LABELS = { stance: "position", evidence: "evidence", impact: "impact" };
   function resetResponseBuilder() {
     responseCardSelection = {};
+    responseBuilderActiveGroup = RESPONSE_CARD_GROUPS[0];
     els.responseCardButtons.forEach((button) => {
       button.classList.remove("is-selected");
       button.setAttribute("aria-pressed", "false");
@@ -1079,24 +1085,71 @@ export function runViewerClient(bootstrap) {
       return button ? button.dataset.short : "";
     }).filter(Boolean).join(" · ");
   }
+  function responseCardShortLabel(group) {
+    const value = responseCardSelection[group];
+    const button = els.responseCardButtons.find((entry) => entry.dataset.group === group && entry.dataset.value === value);
+    return button ? button.dataset.short : "";
+  }
+  function responseGroupIsAvailable(group) {
+    const groupIndex = RESPONSE_CARD_GROUPS.indexOf(group);
+    return groupIndex >= 0 && RESPONSE_CARD_GROUPS.slice(0, groupIndex).every((entry) => responseCardSelection[entry]);
+  }
+  function openResponseGroup(group) {
+    if (!responseGroupIsAvailable(group)) return;
+    responseBuilderActiveGroup = group;
+    syncResponseBuilder(true, false);
+  }
   function syncResponseBuilder(isOpinion, disabled) {
     const complete = !!selectedResponseCardPayload();
-    const selectedCount = RESPONSE_CARD_GROUPS.filter((group) => responseCardSelection[group]).length;
+    if (!responseGroupIsAvailable(responseBuilderActiveGroup)) {
+      responseBuilderActiveGroup = RESPONSE_CARD_GROUPS.find((group) => responseGroupIsAvailable(group) && !responseCardSelection[group]) || RESPONSE_CARD_GROUPS[0];
+    }
+    const activeIndex = Math.max(0, RESPONSE_CARD_GROUPS.indexOf(responseBuilderActiveGroup));
     els.responseBuilder.hidden = !isOpinion;
+    els.responseBuilder.dataset.activeGroup = responseBuilderActiveGroup;
+    els.responseCardGroups.forEach((group) => {
+      group.hidden = group.dataset.responseGroup !== responseBuilderActiveGroup;
+    });
     els.responseCardButtons.forEach((button) => {
       const selected = responseCardSelection[button.dataset.group] === button.dataset.value;
       button.classList.toggle("is-selected", selected);
       button.setAttribute("aria-pressed", String(selected));
       button.disabled = !!disabled;
     });
+    els.responseStepButtons.forEach((button) => {
+      const group = button.dataset.responseStep;
+      const selected = !!responseCardSelection[group];
+      const active = group === responseBuilderActiveGroup;
+      button.classList.toggle("is-active", active);
+      button.classList.toggle("is-complete", selected);
+      if (active) button.setAttribute("aria-current", "step");
+      else button.removeAttribute("aria-current");
+      button.disabled = !!disabled || !responseGroupIsAvailable(group);
+      const marker = button.querySelector(":scope > span");
+      if (marker) marker.textContent = selected ? "✓" : String(RESPONSE_CARD_GROUPS.indexOf(group) + 1);
+      const detail = button.querySelector("small");
+      if (detail) detail.textContent = selected ? responseCardShortLabel(group) : (active ? "Choose" : (responseGroupIsAvailable(group) ? "Next" : "Locked"));
+    });
+    els.responseSummaryButtons.forEach((button) => {
+      const group = button.dataset.responseSummary;
+      const label = responseCardShortLabel(group);
+      button.classList.toggle("is-filled", !!label);
+      button.disabled = !!disabled || !label;
+      const value = button.querySelector("strong");
+      if (value) value.textContent = label || "Not chosen";
+    });
     els.typedSubmitBtn.hidden = !isOpinion;
     els.typedSubmitBtn.disabled = !!disabled || !complete;
-    els.typedSubmitBtn.textContent = complete ? "Submit response build" : "Choose " + (3 - selectedCount) + " more";
+    els.typedSubmitBtn.textContent = complete ? "Submit case" : "Complete all 3 steps";
     if (els.responseBuildStatus) {
       els.responseBuildStatus.classList.toggle("is-complete", complete);
-      els.responseBuildStatus.textContent = complete
-        ? selectedResponseCardSummary()
-        : "Choose " + (3 - selectedCount) + " more card" + (selectedCount === 2 ? "" : "s") + " to finish your case.";
+      const badge = document.createElement("span");
+      badge.textContent = complete ? "Ready" : (activeIndex + 1) + " / 3";
+      const message = document.createElement("strong");
+      message.textContent = complete
+        ? "Case ready — review or submit"
+        : "Choose your " + RESPONSE_CARD_GROUP_LABELS[responseBuilderActiveGroup];
+      els.responseBuildStatus.replaceChildren(badge, message);
     }
   }
   function playerMessageIdentitySig() {
@@ -3974,6 +4027,8 @@ export function runViewerClient(bootstrap) {
       if (!reveal.forfeit && btn.dataset.pick === reveal.picked && !reveal.wasCorrect) btn.classList.add("is-wrong");
     });
     els.responseCardButtons.forEach((button) => { button.disabled = true; });
+    els.responseStepButtons.forEach((button) => { button.disabled = true; });
+    els.responseSummaryButtons.forEach((button) => { button.disabled = true; });
     els.typedSubmitBtn.disabled = true;
     els.generateMcBtn.disabled = true;
     // The wrong-answer "hide A/B/C/D for chat space" rule lives in
@@ -4934,6 +4989,8 @@ export function runViewerClient(bootstrap) {
     typedSubmitting = true;
     els.typedSubmitBtn.disabled = true;
     els.responseCardButtons.forEach((button) => { button.disabled = true; });
+    els.responseStepButtons.forEach((button) => { button.disabled = true; });
+    els.responseSummaryButtons.forEach((button) => { button.disabled = true; });
     try {
       if (inOpinion) {
         markOpinionSubmitted(opinionQuestionId);
@@ -10535,8 +10592,23 @@ export function runViewerClient(bootstrap) {
       const value = button.dataset.value;
       if (!group || !value) return;
       responseCardSelection[group] = value;
+      const groupIndex = RESPONSE_CARD_GROUPS.indexOf(group);
+      const nextGroup = RESPONSE_CARD_GROUPS[groupIndex + 1];
+      if (nextGroup && !responseCardSelection[nextGroup]) responseBuilderActiveGroup = nextGroup;
       recordTakeStarted();
       syncResponseBuilder(true, false);
+    });
+  });
+  els.responseStepButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      openResponseGroup(button.dataset.responseStep);
+    });
+  });
+  els.responseSummaryButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      openResponseGroup(button.dataset.responseSummary);
     });
   });
   els.generateMcBtn.addEventListener("click", generateMultipleChoice);
