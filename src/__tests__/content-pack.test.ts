@@ -41,14 +41,14 @@ afterEach(() => {
 });
 
 describe("ContentPack registry", () => {
-  it("defaults to Ruby High Original — three faculty + matching rooms", async () => {
+  it("defaults to Ruby High Original — four faculty + matching rooms", async () => {
     const pack = await getActivePack();
     expect(pack.id).toBe("ruby-high-original");
     expect(pack.faculty.map((f) => f.id).sort()).toEqual(
-      ["professor-edward", "ruby", "sally-science"],
+      ["professor-edward", "roko", "ruby", "sally-science"],
     );
     expect(pack.courses?.map((c) => c.id).sort()).toEqual(
-      ["professor-edward", "ruby", "sally-science"],
+      ["professor-edward", "roko", "ruby", "sally-science"],
     );
     // Each teaching faculty has a corresponding room.
     for (const f of pack.faculty) {
@@ -84,7 +84,8 @@ describe("ContentPack registry", () => {
     expect(questionCounts.ruby).toBeGreaterThanOrEqual(200);
     expect(questionCounts["sally-science"]).toBeGreaterThanOrEqual(200);
     expect(questionCounts["professor-edward"]).toBeGreaterThanOrEqual(200);
-    expect(Object.values(totalCounts).reduce((sum, count) => sum + count, 0)).toBeGreaterThanOrEqual(600);
+    expect(questionCounts.roko).toBeGreaterThanOrEqual(200);
+    expect(Object.values(totalCounts).reduce((sum, count) => sum + count, 0)).toBeGreaterThanOrEqual(800);
   });
 
   it("keeps built-in teacher corpora gated behind upper-grade progression", async () => {
@@ -247,11 +248,11 @@ describe("per-session pack helpers — abstraction in place", () => {
     vi.stubEnv("RUBY_HIGH_FEATURED_GUEST_PACK_ID", ELIZAOS_SYSTEMS_LAB_PACK_ID);
     const session = { activePackId: null };
     expect(facultyForSession(session).map((f) => f.id).sort()).toEqual(
-      ["guest", "professor-edward", "ruby", "sally-science"],
+      ["guest", "professor-edward", "roko", "ruby", "sally-science"],
     );
     expect(facultyByIdForSession(session, "ruby")?.id).toBe("ruby");
     expect(coursesForSession(session).map((c) => c.teacherTemplateId).sort()).toEqual(
-      ["eliza", "professor-edward", "ruby", "sally-science"],
+      ["eliza", "professor-edward", "roko", "ruby", "sally-science"],
     );
     expect(resolveFacultyIdForSession(session, "sally-science")).toBe("sally-science");
     expect(facultyByIdForSession(session, "no-such")).toBeNull();

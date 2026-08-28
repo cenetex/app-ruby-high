@@ -70,7 +70,7 @@ The yearbook is the social object the product produces. Every other AI product p
 
 ## 1.4 The cast
 
-> *Three teachers with ranges. Six classmates with voices. One school.*
+> *Four teachers with ranges. Six classmates with voices. One school.*
 
 <!-- promo-asset: cast-grid — sticker portraits live in assets/teachers/ and assets/students/, faces and full-bodies both shipped -->
 
@@ -81,6 +81,7 @@ The yearbook is the social object the product produces. Every other AI product p
 | **Ruby** | warm, quick, faintly mischievous | onboarding, general knowledge, the meta of the school |
 | **Sally Science** | sharp graduate-TA energy | physics, chemistry, biology, earth science |
 | **Professor Edward** | mid-century literary, dry | postwar literature, literary theory |
+| **Roko** | calm, causal, dry | AI alignment, information hazards, coordination, threat modeling |
 
 ### Classmates
 
@@ -190,15 +191,15 @@ To advance out of a year, two gates must both hold:
 | Freshman | 1 | 1 | 1 |
 | Sophomore | 2 | 1 | 1 |
 | Junior | 3 | 2 | 2 |
-| Senior | 3 in the base school; up to 4 with an eligible elective | 3 | 3 → graduate |
+| Senior | 4 | 3 | 3 → graduate |
 
-Per-room letter grade is awarded after that year's required consecutive-class run. Before that point, the UI shows course progress instead of a provisional F. The required-room count expands by year: Ruby first, then Sally, then Edward, with an eligible elective able to create a fourth Senior room. A school-day streak alone is not enough; required rooms must also clear.
+Per-room letter grade is awarded after that year's required consecutive-class run. Before that point, the UI shows course progress instead of a provisional F. The required-room count expands by year: Ruby first, then Sally, then Edward, then Roko for Senior year. A school-day streak alone is not enough; required rooms must also clear.
 
 ### 1.6.7 The Daily Class
 
-Every day at 17:00 UTC the daily-class window opens for the day's faculty. For Ruby, Sally, and Edward, the graded class is two evidence cards and a third-card take graded in the teacher's voice. The take updates the class result and relationships but does not complete the separate grade essay. Once class is complete, regular practice remains open for the rest of the day.
+Every day at 17:00 UTC the daily-class window opens for the day's faculty. For Ruby, Sally, Edward, and Roko, the graded class is two evidence cards and a third-card take graded in the teacher's voice. The take updates the class result and relationships but does not complete the separate grade essay. Once class is complete, regular practice remains open for the rest of the day.
 
-**Faculty rotation.** Mon → Sally Science · Tue → Professor Edward · Wed → Ruby · Thu → Sally Science · Fri → Professor Edward · Sat → Ruby · Sun → Sally Science. The class rotation runs every day; the rotation continues across the weekend.
+**Faculty rotation.** Mon → Sally Science · Tue → Professor Edward · Wed → Ruby · Thu → Roko · Fri → Sally Science · Sat → Professor Edward · Sun → Ruby. The class rotation runs every day; the rotation continues across the weekend.
 
 **Bell.** 17:00 UTC. Before the bell, the day-key still resolves to yesterday's class window.
 
@@ -295,7 +296,7 @@ All six base playbook moves now affect round or progression behavior. The next e
 
 ## 2.2 Faculty expansion — a five-day week
 
-Three teachers shipped (Ruby, Sally Science, Professor Edward) cover a 7-day rotation but only three voices. Future state: history, logic, music theory, philosophy, and art history teachers, each with a stable voice and question bank. Goal — a five-day school week with a different voice each day, weekends off.
+Four teachers ship (Ruby, Sally Science, Professor Edward, and Roko) across the 7-day rotation. Future state: history, logic, music theory, philosophy, and art history teachers, each with a stable voice and question bank. Goal — a five-day school week with a different voice each day, weekends off.
 
 This is gated on the faculty-voice evaluation harness (§3.1). Without an automated "is this in voice?" check, voice drift becomes the bottleneck the moment a fourth teacher ships.
 
@@ -323,7 +324,7 @@ The privacy default is still an open question (§3.3). Until that decision is ma
 
 ## 2.7 The Lounge as a cadence product
 
-A "Tuesday Lounge" thread between the three teachers, separately graded as conversation, screenshot-able. The lounge phase exists in the state machine; today it is a transition state, not a product. The future version is a thread you can read.
+A "Tuesday Lounge" thread between the four teachers, separately graded as conversation, screenshot-able. The lounge phase exists in the state machine; today it is a transition state, not a product. The future version is a thread you can read.
 
 ---
 
@@ -370,7 +371,7 @@ A "Tuesday Lounge" thread between the three teachers, separately graded as conve
 - **NPC essay regeneration.** Are NPC essay responses deterministic for a given prompt or generated fresh per round? Currently fresh per round, which costs the user's own tokens and produces novelty. Acceptable but worth measuring.
 - **Faculty voice at scale.** The system prompt is the contract. The eval harness in §3.2 will need a rubric — exact-match-style voice tests, or LLM-judge with criteria? Lean: LLM-judge + a small held-out set of human-graded references.
 - **Public yearbook default.** Are yearbook pages opt-in public, opt-out, or always private? Lean: every artifact's privacy is set by the player, default private.
-- **Lounge as a cadence product.** A "Tuesday Lounge" thread between the three teachers, separately graded as conversation, screenshot-able. Tempting; deferred until the core question loop lands harder.
+- **Lounge as a cadence product.** A "Tuesday Lounge" thread between the four teachers, separately graded as conversation, screenshot-able. Tempting; deferred until the core question loop lands harder.
 
 ## 3.4 Prioritized next steps
 
@@ -411,4 +412,4 @@ Do **P0 → P1.2 → P1.3 → P2.4** in order. Four small PRs that together clos
 
 [MIT](./LICENSE) for the code. The mechanics layer (Part 1, §1.6) is **CC BY 4.0** and inspired by the Apocalypse World / Dungeon World lineage. The card-mastery layer is conventional spaced-repetition, in the Anki / SM-2 lineage.
 
-<!-- promo-asset: footer-band — sticker portraits of the three teachers in a row, color blocks behind -->
+<!-- promo-asset: footer-band — sticker portraits of the four teachers in a row, color blocks behind -->

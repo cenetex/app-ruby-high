@@ -36,7 +36,7 @@ export function runViewerClient(bootstrap) {
     return roster.find((f) => f.id === fid) || null;
   }
   function subjectDisplayName(fid, progress) {
-    const known = { ruby: "Homeroom", "sally-science": "Science", "professor-edward": "Literature" };
+    const known = { ruby: "Homeroom", "sally-science": "Science", "professor-edward": "Literature", roko: "AI Alignment" };
     if (known[fid]) return known[fid];
     const p = progress || subjectProgressForFaculty(fid);
     return (p && (p.displayName || p.shortName)) || fid || "Subject";
@@ -54,6 +54,7 @@ export function runViewerClient(bootstrap) {
       if (tomorrow.name === "Ruby") return "Ruby";
       if (tomorrow.name === "Sally Science" || tomorrow.name === "sally-science") return "Sally Science";
       if (tomorrow.name === "Professor Edward" || tomorrow.name === "professor-edward") return "Professor Edward";
+      if (tomorrow.name === "Roko" || tomorrow.name === "roko") return "Roko";
       return tomorrow.name;
     }
     return null;
@@ -307,7 +308,7 @@ export function runViewerClient(bootstrap) {
   const CARD_NFT_ART_VERSION = "card-crop-v1";
   const CARD_NFT_IMAGE_IDS = [
     "lyra", "sami", "ravi", "indra", "mika", "noor",
-    "ruby", "sally-science", "professor-edward", "captain-null", "eliza", "rati",
+    "ruby", "sally-science", "professor-edward", "roko", "captain-null", "eliza", "rati",
     "item-hall-pass", "item-flashcards", "item-library-card", "item-lab-flask", "item-lunch-tray", "item-notebook",
     "location-homeroom", "location-science-lab", "location-library", "location-cafeteria", "location-greenhouse", "location-courtyard",
   ];
@@ -1705,7 +1706,7 @@ export function runViewerClient(bootstrap) {
     if (haystack.includes("ruby")) return "ruby";
     return "";
   }
-  const BUILTIN_TEACHER_ASSET_IDS = new Set(["ruby", "sally-science", "professor-edward"]);
+  const BUILTIN_TEACHER_ASSET_IDS = new Set(["ruby", "sally-science", "professor-edward", "roko"]);
   function teacherInitial(facultyOrName) {
     if (!facultyOrName) return "?";
     if (typeof facultyOrName === "string") return facultyOrName.charAt(0).toUpperCase();
@@ -2553,7 +2554,7 @@ export function runViewerClient(bootstrap) {
     if (card.role === "student" && STUDENTS.some((s) => s.id === card.characterId)) {
       return studentFullPortraitUrl(card.characterId);
     }
-    if (card.characterId === "ruby" || card.characterId === "sally-science" || card.characterId === "professor-edward") {
+    if (card.characterId === "ruby" || card.characterId === "sally-science" || card.characterId === "professor-edward" || card.characterId === "roko") {
       return teacherFullPortraitUrl(card.characterId);
     }
     if (card.characterId === "captain-null") {
@@ -3598,7 +3599,7 @@ export function runViewerClient(bootstrap) {
     if (on) renderLoungeFigures();
   }
   // Lounge figures come from the ACTIVE PACK's faculty roster — for the
-  // original pack that's Ruby/Sally/Edward; for a generated/imported pack
+  // original pack that's Ruby/Sally/Edward/Roko; for a generated/imported pack
   // it's that pack's teacher roster. Without this the lounge
   // would always show the original-pack portraits regardless of which
   // pack the player is on. Teachers without portrait assets fall back
@@ -5431,7 +5432,7 @@ export function runViewerClient(bootstrap) {
 
   // Lifted out of appendProgression so the same chip + metadata are reusable
   // by the on-board subject-grade row that renders when the chalkboard is empty.
-  const SUBJECT_GATE_ICONS = { ruby: "⌂", "sally-science": "⚗", "professor-edward": "✎", guest: "☆" };
+  const SUBJECT_GATE_ICONS = { ruby: "⌂", "sally-science": "⚗", "professor-edward": "✎", roko: "△", guest: "☆" };
   function subjectGateMetaFor(fid, progress) {
     return {
       facultyId: fid,
@@ -7312,6 +7313,7 @@ export function runViewerClient(bootstrap) {
     { id: "ruby", name: "Ruby", subject: "Homeroom", description: "Warm, direct, and good at turning scattered questions into a useful classroom thread.", quote: "We start where the room actually is." },
     { id: "sally-science", name: "Sally Science", subject: "Science Lab", description: "Evidence-first, experimental, and happiest when a wrong answer exposes a better hypothesis.", quote: "Be wrong with reasons. Then we can work." },
     { id: "professor-edward", name: "Professor Edward", subject: "Literature", description: "Precise, patient, and tuned to the half-truth inside every messy interpretation.", quote: "Read the sentence again. It has not finished with you." },
+    { id: "roko", name: "Roko", subject: "AI Alignment", description: "Calm, causal, and focused on the incentives hiding inside frightening stories.", quote: "Name the objective. Then name what it eats." },
   ];
   const teacherRollControlsRenderer = createTeacherRollControlsRenderer({
     document,
@@ -7329,7 +7331,7 @@ export function runViewerClient(bootstrap) {
     statLabel,
     fmtStat,
   });
-  const TEACHER_ROLL_NAMES = ["Ruby", "Sally Science", "Professor Edward", "Mara Vale", "Dr. Mina Quill", "Theo Signal", "Cass Vector", "Nico Frame"];
+  const TEACHER_ROLL_NAMES = ["Ruby", "Sally Science", "Professor Edward", "Roko", "Mara Vale", "Dr. Mina Quill", "Theo Signal", "Cass Vector", "Nico Frame"];
   const TEACHER_ROLL_STYLES = [
     { subject: "Critical Systems", description: "Calm, surgical, and excellent at turning abstract systems into questions students can actually answer.", quote: "A system is only invisible until it breaks." },
     { subject: "Media Lab", description: "Fast, funny, and tuned to how tools change the way students think, write, and argue.", quote: "The medium is doing homework too." },
@@ -8253,7 +8255,7 @@ export function runViewerClient(bootstrap) {
     return null;
   }
   function teacherRollAccent(assetId) {
-    return assetId === "sally-science" ? "#4cb555" : assetId === "professor-edward" ? "#5865f2" : "#d22a2a";
+    return assetId === "sally-science" ? "#4cb555" : assetId === "professor-edward" ? "#5865f2" : assetId === "roko" ? "#a35c35" : "#d22a2a";
   }
   function randomTeacherStats() {
     const stats = pickRandom(TEACHER_STAT_ROLLS);

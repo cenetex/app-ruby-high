@@ -82,6 +82,7 @@ function sharedStyleFull(bg) {
 const BG_RUBY        = { color: "#fdeef0", name: "warm pale pink" };
 const BG_SALLY       = { color: "#e6f4f1", name: "pale mint" };
 const BG_EDWARD      = { color: "#efe8d8", name: "warm parchment cream" };
+const BG_ROKO        = { color: "#ede9f3", name: "pale smoky lavender" };
 const BG_LYRA        = { color: "#fdeef5", name: "soft pink" };
 const BG_SAMI        = { color: "#dfe6ec", name: "muted slate gray" };
 const BG_RAVI        = { color: "#fdf0d8", name: "soft butter yellow" };
@@ -124,6 +125,18 @@ const TEACHERS = [
       "Holding an open hardcover book in both hands.",
       "Thoughtful gentle expression with a faint amused half-smile.",
       "Warm umber and forest green color accents.",
+    ].join(" "),
+  },
+  {
+    id: "roko",
+    bg: BG_ROKO,
+    description: [
+      "Roko — AI alignment and information-hazards teacher at Ruby High.",
+      "Adult man in his early 40s with olive skin, dark wavy hair with one silver streak, a neat short beard, and watchful amber-brown eyes.",
+      "Charcoal blazer over a dark oxblood mock-neck shirt, black trousers, and practical dark boots.",
+      "Holding a closed black field notebook with a small amber triangle in one hand; the other hand is open in a careful teaching gesture.",
+      "Composed, intellectually intense expression with a faint dry half-smile.",
+      "Charcoal, oxblood, and muted amber color accents.",
     ].join(" "),
   },
 ];

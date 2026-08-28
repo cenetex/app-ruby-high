@@ -240,7 +240,7 @@ describe("packForSession — weekly guest composition", () => {
     expect(composed.id).toContain(`${ORIGINAL_PACK_ID}+guest`);
     expect(composed.faculty.map((f) => f.id)).toContain(GUEST_COURSE_ID);
     expect(composed.faculty.map((f) => f.id)).toContain("ruby");
-    expect(coursesForSession(guestSession)).toHaveLength(4);
+    expect(coursesForSession(guestSession)).toHaveLength(5);
     expect(composed.faculty.find((f) => f.id === GUEST_COURSE_ID)?.questions[0]).toMatchObject({
       faculty: GUEST_COURSE_ID,
       subject: "signals",

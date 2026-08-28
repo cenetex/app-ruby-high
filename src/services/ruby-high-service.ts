@@ -473,6 +473,7 @@ function teacherPortraitUrl(facultyId: string, assetTeacherId?: string, profileI
     assetId === RUBY_FACULTY.id
     || assetId === "sally-science"
     || assetId === "professor-edward"
+    || assetId === "roko"
     || assetId === "eliza"
     || assetId === "seraph"
   ) {
@@ -488,6 +489,7 @@ function teacherFullPortraitUrl(facultyId: string, assetTeacherId?: string, prof
     assetId === RUBY_FACULTY.id
     || assetId === "sally-science"
     || assetId === "professor-edward"
+    || assetId === "roko"
     || assetId === "eliza"
     || assetId === "seraph"
   ) {
@@ -1607,7 +1609,7 @@ type MetricEventInput = Omit<StoredMetricEventRecord, "id" | "name" | "occurredA
 const GLOBAL_PACK_OWNER = "__ruby_high_global__";
 const CLASS_QUESTIONS_PER_DAY = 3;
 const GRADUATION_ROOM_TARGETS: Record<Grade, number> = { "9": 1, "10": 2, "11": 3, "12": 4 };
-const CORE_GRADUATION_FACULTY_ORDER = [RUBY_FACULTY.id, "sally-science", "professor-edward"] as const;
+const CORE_GRADUATION_FACULTY_ORDER = [RUBY_FACULTY.id, "sally-science", "professor-edward", "roko"] as const;
 const CORE_DAILY_CLASS_FACULTY = new Set<string>(CORE_GRADUATION_FACULTY_ORDER);
 const DAILY_CLASS_PRACTICE_BEFORE_CARD: readonly number[] = [0, 0, 0] as const;
 const DAILY_CLASS_TAKES_PER_DAY = 1;
@@ -1663,6 +1665,23 @@ const DAILY_CLASS_TAKE_CARDS: Record<string, ReadonlyArray<{ prompt: string; rub
       rubric: "Names a genuine tension, takes a clear position, and supports it with a specific reason or detail.",
     },
   ],
+  roko: [
+    {
+      subject: "ai-alignment",
+      prompt: "Name the objective in one system from today's class. What behavior could satisfy its wording while defeating its purpose?",
+      rubric: "States a concrete objective and a plausible specification-gaming behavior tied to the exact wording.",
+    },
+    {
+      subject: "coordination",
+      prompt: "What is the larger shared threat in today's example, and what coordination failure could still stop the group from responding?",
+      rubric: "Separates threat pressure from a specific remaining failure such as free riding, missing common knowledge, weak commitment, or absent supplies.",
+    },
+    {
+      subject: "infohazards",
+      prompt: "Who needs which part of today's information, and what detail should stay limited until safeguards are ready?",
+      rubric: "Names distinct audiences, gives a task-based disclosure boundary, and explains the harm the boundary reduces.",
+    },
+  ],
 };
 const FIRST_BELL_COMIC_ISSUE_ID = "first-bell";
 const FIRST_BELL_COMIC_TITLE = "Ruby High: Book One - First Bell";
@@ -1671,6 +1690,7 @@ const COMIC_CLASS_LABELS: Record<string, string> = {
   ruby: "Homeroom",
   "sally-science": "Science",
   "professor-edward": "Literature",
+  roko: "AI Alignment",
 };
 const TEACHER_STORY_COMIC_PAGES: Record<string, Partial<Record<Grade, number>>> = {
   ruby: { "9": 1, "11": 4 },

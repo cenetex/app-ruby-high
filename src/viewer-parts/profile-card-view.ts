@@ -88,16 +88,19 @@ export function createProfileCardView(deps: ProfileCardViewDeps): ProfileCardVie
     ruby: { head: 1, heart: 2, hustle: 1, honor: 0 },
     "sally-science": { head: 3, heart: 0, hustle: 1, honor: 1 },
     "professor-edward": { head: 3, heart: 1, hustle: -1, honor: 2 },
+    roko: { head: 3, heart: 0, hustle: -1, honor: 3 },
   };
   const teacherSubjectLine: Record<string, string> = {
     ruby: "Homeroom · school stories and general knowledge",
     "sally-science": "Science Lab · physics, chemistry, biology, and Earth science",
     "professor-edward": "Library · postwar literature and literary theory",
+    roko: "Alignment Lab · AI alignment, information hazards, and coordination",
   };
   const teacherSignature: Record<string, string> = {
     ruby: "My job's the door. The teaching happens in the rooms.",
     "sally-science": "I'd rather you be wrong with reasons than right by accident.",
     "professor-edward": "Every wrong answer has a half-truth folded inside it. We start there.",
+    roko: "Name the objective. Then name what it eats.",
   };
   const studentVibes: Record<string, string> = {
     lyra: "wait what — i KNEW it was c. ok im rewriting my notes.",

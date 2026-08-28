@@ -32,12 +32,14 @@ const PACK_FILES: Record<string, string> = {
   ruby: "ruby.json",
   "sally-science": "sally-science.json",
   "professor-edward": "professor-edward.json",
+  roko: "roko.json",
 };
 
 const CORPUS_FILES: Record<string, string> = {
   ruby: "ruby.md",
   "sally-science": "sally-science.md",
   "professor-edward": "professor-edward.md",
+  roko: "roko.md",
 };
 
 // Static room + faculty metadata. Persona text + model preference live
@@ -68,6 +70,14 @@ const FACULTY_META: Array<Omit<PackFaculty, "questions" | "systemPrompt" | "defa
     bio: "Mid-century literary theory. Reads everything as a conversation between books.",
     accent: "#7a4f2a",
   },
+  {
+    id: "roko",
+    displayName: "Roko",
+    shortName: "Roko",
+    subjects: ["ai-alignment", "infohazards", "coordination", "threat-modeling"],
+    bio: "AI alignment and information hazards. Tests incentives, threat models, disclosure choices, and cooperation under pressure.",
+    accent: "#a35c35",
+  },
 ];
 
 const ROOMS_META: PackRoom[] = [
@@ -93,6 +103,14 @@ const ROOMS_META: PackRoom[] = [
     channelName: "literature",
     teacherId: "professor-edward",
     description: "Edward's seminar room — postwar literature, literary theory, mid-century intellectual history.",
+    teaches: true,
+  },
+  {
+    id: "alignment",
+    name: "Alignment Lab",
+    channelName: "alignment",
+    teacherId: "roko",
+    description: "Roko's lab — AI alignment, information hazards, coordination, and threat modeling.",
     teaches: true,
   },
 ];
@@ -136,7 +154,7 @@ async function loadOnce(): Promise<ContentPack> {
   return {
     id: "ruby-high-original",
     name: "Ruby High",
-    description: "AI/agent culture, STEM, and postwar literature. The original Ruby High curriculum.",
+    description: "AI/agent culture, STEM, postwar literature, AI alignment, and information hazards. The original Ruby High curriculum.",
     version: "1.0.0",
     faculty,
     courses,

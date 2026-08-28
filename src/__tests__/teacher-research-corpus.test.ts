@@ -7,6 +7,7 @@ describe("built-in teacher research corpora", () => {
 
     expect(corpora.map((corpus) => corpus.facultyId).sort()).toEqual([
       "professor-edward",
+      "roko",
       "ruby",
       "sally-science",
       "seraph",
@@ -37,6 +38,21 @@ describe("built-in teacher research corpora", () => {
         subjects: expect.arrayContaining(["seminar ethics", "close reading"]),
       }),
     ]));
+    expect(corpora.find((corpus) => corpus.facultyId === "roko")).toMatchObject({
+      corpusPath: "assets/corpora/roko.md",
+      researchInterests: expect.arrayContaining(["AI alignment", "information hazards", "Crownless dragon ecology"]),
+      sourcePackets: expect.arrayContaining([
+        expect.objectContaining({
+          id: "roko-source-crownless-ecology",
+          subjects: expect.arrayContaining(["multi-agent coordination", "AI alignment"]),
+        }),
+        expect.objectContaining({
+          id: "roko-source-openai-hugging-face-incident",
+          grades: ["10", "11", "12"],
+          subjects: expect.arrayContaining(["AI alignment", "information hazards"]),
+        }),
+      ]),
+    });
     expect(corpora.find((corpus) => corpus.facultyId === "seraph")).toMatchObject({
       corpusPath: "assets/corpora/project89.md",
       researchInterests: expect.arrayContaining(["signal verification", "bounded intervention"]),

@@ -3,7 +3,7 @@
 The fictional characters, personas, and system prompts defined in the following files
 are dedicated to the public domain under CC0 1.0 Universal:
 
-- `src/characters/teachers.ts` — Ruby, Sally Science, Professor Edward, and all
+- `src/characters/teachers.ts` — Ruby, Sally Science, Professor Edward, Roko, and all
   faculty character sheets including names, personalities, system prompts, voice
   definitions, and model preferences.
 - `src/characters/students.ts` — Lyra, Sami, Ravi, Indra, Mika, Noor, and all
