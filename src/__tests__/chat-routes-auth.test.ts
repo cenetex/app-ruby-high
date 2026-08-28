@@ -2305,7 +2305,13 @@ describe("chat event context", () => {
         method: "POST",
         cookieHeader: `rh_session=${token}`,
         apiKeyHeader: "sk-test",
-        body: { text: "I trust a clear trail of evidence and check the source behind the confidence." },
+        body: {
+          responseCards: {
+            stance: "support",
+            evidence: "source",
+            impact: "people",
+          },
+        },
       },
     ));
 
@@ -2323,6 +2329,44 @@ describe("chat event context", () => {
     expect(playerGrade?.score).toBeGreaterThanOrEqual(7);
     expect(playerGrade?.comment).toContain("evidence");
     expect(state.lastReveal?.wasCorrect).toBe(true);
+  });
+
+  it("rejects free-form player writing on opinion submission", async () => {
+    const token = "route-opinion-freeform-rejected-token";
+    auth.injectSessionForTest(token, {
+      userId: "route-opinion-freeform-rejected-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Opinion Privacy",
+    });
+    const sessionId = auth.stateKeyForToken(token);
+    ruby.createCharacter(sessionId, {
+      name: "Vince",
+      playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "I want the room to notice when I am actually trying.",
+      personality: "Restless, social, and eager to keep the room moving.",
+    });
+    ruby.poseOpinion(sessionId, {
+      prompt: "What should you trust and what should you check?",
+      faculty: "ruby",
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/opinion-submit"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        body: { text: "This is personal writing that must not be collected." },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toContain("Free-form responses are not accepted");
+    expect(ruby.getOrCreate(sessionId).activeRound?.opinionResponses).toEqual([]);
   });
 
   it("drops answer-graded teacher turns when the live reveal has moved on", async () => {

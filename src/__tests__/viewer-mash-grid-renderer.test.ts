@@ -85,7 +85,7 @@ describe("mash grid renderer", () => {
     expect(card.className).toBe("mash-grid-wrap");
     expect(textTree(card)).toEqual([
       "Social Card",
-      "Relationships change after written responses.",
+      "Relationships change after response builds.",
       "Noor",
       "○",
       "Vince",

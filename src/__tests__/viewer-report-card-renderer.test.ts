@@ -81,15 +81,15 @@ describe("report card renderer", () => {
     expect(textTree(card)).toEqual([
       "report",
       "Report Card",
-      "No graded essays yet",
-      "essays=0=graded",
+      "No graded response builds yet",
+      "builds=0=graded",
       "average=—=teacher score",
       "top=—=0 class wins",
-      "Your first graded essay will land here.",
+      "Your first graded response build will land here.",
     ]);
     expect(metricCalls).toEqual([
       [
-        { label: "essays", value: "0", detail: "graded", met: false },
+        { label: "builds", value: "0", detail: "graded", met: false },
         { label: "average", value: "—", detail: "teacher score", met: false },
         { label: "top", value: "—", detail: "0 class wins", met: false },
       ],
@@ -114,14 +114,14 @@ describe("report card renderer", () => {
     const card = renderer.buildCard(reports) as unknown as FakeElement;
     const texts = textTree(card);
 
-    expect(texts).toContain("5 essays · average 8.0/10");
+    expect(texts).toContain("5 response builds · average 8.0/10");
     expect(texts).toContain("rivalry:5");
     expect(texts).toContain("Prompt 4");
     expect(texts).toContain("Prompt 3");
     expect(texts).toContain("Prompt 2");
     expect(texts).not.toContain("Prompt 1");
     expect(metricCalls[0]).toEqual([
-      { label: "essays", value: "5", detail: "graded", met: true },
+      { label: "builds", value: "5", detail: "graded", met: true },
       { label: "average", value: "8.0/10", detail: "teacher score", met: true },
       { label: "top", value: "10.0/10", detail: "3 class wins", met: true },
     ]);
@@ -140,7 +140,6 @@ describe("report card renderer", () => {
       comment: "Strong argument.",
       bestResponder: "player",
       bestResponderScore: 9,
-      response: "My proof",
     }) as unknown as FakeElement;
 
     expect(entry.className).toBe("report-entry is-passed");
@@ -150,7 +149,6 @@ describe("report card renderer", () => {
       "Teacher Sally · Logic · 8.0/10 · sealed:today",
       "Strong argument.",
       "Best: You 9.0/10",
-      "You: My proof",
     ]);
   });
 });

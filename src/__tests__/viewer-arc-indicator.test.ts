@@ -75,7 +75,7 @@ describe("viewer arc indicator pure helpers", () => {
       streakText: "📚 1/1",
       streakMet: true,
       essayVisible: true,
-      essayText: "✍️ due",
+      essayText: "🧩 due",
       essayMet: false,
     });
   });

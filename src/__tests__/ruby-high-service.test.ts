@@ -5502,7 +5502,6 @@ describe("RubyHighService Phase 1", () => {
       grade: "9",
       subject: "agent-culture",
       prompt: "What makes an AI answer worth trusting?",
-      response: "I trust answers that cite concrete evidence and I verify claims against the source.",
       score: 8.5,
       passed: true,
       comment: "Grounded and specific.",

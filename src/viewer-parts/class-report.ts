@@ -199,8 +199,8 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
         title.textContent = "Sign up to continue";
         body.textContent = "Your guest lesson is complete. Keep your student and unlock the rest of Ruby High.";
       } else if (state.essayReady) {
-        title.textContent = "Your graded essay is ready";
-        body.textContent = "Write it next to finish this year's requirements and start the ceremony.";
+        title.textContent = "Your final response board is ready";
+        body.textContent = "Build it from preset cards to finish this year's requirements and start the ceremony.";
       } else if (state.socialReady) {
         title.textContent = "Finish today’s reflection";
         body.textContent = "After that, you can keep practising. Return tomorrow for the next graded class.";

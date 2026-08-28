@@ -94,6 +94,10 @@ import {
   resolveTextLlmCredential,
 } from "./openrouter-generation-access.js";
 import { RUBY_HIGH_PHOTO_PROMPT_VERSION } from "./services/school-photo-scenes.js";
+import {
+  constructedResponseText,
+  parseConstructedResponseSelection,
+} from "./services/constructed-response.js";
 
 function readNonNegativeMs(value: string | undefined, fallback: number): number {
   if (value == null || value.trim() === "") return fallback;
@@ -3411,11 +3415,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     return true;
   }
 
-  // Player submits their written response to an opinion question. If all
+  // Player submits a three-card constructed response to an opinion question. If all
   // responses are in (player + both NPCs), this also runs the grading turn
   // and streams the teacher's response as SSE. Works in offline (non-AI)
-  // mode too — without an apiKey we use a deterministic auto-grade so the
-  // player isn't trapped on a reflection prompt with no way forward.
+  // mode too. Free-form player text is intentionally rejected here so the
+  // browser cannot send personal writing through this gameplay path.
   if (ctx.method === "POST" && ctx.pathname === `${CHAT_PREFIX}/opinion-submit`) {
     const sessionToken = auth.parseSessionToken(ctx.cookieHeader);
     const sessionRecord = sessionToken ? auth.resolve(sessionToken) : null;
@@ -3434,8 +3438,20 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       reject429(ctx, CHAT_LIMITER.retryAfterSeconds(rlKey));
       return true;
     }
-    const body = (await ctx.readJsonBody().catch(() => ({}))) as { text?: string; force?: boolean } | null;
-    const text = (body?.text ?? "").trim();
+    const body = (await ctx.readJsonBody().catch(() => ({}))) as
+      | { responseCards?: unknown; text?: unknown; force?: boolean }
+      | null;
+    if (typeof body?.text === "string" && body.text.trim()) {
+      ctx.error(ctx.res, "Free-form responses are not accepted. Choose response cards instead.", 400);
+      return true;
+    }
+    const hasResponseCards = !!body && Object.prototype.hasOwnProperty.call(body, "responseCards");
+    const responseCards = parseConstructedResponseSelection(body?.responseCards);
+    if (hasResponseCards && !responseCards) {
+      ctx.error(ctx.res, "Choose one valid card from each response row.", 400);
+      return true;
+    }
+    const text = responseCards ? constructedResponseText(responseCards) : "";
     const force = !!body?.force;
     let mutated = false;
     if (text) {
@@ -3461,7 +3477,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         await ruby.flushSession(sessionId);
       } catch (err) {
         log.error("opinion.persist-failed", err, { sessionId });
-        ctx.error(ctx.res, "Opinion response could not be persisted. Please retry.", 503);
+        ctx.error(ctx.res, "Response build could not be saved. Please retry.", 503);
         return true;
       }
     }
@@ -3480,7 +3496,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             await ruby.flushSession(sessionId);
           } catch (err) {
             log.error("opinion.persist-failed", err, { sessionId });
-            ctx.error(ctx.res, "Opinion response could not be persisted. Please retry.", 503);
+            ctx.error(ctx.res, "Response build could not be saved. Please retry.", 503);
             return true;
           }
         }

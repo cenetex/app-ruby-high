@@ -2256,55 +2256,158 @@ export const VIEWER_CSS = `
     padding: 10px calc(var(--safe-right) + 10px) 10px calc(var(--safe-left) + 10px);
     flex: 0 0 auto;
     min-width: 0;
-  }
-  .take-starters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 0 0 8px;
-  }
-  .take-starters[hidden] {
-    display: none;
-  }
-  .take-starters button {
-    appearance: none;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: var(--bg-elev);
-    color: var(--text-soft);
-    min-height: 36px;
-    max-width: 100%;
-    padding: 8px 12px;
-    font: 700 11px/1.1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
-    cursor: pointer;
-    transition: border-color 0.14s ease, background 0.14s ease, color 0.14s ease;
-  }
-  .take-starters button:hover,
-  .take-starters button:focus-visible {
-    border-color: var(--accent);
-    background: var(--bg-elev-2);
-    color: var(--text);
+    max-height: 58vh;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
   }
   .typed-answer-form {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    display: flex;
+    flex-wrap: wrap;
     gap: 8px;
-    align-items: center;
+    align-items: stretch;
   }
-  .typed-answer-input {
-    min-width: 0;
-    height: 44px;
-    border-radius: 10px;
-    border: 1px solid var(--line);
-    background: var(--bg-elev);
+  .response-builder {
+    flex: 1 0 100%;
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+    border-radius: 14px;
+    background:
+      radial-gradient(circle at 100% 0, var(--accent-soft), transparent 42%),
+      var(--bg-elev);
+  }
+  .response-builder[hidden] {
+    display: none;
+  }
+  .response-builder-head {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .response-builder-head > div {
+    display: grid;
+    gap: 2px;
+  }
+  .response-builder-kicker,
+  .response-privacy {
+    color: var(--text-mute);
+    font: 800 9px/1.2 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .response-builder-head strong {
     color: var(--text);
-    padding: 0 12px;
-    font: 600 16px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    font-size: 15px;
+  }
+  .response-privacy {
+    flex: 0 0 auto;
+    padding: 5px 8px;
+    border: 1px solid color-mix(in srgb, #65d6a8 45%, var(--line));
+    border-radius: 999px;
+    color: #8de2be;
+    letter-spacing: 0.06em;
+  }
+  .response-card-group {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .response-card-group legend {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 6px;
+    color: var(--text-soft);
+    font: 800 10px/1.2 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .response-card-group legend span {
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .response-card-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .response-card-grid button {
+    appearance: none;
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: 7px;
+    min-width: 0;
+    min-height: 58px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--bg) 70%, transparent);
+    color: var(--text-soft);
+    text-align: left;
+    cursor: pointer;
+    transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+  }
+  .response-card-grid button > span {
+    grid-row: 1 / 3;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    background: var(--bg-elev-2);
+    color: var(--accent);
+    font-size: 15px;
+  }
+  .response-card-grid button strong {
+    min-width: 0;
+    color: var(--text);
+    font: 800 11px/1.1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+  }
+  .response-card-grid button small {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-mute);
+    font: 600 9px/1.15 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .response-card-grid button:hover:not(:disabled),
+  .response-card-grid button:focus-visible {
+    transform: translateY(-1px);
+    border-color: var(--accent);
     outline: none;
   }
-  .typed-answer-input:focus {
+  .response-card-grid button.is-selected {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-soft);
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+  .response-card-grid button:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+  }
+  .response-build-status {
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    padding: 6px 9px;
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text-mute);
+    font-size: 11px;
+  }
+  .response-build-status.is-complete {
+    color: #8de2be;
   }
   .typed-submit-btn,
   .typed-mc-btn {
@@ -2319,26 +2422,40 @@ export const VIEWER_CSS = `
     cursor: pointer;
   }
   .typed-submit-btn {
+    flex: 1 1 180px;
     background: var(--accent);
     color: #fff;
   }
   .typed-mc-btn {
+    flex: 0 0 auto;
     background: var(--bg-elev-2);
     color: var(--text);
     border: 1px solid var(--line);
   }
   .typed-submit-btn:disabled,
-  .typed-mc-btn:disabled,
-  .typed-answer-input:disabled {
+  .typed-mc-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
   @media (max-width: 520px) {
-    .typed-answer-form {
-      grid-template-columns: 1fr auto;
+    .response-builder-head {
+      display: grid;
     }
-    .typed-answer-input {
-      grid-column: 1 / -1;
+    .response-privacy {
+      justify-self: start;
+    }
+    .response-card-grid button {
+      grid-template-columns: 20px minmax(0, 1fr);
+      min-height: 54px;
+      padding: 7px 6px;
+    }
+    .response-card-grid button > span {
+      width: 20px;
+      height: 20px;
+      font-size: 13px;
+    }
+    .response-card-grid button small {
+      display: none;
     }
   }
   .race-strip {

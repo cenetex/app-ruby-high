@@ -106,10 +106,10 @@ export function runViewerClient(bootstrap) {
       const progressView = dailyClassProgressView(t);
       return progressView.visible ? progressView.continuationLabel : "Continue";
     }
-    if (t && t.graduation_gate && t.graduation_gate.stage === "essay" && !cur) return "Essay";
+    if (t && t.graduation_gate && t.graduation_gate.stage === "essay" && !cur) return "Final build";
     const postClass = postClassState(t);
     if (postClass.report && guestSignupRequired(t)) return "Sign up";
-    if (postClass.essayReady) return "Essay";
+    if (postClass.essayReady) return "Final build";
     if (postClass.socialReady) return "Reflect";
     if (postClass.report) return "Practice";
     return offlineClassroom ? "Continue" : chatActionLabel(t);
@@ -145,9 +145,9 @@ export function runViewerClient(bootstrap) {
       : cur
         ? "Continue"
       : t && t.graduation_gate && t.graduation_gate.stage === "essay"
-        ? "Start your graded essay"
+        ? "Build your final response"
       : postClass.essayReady
-        ? "Start your graded essay"
+        ? "Build your final response"
       : postClass.socialReady
         ? "Start a short homeroom reflection"
         : postClass.report
@@ -505,11 +505,11 @@ export function runViewerClient(bootstrap) {
     answers: Array.from(document.querySelectorAll(".answer")),
     typedAnswerHost: $("typed-answer-host"),
     typedAnswerForm: $("typed-answer-form"),
-    typedAnswerInput: $("typed-answer-input"),
     typedSubmitBtn: $("typed-submit-btn"),
     generateMcBtn: $("generate-mc-btn"),
-    takeStarters: $("take-starters"),
-    takeStarterButtons: Array.from(document.querySelectorAll("#take-starters [data-starter]")),
+    responseBuilder: $("response-builder"),
+    responseBuildStatus: $("response-build-status"),
+    responseCardButtons: Array.from(document.querySelectorAll("[data-response-card]")),
     advantageBar: $("advantage-bar"),
     advantageBtn: $("advantage-btn"),
     advantageResult: $("advantage-result"),
@@ -1017,12 +1017,13 @@ export function runViewerClient(bootstrap) {
     catch { /* errors already surface via appendSystem in command() */ }
     finally { autoPickInFlight = false; }
   }
-  let opinionSubmitted = false; // player's text has been recorded for current round
+  let opinionSubmitted = false; // player's response-card build has been recorded for current round
   let opinionSubmittedQuestionId = null;
   let opinionGradeFired = false; // grading has been triggered for current round
   let typedSubmitting = false;
   let generatingMc = false;
   let takeStartedQuestionId = null;
+  let responseCardSelection = {};
   const viewedClassReportKeys = new Set();
   const renderedOpinionIds = new Set(); // responder ids whose text we've appended to chat
   const gradedResponderIds = new Set(); // responders whose grade-tag we've stamped on
@@ -1054,6 +1055,49 @@ export function runViewerClient(bootstrap) {
   function clearOpinionSubmitted() {
     opinionSubmitted = false;
     opinionSubmittedQuestionId = null;
+  }
+  const RESPONSE_CARD_GROUPS = ["stance", "evidence", "impact"];
+  function resetResponseBuilder() {
+    responseCardSelection = {};
+    els.responseCardButtons.forEach((button) => {
+      button.classList.remove("is-selected");
+      button.setAttribute("aria-pressed", "false");
+    });
+  }
+  function selectedResponseCardPayload() {
+    if (!RESPONSE_CARD_GROUPS.every((group) => responseCardSelection[group])) return null;
+    return {
+      stance: responseCardSelection.stance,
+      evidence: responseCardSelection.evidence,
+      impact: responseCardSelection.impact,
+    };
+  }
+  function selectedResponseCardSummary() {
+    return RESPONSE_CARD_GROUPS.map((group) => {
+      const value = responseCardSelection[group];
+      const button = els.responseCardButtons.find((entry) => entry.dataset.group === group && entry.dataset.value === value);
+      return button ? button.dataset.short : "";
+    }).filter(Boolean).join(" · ");
+  }
+  function syncResponseBuilder(isOpinion, disabled) {
+    const complete = !!selectedResponseCardPayload();
+    const selectedCount = RESPONSE_CARD_GROUPS.filter((group) => responseCardSelection[group]).length;
+    els.responseBuilder.hidden = !isOpinion;
+    els.responseCardButtons.forEach((button) => {
+      const selected = responseCardSelection[button.dataset.group] === button.dataset.value;
+      button.classList.toggle("is-selected", selected);
+      button.setAttribute("aria-pressed", String(selected));
+      button.disabled = !!disabled;
+    });
+    els.typedSubmitBtn.hidden = !isOpinion;
+    els.typedSubmitBtn.disabled = !!disabled || !complete;
+    els.typedSubmitBtn.textContent = complete ? "Submit response build" : "Choose " + (3 - selectedCount) + " more";
+    if (els.responseBuildStatus) {
+      els.responseBuildStatus.classList.toggle("is-complete", complete);
+      els.responseBuildStatus.textContent = complete
+        ? selectedResponseCardSummary()
+        : "Choose " + (3 - selectedCount) + " more card" + (selectedCount === 2 ? "" : "s") + " to finish your case.";
+    }
   }
   function playerMessageIdentitySig() {
     const ch = lastTelemetry && lastTelemetry.character;
@@ -3728,7 +3772,7 @@ export function runViewerClient(bootstrap) {
         const teacherName = faculty ? teacherShortName(faculty, "today's teacher") : "today's teacher";
         const advanceLabel = teacherChatEnabled() ? chatActionLabel(lastTelemetry) : "Continue";
         const lead = essayReady
-          ? "Your graded essay is ready — tap " + advanceLabel + " to put it on the blackboard."
+          ? "Your final response board is ready — tap " + advanceLabel + " to start building."
           : practiceOnly
             ? "This is a practice room — tap " + advanceLabel + " to review."
           : todayDone
@@ -3739,7 +3783,7 @@ export function runViewerClient(bootstrap) {
         const welcome = showWelcomeBackCopy ? "Welcome back — " + teacherName + " is ready. " : "";
         const infoText = hint ? welcome + lead + " " + hint : welcome + lead;
         const statusText = essayReady
-          ? "Graded essay ready"
+          ? "Final response ready"
           : practiceOnly
             ? "Practice room"
           : todayDone
@@ -3750,7 +3794,7 @@ export function runViewerClient(bootstrap) {
         els.blackboardEmptyText.replaceChildren(buildBoardClassStartHeader(statusText, infoText));
         if (els.blackboardEmptyAction) {
           els.blackboardEmptyAction.textContent = essayReady
-            ? "Start graded essay"
+            ? "Build final response"
             : practiceOnly
               ? "Start practice"
               : todayActive ? "Continue today's class" : "Start today's class";
@@ -3778,6 +3822,7 @@ export function runViewerClient(bootstrap) {
       opinionGradeFired = false;
       renderedOpinionIds.clear();
       gradedResponderIds.clear();
+      resetResponseBuilder();
     }
     const ar = lastTelemetry && lastTelemetry.active_round;
     const cardRole = (ar && ar.cardRole) || (isOpinion ? "social" : (ar && ar.classSession && ar.classSession.mode === "class" ? "class" : "practice"));
@@ -3828,7 +3873,6 @@ export function runViewerClient(bootstrap) {
       els.boardReveal.hidden = true;
       els.boardReveal.textContent = "";
       els.boardReveal.classList.remove("correct", "wrong");
-      if (els.typedAnswerInput) els.typedAnswerInput.value = "";
     }
 
     // Answer buttons
@@ -3855,16 +3899,7 @@ export function runViewerClient(bootstrap) {
       || !isFreeformAnswer
       || !!(round && round.resolved)
       || (isOpinion ? (serverPlayerOpinionRecorded || localOpinionSubmitted) : playerLocked);
-    const isDailyTake = !!(isOpinion && question.opinionPurpose === "daily-take");
-    els.typedAnswerInput.placeholder = isDailyTake
-      ? "Write one sentence with your take"
-      : isOpinion
-        ? "Type your response"
-        : "Type the answer";
-    els.typedSubmitBtn.textContent = isOpinion ? "Send" : "Check";
-    els.typedAnswerInput.disabled = typedDisabled;
-    els.typedSubmitBtn.disabled = typedDisabled;
-    if (els.takeStarters) els.takeStarters.hidden = !isDailyTake || typedDisabled;
+    syncResponseBuilder(isOpinion, typedDisabled);
     els.generateMcBtn.hidden = !(isTypedAnswer && question.canGenerateMc);
     els.generateMcBtn.disabled = role === "agent" || playerLocked || !!(round && round.resolved) || generatingMc || !aiEnabled;
     els.generateMcBtn.title = aiEnabled
@@ -3938,7 +3973,7 @@ export function runViewerClient(bootstrap) {
       if (btn.dataset.pick === reveal.correct) btn.classList.add("is-correct");
       if (!reveal.forfeit && btn.dataset.pick === reveal.picked && !reveal.wasCorrect) btn.classList.add("is-wrong");
     });
-    els.typedAnswerInput.disabled = true;
+    els.responseCardButtons.forEach((button) => { button.disabled = true; });
     els.typedSubmitBtn.disabled = true;
     els.generateMcBtn.disabled = true;
     // The wrong-answer "hide A/B/C/D for chat space" rule lives in
@@ -4093,7 +4128,7 @@ export function runViewerClient(bootstrap) {
       : "";
     switch (event.reason) {
       case "best-responder":
-        return "The teacher singled out " + name + "'s essay; you took notice." + tail;
+        return "The teacher singled out " + name + "'s response build; you took notice." + tail;
       case "applauder":
         return name + " caught your eye while you nailed it." + tail;
       case "pep-talk":
@@ -4883,9 +4918,9 @@ export function runViewerClient(bootstrap) {
 
   async function submitTypedAnswer(event) {
     if (event) event.preventDefault();
-    if (typedSubmitting || !els.typedAnswerInput || els.typedSubmitBtn.disabled) return;
-    const answerText = els.typedAnswerInput.value || "";
-    if (!answerText.trim()) return;
+    if (typedSubmitting || els.typedSubmitBtn.disabled) return;
+    const responseCards = selectedResponseCardPayload();
+    if (!responseCards) return;
     const opinionQuestionId = lastTelemetry && lastTelemetry.current ? lastTelemetry.current.id : null;
     const roundAtSubmit = lastTelemetry && lastTelemetry.active_round;
     const inOpinion = !!(
@@ -4898,12 +4933,16 @@ export function runViewerClient(bootstrap) {
     );
     typedSubmitting = true;
     els.typedSubmitBtn.disabled = true;
-    els.typedAnswerInput.disabled = true;
+    els.responseCardButtons.forEach((button) => { button.disabled = true; });
     try {
       if (inOpinion) {
         markOpinionSubmitted(opinionQuestionId);
-        appendMsg({ kind: "you", name: playerDisplayName(), body: answerText, color: "var(--accent)" });
-        els.typedAnswerInput.value = "";
+        appendMsg({
+          kind: "you",
+          name: playerDisplayName(),
+          body: "Response build · " + selectedResponseCardSummary(),
+          color: "var(--accent)",
+        });
         const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || "ruby";
         // In offline mode submit with force=true so the server fills any
         // missing NPC slots and resolves the round; without that flag a
@@ -4914,16 +4953,9 @@ export function runViewerClient(bootstrap) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           timeoutMs: STREAM_CONNECT_TIMEOUT_MS,
-          body: JSON.stringify(aiEnabled ? { text: answerText } : { text: answerText, force: true }),
+          body: JSON.stringify(aiEnabled ? { responseCards } : { responseCards, force: true }),
         });
         await consumeSseStream(r, streamGuard);
-      } else {
-        const data = await command({ type: "answer-text", answerText, role });
-        lockedFor = data && data.session && data.session.telemetry && data.session.telemetry.current
-          ? data.session.telemetry.current.id : null;
-        if (data && data.session && data.session.telemetry) {
-          maybeRunAnswerGraded(data.session.telemetry, 0);
-        }
       }
     } catch (err) {
       if (inOpinion) clearOpinionSubmitted();
@@ -4936,8 +4968,7 @@ export function runViewerClient(bootstrap) {
         inOpinion
         && (playerOpinionRecorded(round) || (opinionSubmitted && opinionSubmittedQuestionId === opinionQuestionId))
       );
-      els.typedAnswerInput.disabled = role === "agent" || (inOpinion ? opinionLocked : locked);
-      els.typedSubmitBtn.disabled = role === "agent" || (inOpinion ? opinionLocked : locked);
+      syncResponseBuilder(inOpinion, role === "agent" || (inOpinion ? opinionLocked : locked));
     }
   }
 
@@ -5807,8 +5838,8 @@ export function runViewerClient(bootstrap) {
     if (gate.stage === "essay") {
       const essayOnBoard = t.current && t.current.opinionPurpose === "grade-essay";
       return essayOnBoard
-        ? "Class requirements complete — your graded essay is on the blackboard."
-        : "Class requirements complete — write your graded essay to finish the year.";
+        ? "Class requirements complete — your final response board is open."
+        : "Class requirements complete — build your final response to finish the year.";
     }
     const grade = String(t.current_grade ?? "9");
     const streakReq = Number(gate.requiredDays || STREAK_REQUIRED[grade] || 1);
@@ -5834,7 +5865,7 @@ export function runViewerClient(bootstrap) {
       parts.push("Pass each subject with a C or better: " + segs.join(", "));
     }
     if (gate.essayRequired && !gate.essayCompleted) {
-      parts.push("You can write your graded essay after you finish the class requirements");
+      parts.push("You can build your final response after you finish the class requirements");
     }
 
     if (parts.length === 0) {
@@ -6169,7 +6200,7 @@ export function runViewerClient(bootstrap) {
   }
   // clipEssayText is in client-pure.
   function essayRivalryText(recent) {
-    if (!recent.length) return "No essay results yet.";
+    if (!recent.length) return "No response results yet.";
     let playerWins = 0;
     const rivals = {};
     recent.forEach((r) => {
@@ -6187,10 +6218,10 @@ export function runViewerClient(bootstrap) {
       }
     });
     if (rivalId) {
-      return essayResponderName(rivalId) + " out-essayed you " + rivalCount + " of the last " + recent.length + ".";
+      return essayResponderName(rivalId) + " led " + rivalCount + " of the last " + recent.length + " response builds.";
     }
     if (playerWins > 0) {
-      return "You held the top essay " + playerWins + " of the last " + recent.length + ".";
+      return "You held the top response build " + playerWins + " of the last " + recent.length + ".";
     }
     return "No classroom winner recorded yet.";
   }
@@ -10497,16 +10528,15 @@ export function runViewerClient(bootstrap) {
     takeStartedQuestionId = question.id;
     postViewerMetricEvent("take_card_started", { questionId: question.id });
   }
-  els.typedAnswerInput.addEventListener("focus", recordTakeStarted);
-  els.typedAnswerInput.addEventListener("input", recordTakeStarted);
-  els.takeStarterButtons.forEach((button) => {
+  els.responseCardButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      if (els.typedAnswerInput.disabled) return;
-      const starter = button.dataset.starter || "";
-      if (!els.typedAnswerInput.value.trim()) els.typedAnswerInput.value = starter;
+      if (button.disabled) return;
+      const group = button.dataset.group;
+      const value = button.dataset.value;
+      if (!group || !value) return;
+      responseCardSelection[group] = value;
       recordTakeStarted();
-      els.typedAnswerInput.focus();
-      els.typedAnswerInput.setSelectionRange(els.typedAnswerInput.value.length, els.typedAnswerInput.value.length);
+      syncResponseBuilder(true, false);
     });
   });
   els.generateMcBtn.addEventListener("click", generateMultipleChoice);

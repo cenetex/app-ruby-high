@@ -3409,7 +3409,6 @@ describe("admin metrics route", () => {
       faculty: "ruby",
       grade: "9",
       prompt: "Why Ruby High?",
-      response: "Because it has better bells.",
       score: 8,
       passed: true,
       comment: "Clear answer.",

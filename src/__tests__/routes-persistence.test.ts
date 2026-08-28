@@ -577,6 +577,21 @@ describe("command route persistence and scheduler misses", () => {
     expect(ruby.getOrCreate("rh:anonymous").character).toBeNull();
   });
 
+  it("rejects free-form answer text from the player command route", async () => {
+    await getActivePack();
+    const ruby = new RubyHighService({} as never, new MemorySessionStore());
+    const harness = makeCommandCtx(ruby, {
+      type: "answer-text",
+      answerText: "Private player writing must not enter the game state.",
+    });
+
+    const handled = await handleAppRoutes(harness.ctx);
+
+    expect(handled).toBe(true);
+    expect(harness.response?.status).toBe(400);
+    expect(harness.response?.body.error).toContain("Free-form answers are disabled");
+  });
+
   it("lets two routed clients contribute to the same public live-room goal", async () => {
     vi.useFakeTimers();
     const now = Date.UTC(2026, 5, 15, 12);

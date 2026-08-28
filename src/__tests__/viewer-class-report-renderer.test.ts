@@ -162,8 +162,8 @@ describe("class report renderer", () => {
     expect((social as unknown as FakeElement).className).toBe("class-report-next is-social");
     expect((essay as unknown as FakeElement).className).toBe("class-report-next is-essay");
     expect(textTree(essay as unknown as FakeElement)).toEqual([
-      "Your graded essay is ready",
-      "Write it next to finish this year's requirements and start the ceremony.",
+      "Your final response board is ready",
+      "Build it from preset cards to finish this year's requirements and start the ceremony.",
     ]);
     expect(textTree(social as unknown as FakeElement)).toEqual([
       "Finish today’s reflection",

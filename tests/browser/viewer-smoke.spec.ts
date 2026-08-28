@@ -57,7 +57,7 @@ test("enrolls a first student through the creation sheet into First Bell", async
   await expect(page.getByRole("button", { name: "Lock it in" })).toHaveCount(0);
   await expect(sheet).not.toHaveClass(/is-open/);
   await expect(page.locator("#daily-class-progress")).toContainText("Question 1");
-  await expect(page.locator("#daily-class-progress")).toContainText("Your View");
+  await expect(page.locator("#daily-class-progress")).toContainText("Build a Case");
   await expect(page.locator("#daily-class-progress")).toContainText("Result");
   await expect(page.locator(".answer:not([disabled])").first()).toBeVisible({ timeout: 15_000 });
   await expect(page.locator("#stream")).not.toContainText("Make your first student");
@@ -126,12 +126,15 @@ test("keeps a specific Class Result after refresh with one truthful next step", 
     if (evidence === 0) {
       await continueUntilVisible(page.locator(".answer:not([disabled])").first());
     } else {
-      await continueUntilVisible(page.locator("#typed-answer-input"));
+      await continueUntilVisible(page.locator("#response-builder"));
     }
   }
 
-  const finalResponse = "I would verify the claim against a named source before I trust it.";
-  await page.locator("#typed-answer-input").fill(finalResponse);
+  await page.locator('[data-response-group="stance"] [data-response-card][data-value="conditional"]').click();
+  await page.locator('[data-response-group="evidence"] [data-response-card][data-value="source"]').click();
+  await page.locator('[data-response-group="impact"] [data-response-card][data-value="systems"]').click();
+  const finalResponse = "The answer depends on the context and who is affected. I would check the source and look for missing evidence. The wider system and its rules should carry the most weight.";
+  await expect(page.locator("#typed-submit-btn")).toBeEnabled();
   await page.locator("#typed-submit-btn").click();
   await expect(page.locator("#board-reveal")).toBeVisible({ timeout: 15_000 });
 

@@ -8798,13 +8798,13 @@ export class RubyHighService extends Service {
       ?? (assignedEssay && input.prompt.trim() === assignedEssay ? "grade-essay" : undefined);
     if (opinionPurpose === "grade-essay") {
       if (!assignedEssay || input.prompt.trim() !== assignedEssay) {
-        throw new Error("The graded essay must use the student's assigned prompt.");
+        throw new Error("The final response board must use the student's assigned prompt.");
       }
       const gate = this.graduationClassPlanForState(state);
       if (!gate.essayReady) {
         throw new Error(gate.essayCompleted
-          ? "The graded essay is already complete."
-          : "The graded essay unlocks after the class requirements are complete.");
+          ? "The final response board is already complete."
+          : "The final response board unlocks after the class requirements are complete.");
       }
     }
     const question: Question = {
@@ -8977,7 +8977,6 @@ export class RubyHighService extends Service {
         grade: state.currentGrade,
         ...(q.subject ? { subject: q.subject } : {}),
         prompt: q.prompt,
-        response: playerResponse?.text ?? "",
         score: playerGrade ? clamp(playerGrade.score, 0, 10) : null,
         passed,
         comment: playerGrade?.comment ?? "",
@@ -9013,7 +9012,7 @@ export class RubyHighService extends Service {
           ? "Class affinity kicked in — second chance counted."
           : q.opinionPurpose === "daily-take"
             ? passed ? "Your take held up." : "Your evidence needs another pass."
-            : passed ? "Nice essay." : "Take another swing at it tomorrow.",
+            : passed ? "Your response build held up." : "Try a different card combination tomorrow.",
         scoreMultiplier,
         scoreAward,
         classProgress,
@@ -9096,7 +9095,7 @@ export class RubyHighService extends Service {
 
   private poseAssignedGradeEssay(sessionId: string, state: QuizState, facultyId: string): QuizState {
     const prompt = state.character?.essayPrompt?.trim();
-    if (!prompt) throw new Error("No graded essay is assigned for this year.");
+    if (!prompt) throw new Error("No final response board is assigned for this year.");
     return this.poseOpinion(sessionId, {
       faculty: facultyId,
       subject: this.normalizeQuestionSubject(state, facultyId),
@@ -12354,7 +12353,6 @@ function normalizeEssayReports(value: unknown): EssayReport[] {
       grade,
       ...(typeof e.subject === "string" && e.subject ? { subject: e.subject } : {}),
       prompt: e.prompt,
-      response: typeof e.response === "string" ? e.response : "",
       score,
       passed: typeof e.passed === "boolean" ? e.passed : !!(score !== null && score >= 7),
       comment: typeof e.comment === "string" ? e.comment : "",

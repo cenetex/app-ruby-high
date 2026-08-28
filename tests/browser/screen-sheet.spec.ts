@@ -92,6 +92,13 @@ async function closeAccount(page: Page): Promise<void> {
   await expect(account).not.toHaveClass(/is-open/);
 }
 
+async function completeResponseBuilder(page: Page): Promise<void> {
+  for (const group of ["stance", "evidence", "impact"]) {
+    await page.locator(`[data-response-group="${group}"] [data-response-card]`).first().click();
+  }
+  await expect(page.locator("#typed-submit-btn")).toBeEnabled();
+}
+
 async function showExternalPreview(
   page: Page,
   kind: "signin" | "wallet" | "checkout",
@@ -424,14 +431,13 @@ test("generates the complete Ruby High app screen sheet", async ({ page }) => {
     await page.locator(".comic-reader.is-screen-sheet-seed .comic-reader-close").click();
   }
 
-  await continueUntil(page.locator("#typed-answer-input"));
-  await capture("Your View", "Class journey");
-  await page.locator("#typed-answer-input").fill(
-    "I would check the source, compare another account, and explain what evidence changed my mind.",
-  );
+  await continueUntil(page.locator("#response-builder"));
+  await capture("Response builder", "Class journey");
+  await completeResponseBuilder(page);
+  await capture("Constructed response", "Class journey");
   await page.locator("#typed-submit-btn").click();
   await expect(page.locator("#board-reveal")).toBeVisible({ timeout: 15_000 });
-  await capture("Written response feedback", "Class journey");
+  await capture("Response build feedback", "Class journey");
 
   await continueUntil(page.locator(".class-report-card"));
   await captureComicIfVisible();

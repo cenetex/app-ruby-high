@@ -82,7 +82,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="arc-sep">·</span>
         <span class="arc-xp" id="arc-xp" title="Subjects cleared with a C or better this year">✅ —</span>
         <span class="arc-sep" id="arc-essay-sep" hidden>·</span>
-        <span class="arc-essay" id="arc-essay" title="Graded essay required before graduation" hidden>✍️ due</span>
+        <span class="arc-essay" id="arc-essay" title="Final response board required before graduation" hidden>🧩 due</span>
       </div>
     </header>
 
@@ -141,14 +141,42 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         </div>
       </div>
       <div class="typed-answer-host" id="typed-answer-host" hidden>
-        <div class="take-starters" id="take-starters" hidden>
-          <button type="button" data-starter="I think ">I think…</button>
-          <button type="button" data-starter="The strongest evidence is ">The evidence…</button>
-          <button type="button" data-starter="A different way to see it is ">Another view…</button>
-        </div>
         <form class="typed-answer-form" id="typed-answer-form">
-          <input class="typed-answer-input" id="typed-answer-input" type="text" autocomplete="off" maxlength="320" placeholder="Type the answer" />
-          <button class="typed-submit-btn" id="typed-submit-btn" type="submit">Check</button>
+          <div class="response-builder" id="response-builder">
+            <div class="response-builder-head">
+              <div>
+                <span class="response-builder-kicker">Build your case</span>
+                <strong>Choose one card from each row</strong>
+              </div>
+              <span class="response-privacy">Preset cards only · no typing</span>
+            </div>
+            <fieldset class="response-card-group" data-response-group="stance">
+              <legend><span>1</span> Pick a position</legend>
+              <div class="response-card-grid">
+                <button type="button" data-response-card data-group="stance" data-value="support" data-short="Mostly yes"><span aria-hidden="true">✓</span><strong>Mostly yes</strong><small>The claim holds up</small></button>
+                <button type="button" data-response-card data-group="stance" data-value="challenge" data-short="Challenge it"><span aria-hidden="true">×</span><strong>Challenge it</strong><small>Something is missing</small></button>
+                <button type="button" data-response-card data-group="stance" data-value="conditional" data-short="It depends"><span aria-hidden="true">◇</span><strong>It depends</strong><small>Context changes it</small></button>
+              </div>
+            </fieldset>
+            <fieldset class="response-card-group" data-response-group="evidence">
+              <legend><span>2</span> Choose your evidence</legend>
+              <div class="response-card-grid">
+                <button type="button" data-response-card data-group="evidence" data-value="cause" data-short="Cause & effect"><span aria-hidden="true">↗</span><strong>Cause &amp; effect</strong><small>Trace what changed</small></button>
+                <button type="button" data-response-card data-group="evidence" data-value="compare" data-short="Compare"><span aria-hidden="true">⇄</span><strong>Compare</strong><small>Test two examples</small></button>
+                <button type="button" data-response-card data-group="evidence" data-value="source" data-short="Source check"><span aria-hidden="true">⌕</span><strong>Source check</strong><small>Look for missing proof</small></button>
+              </div>
+            </fieldset>
+            <fieldset class="response-card-group" data-response-group="impact">
+              <legend><span>3</span> Choose what matters most</legend>
+              <div class="response-card-grid">
+                <button type="button" data-response-card data-group="impact" data-value="people" data-short="People"><span aria-hidden="true">♥</span><strong>People</strong><small>Human impact</small></button>
+                <button type="button" data-response-card data-group="impact" data-value="systems" data-short="Systems"><span aria-hidden="true">▦</span><strong>Systems</strong><small>Rules and structures</small></button>
+                <button type="button" data-response-card data-group="impact" data-value="future" data-short="The future"><span aria-hidden="true">◷</span><strong>The future</strong><small>Long-term result</small></button>
+              </div>
+            </fieldset>
+            <div class="response-build-status" id="response-build-status" aria-live="polite">Choose 3 cards to finish your case.</div>
+          </div>
+          <button class="typed-submit-btn" id="typed-submit-btn" type="submit" disabled>Choose 3 cards</button>
           <button class="typed-mc-btn" id="generate-mc-btn" type="button">Choices</button>
         </form>
       </div>

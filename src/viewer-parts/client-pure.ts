@@ -97,7 +97,7 @@ export function dailyClassProgressView(telemetry: NullableRecord): DailyClassPro
   const definitions: Array<{ key: DailyClassProgressStepView["key"]; label: string }> = [
     { key: "evidence-1", label: "Question 1" },
     { key: "evidence-2", label: "Question 2" },
-    { key: "take", label: offlineStatic ? "Question 3" : "Your View" },
+    { key: "take", label: offlineStatic ? "Question 3" : "Build a Case" },
     { key: "result", label: "Result" },
   ];
   const steps = definitions.map((definition, index): DailyClassProgressStepView => ({
@@ -110,7 +110,7 @@ export function dailyClassProgressView(telemetry: NullableRecord): DailyClassPro
     continuationLabel: currentIndex === 1
       ? "Next: Question 2"
       : currentIndex === 2
-        ? offlineStatic ? "Next: Question 3" : "Next: Your View"
+        ? offlineStatic ? "Next: Question 3" : "Next: Build a Case"
         : currentIndex === 3
           ? "View Result"
           : "Start Question 1",
@@ -1920,7 +1920,7 @@ export function arcIndicatorView(t: unknown, subjects: unknown): ArcIndicatorVie
     subjectText: "✅ " + subjectMet + "/" + subjectTotal,
     subjectMet: subjectTotal > 0 && subjectMet >= subjectTotal,
     essayVisible,
-    essayText: essayVisible ? (essayMet ? "✍️ ✓" : "✍️ due") : "",
+    essayText: essayVisible ? (essayMet ? "🧩 ✓" : "🧩 due") : "",
     essayMet,
   };
 }
