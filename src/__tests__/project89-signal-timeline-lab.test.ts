@@ -129,5 +129,7 @@ describe("Project 89 Signal & Timeline Lab", () => {
       .toBe("Signal & Timeline Lab");
     expect(composed.rooms.find((room) => room.id === "guest-room")?.name)
       .toBe("Signal Room 89");
+    expect(composed.rooms.find((room) => room.id === "guest-room")?.channelName)
+      .toBe("signal-room-89");
   });
 });

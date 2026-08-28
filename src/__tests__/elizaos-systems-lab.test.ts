@@ -140,5 +140,7 @@ describe("ElizaOS Systems Lab", () => {
     expect(composed.courses?.find((course) => course.id === "guest")?.title).toBe(
       "ElizaOS Systems Lab",
     );
+    expect(composed.rooms.find((room) => room.id === "guest-room")?.channelName)
+      .toBe("eliza-systems-lab");
   });
 });

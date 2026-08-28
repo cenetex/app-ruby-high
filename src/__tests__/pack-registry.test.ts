@@ -219,6 +219,7 @@ describe("packForSession — weekly guest composition", () => {
   it("keeps Ruby High as the base school and adds one stable guest course", async () => {
     await getActivePack();
     const guestPack = fakePack("pack:guest-signals");
+    guestPack.rooms[0]!.channelName = "signal-studies";
     guestPack.faculty[0]!.questions = [{
       id: "signals-q1",
       prompt: "What is a signal?",
@@ -245,6 +246,8 @@ describe("packForSession — weekly guest composition", () => {
       faculty: GUEST_COURSE_ID,
       subject: "signals",
     });
+    expect(composed.rooms.find((room) => room.id === "guest-room")?.channelName)
+      .toBe("signal-studies");
   });
 
   it("keeps unlisted packs addressable but out of public search and rotation", async () => {
