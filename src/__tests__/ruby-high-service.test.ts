@@ -135,19 +135,6 @@ function serviceStateOnlyStore(record: StoredServiceStateRecord | StoredServiceS
 }
 
 describe("Social Card service", () => {
-  it("stores a player focus and refuses scratched classmates", async () => {
-    const { ruby } = await makeServices();
-    const sid = "rh:user:social-focus";
-    const state = attachTestCharacter(ruby, sid);
-
-    ruby.setSocialFocus(sid, "mika");
-    expect(state.character?.mashCard?.focusStudentId).toBe("mika");
-    state.character!.mashCard!.cells.noor!.scratched = true;
-    expect(() => ruby.setSocialFocus(sid, "noor")).toThrow("already scratched off");
-    ruby.setSocialFocus(sid, null);
-    expect(state.character?.mashCard?.focusStudentId).toBeUndefined();
-  });
-
   it("retries unresolved earlier fortune axes at Senior graduation", async () => {
     const { ruby } = await makeServices();
     const state = attachTestCharacter(ruby, "rh:user:senior-fortunes");

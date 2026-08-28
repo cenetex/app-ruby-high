@@ -7996,16 +7996,6 @@ export const VIEWER_CSS = `
     border: 1px solid rgba(255, 255, 255, 0.08);
     font-size: 12px;
     line-height: 1.1;
-    color: inherit;
-    font-family: inherit;
-    text-align: left;
-    cursor: pointer;
-  }
-  .mash-tile:focus-visible { outline: 2px solid var(--mash-accent); outline-offset: 2px; }
-  .mash-tile:disabled { cursor: default; }
-  .mash-tile.is-focused {
-    border-color: var(--mash-accent);
-    box-shadow: 0 0 0 1px var(--mash-accent), 0 0 14px color-mix(in oklab, var(--mash-accent) 30%, transparent);
   }
   .mash-tile-dot {
     width: 8px;

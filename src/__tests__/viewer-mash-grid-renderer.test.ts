@@ -24,10 +24,6 @@ class FakeElement {
   attributes: Record<string, string> = {};
   classList = new FakeClassList();
   style = new FakeStyle();
-  disabled = false;
-  isConnected = true;
-  type = "";
-  listeners: Record<string, Array<() => void>> = {};
 
   constructor(readonly tagName: string) {}
 
@@ -40,13 +36,6 @@ class FakeElement {
     this.attributes[name] = value;
   }
 
-  addEventListener(name: string, listener: () => void): void {
-    this.listeners[name] = [...(this.listeners[name] || []), listener];
-  }
-
-  click(): void {
-    (this.listeners.click || []).forEach((listener) => listener());
-  }
 }
 
 function createDocument() {
@@ -64,7 +53,7 @@ function textTree(node: FakeElement): string[] {
   ].filter(Boolean);
 }
 
-function createRenderer(events: unknown[] = [], setFocus: (studentId: string | null) => unknown = () => undefined) {
+function createRenderer(events: unknown[] = []) {
   return createMashGridRenderer({
     document: createDocument(),
     students: [
@@ -75,7 +64,6 @@ function createRenderer(events: unknown[] = [], setFocus: (studentId: string | n
     ],
     recentRelationshipEvents: () => events,
     mashTickStory: (event) => "tick:" + String(event),
-    setFocus,
   });
 }
 
@@ -97,7 +85,7 @@ describe("mash grid renderer", () => {
     expect(card.className).toBe("mash-grid-wrap");
     expect(textTree(card)).toEqual([
       "Social Card",
-      "Pick a classmate. Your next essay affects that relationship.",
+      "Relationships change after written responses.",
       "Noor",
       "○",
       "Vince",
@@ -165,31 +153,6 @@ describe("mash grid renderer", () => {
     ]);
     expect(card.children[3]?.className).toBe("mash-recent");
     expect(card.children[4]?.className).toBe("mash-resolved");
-  });
-
-  it("shows and changes the player-selected focus", () => {
-    const calls: Array<string | null> = [];
-    const renderer = createRenderer([], (studentId) => calls.push(studentId));
-    const card = renderer.build({
-      mashCard: {
-        focusStudentId: "mika",
-        cells: {
-          noor: { affinity: 0 },
-          vince: { affinity: 0 },
-          mika: { affinity: 1 },
-          jules: { affinity: -3, scratched: true },
-        },
-      },
-    }, false) as unknown as FakeElement;
-
-    expect(textTree(card)).toContain("Focused on Mika. Pick again to clear.");
-    const grid = card.children[2] as FakeElement;
-    expect(grid.children[2]!.classList.values.has("is-focused")).toBe(true);
-    expect(grid.children[2]!.attributes["aria-pressed"]).toBe("true");
-    expect(grid.children[3]!.disabled).toBe(true);
-    grid.children[2]!.click();
-    grid.children[0]!.click();
-    expect(calls).toEqual([null, "noor"]);
   });
 
   it("returns null when no social card cells are available", () => {

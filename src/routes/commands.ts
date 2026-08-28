@@ -77,7 +77,6 @@ type CommandBody = {
   grade?: string;
   requestId?: string;
   socialConsent?: boolean;
-  studentId?: string | null;
   publicWorldVisible?: boolean;
   eventId?: string;
   reason?: string;
@@ -395,11 +394,6 @@ export async function handleCommandRoute(args: {
       state.updatedAt = Date.now();
       void ruby.flushSession(stateKey);
       return await persist(state, consent ? "Social posting enabled" : "Social posting disabled");
-    },
-    "set-social-focus": async () => {
-      const studentId = typeof body?.studentId === "string" ? body.studentId : null;
-      const state = ruby.setSocialFocus(stateKey, studentId);
-      return await persist(state, studentId ? "Classmate focus updated" : "Classmate focus cleared");
     },
     "set-public-presence": async () => {
       const visible = body?.publicWorldVisible ?? true;

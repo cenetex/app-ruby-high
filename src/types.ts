@@ -406,7 +406,7 @@ export interface RoomBoardSnapshot {
 // the card on `recordGrades` and `completeGraduation`; the schema lives
 // here so older state can hydrate safely.
 export type MashAxis = "crush" | "job" | "lives" | "pet" | "money" | "lucky";
-export type MashTickReason = "social-focus" | "best-responder" | "applauder" | "rub" | "pep-talk";
+export type MashTickReason = "best-responder" | "applauder" | "rub" | "pep-talk";
 
 export interface MashCell {
   /** Clamped to [-3, +3]. */
@@ -436,9 +436,6 @@ export interface MashCard {
   /** Per-classmate cells, keyed by student id. Initialized for all six
    *  classmates at character creation. */
   cells: Record<string, MashCell>;
-  /** Classmate the player chose to spend time with. Their next essay
-   *  reaction takes priority over the automatic class reaction. */
-  focusStudentId?: string;
   /** Resolved axes, keyed by axis. Each axis is set once per character. */
   resolved: Partial<Record<MashAxis, MashResolution>>;
 }

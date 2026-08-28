@@ -8354,7 +8354,6 @@ export class RubyHighService extends Service {
       questionId: inputs.questionId,
       date: dailyKey(),
       isHeart: ch.playbookId === "heart",
-      focusStudentId: card.focusStudentId,
     });
     const applied: Array<{ studentId: string; delta: -1 | 0 | 1; reason: MashTickReason; affinity: number; circled: boolean; scratched: boolean; befriended: boolean }> = [];
     for (const t of ticks) {
@@ -8365,9 +8364,6 @@ export class RubyHighService extends Service {
       if (cell.scratched && t.delta !== 0) continue;
       const wasCircled = cell.circled;
       applyMashTick(cell, t.delta, dailyKey());
-      if (cell.scratched && card.focusStudentId === t.studentId) {
-        delete card.focusStudentId;
-      }
       applied.push({
         studentId: t.studentId,
         delta: t.delta,
@@ -9024,8 +9020,7 @@ export class RubyHighService extends Service {
         affinitySave,
       };
     }
-    // MASH affinity tick. The player's Social Card focus reacts first.
-    // Without one, a teacher-named best responder or deterministic
+    // MASH affinity tick. A teacher-named best responder or deterministic
     // classmate reacts. Heart converts a negative reaction into Pep Talk.
     const mashTicksApplied = this.applyMashTicksForEssay(state, {
       questionId: round.questionId,
@@ -9855,25 +9850,6 @@ export class RubyHighService extends Service {
   markIntroSeen(sessionId: string): QuizState {
     const state = this.getOrCreate(sessionId);
     state.hasSeenIntro = true;
-    state.updatedAt = Date.now();
-    void this.persistSession(sessionId);
-    return state;
-  }
-
-  setSocialFocus(sessionId: string, studentId: string | null): QuizState {
-    const state = this.getOrCreate(sessionId);
-    const ch = state.character;
-    if (!ch) throw new Error("No student to update.");
-    const card = (ch.mashCard = ensureMashCard(ch.mashCard));
-    const cleanStudentId = typeof studentId === "string" ? studentId.trim() : "";
-    if (!cleanStudentId) {
-      delete card.focusStudentId;
-    } else {
-      const cell = card.cells[cleanStudentId];
-      if (!cell) throw new Error("Choose a classmate from the Social Card.");
-      if (cell.scratched) throw new Error("That relationship is already scratched off.");
-      card.focusStudentId = cleanStudentId;
-    }
     state.updatedAt = Date.now();
     void this.persistSession(sessionId);
     return state;
@@ -12297,7 +12273,7 @@ function normalizeSchoolEvents(value: unknown): SchoolEvent[] {
     const grade = typeof e.grade === "string" && (GRADES as string[]).includes(e.grade) ? (e.grade as Grade) : null;
     if (kind === "relationship.ticked") {
       const delta = e.delta === -1 || e.delta === 0 || e.delta === 1 ? e.delta : 0;
-      const reason = typeof e.reason === "string" && ["social-focus", "best-responder", "applauder", "rub", "pep-talk"].includes(e.reason)
+      const reason = typeof e.reason === "string" && ["best-responder", "applauder", "rub", "pep-talk"].includes(e.reason)
         ? e.reason as MashTickReason
         : "applauder";
       if (typeof e.questionId !== "string" || typeof e.studentId !== "string") continue;
@@ -12526,7 +12502,7 @@ function normalizePublicWorldEventPayload(value: unknown): SchoolWorldEvent | nu
   }
   if (source.kind === "relationship.ticked") {
     const reason = source.reason;
-    if (reason !== "social-focus" && reason !== "best-responder" && reason !== "applauder" && reason !== "rub" && reason !== "pep-talk") return null;
+    if (reason !== "best-responder" && reason !== "applauder" && reason !== "rub" && reason !== "pep-talk") return null;
     return {
       ...base,
       kind: "relationship.ticked",

@@ -735,39 +735,6 @@ describe("command route persistence and scheduler misses", () => {
     }
   });
 
-  it("updates the Social Card focus through the command route", async () => {
-    setActivePack(rubyHomeroomSocialPack());
-    const store = new MemorySessionStore();
-    const ruby = new RubyHighService({} as never, store);
-    const auth = await AuthService.start({} as never, store);
-    try {
-      const session = await auth.createGuestSession();
-      const cookie = `rh_session=${session.token}`;
-      const stateKey = auth.stateKeyForRecord(session.record);
-      ruby.createCharacter(stateKey, {
-        name: "Social Mina",
-        playbookId: "heart",
-        stats: { head: 0, heart: 2, hustle: 1, honor: 1 },
-        arcAnswer: "I want to know my classmates.",
-        personality: "Warm and curious.",
-      });
-
-      const focus = makeCommandCtx(ruby, { type: "set-social-focus", studentId: "mika" }, undefined, null, auth, cookie);
-      expect(await handleAppRoutes(focus.ctx)).toBe(true);
-      expect(focus.response?.status).toBe(200);
-      expect(focus.response?.body.message).toBe("Classmate focus updated");
-      expect(ruby.getOrCreate(stateKey).character?.mashCard?.focusStudentId).toBe("mika");
-      expect(store.sessions.get(stateKey)?.character?.mashCard?.focusStudentId).toBe("mika");
-
-      const clear = makeCommandCtx(ruby, { type: "set-social-focus", studentId: null }, undefined, null, auth, cookie);
-      expect(await handleAppRoutes(clear.ctx)).toBe(true);
-      expect(clear.response?.body.message).toBe("Classmate focus cleared");
-      expect(ruby.getOrCreate(stateKey).character?.mashCard?.focusStudentId).toBeUndefined();
-    } finally {
-      await auth.stop();
-    }
-  });
-
   it("blocks public presence when a student name needs review", async () => {
     vi.useFakeTimers();
     const now = Date.UTC(2026, 5, 15, 12);

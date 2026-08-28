@@ -1578,13 +1578,11 @@ export function runViewerClient(bootstrap) {
     formatSealedDate,
     clipEssayText,
   });
-  let socialFocusBusy = false;
   const mashGridRenderer = createMashGridRenderer({
     document,
     students: STUDENTS,
     recentRelationshipEvents,
     mashTickStory,
-    setFocus: updateSocialFocus,
   });
   const revealFeedbackRenderer = createRevealFeedbackRenderer({
     document,
@@ -4094,10 +4092,6 @@ export function runViewerClient(bootstrap) {
       : event.circled ? " (circled)"
       : "";
     switch (event.reason) {
-      case "social-focus":
-        return event.delta > 0
-          ? "You made time for " + name + "." + tail
-          : "Things felt off with " + name + "." + tail;
       case "best-responder":
         return "The teacher singled out " + name + "'s essay; you took notice." + tail;
       case "applauder":
@@ -4112,17 +4106,6 @@ export function runViewerClient(bootstrap) {
         if (delta < 0) return "You and " + name + " drifted a step apart." + tail;
         return "Things stayed even with " + name + "." + tail;
       }
-    }
-  }
-
-  async function updateSocialFocus(studentId) {
-    if (socialFocusBusy) return;
-    socialFocusBusy = true;
-    try {
-      const data = await command({ type: "set-social-focus", studentId: studentId || null });
-      if (data) showCongrats(studentId ? "Classmate focus set." : "Classmate focus cleared.", true);
-    } finally {
-      socialFocusBusy = false;
     }
   }
 
