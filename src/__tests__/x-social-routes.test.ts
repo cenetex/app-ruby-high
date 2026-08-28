@@ -32,11 +32,14 @@ function makeCtx(opts: {
 
 describe("X social routes", () => {
   const previousAdminToken = process.env.RUBY_HIGH_ADMIN_TOKEN;
+  const previousSchedulerToken = process.env.RUBY_HIGH_SCHEDULER_TOKEN;
 
   afterEach(() => {
     vi.restoreAllMocks();
     if (previousAdminToken === undefined) delete process.env.RUBY_HIGH_ADMIN_TOKEN;
     else process.env.RUBY_HIGH_ADMIN_TOKEN = previousAdminToken;
+    if (previousSchedulerToken === undefined) delete process.env.RUBY_HIGH_SCHEDULER_TOKEN;
+    else process.env.RUBY_HIGH_SCHEDULER_TOKEN = previousSchedulerToken;
   });
 
   it("uses fresh recently-active students for admin student lists", async () => {
@@ -169,6 +172,63 @@ describe("X social routes", () => {
         tweetId: "tweet:scheduled",
         teacherId: "ruby",
         contextFingerprint: "context-1",
+      },
+    });
+  });
+
+  it("runs a non-forced scheduler tick for the daily external wake-up", async () => {
+    process.env.RUBY_HIGH_SCHEDULER_TOKEN = "scheduler-route-test";
+    const runRotationSchedulerTick = vi.fn(async () => ({
+      tweetId: "tweet:guest-welcome",
+      teacherId: "ruby",
+      contextFingerprint: "context-guest",
+    }));
+    const rotationSchedulerSnapshot = vi.fn(() => ({
+      lastPostAt: 123,
+      lastSkipReason: null,
+      lastAnnouncedGuestKey: "2026-W30:teacher:eliza-elizaos-systems-lab",
+      lastGuestAnnouncementTweetId: "tweet:guest-welcome",
+    }));
+    const xSocial = {
+      runtime: {
+        getService: (type: string) => type === "ruby-high"
+          ? { runRotationSchedulerTick, rotationSchedulerSnapshot }
+          : null,
+      },
+    };
+
+    let harness = makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/x/tick-scheduled/ruby",
+    });
+    expect(await handleXSocialRoutes(harness.ctx, xSocial as any)).toBe(true);
+    expect(harness.body()).toEqual({
+      status: 401,
+      body: { error: "Scheduler authentication required." },
+    });
+    expect(runRotationSchedulerTick).not.toHaveBeenCalled();
+
+    harness = makeCtx({
+      method: "POST",
+      path: "/api/apps/ruby-high/x/tick-scheduled/ruby",
+      authorizationHeader: "Bearer scheduler-route-test",
+    });
+    expect(await handleXSocialRoutes(harness.ctx, xSocial as any)).toBe(true);
+    expect(runRotationSchedulerTick).toHaveBeenCalledWith({ teacherId: "ruby" });
+    expect(harness.body()).toEqual({
+      status: 200,
+      body: {
+        ok: true,
+        posted: true,
+        tweetId: "tweet:guest-welcome",
+        teacherId: "ruby",
+        contextFingerprint: "context-guest",
+        scheduler: {
+          lastPostAt: 123,
+          lastSkipReason: null,
+          lastAnnouncedGuestKey: "2026-W30:teacher:eliza-elizaos-systems-lab",
+          lastGuestAnnouncementTweetId: "tweet:guest-welcome",
+        },
       },
     });
   });

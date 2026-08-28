@@ -7,7 +7,7 @@ import type {
 } from "../services/ruby-high-service.js";
 import type { RouteContext } from "./context.js";
 import { X_SOCIAL_CONNECT_PATH, X_SOCIAL_CALLBACK_PATH, X_SOCIAL_PREFIX } from "./constants.js";
-import { requireAdminAuth } from "./admin-auth.js";
+import { requireAdminAuth, requireSchedulerAuth } from "./admin-auth.js";
 
 const TELEGRAM_TOKEN_PLACEHOLDER = "(already set)";
 
@@ -49,6 +49,17 @@ type RubySocialSnapshotService = {
     teacherId: string;
     contextFingerprint: string;
   } | null>;
+  runRotationSchedulerTick?: (options?: { teacherId?: string }) => Promise<{
+    tweetId: string;
+    teacherId: string;
+    contextFingerprint: string;
+  } | null>;
+  rotationSchedulerSnapshot?: () => {
+    lastPostAt: number | null;
+    lastSkipReason: string | null;
+    lastAnnouncedGuestKey: string | null;
+    lastGuestAnnouncementTweetId: string | null;
+  };
 };
 
 function rubySocialService(xSocial: XSocialService): RubySocialSnapshotService | null {
@@ -247,6 +258,36 @@ export async function handleXSocialRoutes(
       ctx.json(ctx.res, { ok: true, forced: true, ...result });
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : "Scheduled update failed", 500);
+    }
+    return true;
+  }
+
+  // POST /x/tick-scheduled/:teacherId — wake the normal daily scheduler (scheduler token only)
+  if (ctx.method === "POST" && pathname.startsWith(`${X_SOCIAL_PREFIX}/tick-scheduled/`)) {
+    if (!requireSchedulerAuth(ctx)) return true;
+    const teacherId = pathname.slice(`${X_SOCIAL_PREFIX}/tick-scheduled/`.length);
+    if (!teacherId) { ctx.error(ctx.res, "Teacher ID is required.", 400); return true; }
+    const rsvc = rubySocialService(xSocial);
+    if (!rsvc?.runRotationSchedulerTick) {
+      ctx.error(ctx.res, "Ruby High scheduled posting service is unavailable.", 503);
+      return true;
+    }
+    try {
+      const result = await rsvc.runRotationSchedulerTick({ teacherId });
+      const snapshot = rsvc.rotationSchedulerSnapshot?.();
+      ctx.json(ctx.res, {
+        ok: true,
+        posted: Boolean(result),
+        ...(result ?? {}),
+        scheduler: {
+          lastPostAt: snapshot?.lastPostAt ?? null,
+          lastSkipReason: snapshot?.lastSkipReason ?? null,
+          lastAnnouncedGuestKey: snapshot?.lastAnnouncedGuestKey ?? null,
+          lastGuestAnnouncementTweetId: snapshot?.lastGuestAnnouncementTweetId ?? null,
+        },
+      });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : "Scheduled update tick failed", 500);
     }
     return true;
   }
