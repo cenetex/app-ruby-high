@@ -5359,6 +5359,71 @@ describe("RubyHighService Phase 1", () => {
     expect(restored.courseProgress(sid, "ruby").today.result).toEqual(record.result);
   });
 
+  it("runs Roko's graded class as one investigate-decide-explain case", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:roko-case-class";
+    ruby.selectGrade(sid, "10");
+    const state = ruby.getOrCreate(sid);
+    state.character = {
+      name: "Test",
+      playbookId: "heart",
+      stats: { head: 99, heart: 99, hustle: 99, honor: 99 },
+      arcAnswer: "—",
+      personality: "—",
+      yearbook: [],
+      createdAt: Date.now(),
+    };
+
+    const investigate = ruby.pickAndPose(sid, { faculty: "roko" });
+    expect(investigate.current).toMatchObject({
+      type: "multiple-choice",
+      faculty: "roko",
+      caseStudy: { stage: "investigate" },
+    });
+    const episodeId = investigate.current!.caseStudy!.episodeId;
+    ruby.submitAnswer(sid, investigate.current!.correctChoice!);
+    ruby.clearBoard(sid);
+
+    const decide = ruby.pickAndPose(sid, { faculty: "roko" });
+    expect(decide.current).toMatchObject({
+      type: "multiple-choice",
+      caseStudy: { episodeId, stage: "decide" },
+    });
+    expect(decide.current!.answerConsequences?.[decide.current!.correct!]).toBeTruthy();
+    const decisionReveal = ruby.submitAnswer(sid, decide.current!.correctChoice!);
+    expect(decisionReveal.lastReveal?.caseConsequence?.detail).toBeTruthy();
+    ruby.clearBoard(sid);
+
+    const explain = ruby.pickAndPose(sid, { faculty: "roko" });
+    expect(explain.current).toMatchObject({
+      type: "opinion",
+      opinionPurpose: "daily-take",
+      caseStudy: { episodeId, stage: "explain" },
+      caseOutcome: { episodeId },
+    });
+    ruby.recordOpinion(sid, "player", "I would create one shared record because it gives both sides evidence and delays retaliation.");
+    ruby.recordGrades(sid, [{ responder: "player", score: 8, comment: "You named the evidence and the delayed action." }], "player");
+
+    const record = ruby.getOrCreate(sid).character!.dailyClasses![`10:roko:${dailyKey()}`]!;
+    expect(record).toMatchObject({
+      status: "complete",
+      questionCount: 3,
+      result: {
+        episodeId,
+        relationshipLabel: "Roko remembers",
+        relationshipDetail: expect.any(String),
+        memoryTitle: expect.any(String),
+        memoryDetail: expect.any(String),
+        followUp: expect.any(String),
+      },
+    });
+
+    ruby.clearBoard(sid);
+    const review = ruby.pickAndPose(sid, { faculty: "roko" });
+    expect(review.activeRound?.cardRole).toBe("practice");
+    expect(review.current?.caseStudy).toBeUndefined();
+  });
+
   it.each([
     ["sally-science", /evidence|prediction|variable/i],
     ["professor-edward", /interpretation|perspective|tension/i],

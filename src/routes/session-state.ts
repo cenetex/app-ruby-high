@@ -21,6 +21,7 @@ import {
 import {
   type CharacterStats,
   type CharacterSlotEntitlements,
+  type CaseStudyCard,
   type Choice,
   type Difficulty,
   type EssayReport,
@@ -106,6 +107,7 @@ interface SessionTelemetry extends Record<string, unknown> {
     opinionPurpose: "daily-take" | "grade-essay" | null;
     canGenerateMc: boolean;
     media: Array<{ name: string; mimeType: string; dataUrl: string }>;
+    caseStudy: CaseStudyCard | null;
   } | null;
   lastReveal: QuizState["lastReveal"];
   faculty_roster: FacultyTelemetry[];
@@ -381,6 +383,7 @@ export function buildSessionState(args: {
           opinionPurpose: state.current.opinionPurpose ?? null,
           canGenerateMc: !!state.current.canGenerateMc,
           media: state.current.media ?? [],
+          caseStudy: state.current.caseStudy ?? null,
         }
       : null,
     lastReveal: state.lastReveal,

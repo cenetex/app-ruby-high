@@ -23,6 +23,11 @@ export interface ClassResultViewModel {
   observation: string;
   consequenceLabel: string;
   consequence: string;
+  relationshipLabel?: string;
+  relationship?: string;
+  memoryLabel?: string;
+  memory?: string;
+  followUp?: string;
   progressLabel: string;
   progress: string;
   correctValue: string;
@@ -88,6 +93,7 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
     const result = recordValue(today, "result");
     const correctSummary = deps.todayCorrectSummary(today);
     const prompt = String(recordValue(result, "prompt") || "").trim();
+    const episodeTitle = String(recordValue(result, "episodeTitle") || "").trim();
     const finalOutcome = result
       ? recordValue(result, "forfeit")
         ? "final answer missing"
@@ -103,17 +109,29 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
       : remainingClasses === 0
         ? `You passed ${teacherName}’s ${grade} course. You completed ${completedClasses} of ${requiredClasses} required class days.`
         : `You completed ${completedClasses} of ${requiredClasses} required ${teacherName} class days for ${grade}. Pass ${remainingClasses} more ${remainingClasses === 1 ? "day" : "days"} to finish the course.`;
+    const relationship = String(recordValue(result, "relationshipDetail") || "").trim();
+    const memory = String(recordValue(result, "memoryDetail") || "").trim();
+    const followUp = String(recordValue(result, "followUp") || "").trim();
     return {
       classLetter,
       passedToday,
       teacherName,
-      title: `${teacherName} class result`,
+      title: episodeTitle || `${teacherName} class result`,
       outcomeLine: `${passedToday ? "Class passed" : "Class needs work"}${finalOutcome ? ` · ${finalOutcome}` : ""} · ${grade} · ${correctSummary.value}`,
       promptLine: prompt ? `Final prompt: ${prompt}` : "Today’s graded class is complete.",
       observationLabel: `What ${teacherName} noticed`,
       observation: String(recordValue(result, "teacherObservation") || `${teacherName} recorded ${correctSummary.value} for today’s class.`),
       consequenceLabel: String(recordValue(result, "consequenceLabel") || (passedToday ? "Class saved" : "Saved for review")),
       consequence: String(recordValue(result, "consequenceDetail") || `${grade} with ${teacherName}: ${classLetter}, ${correctSummary.value}.`),
+      ...(relationship ? {
+        relationshipLabel: String(recordValue(result, "relationshipLabel") || `${teacherName} remembers`),
+        relationship,
+      } : {}),
+      ...(memory ? {
+        memoryLabel: String(recordValue(result, "memoryTitle") || "Case memory"),
+        memory,
+      } : {}),
+      ...(followUp ? { followUp } : {}),
       progressLabel: "Course progress",
       progress: progressCopy,
       correctValue: correctSummary.value,
@@ -171,6 +189,15 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
       sections.className = "class-result-sections";
       addResultSection(sections, "observation", view.observationLabel, view.observation);
       addResultSection(sections, "consequence", view.consequenceLabel, view.consequence);
+      if (view.relationshipLabel && view.relationship) {
+        addResultSection(sections, "relationship", view.relationshipLabel, view.relationship);
+      }
+      if (view.memoryLabel && view.memory) {
+        addResultSection(sections, "memory", view.memoryLabel, view.memory);
+      }
+      if (view.followUp) {
+        addResultSection(sections, "follow-up", "Next review", view.followUp);
+      }
       addResultSection(sections, "progress", view.progressLabel, view.progress);
       wrap.appendChild(sections);
 

@@ -3641,6 +3641,52 @@ export function runViewerClient(bootstrap) {
   function renderQuestionPrompt(question) {
     const view = questionPromptView(question);
     els.boardPrompt.replaceChildren();
+    if (view.caseStudy) {
+      const caseWrap = document.createElement("section");
+      caseWrap.className = "case-study-card case-stage-" + view.caseStudy.stage;
+      const top = document.createElement("div");
+      top.className = "case-study-topline";
+      const stage = document.createElement("span");
+      stage.className = "case-study-stage";
+      stage.textContent = view.caseStudy.stage === "investigate"
+        ? "1 · Investigate"
+        : view.caseStudy.stage === "decide"
+          ? "2 · Decide"
+          : "3 · Explain";
+      const title = document.createElement("strong");
+      title.className = "case-study-title";
+      title.textContent = view.caseStudy.title;
+      top.append(stage, title);
+      caseWrap.appendChild(top);
+      if (view.caseStudy.hook) {
+        const hook = document.createElement("p");
+        hook.className = "case-study-hook";
+        hook.textContent = view.caseStudy.hook;
+        caseWrap.appendChild(hook);
+      }
+      const scene = document.createElement("p");
+      scene.className = "case-study-scene";
+      scene.textContent = view.caseStudy.scene;
+      caseWrap.appendChild(scene);
+      if (view.caseStudy.evidence.length > 0) {
+        const evidence = document.createElement("div");
+        evidence.className = "case-study-evidence";
+        view.caseStudy.evidence.forEach((item) => {
+          const card = document.createElement("article");
+          card.className = "case-study-evidence-item";
+          const label = document.createElement("strong");
+          label.textContent = item.label;
+          const source = document.createElement("span");
+          source.textContent = item.source;
+          const detail = document.createElement("p");
+          detail.textContent = item.detail;
+          card.append(label, source, detail);
+          evidence.appendChild(card);
+        });
+        caseWrap.appendChild(evidence);
+      }
+      els.boardPrompt.appendChild(caseWrap);
+    }
     if (view.images.length > 0) {
       const wrap = document.createElement("div");
       wrap.className = "anki-media-grid";
@@ -4004,6 +4050,16 @@ export function runViewerClient(bootstrap) {
       expl.className = "reveal-explanation";
       renderMarkdownInto(expl, reveal.explanation);
       els.boardReveal.appendChild(expl);
+    }
+    if (reveal.caseConsequence && reveal.caseConsequence.detail) {
+      const consequence = document.createElement("div");
+      consequence.className = "reveal-case-consequence";
+      const label = document.createElement("strong");
+      label.textContent = reveal.caseConsequence.label || "What changed";
+      const detail = document.createElement("span");
+      detail.textContent = reveal.caseConsequence.detail;
+      consequence.append(label, detail);
+      els.boardReveal.appendChild(consequence);
     }
     els.nextBtn.focus();
   }

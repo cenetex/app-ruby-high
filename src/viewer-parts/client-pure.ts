@@ -11,6 +11,14 @@ type NullableRecord = LooseRecord | null | undefined;
 type MarkdownRenderOptions = { inline?: boolean };
 type LegacyCryptoWindow = Window & { msCrypto?: Crypto };
 type QuestionPromptImageView = { src: string; alt: string };
+export type QuestionPromptCaseView = {
+  episodeId: string;
+  title: string;
+  hook: string;
+  scene: string;
+  stage: "investigate" | "decide" | "explain";
+  evidence: Array<{ label: string; source: string; detail: string }>;
+};
 export type LeaderboardGradeChipView = { className: string; text: string };
 export type LeaderboardRowView = {
   rank: string;
@@ -93,13 +101,29 @@ export function dailyClassProgressView(telemetry: NullableRecord): DailyClassPro
   const count = Math.max(0, Math.min(3, Math.floor(Number(today && today.questionCount) || 0)));
   const complete = !!(today && today.status === "complete");
   const offlineStatic = telemetry && telemetry.store_path === "localStorage";
+  const isRokoCase = !!(
+    telemetry
+    && telemetry.faculty === "roko"
+    && (
+      !offlineStatic
+      || (telemetry.current && telemetry.current.caseStudy)
+      || (today && today.result && today.result.episodeId)
+    )
+  );
   const currentIndex = complete ? 3 : Math.min(2, count);
-  const definitions: Array<{ key: DailyClassProgressStepView["key"]; label: string }> = [
-    { key: "evidence-1", label: "Question 1" },
-    { key: "evidence-2", label: "Question 2" },
-    { key: "take", label: offlineStatic ? "Question 3" : "Your View" },
-    { key: "result", label: "Result" },
-  ];
+  const definitions: Array<{ key: DailyClassProgressStepView["key"]; label: string }> = isRokoCase
+    ? [
+        { key: "evidence-1", label: "Investigate" },
+        { key: "evidence-2", label: "Decide" },
+        { key: "take", label: "Explain" },
+        { key: "result", label: "Outcome" },
+      ]
+    : [
+        { key: "evidence-1", label: "Question 1" },
+        { key: "evidence-2", label: "Question 2" },
+        { key: "take", label: offlineStatic ? "Question 3" : "Your View" },
+        { key: "result", label: "Result" },
+      ];
   const steps = definitions.map((definition, index): DailyClassProgressStepView => ({
     ...definition,
     state: index < currentIndex ? "complete" : index === currentIndex ? "current" : "upcoming",
@@ -107,13 +131,21 @@ export function dailyClassProgressView(telemetry: NullableRecord): DailyClassPro
   return {
     visible: hasContext,
     steps,
-    continuationLabel: currentIndex === 1
-      ? "Next: Question 2"
-      : currentIndex === 2
-        ? offlineStatic ? "Next: Question 3" : "Next: Your View"
-        : currentIndex === 3
-          ? "View Result"
-          : "Start Question 1",
+    continuationLabel: isRokoCase
+      ? currentIndex === 1
+        ? "Next: Decide"
+        : currentIndex === 2
+          ? "Next: Explain"
+          : currentIndex === 3
+            ? "View Outcome"
+            : "Start Investigation"
+      : currentIndex === 1
+        ? "Next: Question 2"
+        : currentIndex === 2
+          ? offlineStatic ? "Next: Question 3" : "Next: Your View"
+          : currentIndex === 3
+            ? "View Result"
+            : "Start Question 1",
   };
 }
 export type AccountPublicWorldView = {
@@ -1786,7 +1818,11 @@ export function raceStripPickText(pick: unknown, locked: unknown, timedOut: unkn
 }
 
 // ── blackboard question prompt view helpers ────────────────────────
-export function questionPromptView(question: unknown): { images: QuestionPromptImageView[]; prompt: string } {
+export function questionPromptView(question: unknown): {
+  images: QuestionPromptImageView[];
+  prompt: string;
+  caseStudy?: QuestionPromptCaseView;
+} {
   const record = question && typeof question === "object" ? question as LooseRecord : {};
   const media = Array.isArray(record.media) ? record.media : [];
   const images = media
@@ -1796,9 +1832,40 @@ export function questionPromptView(question: unknown): { images: QuestionPromptI
       src: String((asset as LooseRecord).dataUrl),
       alt: String((asset as LooseRecord).name || "Source card image"),
     }));
+  const rawCase = record.caseStudy && typeof record.caseStudy === "object"
+    ? record.caseStudy as LooseRecord
+    : null;
+  const stage = rawCase && ["investigate", "decide", "explain"].includes(String(rawCase.stage))
+    ? String(rawCase.stage) as QuestionPromptCaseView["stage"]
+    : null;
+  const evidence = rawCase && Array.isArray(rawCase.evidence)
+    ? rawCase.evidence
+        .filter((item) => item && typeof item === "object")
+        .slice(0, 4)
+        .map((item) => {
+          const evidenceItem = item as LooseRecord;
+          return {
+            label: String(evidenceItem.label || "Evidence"),
+            source: String(evidenceItem.source || "Source unknown"),
+            detail: String(evidenceItem.detail || ""),
+          };
+        })
+        .filter((item) => item.detail.length > 0)
+    : [];
+  const caseStudy = rawCase && stage && String(rawCase.title || "").trim() && String(rawCase.scene || "").trim()
+    ? {
+        episodeId: String(rawCase.episodeId || ""),
+        title: String(rawCase.title),
+        hook: String(rawCase.hook || ""),
+        scene: String(rawCase.scene),
+        stage,
+        evidence,
+      }
+    : null;
   return {
     images,
     prompt: String(record.prompt || ""),
+    ...(caseStudy ? { caseStudy } : {}),
   };
 }
 

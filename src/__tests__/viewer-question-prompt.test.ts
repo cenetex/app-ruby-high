@@ -27,4 +27,32 @@ describe("viewer question prompt pure helpers", () => {
     expect(questionPromptView(null)).toEqual({ prompt: "", images: [] });
     expect(questionPromptView({ prompt: 42, media: "bad" })).toEqual({ prompt: "42", images: [] });
   });
+
+  it("builds a safe case-study view from authored evidence", () => {
+    expect(questionPromptView({
+      prompt: "What changed?",
+      caseStudy: {
+        episodeId: "tribute",
+        title: "The Missing Tribute",
+        hook: "One cart vanished.",
+        scene: "The dragon is waiting.",
+        stage: "investigate",
+        evidence: [
+          { label: "Ledger", source: "Toll house", detail: "Six carts left." },
+          { label: "Bad", source: "", detail: "" },
+        ],
+      },
+    })).toEqual({
+      prompt: "What changed?",
+      images: [],
+      caseStudy: {
+        episodeId: "tribute",
+        title: "The Missing Tribute",
+        hook: "One cart vanished.",
+        scene: "The dragon is waiting.",
+        stage: "investigate",
+        evidence: [{ label: "Ledger", source: "Toll house", detail: "Six carts left." }],
+      },
+    });
+  });
 });

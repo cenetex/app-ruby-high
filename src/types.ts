@@ -176,6 +176,36 @@ export interface QuestionMediaAsset {
   dataUrl: string;
 }
 
+export interface CaseStudyEvidence {
+  label: string;
+  source: string;
+  detail: string;
+}
+
+/** Authored context shown above a question in a case-based lesson. */
+export interface CaseStudyCard {
+  episodeId: string;
+  title: string;
+  hook: string;
+  scene: string;
+  stage: "investigate" | "decide" | "explain";
+  evidence: CaseStudyEvidence[];
+}
+
+/** Final story and relationship beat attached to a completed case. */
+export interface CaseStudyOutcome {
+  episodeId: string;
+  title: string;
+  consequenceLabel: string;
+  passedConsequence: string;
+  needsWorkConsequence: string;
+  passedRelationship: string;
+  needsWorkRelationship: string;
+  memoryTitle: string;
+  memoryDetail: string;
+  followUp: string;
+}
+
 /**
  * Authoritative session phase. The single source of truth that replaces
  * the prior distributed coordination (state.status + activeRound.resolved
@@ -242,6 +272,15 @@ export interface Question {
   sourceCardId?: string;
   canGenerateMc?: boolean;
   media?: QuestionMediaAsset[];
+  /** Optional case lesson context. The answer stays in the normal question
+   *  fields so case cards still work with grading and spaced review. */
+  caseStudy?: CaseStudyCard;
+  /** Story result for each authored answer. Keys are semantic answer text,
+   *  not shuffled A/B/C/D positions. */
+  answerConsequences?: Record<string, string>;
+  /** Stored on a case's final explanation card so the class report can show
+   *  the consequence, relationship beat, and durable memory. */
+  caseOutcome?: CaseStudyOutcome;
   /** Opinion fields — describes what a strong response looks like, fed to
    *  both the responding LLMs and the grading teacher. */
   rubric?: string;
@@ -334,6 +373,10 @@ export interface LastReveal {
   forfeit?: boolean;
   explanation: string | null;
   encouragement: string | null;
+  caseConsequence?: {
+    label: string;
+    detail: string;
+  };
   answerText?: string;
   expectedAnswer?: string;
   answerJudge?: {
@@ -1489,6 +1532,13 @@ export interface DailyClassResult {
   teacherObservation: string;
   consequenceLabel: string;
   consequenceDetail: string;
+  episodeId?: string;
+  episodeTitle?: string;
+  relationshipLabel?: string;
+  relationshipDetail?: string;
+  memoryTitle?: string;
+  memoryDetail?: string;
+  followUp?: string;
   completedClasses: number;
   requiredClasses: number;
 }
