@@ -146,55 +146,44 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
             <div class="response-builder-head">
               <div class="response-builder-brand">
                 <span class="response-builder-mark" aria-hidden="true">◆</span>
-                <div>
-                  <span class="response-builder-kicker">Response studio</span>
-                  <strong>Build your case</strong>
-                </div>
+                <strong>Build a case</strong>
               </div>
               <span class="response-privacy"><span aria-hidden="true">🔒</span> No typing</span>
             </div>
             <nav class="response-stepper" aria-label="Response steps">
-              <button type="button" data-response-step="stance" aria-current="step"><span>1</span><strong>Position</strong><small>Choose</small></button>
-              <button type="button" data-response-step="evidence" disabled><span>2</span><strong>Evidence</strong><small>Locked</small></button>
-              <button type="button" data-response-step="impact" disabled><span>3</span><strong>Impact</strong><small>Locked</small></button>
+              <button type="button" data-response-step="stance" aria-current="step"><span>1</span><strong>Position</strong></button>
+              <button type="button" data-response-step="evidence" disabled><span>2</span><strong>Evidence</strong></button>
+              <button type="button" data-response-step="impact" disabled><span>3</span><strong>Impact</strong></button>
             </nav>
             <div class="response-stage">
             <fieldset class="response-card-group" data-response-group="stance">
-              <legend><span>Step 1</span><strong>What is your position?</strong><small>Preset cards only — nothing typed.</small></legend>
+              <legend class="visually-hidden">Position</legend>
               <div class="response-card-grid">
-                <button type="button" data-response-card data-group="stance" data-value="support" data-short="Mostly yes"><span aria-hidden="true">✓</span><strong>Mostly yes</strong><small>The claim holds up</small><i class="response-option-check" aria-hidden="true">✓</i></button>
-                <button type="button" data-response-card data-group="stance" data-value="challenge" data-short="Challenge it"><span aria-hidden="true">×</span><strong>Challenge it</strong><small>Something is missing</small><i class="response-option-check" aria-hidden="true">✓</i></button>
-                <button type="button" data-response-card data-group="stance" data-value="conditional" data-short="It depends"><span aria-hidden="true">◇</span><strong>It depends</strong><small>Context changes it</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="stance" data-value="support" data-short="Mostly yes"><span aria-hidden="true">✓</span><strong>Mostly yes</strong><small>Supports claim</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="stance" data-value="challenge" data-short="Challenge it"><span aria-hidden="true">×</span><strong>Challenge it</strong><small>Missing context</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="stance" data-value="conditional" data-short="It depends"><span aria-hidden="true">◇</span><strong>It depends</strong><small>Context matters</small><i class="response-option-check" aria-hidden="true">✓</i></button>
               </div>
             </fieldset>
             <fieldset class="response-card-group" data-response-group="evidence" hidden>
-              <legend><span>Step 2</span><strong>How will you test it?</strong><small>Pick an evidence lens — nothing typed.</small></legend>
+              <legend class="visually-hidden">Evidence</legend>
               <div class="response-card-grid">
-                <button type="button" data-response-card data-group="evidence" data-value="cause" data-short="Cause & effect"><span aria-hidden="true">↗</span><strong>Cause &amp; effect</strong><small>Trace what changed</small><i class="response-option-check" aria-hidden="true">✓</i></button>
-                <button type="button" data-response-card data-group="evidence" data-value="compare" data-short="Compare"><span aria-hidden="true">⇄</span><strong>Compare</strong><small>Test two examples</small><i class="response-option-check" aria-hidden="true">✓</i></button>
-                <button type="button" data-response-card data-group="evidence" data-value="source" data-short="Source check"><span aria-hidden="true">⌕</span><strong>Source check</strong><small>Look for missing proof</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="evidence" data-value="cause" data-short="Cause & effect"><span aria-hidden="true">↗</span><strong>Cause &amp; effect</strong><small>What changed</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="evidence" data-value="compare" data-short="Compare"><span aria-hidden="true">⇄</span><strong>Compare</strong><small>Two examples</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="evidence" data-value="source" data-short="Source check"><span aria-hidden="true">⌕</span><strong>Source check</strong><small>Missing proof</small><i class="response-option-check" aria-hidden="true">✓</i></button>
               </div>
             </fieldset>
             <fieldset class="response-card-group" data-response-group="impact" hidden>
-              <legend><span>Step 3</span><strong>What matters most?</strong><small>Pick a focus — nothing typed.</small></legend>
+              <legend class="visually-hidden">Impact</legend>
               <div class="response-card-grid">
-                <button type="button" data-response-card data-group="impact" data-value="people" data-short="People"><span aria-hidden="true">♥</span><strong>People</strong><small>Human impact</small><i class="response-option-check" aria-hidden="true">✓</i></button>
-                <button type="button" data-response-card data-group="impact" data-value="systems" data-short="Systems"><span aria-hidden="true">▦</span><strong>Systems</strong><small>Rules and structures</small><i class="response-option-check" aria-hidden="true">✓</i></button>
-                <button type="button" data-response-card data-group="impact" data-value="future" data-short="The future"><span aria-hidden="true">◷</span><strong>The future</strong><small>Long-term result</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="impact" data-value="people" data-short="People"><span aria-hidden="true">♥</span><strong>People</strong><small>Human effect</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="impact" data-value="systems" data-short="Systems"><span aria-hidden="true">▦</span><strong>Systems</strong><small>Rules &amp; structures</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="impact" data-value="future" data-short="Future"><span aria-hidden="true">◷</span><strong>Future</strong><small>Long-term effect</small><i class="response-option-check" aria-hidden="true">✓</i></button>
               </div>
             </fieldset>
             </div>
             <div class="response-builder-actions">
-              <div class="response-build-status" id="response-build-status" aria-live="polite"><span aria-hidden="true">1 / 3</span><strong>Choose your position</strong></div>
-              <button class="typed-submit-btn" id="typed-submit-btn" type="submit" disabled>Complete all 3 steps</button>
-            </div>
-            <div class="response-case-summary">
-              <div class="response-case-head"><span>Your case</span><small>Tap a choice to edit</small></div>
-              <div class="response-case-slots">
-                <button type="button" data-response-summary="stance" disabled><span>Position</span><strong>Not chosen</strong></button>
-                <button type="button" data-response-summary="evidence" disabled><span>Evidence</span><strong>Not chosen</strong></button>
-                <button type="button" data-response-summary="impact" disabled><span>Impact</span><strong>Not chosen</strong></button>
-              </div>
+              <div class="visually-hidden" id="response-build-status" aria-live="polite">Position</div>
+              <button class="typed-submit-btn" id="typed-submit-btn" type="submit" disabled>Finish steps</button>
             </div>
           </div>
           <button class="typed-mc-btn" id="generate-mc-btn" type="button">Choices</button>

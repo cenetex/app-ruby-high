@@ -512,7 +512,6 @@ export function runViewerClient(bootstrap) {
     responseCardButtons: Array.from(document.querySelectorAll("[data-response-card]")),
     responseCardGroups: Array.from(document.querySelectorAll("[data-response-group]")),
     responseStepButtons: Array.from(document.querySelectorAll("[data-response-step]")),
-    responseSummaryButtons: Array.from(document.querySelectorAll("[data-response-summary]")),
     advantageBar: $("advantage-bar"),
     advantageBtn: $("advantage-btn"),
     advantageResult: $("advantage-result"),
@@ -1085,11 +1084,6 @@ export function runViewerClient(bootstrap) {
       return button ? button.dataset.short : "";
     }).filter(Boolean).join(" · ");
   }
-  function responseCardShortLabel(group) {
-    const value = responseCardSelection[group];
-    const button = els.responseCardButtons.find((entry) => entry.dataset.group === group && entry.dataset.value === value);
-    return button ? button.dataset.short : "";
-  }
   function responseGroupIsAvailable(group) {
     const groupIndex = RESPONSE_CARD_GROUPS.indexOf(group);
     return groupIndex >= 0 && RESPONSE_CARD_GROUPS.slice(0, groupIndex).every((entry) => responseCardSelection[entry]);
@@ -1104,7 +1098,6 @@ export function runViewerClient(bootstrap) {
     if (!responseGroupIsAvailable(responseBuilderActiveGroup)) {
       responseBuilderActiveGroup = RESPONSE_CARD_GROUPS.find((group) => responseGroupIsAvailable(group) && !responseCardSelection[group]) || RESPONSE_CARD_GROUPS[0];
     }
-    const activeIndex = Math.max(0, RESPONSE_CARD_GROUPS.indexOf(responseBuilderActiveGroup));
     els.responseBuilder.hidden = !isOpinion;
     els.responseBuilder.dataset.activeGroup = responseBuilderActiveGroup;
     els.responseCardGroups.forEach((group) => {
@@ -1127,29 +1120,12 @@ export function runViewerClient(bootstrap) {
       button.disabled = !!disabled || !responseGroupIsAvailable(group);
       const marker = button.querySelector(":scope > span");
       if (marker) marker.textContent = selected ? "✓" : String(RESPONSE_CARD_GROUPS.indexOf(group) + 1);
-      const detail = button.querySelector("small");
-      if (detail) detail.textContent = selected ? responseCardShortLabel(group) : (active ? "Choose" : (responseGroupIsAvailable(group) ? "Next" : "Locked"));
-    });
-    els.responseSummaryButtons.forEach((button) => {
-      const group = button.dataset.responseSummary;
-      const label = responseCardShortLabel(group);
-      button.classList.toggle("is-filled", !!label);
-      button.disabled = !!disabled || !label;
-      const value = button.querySelector("strong");
-      if (value) value.textContent = label || "Not chosen";
     });
     els.typedSubmitBtn.hidden = !isOpinion;
     els.typedSubmitBtn.disabled = !!disabled || !complete;
-    els.typedSubmitBtn.textContent = complete ? "Submit case" : "Complete all 3 steps";
+    els.typedSubmitBtn.textContent = complete ? "Submit" : "Finish steps";
     if (els.responseBuildStatus) {
-      els.responseBuildStatus.classList.toggle("is-complete", complete);
-      const badge = document.createElement("span");
-      badge.textContent = complete ? "Ready" : (activeIndex + 1) + " / 3";
-      const message = document.createElement("strong");
-      message.textContent = complete
-        ? "Case ready — review or submit"
-        : "Choose your " + RESPONSE_CARD_GROUP_LABELS[responseBuilderActiveGroup];
-      els.responseBuildStatus.replaceChildren(badge, message);
+      els.responseBuildStatus.textContent = complete ? "Ready" : RESPONSE_CARD_GROUP_LABELS[responseBuilderActiveGroup];
     }
   }
   function playerMessageIdentitySig() {
@@ -4028,7 +4004,6 @@ export function runViewerClient(bootstrap) {
     });
     els.responseCardButtons.forEach((button) => { button.disabled = true; });
     els.responseStepButtons.forEach((button) => { button.disabled = true; });
-    els.responseSummaryButtons.forEach((button) => { button.disabled = true; });
     els.typedSubmitBtn.disabled = true;
     els.generateMcBtn.disabled = true;
     // The wrong-answer "hide A/B/C/D for chat space" rule lives in
@@ -4990,7 +4965,6 @@ export function runViewerClient(bootstrap) {
     els.typedSubmitBtn.disabled = true;
     els.responseCardButtons.forEach((button) => { button.disabled = true; });
     els.responseStepButtons.forEach((button) => { button.disabled = true; });
-    els.responseSummaryButtons.forEach((button) => { button.disabled = true; });
     try {
       if (inOpinion) {
         markOpinionSubmitted(opinionQuestionId);
@@ -10603,12 +10577,6 @@ export function runViewerClient(bootstrap) {
     button.addEventListener("click", () => {
       if (button.disabled) return;
       openResponseGroup(button.dataset.responseStep);
-    });
-  });
-  els.responseSummaryButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      if (button.disabled) return;
-      openResponseGroup(button.dataset.responseSummary);
     });
   });
   els.generateMcBtn.addEventListener("click", generateMultipleChoice);

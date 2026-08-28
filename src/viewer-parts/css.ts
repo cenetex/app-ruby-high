@@ -2294,10 +2294,6 @@ export const VIEWER_CSS = `
     align-items: center;
     gap: 10px;
   }
-  .response-builder-brand > div {
-    display: grid;
-    gap: 1px;
-  }
   .response-builder-mark {
     display: grid;
     place-items: center;
@@ -2309,7 +2305,6 @@ export const VIEWER_CSS = `
     color: var(--accent);
     font-size: 13px;
   }
-  .response-builder-kicker,
   .response-privacy {
     color: var(--text-mute);
     font: 800 9px/1.2 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
@@ -2343,7 +2338,7 @@ export const VIEWER_CSS = `
     appearance: none;
     display: grid;
     grid-template-columns: 24px minmax(0, 1fr);
-    grid-template-rows: auto auto;
+    align-items: center;
     column-gap: 7px;
     min-width: 0;
     padding: 7px;
@@ -2355,7 +2350,6 @@ export const VIEWER_CSS = `
     cursor: pointer;
   }
   .response-stepper button > span {
-    grid-row: 1 / 3;
     display: grid;
     place-items: center;
     width: 24px;
@@ -2370,13 +2364,6 @@ export const VIEWER_CSS = `
     overflow: hidden;
     color: var(--text-soft);
     font: 800 10px/1.1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .response-stepper button small {
-    overflow: hidden;
-    color: var(--text-mute);
-    font: 600 9px/1.1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -2419,32 +2406,6 @@ export const VIEWER_CSS = `
   }
   .response-card-group[hidden] {
     display: none;
-  }
-  .response-card-group legend {
-    width: 100%;
-    margin: 0 0 11px;
-    padding: 0;
-  }
-  .response-card-group legend span {
-    display: block;
-    margin-bottom: 3px;
-    color: var(--accent);
-    font: 800 9px/1.2 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-  .response-card-group legend strong,
-  .response-card-group legend small {
-    display: block;
-  }
-  .response-card-group legend strong {
-    color: var(--text);
-    font: 850 15px/1.2 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
-  }
-  .response-card-group legend small {
-    margin-top: 2px;
-    color: var(--text-mute);
-    font: 600 10px/1.25 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
   }
   .response-card-grid {
     display: grid;
@@ -2527,96 +2488,9 @@ export const VIEWER_CSS = `
     cursor: not-allowed;
     opacity: 0.58;
   }
-  .response-case-summary {
-    display: grid;
-    gap: 7px;
-  }
   .response-builder-actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 8px;
-  }
-  .response-case-head {
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 10px;
-  }
-  .response-case-head span {
-    color: var(--text-soft);
-    font: 800 9px/1.2 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-  .response-case-head small {
-    color: var(--text-mute);
-    font-size: 9px;
-  }
-  .response-case-slots {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
-  }
-  .response-case-slots button {
-    appearance: none;
-    display: grid;
-    gap: 2px;
-    min-width: 0;
-    min-height: 43px;
-    padding: 6px 8px;
-    border: 1px dashed var(--line);
-    border-radius: 9px;
-    background: transparent;
-    color: var(--text-mute);
-    text-align: left;
-  }
-  .response-case-slots button span {
-    font: 700 8px/1.1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-  .response-case-slots button strong {
-    overflow: hidden;
-    font: 800 9px/1.15 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .response-case-slots button.is-filled {
-    border-style: solid;
-    border-color: color-mix(in srgb, #65d6a8 42%, var(--line));
-    background: color-mix(in srgb, #65d6a8 9%, transparent);
-    color: var(--text-soft);
-    cursor: pointer;
-  }
-  .response-case-slots button.is-filled:hover,
-  .response-case-slots button.is-filled:focus-visible {
-    border-color: #65d6a8;
-    outline: none;
-  }
-  .response-case-slots button:disabled {
-    cursor: default;
-  }
-  .response-build-status {
-    min-height: 30px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 8px;
-    color: var(--text-mute);
-  }
-  .response-build-status span {
-    padding: 4px 6px;
-    border-radius: 999px;
-    background: var(--bg-elev-2);
-    color: var(--text-soft);
-    font: 800 9px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
-  }
-  .response-build-status strong {
-    font: 700 10px/1.2 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
-  }
-  .response-build-status.is-complete {
-    color: #8de2be;
+    justify-content: flex-end;
   }
   .typed-submit-btn,
   .typed-mc-btn {
@@ -2672,14 +2546,8 @@ export const VIEWER_CSS = `
       padding: 6px 3px;
       text-align: center;
     }
-    .response-stepper button > span {
-      grid-row: auto;
-    }
     .response-stepper button strong {
       font-size: 9px;
-    }
-    .response-stepper button small {
-      display: none;
     }
     .response-stage {
       padding: 11px;
@@ -2687,19 +2555,9 @@ export const VIEWER_CSS = `
     .response-card-grid button {
       min-height: 58px;
     }
-    .response-builder-actions {
-      grid-template-columns: 1fr;
-    }
-    .response-build-status,
-    .response-case-summary {
-      display: none;
-    }
     .typed-submit-btn {
       width: 100%;
       min-width: 0;
-    }
-    .response-case-head small {
-      display: none;
     }
   }
   .race-strip {
