@@ -143,7 +143,7 @@ Scheduled play is opt-in and server-bounded: 15–1440 minute intervals, at most
 | `RUBY_HIGH_LLM_MODEL` | `ruby-high-local` in local mode | Model id sent to the local endpoint. Many single-model servers ignore it, but OpenAI-compatible servers require the field. |
 | `RUBY_HIGH_LLM_API_KEY` | `local` in local mode | Optional bearer token for local servers configured with an API key. |
 | `RUBY_HIGH_STUDENT_MODEL` | `openai/gpt-5.6-luna` | Model used for NPC opinion responses and other lightweight student/character text. |
-| `RUBY_HIGH_OPENROUTER_API_KEY` | — | Optional server-side OpenRouter key for sponsored text AI plus hosted portrait/diploma generation. Server-hosted text chat is globally available when configured and player chat spends Merit Stars; browser-owned OpenRouter keys remain BYOK and do not spend Hall Passes. |
+| `RUBY_HIGH_OPENROUTER_API_KEY` | — | Server-side OpenRouter key for sponsored text AI plus hosted portrait/diploma generation. When configured, every guest and signed-in session gets text generation without a personal key; player chat still spends Merit Stars. Browser-owned OpenRouter keys remain an optional BYOK override. |
 | `RUBY_HIGH_OPENROUTER_REFERER` | `https://ruby-high.local` | Sent in OpenRouter request headers. |
 | `RUBY_HIGH_OPENROUTER_TITLE` | `Ruby High` | Sent in OpenRouter request headers. |
 | `RUBY_HIGH_STRIPE_SECRET_KEY` | — | Enables web Hall Pass purchases via Stripe Checkout. |
@@ -191,7 +191,7 @@ Scheduled play is opt-in and server-bounded: 15–1440 minute intervals, at most
 
 The `/health` route is readiness: it returns 200 only after services have booted, so the platform should not route first-load traffic while Ruby High is hydrating. `/livez` is a process-liveness probe. Forwarded proxy headers are ignored unless `RUBY_HIGH_TRUST_PROXY` is explicitly enabled.
 
-No OpenRouter key is required on the server for normal play: each user can authenticate with their own key via PKCE, or use a Privy account for persistent identity/wallet ownership when Privy is configured. `RUBY_HIGH_OPENROUTER_API_KEY` sponsors server-hosted text AI for signed-in players, while player-authored chat spends Merit Stars. The same key enables hosted image generation with per-image Hall Pass costs. Edit Pack creates OpenRouter-backed local teacher drafts; Ruby High does not list, import, grant, or call external avatar/agent backends.
+No OpenRouter key is required on the server for offline question-bank play. In production, `RUBY_HIGH_OPENROUTER_API_KEY` sponsors text generation for every guest and signed-in session, while player-authored chat spends Merit Stars. Players may still connect their own key through PKCE, and Privy provides persistent identity/wallet ownership when configured. The server key also enables hosted image generation with per-image Hall Pass costs. Edit Pack creates OpenRouter-backed local teacher drafts; Ruby High does not list, import, grant, or call external avatar/agent backends.
 
 ## Billing and Hall Passes
 

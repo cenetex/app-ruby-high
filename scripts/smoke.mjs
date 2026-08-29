@@ -34,17 +34,20 @@
  *      Catches: broken telemetry shape, offline character creation command,
  *      scheduler question posting, and answer resolution.
  *
- *   8. POST /api/apps/ruby-high/chat/character/generate (no auth) → 401
+ *   8. Guest AI generation returns a complete student preview without a
+ *      personal AI key. Production fails closed when hosted AI is missing.
+ *
+ *   9. POST /api/apps/ruby-high/chat/character/generate (no auth) → 401
  *      Catches: requireAuth() not gating the LLM endpoints. This is the
  *      single check that most directly catches PR #30's regression
  *      (server returning 401 was the WORKING behavior; 200 or 5xx would
  *      have signalled the gate broke).
  *
- *   9. Guest daily pacing + gate: today's lesson serves direct class cards
+ *   10. Guest daily pacing + gate: today's lesson serves direct class cards
  *      (not forced Social cards), then blocks further progress with a signup
  *      gate once the daily class is complete.
  *
- *   10. School activity snapshot + SSE replay expose the multiplayer feed
+ *   11. School activity snapshot + SSE replay expose the multiplayer feed
  *       shape without leaking private school-event identifiers.
  *
  * Usage:
@@ -63,10 +66,17 @@ const base = baseArg.replace(/\/+$/, "");
 const TIMEOUT_MS = 20_000;
 const READY_TIMEOUT_MS = Number(process.env.SMOKE_READY_TIMEOUT_MS || 90_000);
 const READY_POLL_MS = Number(process.env.SMOKE_READY_POLL_MS || 2_000);
+const AI_TIMEOUT_MS = Number(process.env.SMOKE_AI_TIMEOUT_MS || 60_000);
 const MIN_BUILT_IN_PACK_QUESTIONS = 600;
+const hostname = new URL(base).hostname;
+const requireGuestAiOverride = process.env.SMOKE_REQUIRE_GUEST_AI;
+const REQUIRE_GUEST_AI = requireGuestAiOverride == null
+  ? !["127.0.0.1", "localhost", "::1"].includes(hostname)
+  : requireGuestAiOverride === "1";
 
 let failed = 0;
 let smokeCookie = "";
+let smokeGuestAi = false;
 
 function ok(name, msg) {
   console.log(`✓ ${name}` + (msg ? `  — ${msg}` : ""));
@@ -76,9 +86,9 @@ function fail(name, msg) {
   console.error(`✗ ${name}` + (msg ? `  — ${msg}` : ""));
 }
 
-async function fetchWithTimeout(url, opts = {}) {
+async function fetchWithTimeout(url, opts = {}, timeoutMs = TIMEOUT_MS) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     return await fetch(url, {
       ...opts,
@@ -372,13 +382,17 @@ async function check5GuestSession() {
     if ((hostedAiActive || localAiActive) && body.ai !== true) {
       return fail(name, `guest AI missing despite active AI entitlement: ${JSON.stringify(body).slice(0, 200)}`);
     }
+    smokeGuestAi = body.ai === true;
     const setCookie = firstSetCookie(r.headers);
     const cookie = setCookie.split(";")[0];
     if (!/^rh_session=/.test(cookie)) {
       return fail(name, `missing rh_session Set-Cookie: ${setCookie.slice(0, 200)}`);
     }
     smokeCookie = cookie;
-    ok(name, "guest session cookie issued");
+    if (REQUIRE_GUEST_AI && !smokeGuestAi) {
+      return fail(name, "guest session has no sponsored AI; production requires AI for every player");
+    }
+    ok(name, `guest session cookie issued; AI=${smokeGuestAi ? "on" : "off"}`);
   } catch (e) {
     fail(name, e?.message || String(e));
   }
@@ -502,7 +516,38 @@ async function check7OfflinePlayFlow() {
   }
 }
 
-async function check8AuthGate() {
+async function check8GuestAiGeneration() {
+  const name = "guest AI generation";
+  if (!smokeCookie) return fail(name, "no guest cookie from auth/guest");
+  if (!smokeGuestAi) {
+    if (REQUIRE_GUEST_AI) return fail(name, "guest AI is required but unavailable");
+    return ok(name, "skipped locally because no hosted or local AI is configured");
+  }
+  try {
+    const r = await fetchWithTimeout(`${base}/api/apps/ruby-high/chat/character/generate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: smokeCookie,
+      },
+      body: "{}",
+    }, AI_TIMEOUT_MS);
+    const text = await readText(r);
+    if (r.status !== 200) return fail(name, `expected 200, got ${r.status}: ${text.slice(0, 240)}`);
+    const body = JSON.parse(text);
+    const character = body?.character;
+    const required = ["name", "personality", "arcAnswer", "flavorQuote"];
+    const missing = required.filter((key) => typeof character?.[key] !== "string" || !character[key].trim());
+    if (body?.ok !== true || missing.length > 0) {
+      return fail(name, `incomplete generated student${missing.length ? `: ${missing.join(", ")}` : ""}`);
+    }
+    ok(name, `generated ${character.name} without a personal AI key`);
+  } catch (e) {
+    fail(name, e?.message || String(e));
+  }
+}
+
+async function check9AuthGate() {
   const name = "character/generate auth gate";
   try {
     const r = await fetchWithTimeout(`${base}/api/apps/ruby-high/chat/character/generate`, {
@@ -520,7 +565,7 @@ async function check8AuthGate() {
   }
 }
 
-async function check9GuestDailyGate() {
+async function check10GuestDailyGate() {
   const name = "guest daily pacing gate";
   const guest = await postJson("/api/apps/ruby-high/auth/guest", {}, "");
   if (guest.status !== 200) {
@@ -603,7 +648,7 @@ function containsPrivateWorldIdentifier(text) {
   return /\bschool:event:|\bteacher:|\bstudent:|\bsession:/i.test(text);
 }
 
-async function check10PublicWorldFeed() {
+async function check11PublicWorldFeed() {
   const name = "school activity feed";
   try {
     const snapshotRes = await fetchWithTimeout(`${base}/api/apps/ruby-high/world?limit=5`);
@@ -669,9 +714,10 @@ await check4AuthMe();
 await check5GuestSession();
 await check6BillingEntitlements();
 await check7OfflinePlayFlow();
-await check8AuthGate();
-await check9GuestDailyGate();
-await check10PublicWorldFeed();
+await check8GuestAiGeneration();
+await check9AuthGate();
+await check10GuestDailyGate();
+await check11PublicWorldFeed();
 
 console.log();
 if (failed > 0) {
