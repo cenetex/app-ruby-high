@@ -137,11 +137,12 @@ function makeSelector(doc: ReturnType<typeof createDocument>) {
 function parts(body: FakeElement) {
   const overlay = body.children[0]!;
   const panel = overlay.children[0]!;
-  const grid = panel.children[3]!;
-  const actions = panel.children[4]!;
+  const warning = panel.children[3]!;
+  const grid = panel.children[4]!;
+  const actions = panel.children[5]!;
   const cancel = actions.children[0]!;
   const confirm = actions.children[1]!;
-  return { overlay, panel, grid, actions, cancel, confirm };
+  return { overlay, panel, warning, grid, actions, cancel, confirm };
 }
 
 describe("card burn selector", () => {
@@ -207,6 +208,26 @@ describe("card burn selector", () => {
     confirm.click();
 
     await expect(promise).resolves.toEqual([cards[1], cards[2]]);
+  });
+
+  it("warns and needs a second confirmation for rare cards", async () => {
+    const doc = createDocument();
+    const selector = makeSelector(doc);
+    const rare = { id: "card-rare", characterName: "Captain Null", rarity: "ultra-rare" };
+    const promise = selector.select([rare], 1);
+    const { warning, grid, confirm } = parts(doc.body);
+
+    expect(warning.hidden).toBe(true);
+    grid.children[0]!.click();
+    expect(warning.hidden).toBe(false);
+    expect(confirm.textContent).toBe("Review Rare Card Destruction");
+
+    confirm.click();
+    expect(confirm.textContent).toBe("Confirm Rare Card Destruction");
+    expect(doc.body.children).toHaveLength(1);
+    confirm.click();
+
+    await expect(promise).resolves.toEqual([rare]);
   });
 
   it("resolves null for cancel, backdrop, Escape, and insufficient cards", async () => {

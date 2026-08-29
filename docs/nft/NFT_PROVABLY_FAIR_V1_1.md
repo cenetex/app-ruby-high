@@ -1,5 +1,9 @@
 # Ruby High NFT Provable Fairness v1.1
 
+> Legacy algorithm. New packs use v1.2, documented in
+> [`NFT_PROVABLY_FAIR_V1_2.md`](./NFT_PROVABLY_FAIR_V1_2.md). Existing unopened
+> v1.1 packs continue to use the rules below.
+
 This document defines the current Ruby High pack reveal algorithm. It is an
 auditable v1.1 bridge: every recorded pack gets a pre-reveal commitment and
 every opened pack/card stores the reveal seed and provenance needed to
@@ -14,7 +18,7 @@ carry these fields when available:
 
 | Field | Meaning |
 | --- | --- |
-| `packRevealVersion` | Algorithm version. Current value: `ruby-high-pack-reveal-v1.1`. |
+| `packRevealVersion` | Algorithm version for these legacy packs: `ruby-high-pack-reveal-v1.1`. |
 | `catalogHash` | SHA-256 hash of the canonical First Bell card catalog and pack shape. |
 | `commitment` | Public commitment written when the pack is recorded, before reveal. |
 | `entropySource` | Source used for the reveal seed. Current bridge value: `ruby-high-server-commit-v1`. |
@@ -113,7 +117,7 @@ published slot proof and salt strings, not a hidden HMAC.
 
 ## Switchboard-Native Target
 
-The on-chain v1.2 design should follow Switchboard's Solana randomness pattern:
+The next on-chain design should follow Switchboard's Solana randomness pattern:
 
 1. `commit_open`: verify pack/open authority, store the pack asset, user, catalog
    hash, algorithm version, randomness account, and seed slot. Take payment or

@@ -31,7 +31,7 @@ describe("daily class progress view", () => {
     expect(evidence2.steps.map((step) => step.state)).toEqual(["complete", "current", "upcoming", "upcoming"]);
 
     const take = dailyClassProgressView(telemetry(2));
-    expect(take.continuationLabel).toBe("Next: Your View");
+    expect(take.continuationLabel).toBe("Next: Build a Case");
     expect(take.steps.map((step) => step.state)).toEqual(["complete", "complete", "current", "upcoming"]);
 
     const result = dailyClassProgressView(telemetry(3, "complete"));

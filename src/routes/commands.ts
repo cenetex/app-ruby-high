@@ -260,10 +260,7 @@ export async function handleCommandRoute(args: {
       return await persist(state, state.lastReveal?.wasCorrect ? "Correct" : "Marked");
     },
     "answer-text": async () => {
-      const answerText = String(body?.answerText ?? "");
-      const state = ruby.submitTextAnswer(stateKey, answerText);
-      noteReveal(state);
-      return await persist(state, state.lastReveal?.wasCorrect ? "Correct" : "Marked");
+      throw new Error("Free-form answers are disabled. Use answer choices or response cards.");
     },
     "generate-mc": async () => {
       const credential = resolveTextLlmCredential({

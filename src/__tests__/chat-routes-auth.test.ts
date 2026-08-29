@@ -635,15 +635,8 @@ describe("hosted AI access auth", () => {
     });
   });
 
-  it("rolls a new character with free hosted AI instead of a stale browser key", async () => {
+  it("rolls a new character for guest and signed-in sessions with free hosted AI", async () => {
     process.env.RUBY_HIGH_OPENROUTER_API_KEY = "sk-hosted";
-    const token = "hosted-character-roll";
-    auth.injectSessionForTest(token, {
-      userId: "hosted-character-roll-user",
-      createdAt: Date.now(),
-      expiresAt: Date.now() + 60_000,
-      label: "Hosted Roll",
-    });
     (globalThis.fetch as any).mockImplementation(async (_url: string, init?: RequestInit) => {
       const headers = new Headers(init?.headers || {});
       capturedChatRequest = {
@@ -664,48 +657,59 @@ describe("hosted AI access auth", () => {
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     });
 
-    const res = new TestResponse();
-    const handled = await handleChatRoutes(makeCtx(
-      new URL("http://localhost:3000/api/apps/ruby-high/chat/character/generate"),
-      res,
-      {
-        method: "POST",
-        cookieHeader: `rh_session=${token}`,
-        apiKeyHeader: "sk-stale-browser",
-        body: {},
-      },
-    ));
-    const body = JSON.parse(res.body);
-
-    expect(handled).toBe(true);
-    expect(res.statusCode).toBe(200);
-    expect(body).toMatchObject({
-      ok: true,
-      character: {
-        name: "Mina",
-        arcAnswer: "I want to be brave without making it a performance.",
-        flavorQuote: "i brought a pencil and a theory",
-        personality: "Sharp, warm, and specific in class.",
-      },
-    });
-    expect(capturedChatRequest?.authorization).toBe("Bearer sk-hosted");
-    expect(capturedChatRequest?.body.messages?.[0]?.content).toContain("compact JSON character sheets");
-    expect(capturedChatRequest?.body.provider).toMatchObject({
-      require_parameters: true,
-    });
-    expect(capturedChatRequest?.body.max_tokens).toBe(1200);
-    expect(capturedChatRequest?.body.response_format).toMatchObject({
-      type: "json_schema",
-      json_schema: {
-        name: "ruby_high_student_roll",
-        strict: true,
-        schema: {
-          type: "object",
-          required: ["name", "personality", "arcAnswer", "flavorQuote"],
-          additionalProperties: false,
+    for (const provider of ["guest", "privy"] as const) {
+      const token = `hosted-character-roll-${provider}`;
+      auth.injectSessionForTest(token, {
+        userId: `hosted-character-roll-${provider}-user`,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 60_000,
+        provider,
+        label: "Hosted Roll",
+      });
+      capturedChatRequest = null;
+      const res = new TestResponse();
+      const handled = await handleChatRoutes(makeCtx(
+        new URL("http://localhost:3000/api/apps/ruby-high/chat/character/generate"),
+        res,
+        {
+          method: "POST",
+          cookieHeader: `rh_session=${token}`,
+          apiKeyHeader: "sk-stale-browser",
+          body: {},
         },
-      },
-    });
+      ));
+      const body = JSON.parse(res.body);
+
+      expect(handled).toBe(true);
+      expect(res.statusCode).toBe(200);
+      expect(body).toMatchObject({
+        ok: true,
+        character: {
+          name: "Mina",
+          arcAnswer: "I want to be brave without making it a performance.",
+          flavorQuote: "i brought a pencil and a theory",
+          personality: "Sharp, warm, and specific in class.",
+        },
+      });
+      expect(capturedChatRequest?.authorization).toBe("Bearer sk-hosted");
+      expect(capturedChatRequest?.body.messages?.[0]?.content).toContain("compact JSON character sheets");
+      expect(capturedChatRequest?.body.provider).toMatchObject({
+        require_parameters: true,
+      });
+      expect(capturedChatRequest?.body.max_tokens).toBe(1200);
+      expect(capturedChatRequest?.body.response_format).toMatchObject({
+        type: "json_schema",
+        json_schema: {
+          name: "ruby_high_student_roll",
+          strict: true,
+          schema: {
+            type: "object",
+            required: ["name", "personality", "arcAnswer", "flavorQuote"],
+            additionalProperties: false,
+          },
+        },
+      });
+    }
   });
 });
 
@@ -2305,7 +2309,13 @@ describe("chat event context", () => {
         method: "POST",
         cookieHeader: `rh_session=${token}`,
         apiKeyHeader: "sk-test",
-        body: { text: "I trust a clear trail of evidence and check the source behind the confidence." },
+        body: {
+          responseCards: {
+            stance: "support",
+            evidence: "source",
+            impact: "people",
+          },
+        },
       },
     ));
 
@@ -2323,6 +2333,44 @@ describe("chat event context", () => {
     expect(playerGrade?.score).toBeGreaterThanOrEqual(7);
     expect(playerGrade?.comment).toContain("evidence");
     expect(state.lastReveal?.wasCorrect).toBe(true);
+  });
+
+  it("rejects free-form player writing on opinion submission", async () => {
+    const token = "route-opinion-freeform-rejected-token";
+    auth.injectSessionForTest(token, {
+      userId: "route-opinion-freeform-rejected-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Opinion Privacy",
+    });
+    const sessionId = auth.stateKeyForToken(token);
+    ruby.createCharacter(sessionId, {
+      name: "Vince",
+      playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "I want the room to notice when I am actually trying.",
+      personality: "Restless, social, and eager to keep the room moving.",
+    });
+    ruby.poseOpinion(sessionId, {
+      prompt: "What should you trust and what should you check?",
+      faculty: "ruby",
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/opinion-submit"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        body: { text: "This is personal writing that must not be collected." },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toContain("Free-form responses are not accepted");
+    expect(ruby.getOrCreate(sessionId).activeRound?.opinionResponses).toEqual([]);
   });
 
   it("drops answer-graded teacher turns when the live reveal has moved on", async () => {

@@ -55,11 +55,12 @@ profiles.
    public Ruby High site as top-level `external_url`, `properties.website`, and
    a visible `Website` trait.
 
-6. **Pack reveal provenance is explicit in v1.1.**
+6. **Pack reveal provenance is explicit and versioned.**
    Pack/card records, dynamic metadata, and receipts can expose
    `packRevealVersion`, `catalogHash`, `commitment`, `entropySource`,
    `revealSeed`, pack asset, reveal transaction, and per-card `revealProof`.
-   The published algorithm lives in `NFT_PROVABLY_FAIR_V1_1.md`.
+   New packs use the algorithm in `NFT_PROVABLY_FAIR_V1_2.md`; unopened v1.1
+   packs keep the legacy algorithm in `NFT_PROVABLY_FAIR_V1_1.md`.
 
 7. **Revealed card media uses plain aspect-specific crops.**
    Wallet-facing revealed card metadata now points to plain market crops instead

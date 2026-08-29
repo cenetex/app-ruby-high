@@ -9,7 +9,12 @@ import {
   hallPassCardSubject,
 } from "./hall-pass-card-catalog.js";
 
-export const HALL_PASS_PACK_REVEAL_VERSION = "ruby-high-pack-reveal-v1.1";
+export const HALL_PASS_PACK_REVEAL_LEGACY_VERSION = "ruby-high-pack-reveal-v1.1";
+export const HALL_PASS_PACK_REVEAL_VERSION = "ruby-high-pack-reveal-v1.2";
+export const HALL_PASS_PACK_REVEAL_VERSIONS = [
+  HALL_PASS_PACK_REVEAL_LEGACY_VERSION,
+  HALL_PASS_PACK_REVEAL_VERSION,
+] as const;
 export const HALL_PASS_PACK_REVEAL_ENTROPY_SOURCE = "ruby-high-server-commit-v1";
 export const HALL_PASS_PACK_REVEAL_ALGORITHM =
   "sha256(version + commitment + revealSeed + assetAddress + slotIndex)";
@@ -40,13 +45,17 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export function hallPassCatalogHash(): string {
+export function hallPassCatalogHash(
+  packRevealVersion = HALL_PASS_PACK_REVEAL_VERSION,
+): string {
+  const legacy = packRevealVersion === HALL_PASS_PACK_REVEAL_LEGACY_VERSION;
   return sha256Hex(stableJson({
-    version: "first-bell-v1.2",
+    version: legacy ? "first-bell-v1.2" : "first-bell-v1.3",
     setName: FIRST_BELL_SET_NAME,
     setCode: FIRST_BELL_SET_CODE,
     cardsPerPack: 5,
     packShape: ["teacher", "student", "student", "student", "utility-or-special"],
+    ...(legacy ? {} : { studentSelection: "three-unique-static-students-v1" }),
     catalog: HALL_PASS_CARD_CATALOG.map((entry) => ({
       setNumber: hallPassCardSetNumber(entry),
       profileId: hallPassCardProfileId(entry),
@@ -73,9 +82,11 @@ export function packRevealCommitment(input: {
   productId: string;
   cardCount: number;
   nonce: string;
+  packRevealVersion?: string;
 }): string {
+  const packRevealVersion = input.packRevealVersion ?? HALL_PASS_PACK_REVEAL_VERSION;
   return sha256Hex([
-    HALL_PASS_PACK_REVEAL_VERSION,
+    packRevealVersion,
     "commit",
     input.catalogHash,
     input.assetAddress,
@@ -93,9 +104,11 @@ export function packRevealSeed(input: {
   transactionId: string;
   nonce: string;
   openSignature?: string;
+  packRevealVersion?: string;
 }): string {
+  const packRevealVersion = input.packRevealVersion ?? HALL_PASS_PACK_REVEAL_VERSION;
   return sha256Hex([
-    HALL_PASS_PACK_REVEAL_VERSION,
+    packRevealVersion,
     "seed",
     input.commitment,
     input.assetAddress,
@@ -110,9 +123,11 @@ export function packSlotRevealProof(input: {
   revealSeed: string;
   assetAddress: string;
   slotIndex: number;
+  packRevealVersion?: string;
 }): string {
+  const packRevealVersion = input.packRevealVersion ?? HALL_PASS_PACK_REVEAL_VERSION;
   return sha256Hex([
-    HALL_PASS_PACK_REVEAL_VERSION,
+    packRevealVersion,
     input.commitment,
     input.revealSeed,
     input.assetAddress,

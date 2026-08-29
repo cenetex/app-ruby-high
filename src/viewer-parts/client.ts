@@ -107,10 +107,10 @@ export function runViewerClient(bootstrap) {
       const progressView = dailyClassProgressView(t);
       return progressView.visible ? progressView.continuationLabel : "Continue";
     }
-    if (t && t.graduation_gate && t.graduation_gate.stage === "essay" && !cur) return "Essay";
+    if (t && t.graduation_gate && t.graduation_gate.stage === "essay" && !cur) return "Final build";
     const postClass = postClassState(t);
     if (postClass.report && guestSignupRequired(t)) return "Sign up";
-    if (postClass.essayReady) return "Essay";
+    if (postClass.essayReady) return "Final build";
     if (postClass.socialReady) return "Reflect";
     if (postClass.report) return "Practice";
     return offlineClassroom ? "Continue" : chatActionLabel(t);
@@ -146,9 +146,9 @@ export function runViewerClient(bootstrap) {
       : cur
         ? "Continue"
       : t && t.graduation_gate && t.graduation_gate.stage === "essay"
-        ? "Start your graded essay"
+        ? "Build your final response"
       : postClass.essayReady
-        ? "Start your graded essay"
+        ? "Build your final response"
       : postClass.socialReady
         ? "Start a short homeroom reflection"
         : postClass.report
@@ -326,7 +326,7 @@ export function runViewerClient(bootstrap) {
     "Checking the card details...",
     "Waiting for wallet approval...",
     "Sending the approved transaction...",
-    "Revealing the card...",
+    "Finishing the mint...",
   ];
   function authStorage(kind) {
     try { return kind === "local" ? window.localStorage : window.sessionStorage; } catch (e) { return null; }
@@ -506,11 +506,13 @@ export function runViewerClient(bootstrap) {
     answers: Array.from(document.querySelectorAll(".answer")),
     typedAnswerHost: $("typed-answer-host"),
     typedAnswerForm: $("typed-answer-form"),
-    typedAnswerInput: $("typed-answer-input"),
     typedSubmitBtn: $("typed-submit-btn"),
     generateMcBtn: $("generate-mc-btn"),
-    takeStarters: $("take-starters"),
-    takeStarterButtons: Array.from(document.querySelectorAll("#take-starters [data-starter]")),
+    responseBuilder: $("response-builder"),
+    responseBuildStatus: $("response-build-status"),
+    responseCardButtons: Array.from(document.querySelectorAll("[data-response-card]")),
+    responseCardGroups: Array.from(document.querySelectorAll("[data-response-group]")),
+    responseStepButtons: Array.from(document.querySelectorAll("[data-response-step]")),
     advantageBar: $("advantage-bar"),
     advantageBtn: $("advantage-btn"),
     advantageResult: $("advantage-result"),
@@ -1018,12 +1020,14 @@ export function runViewerClient(bootstrap) {
     catch { /* errors already surface via appendSystem in command() */ }
     finally { autoPickInFlight = false; }
   }
-  let opinionSubmitted = false; // player's text has been recorded for current round
+  let opinionSubmitted = false; // player's response-card build has been recorded for current round
   let opinionSubmittedQuestionId = null;
   let opinionGradeFired = false; // grading has been triggered for current round
   let typedSubmitting = false;
   let generatingMc = false;
   let takeStartedQuestionId = null;
+  let responseCardSelection = {};
+  let responseBuilderActiveGroup = "stance";
   const viewedClassReportKeys = new Set();
   const renderedOpinionIds = new Set(); // responder ids whose text we've appended to chat
   const gradedResponderIds = new Set(); // responders whose grade-tag we've stamped on
@@ -1055,6 +1059,75 @@ export function runViewerClient(bootstrap) {
   function clearOpinionSubmitted() {
     opinionSubmitted = false;
     opinionSubmittedQuestionId = null;
+  }
+  const RESPONSE_CARD_GROUPS = ["stance", "evidence", "impact"];
+  const RESPONSE_CARD_GROUP_LABELS = { stance: "position", evidence: "evidence", impact: "impact" };
+  function resetResponseBuilder() {
+    responseCardSelection = {};
+    responseBuilderActiveGroup = RESPONSE_CARD_GROUPS[0];
+    els.responseCardButtons.forEach((button) => {
+      button.classList.remove("is-selected");
+      button.setAttribute("aria-pressed", "false");
+    });
+  }
+  function selectedResponseCardPayload() {
+    if (!RESPONSE_CARD_GROUPS.every((group) => responseCardSelection[group])) return null;
+    return {
+      stance: responseCardSelection.stance,
+      evidence: responseCardSelection.evidence,
+      impact: responseCardSelection.impact,
+    };
+  }
+  function selectedResponseCardSummary() {
+    return RESPONSE_CARD_GROUPS.map((group) => {
+      const value = responseCardSelection[group];
+      const button = els.responseCardButtons.find((entry) => entry.dataset.group === group && entry.dataset.value === value);
+      return button ? button.dataset.short : "";
+    }).filter(Boolean).join(" · ");
+  }
+  function responseGroupIsAvailable(group) {
+    const groupIndex = RESPONSE_CARD_GROUPS.indexOf(group);
+    return groupIndex >= 0 && RESPONSE_CARD_GROUPS.slice(0, groupIndex).every((entry) => responseCardSelection[entry]);
+  }
+  function openResponseGroup(group) {
+    if (!responseGroupIsAvailable(group)) return;
+    responseBuilderActiveGroup = group;
+    syncResponseBuilder(true, false);
+  }
+  function syncResponseBuilder(isOpinion, disabled) {
+    const complete = !!selectedResponseCardPayload();
+    if (!responseGroupIsAvailable(responseBuilderActiveGroup)) {
+      responseBuilderActiveGroup = RESPONSE_CARD_GROUPS.find((group) => responseGroupIsAvailable(group) && !responseCardSelection[group]) || RESPONSE_CARD_GROUPS[0];
+    }
+    els.responseBuilder.hidden = !isOpinion;
+    els.responseBuilder.dataset.activeGroup = responseBuilderActiveGroup;
+    els.responseCardGroups.forEach((group) => {
+      group.hidden = group.dataset.responseGroup !== responseBuilderActiveGroup;
+    });
+    els.responseCardButtons.forEach((button) => {
+      const selected = responseCardSelection[button.dataset.group] === button.dataset.value;
+      button.classList.toggle("is-selected", selected);
+      button.setAttribute("aria-pressed", String(selected));
+      button.disabled = !!disabled;
+    });
+    els.responseStepButtons.forEach((button) => {
+      const group = button.dataset.responseStep;
+      const selected = !!responseCardSelection[group];
+      const active = group === responseBuilderActiveGroup;
+      button.classList.toggle("is-active", active);
+      button.classList.toggle("is-complete", selected);
+      if (active) button.setAttribute("aria-current", "step");
+      else button.removeAttribute("aria-current");
+      button.disabled = !!disabled || !responseGroupIsAvailable(group);
+      const marker = button.querySelector(":scope > span");
+      if (marker) marker.textContent = selected ? "✓" : String(RESPONSE_CARD_GROUPS.indexOf(group) + 1);
+    });
+    els.typedSubmitBtn.hidden = !isOpinion;
+    els.typedSubmitBtn.disabled = !!disabled || !complete;
+    els.typedSubmitBtn.textContent = complete ? "Submit" : "Finish steps";
+    if (els.responseBuildStatus) {
+      els.responseBuildStatus.textContent = complete ? "Ready" : RESPONSE_CARD_GROUP_LABELS[responseBuilderActiveGroup];
+    }
   }
   function playerMessageIdentitySig() {
     const ch = lastTelemetry && lastTelemetry.character;
@@ -2771,7 +2844,7 @@ export function runViewerClient(bootstrap) {
       cost: "No payment",
       pack: "Ruby High Pack",
       prompt: "You should not need to sign a wallet transaction to open this pack.",
-      copy: "Ruby High will open a pack you own and add five face-down collectible cards to your account.",
+      copy: "Ruby High will open a pack you own and reveal five collectible cards in your account.",
       confirmText: "Open pack",
     });
     if (!approved) {
@@ -2780,7 +2853,7 @@ export function runViewerClient(bootstrap) {
     }
     billingBusy = true;
     renderAccountHallPassCards();
-    showPackMintProgress("Opening your pack and adding five face-down collectible cards...");
+    showPackMintProgress("Opening your pack and revealing five collectible cards...");
     setPrivyStatus("Opening pack...", false);
     try {
       const r = await apiFetch(apiBase + "/nft/open-pack", {
@@ -2797,7 +2870,7 @@ export function runViewerClient(bootstrap) {
       const count = Math.max(0, Math.floor(Number(data.cardCount || (Array.isArray(data.cards) ? data.cards.length : 0))));
       const openedText = data.applied ? "Pack opened." : "Pack was already opened.";
       updatePackMintProgress("Pack opened. Updating your locker...");
-      setPrivyStatus(openedText + " " + formatWholeNumber(count) + " face-down card" + (count === 1 ? "" : "s") + " ready to reveal.", false);
+      setPrivyStatus(openedText + " " + formatWholeNumber(count) + " card" + (count === 1 ? "" : "s") + " revealed.", false);
       await fetchSession();
       renderAccountPage();
     } catch (err) {
@@ -2820,14 +2893,14 @@ export function runViewerClient(bootstrap) {
     billingBusy = true;
     renderAccountHallPassCards();
     showPackMintProgress("Creating your collectible card on Solana...", {
-      title: "Revealing your collectible card",
+      title: "Minting your collectible card",
       lines: CARD_MINT_STATUS_LINES,
       rotate: false,
     });
     setPrivyStatus("Creating your collectible card on Solana...", false);
     try {
       const ownerWalletAddress = knownSolanaOwnerWalletAddress();
-      if (!ownerWalletAddress) throw new Error("Connect a Solana wallet before revealing collectible cards.");
+      if (!ownerWalletAddress) throw new Error("Connect a Solana wallet before minting collectible cards.");
       updatePackMintProgress("Preparing wallet transaction...");
       const prepared = await apiFetch(apiBase + "/nft/mint-card-prepare", {
         method: "POST",
@@ -2837,12 +2910,12 @@ export function runViewerClient(bootstrap) {
       });
       const preparedData = await prepared.json().catch(() => ({}));
       if (!prepared.ok || !preparedData || !preparedData.ok || !preparedData.mint) {
-        throw new Error(nftHttpErrorMessage("Creating the collectible card", prepared, preparedData, "Your card is still face-down; try again in a minute."));
+        throw new Error(nftHttpErrorMessage("Minting the collectible card", prepared, preparedData, "Your card was not minted; try again in a minute."));
       }
       if (preparedData.mint.serverMinted || !preparedData.mint.transactionBase64) {
         const name = preparedData.card && preparedData.card.characterName ? preparedData.card.characterName : "Collectible card";
-        updatePackMintProgress("Card created. Revealing it...");
-        setPrivyStatus(name + " revealed.", false);
+        updatePackMintProgress("Card minted on Solana.");
+        setPrivyStatus(name + " minted on Solana.", false);
         await fetchSession();
         renderAccountPage();
         hidePackMintProgress(900);
@@ -2856,7 +2929,7 @@ export function runViewerClient(bootstrap) {
       setPrivyStatus("Review the collectible-card transaction in your wallet.", false);
       const signed = await withWalletActionTimeout(
         client.signSolanaTransaction(preparedData.mint),
-        "Wallet approval timed out. Your card is still face-down; try again when your wallet is ready.",
+        "Wallet approval timed out. Your card is still safe in Ruby High; try again when your wallet is ready.",
       );
       updatePackMintProgress("Sending the card transaction to Solana...");
       const confirmed = await apiFetch(apiBase + "/nft/mint-card-submit", {
@@ -2874,16 +2947,16 @@ export function runViewerClient(bootstrap) {
       });
       const data = await confirmed.json().catch(() => ({}));
       if (!confirmed.ok || !data || !data.ok) {
-        throw new Error(nftHttpErrorMessage("Confirming the collectible card", confirmed, data, "Your card reveal is not recorded yet; try again in a minute."));
+        throw new Error(nftHttpErrorMessage("Confirming the collectible card", confirmed, data, "Your card mint is not recorded yet; try again in a minute."));
       }
       const name = data.card && data.card.characterName ? data.card.characterName : "Collectible card";
-      setPrivyStatus(name + " revealed.", false);
+      setPrivyStatus(name + " minted on Solana.", false);
       await fetchSession();
       renderAccountPage();
       return hallPassCardById(cleanCardId) || data.card || null;
     } catch (err) {
       hidePackMintProgress();
-      setPrivyStatus("Card reveal failed · " + friendlySolanaActionError(err, "Your card is still face-down; try again in a minute."), true);
+      setPrivyStatus("Card mint failed · " + friendlySolanaActionError(err, "Your card is still safe in Ruby High; try again in a minute."), true);
       return null;
     } finally {
       hidePackMintProgress(900);
@@ -2909,7 +2982,7 @@ export function runViewerClient(bootstrap) {
       if (attempt > 0) {
         await waitForSolanaConfirmation(1200 + attempt * 500);
         updatePackMintProgress("Waiting for Solana confirmation...");
-        setPrivyStatus("Waiting for card reveal confirmation...", false);
+        setPrivyStatus("Waiting for card mint confirmation...", false);
       }
       const confirmed = await apiFetch(apiBase + "/nft/mint-card-confirm", {
         method: "POST",
@@ -2919,8 +2992,8 @@ export function runViewerClient(bootstrap) {
       });
       const data = await confirmed.json().catch(() => ({}));
       if (confirmed.ok && data && data.ok) return data;
-      const errorMessage = nftHttpErrorMessage("Confirming the collectible card", confirmed, data, "Your card reveal is not recorded yet; try again in a minute.");
-      if (confirmed.status === 404 && /No face-down card matches this mint\./i.test(errorMessage)) {
+      const errorMessage = nftHttpErrorMessage("Confirming the collectible card", confirmed, data, "Your card mint is not recorded yet; try again in a minute.");
+      if (confirmed.status === 404 && /No collectible card ready to mint matches this request\./i.test(errorMessage)) {
         await fetchSession();
         const alreadyRevealed = hallPassCardById(input.cardId);
         if (alreadyRevealed && alreadyRevealed.mintAddress && alreadyRevealed.mintSignature) {
@@ -3826,7 +3899,7 @@ export function runViewerClient(bootstrap) {
         const teacherName = faculty ? teacherShortName(faculty, "today's teacher") : "today's teacher";
         const advanceLabel = teacherChatEnabled() ? chatActionLabel(lastTelemetry) : "Continue";
         const lead = essayReady
-          ? "Your graded essay is ready — tap " + advanceLabel + " to put it on the blackboard."
+          ? "Your final response board is ready — tap " + advanceLabel + " to start building."
           : practiceOnly
             ? "This is a practice room — tap " + advanceLabel + " to review."
           : todayDone
@@ -3837,7 +3910,7 @@ export function runViewerClient(bootstrap) {
         const welcome = showWelcomeBackCopy ? "Welcome back — " + teacherName + " is ready. " : "";
         const infoText = hint ? welcome + lead + " " + hint : welcome + lead;
         const statusText = essayReady
-          ? "Graded essay ready"
+          ? "Final response ready"
           : practiceOnly
             ? "Practice room"
           : todayDone
@@ -3848,7 +3921,7 @@ export function runViewerClient(bootstrap) {
         els.blackboardEmptyText.replaceChildren(buildBoardClassStartHeader(statusText, infoText));
         if (els.blackboardEmptyAction) {
           els.blackboardEmptyAction.textContent = essayReady
-            ? "Start graded essay"
+            ? "Build final response"
             : practiceOnly
               ? "Start practice"
               : todayActive ? "Continue today's class" : "Start today's class";
@@ -3876,6 +3949,7 @@ export function runViewerClient(bootstrap) {
       opinionGradeFired = false;
       renderedOpinionIds.clear();
       gradedResponderIds.clear();
+      resetResponseBuilder();
     }
     const ar = lastTelemetry && lastTelemetry.active_round;
     const cardRole = (ar && ar.cardRole) || (isOpinion ? "social" : (ar && ar.classSession && ar.classSession.mode === "class" ? "class" : "practice"));
@@ -3926,7 +4000,6 @@ export function runViewerClient(bootstrap) {
       els.boardReveal.hidden = true;
       els.boardReveal.textContent = "";
       els.boardReveal.classList.remove("correct", "wrong");
-      if (els.typedAnswerInput) els.typedAnswerInput.value = "";
     }
 
     // Answer buttons
@@ -3953,16 +4026,7 @@ export function runViewerClient(bootstrap) {
       || !isFreeformAnswer
       || !!(round && round.resolved)
       || (isOpinion ? (serverPlayerOpinionRecorded || localOpinionSubmitted) : playerLocked);
-    const isDailyTake = !!(isOpinion && question.opinionPurpose === "daily-take");
-    els.typedAnswerInput.placeholder = isDailyTake
-      ? "Write one sentence with your take"
-      : isOpinion
-        ? "Type your response"
-        : "Type the answer";
-    els.typedSubmitBtn.textContent = isOpinion ? "Send" : "Check";
-    els.typedAnswerInput.disabled = typedDisabled;
-    els.typedSubmitBtn.disabled = typedDisabled;
-    if (els.takeStarters) els.takeStarters.hidden = !isDailyTake || typedDisabled;
+    syncResponseBuilder(isOpinion, typedDisabled);
     els.generateMcBtn.hidden = !(isTypedAnswer && question.canGenerateMc);
     els.generateMcBtn.disabled = role === "agent" || playerLocked || !!(round && round.resolved) || generatingMc || !aiEnabled;
     els.generateMcBtn.title = aiEnabled
@@ -4036,7 +4100,8 @@ export function runViewerClient(bootstrap) {
       if (btn.dataset.pick === reveal.correct) btn.classList.add("is-correct");
       if (!reveal.forfeit && btn.dataset.pick === reveal.picked && !reveal.wasCorrect) btn.classList.add("is-wrong");
     });
-    els.typedAnswerInput.disabled = true;
+    els.responseCardButtons.forEach((button) => { button.disabled = true; });
+    els.responseStepButtons.forEach((button) => { button.disabled = true; });
     els.typedSubmitBtn.disabled = true;
     els.generateMcBtn.disabled = true;
     // The wrong-answer "hide A/B/C/D for chat space" rule lives in
@@ -4205,7 +4270,7 @@ export function runViewerClient(bootstrap) {
       : "";
     switch (event.reason) {
       case "best-responder":
-        return "The teacher singled out " + name + "'s essay; you took notice." + tail;
+        return "The teacher singled out " + name + "'s response build; you took notice." + tail;
       case "applauder":
         return name + " caught your eye while you nailed it." + tail;
       case "pep-talk":
@@ -4995,9 +5060,9 @@ export function runViewerClient(bootstrap) {
 
   async function submitTypedAnswer(event) {
     if (event) event.preventDefault();
-    if (typedSubmitting || !els.typedAnswerInput || els.typedSubmitBtn.disabled) return;
-    const answerText = els.typedAnswerInput.value || "";
-    if (!answerText.trim()) return;
+    if (typedSubmitting || els.typedSubmitBtn.disabled) return;
+    const responseCards = selectedResponseCardPayload();
+    if (!responseCards) return;
     const opinionQuestionId = lastTelemetry && lastTelemetry.current ? lastTelemetry.current.id : null;
     const roundAtSubmit = lastTelemetry && lastTelemetry.active_round;
     const inOpinion = !!(
@@ -5010,12 +5075,17 @@ export function runViewerClient(bootstrap) {
     );
     typedSubmitting = true;
     els.typedSubmitBtn.disabled = true;
-    els.typedAnswerInput.disabled = true;
+    els.responseCardButtons.forEach((button) => { button.disabled = true; });
+    els.responseStepButtons.forEach((button) => { button.disabled = true; });
     try {
       if (inOpinion) {
         markOpinionSubmitted(opinionQuestionId);
-        appendMsg({ kind: "you", name: playerDisplayName(), body: answerText, color: "var(--accent)" });
-        els.typedAnswerInput.value = "";
+        appendMsg({
+          kind: "you",
+          name: playerDisplayName(),
+          body: "Response build · " + selectedResponseCardSummary(),
+          color: "var(--accent)",
+        });
         const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || "ruby";
         // In offline mode submit with force=true so the server fills any
         // missing NPC slots and resolves the round; without that flag a
@@ -5026,16 +5096,9 @@ export function runViewerClient(bootstrap) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           timeoutMs: STREAM_CONNECT_TIMEOUT_MS,
-          body: JSON.stringify(aiEnabled ? { text: answerText } : { text: answerText, force: true }),
+          body: JSON.stringify(aiEnabled ? { responseCards } : { responseCards, force: true }),
         });
         await consumeSseStream(r, streamGuard);
-      } else {
-        const data = await command({ type: "answer-text", answerText, role });
-        lockedFor = data && data.session && data.session.telemetry && data.session.telemetry.current
-          ? data.session.telemetry.current.id : null;
-        if (data && data.session && data.session.telemetry) {
-          maybeRunAnswerGraded(data.session.telemetry, 0);
-        }
       }
     } catch (err) {
       if (inOpinion) clearOpinionSubmitted();
@@ -5048,8 +5111,7 @@ export function runViewerClient(bootstrap) {
         inOpinion
         && (playerOpinionRecorded(round) || (opinionSubmitted && opinionSubmittedQuestionId === opinionQuestionId))
       );
-      els.typedAnswerInput.disabled = role === "agent" || (inOpinion ? opinionLocked : locked);
-      els.typedSubmitBtn.disabled = role === "agent" || (inOpinion ? opinionLocked : locked);
+      syncResponseBuilder(inOpinion, role === "agent" || (inOpinion ? opinionLocked : locked));
     }
   }
 
@@ -5919,8 +5981,8 @@ export function runViewerClient(bootstrap) {
     if (gate.stage === "essay") {
       const essayOnBoard = t.current && t.current.opinionPurpose === "grade-essay";
       return essayOnBoard
-        ? "Class requirements complete — your graded essay is on the blackboard."
-        : "Class requirements complete — write your graded essay to finish the year.";
+        ? "Class requirements complete — your final response board is open."
+        : "Class requirements complete — build your final response to finish the year.";
     }
     const grade = String(t.current_grade ?? "9");
     const streakReq = Number(gate.requiredDays || STREAK_REQUIRED[grade] || 1);
@@ -5946,7 +6008,7 @@ export function runViewerClient(bootstrap) {
       parts.push("Pass each subject with a C or better: " + segs.join(", "));
     }
     if (gate.essayRequired && !gate.essayCompleted) {
-      parts.push("You can write your graded essay after you finish the class requirements");
+      parts.push("You can build your final response after you finish the class requirements");
     }
 
     if (parts.length === 0) {
@@ -6281,7 +6343,7 @@ export function runViewerClient(bootstrap) {
   }
   // clipEssayText is in client-pure.
   function essayRivalryText(recent) {
-    if (!recent.length) return "No essay results yet.";
+    if (!recent.length) return "No response results yet.";
     let playerWins = 0;
     const rivals = {};
     recent.forEach((r) => {
@@ -6299,10 +6361,10 @@ export function runViewerClient(bootstrap) {
       }
     });
     if (rivalId) {
-      return essayResponderName(rivalId) + " out-essayed you " + rivalCount + " of the last " + recent.length + ".";
+      return essayResponderName(rivalId) + " led " + rivalCount + " of the last " + recent.length + " response builds.";
     }
     if (playerWins > 0) {
-      return "You held the top essay " + playerWins + " of the last " + recent.length + ".";
+      return "You held the top response build " + playerWins + " of the last " + recent.length + ".";
     }
     return "No classroom winner recorded yet.";
   }
@@ -9687,7 +9749,7 @@ export function runViewerClient(bootstrap) {
       els.privyLoginWidget.hidden = !privyState.configured || (privyState.authenticated && !needsWalletConnect);
       els.privyLoginWidget.textContent = needsWalletConnect ? "Connect Wallet" : "Sign in";
       els.privyLoginWidget.title = needsWalletConnect
-        ? "Connect a Solana wallet to open packs and reveal collectible cards."
+        ? "Connect a Solana wallet to open packs or mint collectible cards."
         : "Sign in";
     }
     if (els.privySignout) els.privySignout.hidden = !privyState.authenticated;
@@ -10398,7 +10460,8 @@ export function runViewerClient(bootstrap) {
       const inRoomStudents = studentsForGrade(lastTelemetry && lastTelemetry.current_grade);
       const mentionedIds = new Set();
       for (const s of inRoomStudents) {
-        const re = new RegExp("\b" + s.name + "\b", "i");
+        const escapedName = String(s.name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const re = new RegExp("\\b" + escapedName + "\\b", "i");
         if (re.test(text)) mentionedIds.add(s.id);
       }
       let mentionDelayBase = 600;
@@ -10609,16 +10672,24 @@ export function runViewerClient(bootstrap) {
     takeStartedQuestionId = question.id;
     postViewerMetricEvent("take_card_started", { questionId: question.id });
   }
-  els.typedAnswerInput.addEventListener("focus", recordTakeStarted);
-  els.typedAnswerInput.addEventListener("input", recordTakeStarted);
-  els.takeStarterButtons.forEach((button) => {
+  els.responseCardButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      if (els.typedAnswerInput.disabled) return;
-      const starter = button.dataset.starter || "";
-      if (!els.typedAnswerInput.value.trim()) els.typedAnswerInput.value = starter;
+      if (button.disabled) return;
+      const group = button.dataset.group;
+      const value = button.dataset.value;
+      if (!group || !value) return;
+      responseCardSelection[group] = value;
+      const groupIndex = RESPONSE_CARD_GROUPS.indexOf(group);
+      const nextGroup = RESPONSE_CARD_GROUPS[groupIndex + 1];
+      if (nextGroup && !responseCardSelection[nextGroup]) responseBuilderActiveGroup = nextGroup;
       recordTakeStarted();
-      els.typedAnswerInput.focus();
-      els.typedAnswerInput.setSelectionRange(els.typedAnswerInput.value.length, els.typedAnswerInput.value.length);
+      syncResponseBuilder(true, false);
+    });
+  });
+  els.responseStepButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      openResponseGroup(button.dataset.responseStep);
     });
   });
   els.generateMcBtn.addEventListener("click", generateMultipleChoice);

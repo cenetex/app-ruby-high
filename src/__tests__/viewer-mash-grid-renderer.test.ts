@@ -35,6 +35,7 @@ class FakeElement {
   setAttribute(name: string, value: string): void {
     this.attributes[name] = value;
   }
+
 }
 
 function createDocument() {
@@ -84,6 +85,7 @@ describe("mash grid renderer", () => {
     expect(card.className).toBe("mash-grid-wrap");
     expect(textTree(card)).toEqual([
       "Social Card",
+      "Relationships change after response builds.",
       "Noor",
       "○",
       "Vince",
@@ -94,7 +96,7 @@ describe("mash grid renderer", () => {
       "-1",
     ]);
 
-    const grid = card.children[1] as FakeElement;
+    const grid = card.children[2] as FakeElement;
     expect(grid.className).toBe("mash-grid");
     expect(grid.children.map((child) => [...child.classList.values].sort())).toEqual([
       ["is-circled"],
@@ -132,6 +134,7 @@ describe("mash grid renderer", () => {
 
     expect(textTree(card)).toEqual([
       "Social Card · completed",
+      "Your final classmate connections.",
       "Noor",
       "·",
       "Vince",
@@ -148,8 +151,8 @@ describe("mash grid renderer", () => {
       "lucky",
       "stranger — red locker",
     ]);
-    expect(card.children[2]?.className).toBe("mash-recent");
-    expect(card.children[3]?.className).toBe("mash-resolved");
+    expect(card.children[3]?.className).toBe("mash-recent");
+    expect(card.children[4]?.className).toBe("mash-resolved");
   });
 
   it("returns null when no social card cells are available", () => {

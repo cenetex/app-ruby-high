@@ -1578,10 +1578,10 @@ function formatSchoolEventForTeacher(event: NonNullable<QuizState["schoolEvents"
     const reason = event.reason === "best-responder"
       ? "teacher picked them as best responder"
       : event.reason === "applauder"
-        ? "they applauded the player's essay"
+        ? "they applauded the player's response build"
         : event.reason === "pep-talk"
           ? "Heart pep-talk prevented a relationship hit"
-          : "the essay rubbed them wrong";
+          : "the response build rubbed them wrong";
     const state = event.scratched ? ", now scratched" : event.circled ? ", now circled" : "";
     return `${name} relationship ${formatSigned(event.delta)} to ${formatSigned(event.affinity)} (${reason}${state}).`;
   }
@@ -1855,8 +1855,8 @@ function describeQuestionBankForModel(status: QuestionBankStatus): string {
   if (status.nextOpinionPurpose === "grade-essay") {
     return [
       `SUBJECT STATUS for ${status.displayName}. ${standing} ${classLine}`,
-      "Scheduler detail: the student's assigned graded essay is ready.",
-      "Use pick_from_bank for the next board; it will post the assigned essay exactly once.",
+      "Scheduler detail: the student's assigned final response board is ready.",
+      "Use pick_from_bank for the next board; it will post the assigned prompt exactly once.",
     ].join("\n");
   }
   if (status.mode === "srs") {
@@ -2060,7 +2060,7 @@ function buildToolDefs(opts: { includePickFromBank?: boolean; includePoseOpinion
       function: {
         name: "pose_opinion",
         description:
-          "Pose the graded essay question — the milestone for this grade. No A/B/C/D: the student writes a free-form response and the AI students do too, then you judge them all comparatively. Use this once per grade, when the student has built up enough daily class credits. After this fires, the round opens; you don't grade until later (the system calls you back).",
+          "Pose the final response-board prompt — the milestone for this grade. The player chooses three preset cards; no free-form player writing is collected. AI students still respond in character, then you judge the builds comparatively. Use this once per grade, when the student has built up enough daily class credits. After this fires, the round opens; you don't grade until later (the system calls you back).",
         parameters: {
           type: "object",
           required: ["prompt"],

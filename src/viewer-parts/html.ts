@@ -82,7 +82,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <span class="arc-sep">·</span>
         <span class="arc-xp" id="arc-xp" title="Subjects cleared with a C or better this year">✅ —</span>
         <span class="arc-sep" id="arc-essay-sep" hidden>·</span>
-        <span class="arc-essay" id="arc-essay" title="Graded essay required before graduation" hidden>✍️ due</span>
+        <span class="arc-essay" id="arc-essay" title="Final response board required before graduation" hidden>🧩 due</span>
       </div>
     </header>
 
@@ -141,14 +141,51 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         </div>
       </div>
       <div class="typed-answer-host" id="typed-answer-host" hidden>
-        <div class="take-starters" id="take-starters" hidden>
-          <button type="button" data-starter="I think ">I think…</button>
-          <button type="button" data-starter="The strongest evidence is ">The evidence…</button>
-          <button type="button" data-starter="A different way to see it is ">Another view…</button>
-        </div>
         <form class="typed-answer-form" id="typed-answer-form">
-          <input class="typed-answer-input" id="typed-answer-input" type="text" autocomplete="off" maxlength="320" placeholder="Type the answer" />
-          <button class="typed-submit-btn" id="typed-submit-btn" type="submit">Check</button>
+          <div class="response-builder" id="response-builder" data-active-group="stance">
+            <div class="response-builder-head">
+              <div class="response-builder-brand">
+                <span class="response-builder-mark" aria-hidden="true">◆</span>
+                <strong>Build a case</strong>
+              </div>
+              <span class="response-privacy"><span aria-hidden="true">🔒</span> No typing</span>
+            </div>
+            <nav class="response-stepper" aria-label="Response steps">
+              <button type="button" data-response-step="stance" aria-current="step"><span>1</span><strong>Position</strong></button>
+              <button type="button" data-response-step="evidence" disabled><span>2</span><strong>Evidence</strong></button>
+              <button type="button" data-response-step="impact" disabled><span>3</span><strong>Impact</strong></button>
+            </nav>
+            <div class="response-stage">
+            <fieldset class="response-card-group" data-response-group="stance">
+              <legend class="visually-hidden">Position</legend>
+              <div class="response-card-grid">
+                <button type="button" data-response-card data-group="stance" data-value="support" data-short="Mostly yes"><span aria-hidden="true">✓</span><strong>Mostly yes</strong><small>Supports claim</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="stance" data-value="challenge" data-short="Challenge it"><span aria-hidden="true">×</span><strong>Challenge it</strong><small>Missing context</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="stance" data-value="conditional" data-short="It depends"><span aria-hidden="true">◇</span><strong>It depends</strong><small>Context matters</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+              </div>
+            </fieldset>
+            <fieldset class="response-card-group" data-response-group="evidence" hidden>
+              <legend class="visually-hidden">Evidence</legend>
+              <div class="response-card-grid">
+                <button type="button" data-response-card data-group="evidence" data-value="cause" data-short="Cause & effect"><span aria-hidden="true">↗</span><strong>Cause &amp; effect</strong><small>What changed</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="evidence" data-value="compare" data-short="Compare"><span aria-hidden="true">⇄</span><strong>Compare</strong><small>Two examples</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="evidence" data-value="source" data-short="Source check"><span aria-hidden="true">⌕</span><strong>Source check</strong><small>Missing proof</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+              </div>
+            </fieldset>
+            <fieldset class="response-card-group" data-response-group="impact" hidden>
+              <legend class="visually-hidden">Impact</legend>
+              <div class="response-card-grid">
+                <button type="button" data-response-card data-group="impact" data-value="people" data-short="People"><span aria-hidden="true">♥</span><strong>People</strong><small>Human effect</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="impact" data-value="systems" data-short="Systems"><span aria-hidden="true">▦</span><strong>Systems</strong><small>Rules &amp; structures</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="impact" data-value="future" data-short="Future"><span aria-hidden="true">◷</span><strong>Future</strong><small>Long-term effect</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+              </div>
+            </fieldset>
+            </div>
+            <div class="response-builder-actions">
+              <div class="visually-hidden" id="response-build-status" aria-live="polite">Position</div>
+              <button class="typed-submit-btn" id="typed-submit-btn" type="submit" disabled>Finish steps</button>
+            </div>
+          </div>
           <button class="typed-mc-btn" id="generate-mc-btn" type="button">Choices</button>
         </form>
       </div>
@@ -337,7 +374,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
             </div>
             <div class="account-section-actions">
 	              <button type="button" id="account-buy-card-packs">Buy Collectible Packs</button>
-              <button type="button" class="secondary" id="account-mint-cards">Reveal Collectible</button>
+              <button type="button" class="secondary" id="account-mint-cards">Mint Collectible</button>
             </div>
           </div>
           <div class="account-hall-pass-cards" id="account-hall-pass-cards"></div>

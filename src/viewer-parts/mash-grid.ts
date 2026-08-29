@@ -62,6 +62,13 @@ export function createMashGridRenderer(deps: MashGridRendererDeps): MashGridRend
       heading.textContent = graduated ? "Social Card · completed" : "Social Card";
       wrap.appendChild(heading);
 
+      const helper = deps.document.createElement("div");
+      helper.className = "mash-grid-helper";
+      helper.textContent = graduated
+        ? "Your final classmate connections."
+        : "Relationships change after response builds.";
+      wrap.appendChild(helper);
+
       const grid = deps.document.createElement("div");
       grid.className = "mash-grid";
       deps.students.forEach((student) => {

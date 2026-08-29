@@ -8,7 +8,6 @@ export interface EssayReport {
   comment?: unknown;
   bestResponder?: string;
   bestResponderScore?: unknown;
-  response?: unknown;
 }
 
 export interface ReportMetric {
@@ -59,7 +58,7 @@ export function createReportCardRenderer(deps: ReportCardRendererDeps): ReportCa
 
       const title = deps.document.createElement("div");
       title.className = "report-entry-title";
-      title.textContent = deps.clipEssayText(report.prompt, 72) || "Essay";
+      title.textContent = deps.clipEssayText(report.prompt, 72) || "Response build";
       body.appendChild(title);
 
       const meta = deps.document.createElement("div");
@@ -82,11 +81,6 @@ export function createReportCardRenderer(deps: ReportCardRendererDeps): ReportCa
         best.textContent = "Best: " + deps.essayResponderName(report.bestResponder)
           + (Number.isFinite(Number(report.bestResponderScore)) ? " " + deps.essayScoreText(report.bestResponderScore) : "");
         foot.appendChild(best);
-      }
-      if (report.response) {
-        const yours = deps.document.createElement("span");
-        yours.textContent = "You: " + deps.clipEssayText(report.response, 58);
-        foot.appendChild(yours);
       }
       if (foot.children.length > 0) body.appendChild(foot);
 
@@ -122,12 +116,12 @@ export function createReportCardRenderer(deps: ReportCardRendererDeps): ReportCa
       const sub = deps.document.createElement("div");
       sub.className = "ccg-subtitle";
       sub.textContent = reports.length
-        ? reports.length + " essays \u00b7 average " + deps.essayScoreText(avg)
-        : "No graded essays yet";
+        ? reports.length + " response builds \u00b7 average " + deps.essayScoreText(avg)
+        : "No graded response builds yet";
       body.appendChild(sub);
 
       body.appendChild(deps.buildCareerMetrics([
-        { label: "essays", value: String(reports.length), detail: "graded", met: reports.length > 0 },
+        { label: "builds", value: String(reports.length), detail: "graded", met: reports.length > 0 },
         { label: "average", value: deps.essayScoreText(avg), detail: "teacher score", met: Number(avg) >= 7 },
         { label: "top", value: Number.isFinite(Number(topScore)) ? deps.essayScoreText(topScore) : "\u2014", detail: playerWins + " class wins", met: playerWins > 0 },
       ]));
@@ -135,7 +129,7 @@ export function createReportCardRenderer(deps: ReportCardRendererDeps): ReportCa
       if (reports.length === 0) {
         const empty = deps.document.createElement("div");
         empty.className = "report-empty";
-        empty.textContent = "Your first graded essay will land here.";
+        empty.textContent = "Your first graded response build will land here.";
         body.appendChild(empty);
       } else {
         const rivalry = deps.document.createElement("div");

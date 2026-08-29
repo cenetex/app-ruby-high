@@ -2256,55 +2256,241 @@ export const VIEWER_CSS = `
     padding: 10px calc(var(--safe-right) + 10px) 10px calc(var(--safe-left) + 10px);
     flex: 0 0 auto;
     min-width: 0;
-  }
-  .take-starters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 0 0 8px;
-  }
-  .take-starters[hidden] {
-    display: none;
-  }
-  .take-starters button {
-    appearance: none;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: var(--bg-elev);
-    color: var(--text-soft);
-    min-height: 36px;
-    max-width: 100%;
-    padding: 8px 12px;
-    font: 700 11px/1.1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
-    cursor: pointer;
-    transition: border-color 0.14s ease, background 0.14s ease, color 0.14s ease;
-  }
-  .take-starters button:hover,
-  .take-starters button:focus-visible {
-    border-color: var(--accent);
-    background: var(--bg-elev-2);
-    color: var(--text);
+    max-height: 58vh;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
   }
   .typed-answer-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: stretch;
+  }
+  .response-builder {
+    flex: 1 0 100%;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    gap: 8px;
+    gap: 12px;
+    padding: 14px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
+    border-radius: 18px;
+    background:
+      radial-gradient(circle at 100% 0, color-mix(in srgb, var(--accent-soft) 82%, transparent), transparent 36%),
+      var(--bg-elev);
+    box-shadow: 0 16px 38px rgba(0, 0, 0, 0.16);
+  }
+  .response-builder[hidden] {
+    display: none;
+  }
+  .response-builder-head {
+    display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 12px;
   }
-  .typed-answer-input {
-    min-width: 0;
-    height: 44px;
-    border-radius: 10px;
-    border: 1px solid var(--line);
-    background: var(--bg-elev);
+  .response-builder-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .response-builder-mark {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid color-mix(in srgb, var(--accent) 46%, var(--line));
+    border-radius: 11px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 13px;
+  }
+  .response-privacy {
+    color: var(--text-mute);
+    font: 800 9px/1.2 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .response-builder-head strong {
     color: var(--text);
-    padding: 0 12px;
-    font: 600 16px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
-    outline: none;
+    font-size: 16px;
   }
-  .typed-answer-input:focus {
+  .response-privacy {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    padding: 6px 9px;
+    border: 1px solid color-mix(in srgb, #65d6a8 45%, var(--line));
+    border-radius: 999px;
+    color: #8de2be;
+    letter-spacing: 0.06em;
+  }
+  .response-privacy span {
+    font-size: 10px;
+  }
+  .response-stepper {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .response-stepper button {
+    appearance: none;
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    align-items: center;
+    column-gap: 7px;
+    min-width: 0;
+    padding: 7px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-mute);
+    text-align: left;
+    cursor: pointer;
+  }
+  .response-stepper button > span {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: var(--bg-elev-2);
+    color: var(--text-mute);
+    font: 800 10px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+  }
+  .response-stepper button strong {
+    overflow: hidden;
+    color: var(--text-soft);
+    font: 800 10px/1.1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .response-stepper button.is-active {
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+    background: var(--accent-soft);
+  }
+  .response-stepper button.is-active > span {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-soft);
+    background: var(--accent);
+    color: #fff;
+  }
+  .response-stepper button.is-active strong {
+    color: var(--text);
+  }
+  .response-stepper button.is-complete > span {
+    border-color: #65d6a8;
+    background: color-mix(in srgb, #65d6a8 18%, var(--bg-elev-2));
+    color: #8de2be;
+  }
+  .response-stepper button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .response-stepper button:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
+  }
+  .response-stage {
+    padding: 13px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--bg) 76%, transparent);
+  }
+  .response-card-group {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .response-card-group[hidden] {
+    display: none;
+  }
+  .response-card-grid {
+    display: grid;
+    gap: 8px;
+  }
+  .response-card-grid button {
+    appearance: none;
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) 20px;
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: 10px;
+    min-width: 0;
+    min-height: 62px;
+    padding: 9px 11px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--bg-elev);
+    color: var(--text-soft);
+    text-align: left;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease, box-shadow 0.14s ease;
+  }
+  .response-card-grid button > span {
+    grid-row: 1 / 3;
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    background: var(--bg-elev-2);
+    color: var(--accent);
+    font-size: 18px;
+  }
+  .response-option-check {
+    grid-column: 3;
+    grid-row: 1 / 3;
+    display: grid;
+    place-items: center;
+    width: 17px;
+    height: 17px;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    color: transparent;
+    font-style: normal;
+    font: 900 10px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+  }
+  .response-card-grid button strong {
+    min-width: 0;
+    color: var(--text);
+    font: 800 12px/1.15 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+  }
+  .response-card-grid button small {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-mute);
+    font: 600 10px/1.2 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .response-card-grid button:hover:not(:disabled),
+  .response-card-grid button:focus-visible {
+    transform: translateY(-1px);
+    border-color: var(--accent);
+    outline: 2px solid color-mix(in srgb, var(--accent) 38%, transparent);
+    outline-offset: 2px;
+  }
+  .response-card-grid button.is-selected {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 1px var(--accent), 0 6px 16px color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+  .response-card-grid button.is-selected .response-option-check {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
+  }
+  .response-card-grid button:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+  }
+  .response-builder-actions {
+    display: flex;
+    justify-content: flex-end;
   }
   .typed-submit-btn,
   .typed-mc-btn {
@@ -2319,26 +2505,59 @@ export const VIEWER_CSS = `
     cursor: pointer;
   }
   .typed-submit-btn {
+    min-width: 180px;
+    border: 1px solid color-mix(in srgb, var(--text-mute) 24%, var(--line));
+    background: var(--bg-elev-2);
+    color: var(--text-mute);
+    transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
+  }
+  .typed-submit-btn:not(:disabled) {
+    border-color: var(--accent);
     background: var(--accent);
     color: #fff;
+    box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+  .typed-submit-btn:hover:not(:disabled),
+  .typed-submit-btn:focus-visible {
+    transform: translateY(-1px);
   }
   .typed-mc-btn {
+    flex: 0 0 auto;
     background: var(--bg-elev-2);
     color: var(--text);
     border: 1px solid var(--line);
   }
   .typed-submit-btn:disabled,
-  .typed-mc-btn:disabled,
-  .typed-answer-input:disabled {
-    opacity: 0.5;
+  .typed-mc-btn:disabled {
     cursor: not-allowed;
   }
   @media (max-width: 520px) {
-    .typed-answer-form {
-      grid-template-columns: 1fr auto;
+    .response-builder {
+      gap: 10px;
+      padding: 12px;
     }
-    .typed-answer-input {
-      grid-column: 1 / -1;
+    .response-builder-head strong {
+      font-size: 15px;
+    }
+    .response-stepper button {
+      display: grid;
+      justify-items: center;
+      gap: 4px;
+      padding: 6px 3px;
+      text-align: center;
+    }
+    .response-stepper button strong {
+      font-size: 9px;
+    }
+    .response-stage {
+      padding: 11px;
+    }
+    .response-card-grid button {
+      min-height: 58px;
+    }
+    .typed-submit-btn {
+      width: 100%;
+      min-width: 0;
     }
   }
   .race-strip {
@@ -7507,6 +7726,15 @@ export const VIEWER_CSS = `
     font-size: 14px;
     line-height: 1.45;
   }
+  .card-burn-warning {
+    border: 1px solid rgba(255, 155, 70, 0.55);
+    border-radius: 10px;
+    background: rgba(255, 120, 40, 0.12);
+    color: #ffd5b0 !important;
+    padding: 9px 10px;
+    font-weight: 650;
+  }
+  .card-burn-warning[hidden] { display: none; }
   .card-burn-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
@@ -7591,6 +7819,10 @@ export const VIEWER_CSS = `
     border-color: rgba(255,110,110,0.72);
     background: #b92b2b;
     color: #fff;
+  }
+  .card-burn-actions button.primary.is-danger {
+    background: #9f2f24;
+    border-color: #d75d4d;
   }
   .card-burn-actions button:disabled {
     cursor: not-allowed;
@@ -8135,6 +8367,11 @@ export const VIEWER_CSS = `
     text-transform: uppercase;
     letter-spacing: 0.08em;
     opacity: 0.7;
+  }
+  .mash-grid-helper {
+    color: var(--text-soft);
+    font-size: 11px;
+    line-height: 1.35;
   }
   .mash-grid {
     display: grid;

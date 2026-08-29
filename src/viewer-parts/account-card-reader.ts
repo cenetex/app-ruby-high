@@ -179,7 +179,7 @@ export function createAccountCardReaderRenderer(deps: AccountCardReaderRendererD
             event.preventDefault();
             event.stopPropagation();
             reveal.disabled = true;
-            reveal.textContent = "Creating collectible...";
+            reveal.textContent = "Minting collectible...";
             panel.classList.add("is-minting");
             const revealedCard = await deps.mintCard(recordValue(currentCard, "id"));
             if (revealedCard) {

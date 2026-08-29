@@ -829,8 +829,8 @@ export interface QuizState {
    *  moderation/admin review surfaces. */
   publicWorldHiddenEventIds?: string[];
   publicWorldEventReports?: PublicWorldEventReport[];
-  /** Durable graded-essay artifacts. Each report snapshots the player's essay,
-   *  the teacher score/comment, and the classroom winner for later display. */
+  /** Durable graded response artifacts. Player response text is deliberately
+   *  excluded; reports keep only the prompt, score/comment, and class winner. */
   essayReports: EssayReport[];
   /** Per-grade NPC student rosters. Keyed by grade so progress persists when
    *  the player switches grades and comes back. */
@@ -1472,7 +1472,6 @@ export interface EssayReport {
   grade: Grade | null;
   subject?: string;
   prompt: string;
-  response: string;
   score: number | null; // 0-10 teacher score
   passed: boolean;
   comment: string;
