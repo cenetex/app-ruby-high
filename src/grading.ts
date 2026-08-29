@@ -25,6 +25,8 @@ export interface ParsedGrade {
 export interface ParsedTeacherGrades {
   grades: ParsedGrade[];
   bestResponder: string | null;
+  /** Optional AI rewrite of the player's bounded response-card choices. */
+  playerResponse?: string;
   /** Lines that weren't a GRADE/BEST directive, joined with newlines and
    *  trimmed. This is the human-readable response the viewer renders as
    *  the teacher's "delta" stream. */
@@ -91,6 +93,7 @@ export function offlineOpinionContentScore(input: {
 // silently letting a "-3" line fall through as narrative.
 const GRADE_LINE = /^\s*GRADE\s+responder=([\w-]+)\s+score=(-?\d+(?:\.\d+)?)\s+comment=(.+?)\s*$/i;
 const BEST_LINE = /^\s*BEST:\s*([\w-]+)\s*$/i;
+const PLAYER_RESPONSE_LINE = /^\s*PLAYER_RESPONSE:\s*(.+?)\s*$/i;
 
 /** Parse the teacher's grading-turn raw text. Order of grade lines is
  *  preserved; if the teacher emits the same responder twice, both entries
@@ -101,6 +104,7 @@ export function parseTeacherGrades(text: string): ParsedTeacherGrades {
   }
   const grades: ParsedGrade[] = [];
   let bestResponder: string | null = null;
+  let playerResponse: string | undefined;
   const narrativeLines: string[] = [];
   for (const line of text.split(/\r?\n/)) {
     const gm = line.match(GRADE_LINE);
@@ -120,11 +124,18 @@ export function parseTeacherGrades(text: string): ParsedTeacherGrades {
       if (bestResponder == null) bestResponder = bm[1] ?? null;
       continue;
     }
+    const pm = line.match(PLAYER_RESPONSE_LINE);
+    if (pm) {
+      const candidate = (pm[1] ?? "").trim().replace(/^(["'])|(["'])$/g, "").slice(0, 600).trim();
+      if (!playerResponse && candidate.length >= 20) playerResponse = candidate;
+      continue;
+    }
     narrativeLines.push(line);
   }
   return {
     grades,
     bestResponder,
+    ...(playerResponse ? { playerResponse } : {}),
     narrativeText: narrativeLines.join("\n").trim(),
   };
 }

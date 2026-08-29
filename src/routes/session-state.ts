@@ -57,6 +57,7 @@ import {
 } from "../hosted-entitlements.js";
 import { APP_DISPLAY_NAME, APP_NAME, APP_ROUTE_PREFIX } from "./constants.js";
 import { correctChoiceForQuestion } from "../question-choices.js";
+import { constructedResponseClaimsForState } from "../services/constructed-response.js";
 
 interface FacultyTelemetry extends FacultyMember {
   questionCount: number;
@@ -148,6 +149,7 @@ interface SessionTelemetry extends Record<string, unknown> {
   npc_roster: NpcStudentState[];
   active_round: ReturnType<typeof deriveActiveRound>;
   is_opinion: boolean;
+  response_claims: ReturnType<typeof constructedResponseClaimsForState>;
   character: PlayerCharacter | null;
   first_bell_report: FirstBellReport | null;
   first_bell_share: { shareId: string; url: string; grade: Grade | null } | null;
@@ -454,6 +456,9 @@ export function buildSessionState(args: {
       : {},
     active_round: deriveActiveRound(state),
     is_opinion: state.current?.type === "opinion",
+    response_claims: state.current?.type === "opinion"
+      ? constructedResponseClaimsForState(state)
+      : [],
     character: state.character,
     first_bell_report: state.character?.firstBellReport ?? null,
     first_bell_share: firstBellShare

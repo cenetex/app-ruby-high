@@ -1027,7 +1027,7 @@ export function runViewerClient(bootstrap) {
   let generatingMc = false;
   let takeStartedQuestionId = null;
   let responseCardSelection = {};
-  let responseBuilderActiveGroup = "stance";
+  let responseBuilderActiveGroup = "claim";
   const viewedClassReportKeys = new Set();
   const renderedOpinionIds = new Set(); // responder ids whose text we've appended to chat
   const gradedResponderIds = new Set(); // responders whose grade-tag we've stamped on
@@ -1060,8 +1060,8 @@ export function runViewerClient(bootstrap) {
     opinionSubmitted = false;
     opinionSubmittedQuestionId = null;
   }
-  const RESPONSE_CARD_GROUPS = ["stance", "evidence", "impact"];
-  const RESPONSE_CARD_GROUP_LABELS = { stance: "position", evidence: "evidence", impact: "impact" };
+  const RESPONSE_CARD_GROUPS = ["claim", "stance", "evidence", "impact"];
+  const RESPONSE_CARD_GROUP_LABELS = { claim: "claim", stance: "position", evidence: "evidence", impact: "impact" };
   function resetResponseBuilder() {
     responseCardSelection = {};
     responseBuilderActiveGroup = RESPONSE_CARD_GROUPS[0];
@@ -1073,17 +1073,27 @@ export function runViewerClient(bootstrap) {
   function selectedResponseCardPayload() {
     if (!RESPONSE_CARD_GROUPS.every((group) => responseCardSelection[group])) return null;
     return {
+      claimId: responseCardSelection.claim,
       stance: responseCardSelection.stance,
       evidence: responseCardSelection.evidence,
       impact: responseCardSelection.impact,
     };
   }
-  function selectedResponseCardSummary() {
-    return RESPONSE_CARD_GROUPS.map((group) => {
-      const value = responseCardSelection[group];
-      const button = els.responseCardButtons.find((entry) => entry.dataset.group === group && entry.dataset.value === value);
-      return button ? button.dataset.short : "";
-    }).filter(Boolean).join(" · ");
+  function syncResponseClaims() {
+    const claims = Array.isArray(lastTelemetry && lastTelemetry.response_claims)
+      ? lastTelemetry.response_claims.slice(0, 2)
+      : [];
+    const buttons = els.responseCardButtons.filter((button) => button.dataset.group === "claim");
+    buttons.forEach((button, index) => {
+      const claim = claims[index];
+      button.hidden = !claim;
+      button.dataset.value = claim ? String(claim.id || "") : "";
+      button.dataset.short = claim ? String(claim.answer || "") : "";
+      const title = button.querySelector("strong");
+      const detail = button.querySelector("small");
+      if (title) title.textContent = claim ? String(claim.answer || "Claim") : "—";
+      if (detail) detail.textContent = claim ? String(claim.prompt || "") : "—";
+    });
   }
   function responseGroupIsAvailable(group) {
     const groupIndex = RESPONSE_CARD_GROUPS.indexOf(group);
@@ -1095,6 +1105,7 @@ export function runViewerClient(bootstrap) {
     syncResponseBuilder(true, false);
   }
   function syncResponseBuilder(isOpinion, disabled) {
+    if (isOpinion) syncResponseClaims();
     const complete = !!selectedResponseCardPayload();
     if (!responseGroupIsAvailable(responseBuilderActiveGroup)) {
       responseBuilderActiveGroup = RESPONSE_CARD_GROUPS.find((group) => responseGroupIsAvailable(group) && !responseCardSelection[group]) || RESPONSE_CARD_GROUPS[0];
@@ -1124,7 +1135,7 @@ export function runViewerClient(bootstrap) {
     });
     els.typedSubmitBtn.hidden = !isOpinion;
     els.typedSubmitBtn.disabled = !!disabled || !complete;
-    els.typedSubmitBtn.textContent = complete ? "Submit" : "Finish steps";
+    els.typedSubmitBtn.textContent = typedSubmitting ? "Creating…" : "Submit";
     if (els.responseBuildStatus) {
       els.responseBuildStatus.textContent = complete ? "Ready" : RESPONSE_CARD_GROUP_LABELS[responseBuilderActiveGroup];
     }
@@ -5080,12 +5091,6 @@ export function runViewerClient(bootstrap) {
     try {
       if (inOpinion) {
         markOpinionSubmitted(opinionQuestionId);
-        appendMsg({
-          kind: "you",
-          name: playerDisplayName(),
-          body: "Response build · " + selectedResponseCardSummary(),
-          color: "var(--accent)",
-        });
         const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || "ruby";
         // In offline mode submit with force=true so the server fills any
         // missing NPC slots and resolves the round; without that flag a
@@ -10400,6 +10405,12 @@ export function runViewerClient(bootstrap) {
           playerStreamMsgEl = null;
           studentStreamMsgEl = null;
           streamMsgEl = null;
+        } else if (event === "opinion-response") {
+          const responseText = parsed && parsed.text ? String(parsed.text) : "";
+          if (responseText && !renderedOpinionIds.has("player")) {
+            renderedOpinionIds.add("player");
+            appendMsg({ kind: "you", name: playerDisplayName(), body: responseText, color: "var(--accent)" });
+          }
         } else if (event === "waiting" || event === "opinion-graded") {
           if (event === "opinion-graded" && parsed && parsed.opinionPurpose === "daily-take") {
             postViewerMetricEvent("teacher_response_viewed", {
@@ -10585,12 +10596,14 @@ export function runViewerClient(bootstrap) {
   // teacher's response streams as a normal chat reply when grading fires.
   function renderOpinionsIntoChat(round) {
     if (!round || round.type !== "opinion") return;
-    // Render any new NPC responses (deduped by responder id) as student
-    // chat messages.
+    // Render any new responses (deduped by responder id) as chat messages.
     for (const r of (round.opinionResponses || [])) {
-      if (r.responder === "player") continue;
       if (renderedOpinionIds.has(r.responder)) continue;
       renderedOpinionIds.add(r.responder);
+      if (r.responder === "player") {
+        appendMsg({ kind: "you", name: playerDisplayName(), body: r.text, color: "var(--accent)" });
+        continue;
+      }
       const s = STUDENTS.find((x) => x.id === r.responder);
       if (!s) continue;
       appendMsg({ kind: "student", name: s.name, body: r.text, color: s.color, studentId: s.id });

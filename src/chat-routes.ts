@@ -95,6 +95,7 @@ import {
 } from "./openrouter-generation-access.js";
 import { RUBY_HIGH_PHOTO_PROMPT_VERSION } from "./services/school-photo-scenes.js";
 import {
+  constructedResponseClaimsForState,
   constructedResponseText,
   parseConstructedResponseSelection,
 } from "./services/constructed-response.js";
@@ -135,6 +136,14 @@ async function waitForOpinionReadyToGrade(ruby: RubyHighService, sessionId: stri
     if (ruby.isOpinionRoundReadyToGrade(sessionId)) return true;
   }
   return ruby.isOpinionRoundReadyToGrade(sessionId);
+}
+
+function connectedResponsePreservesClaim(response: string | undefined, claimAnswer: string): response is string {
+  if (!response) return false;
+  const normalize = (value: string) => value.toLocaleLowerCase().replace(/\s+/g, " ").trim();
+  const candidate = normalize(response);
+  const claim = normalize(claimAnswer);
+  return candidate.length >= 20 && candidate.length <= 600 && !!claim && candidate.includes(claim);
 }
 
 function fillMissingOpinionResponders(
@@ -914,6 +923,8 @@ async function gradeOpinionResponses(args: {
     "",
     "Scale: 5 = showed up. 7 = actually thought. 9 = saw something the others missed. 10 = made you reconsider the question.",
     "",
+    "The player did not type prose. Their response was assembled from four bounded class choices: claim, position, evidence test, and impact. First, turn only the player's supplied response into two connected sentences under 65 words. Preserve the exact chosen claim and reasoning. Add no facts, experiences, identity details, or new evidence. Grade that connected version in the same pass.",
+    "",
     "For each grade comment:",
     "- Name the specific thing they did right or wrong. Reference their actual words or argument.",
     "- Never say 'good job,' 'nice effort,' 'well done,' or any variant. Those are participation trophies.",
@@ -923,6 +934,7 @@ async function gradeOpinionResponses(args: {
     responseList,
     "",
     "Output strictly:",
+    "PLAYER_RESPONSE: <the player's connected two-sentence answer>",
     "GRADE responder=<id> score=<0-10> comment=<one pointed sentence>",
     "(repeat for each responder)",
     "BEST: <responder id>",
@@ -3415,7 +3427,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     return true;
   }
 
-  // Player submits a three-card constructed response to an opinion question. If all
+  // Player submits a four-card constructed response to an opinion question. If all
   // responses are in (player + both NPCs), this also runs the grading turn
   // and streams the teacher's response as SSE. Works in offline (non-AI)
   // mode too. Free-form player text is intentionally rejected here so the
@@ -3448,10 +3460,22 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const hasResponseCards = !!body && Object.prototype.hasOwnProperty.call(body, "responseCards");
     const responseCards = parseConstructedResponseSelection(body?.responseCards);
     if (hasResponseCards && !responseCards) {
-      ctx.error(ctx.res, "Choose one valid card from each response row.", 400);
+      ctx.error(ctx.res, "Choose one option from each response step.", 400);
       return true;
     }
-    const text = responseCards ? constructedResponseText(responseCards) : "";
+    const submissionState = ruby.getOrCreate(sessionId);
+    const responseClaims = constructedResponseClaimsForState(submissionState);
+    const claim = responseCards
+      ? responseClaims.find((entry) => entry.id === responseCards.claimId) ?? null
+      : null;
+    if (responseCards && !claim) {
+      ctx.error(ctx.res, "Choose a claim from today's class.", 400);
+      return true;
+    }
+    // This is authored curriculum plus bounded option IDs only. The resulting
+    // prose is what the existing teacher LLM grades below; player-written text
+    // remains rejected above.
+    const text = responseCards && claim ? constructedResponseText(responseCards, claim) : "";
     const force = !!body?.force;
     let mutated = false;
     if (text) {
@@ -3506,6 +3530,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const { send, end } = openSse(ctx.res);
 
     if (!ruby.isOpinionRoundReadyToGrade(sessionId)) {
+      if (text) send("opinion-response", { ok: true, text, generated: false });
       send("waiting", { ok: true });
       end();
       return true;
@@ -3529,6 +3554,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       let grades: import("./grading.js").ParsedGrade[] = [];
       let bestResponder: string | null = null;
       let narrativeText = "";
+      let finalPlayerResponse = text;
       const useOfflineClassResult = () => {
         const classResult = buildOfflineOpinionClassResult({ state });
         grades = classResult.grades;
@@ -3552,6 +3578,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           grades = teacherResponse.grades;
           bestResponder = teacherResponse.bestResponder;
           narrativeText = teacherResponse.narrativeText;
+          if (claim && connectedResponsePreservesClaim(teacherResponse.playerResponse, claim.answer)) {
+            finalPlayerResponse = teacherResponse.playerResponse;
+          }
 
           // Praise-gate: if the teacher response contains generic praise ("good job",
           // "nice effort", etc.), retry once with a stricter instruction.
@@ -3572,6 +3601,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
                 grades = retryResponse.grades;
                 bestResponder = retryResponse.bestResponder;
                 narrativeText = retryResponse.narrativeText;
+                if (claim && connectedResponsePreservesClaim(retryResponse.playerResponse, claim.answer)) {
+                  finalPlayerResponse = retryResponse.playerResponse;
+                }
                 log.event("opinion.platitude-corrected", { facultyId, sessionId });
               } else {
                 // Second strike — log it but don't retry again. The model
@@ -3603,6 +3635,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
                 grades = retryResponse.grades;
                 bestResponder = retryResponse.bestResponder;
                 narrativeText = retryResponse.narrativeText;
+                if (claim && connectedResponsePreservesClaim(retryResponse.playerResponse, claim.answer)) {
+                  finalPlayerResponse = retryResponse.playerResponse;
+                }
                 log.event("opinion.vague-teacher-response-corrected", { facultyId, sessionId });
               }
             } catch {
@@ -3616,6 +3651,16 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         }
       } else {
         useOfflineClassResult();
+      }
+      if (text && finalPlayerResponse) {
+        ruby.replaceOpinionResponse(sessionId, "player", finalPlayerResponse);
+        const playerResponse = responses.find((entry) => entry.responder === "player");
+        if (playerResponse) playerResponse.text = finalPlayerResponse;
+        send("opinion-response", {
+          ok: true,
+          text: finalPlayerResponse,
+          generated: finalPlayerResponse !== text,
+        });
       }
       // Stream the narrative as deltas (chunked by sentence so the typewriter
       // effect lands).

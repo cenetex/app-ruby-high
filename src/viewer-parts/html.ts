@@ -142,21 +142,22 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       </div>
       <div class="typed-answer-host" id="typed-answer-host" hidden>
         <form class="typed-answer-form" id="typed-answer-form">
-          <div class="response-builder" id="response-builder" data-active-group="stance">
-            <div class="response-builder-head">
-              <div class="response-builder-brand">
-                <span class="response-builder-mark" aria-hidden="true">◆</span>
-                <strong>Build a case</strong>
-              </div>
-              <span class="response-privacy"><span aria-hidden="true">🔒</span> No typing</span>
-            </div>
+          <div class="response-builder" id="response-builder" data-active-group="claim">
             <nav class="response-stepper" aria-label="Response steps">
-              <button type="button" data-response-step="stance" aria-current="step"><span>1</span><strong>Position</strong></button>
-              <button type="button" data-response-step="evidence" disabled><span>2</span><strong>Evidence</strong></button>
-              <button type="button" data-response-step="impact" disabled><span>3</span><strong>Impact</strong></button>
+              <button type="button" data-response-step="claim" aria-current="step"><span>1</span><strong>Claim</strong></button>
+              <button type="button" data-response-step="stance" disabled><span>2</span><strong>Position</strong></button>
+              <button type="button" data-response-step="evidence" disabled><span>3</span><strong>Evidence</strong></button>
+              <button type="button" data-response-step="impact" disabled><span>4</span><strong>Impact</strong></button>
             </nav>
             <div class="response-stage">
-            <fieldset class="response-card-group" data-response-group="stance">
+            <fieldset class="response-card-group" data-response-group="claim">
+              <legend class="visually-hidden">Claim</legend>
+              <div class="response-card-grid response-claim-grid">
+                <button type="button" data-response-card data-group="claim" data-value="" hidden><span aria-hidden="true">1</span><strong>—</strong><small>—</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="claim" data-value="" hidden><span aria-hidden="true">2</span><strong>—</strong><small>—</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+              </div>
+            </fieldset>
+            <fieldset class="response-card-group" data-response-group="stance" hidden>
               <legend class="visually-hidden">Position</legend>
               <div class="response-card-grid">
                 <button type="button" data-response-card data-group="stance" data-value="support" data-short="Mostly yes"><span aria-hidden="true">✓</span><strong>Mostly yes</strong><small>Supports claim</small><i class="response-option-check" aria-hidden="true">✓</i></button>
@@ -182,8 +183,8 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
             </fieldset>
             </div>
             <div class="response-builder-actions">
-              <div class="visually-hidden" id="response-build-status" aria-live="polite">Position</div>
-              <button class="typed-submit-btn" id="typed-submit-btn" type="submit" disabled>Finish steps</button>
+              <div class="visually-hidden" id="response-build-status" aria-live="polite">Claim</div>
+              <button class="typed-submit-btn" id="typed-submit-btn" type="submit" disabled>Submit</button>
             </div>
           </div>
           <button class="typed-mc-btn" id="generate-mc-btn" type="button">Choices</button>

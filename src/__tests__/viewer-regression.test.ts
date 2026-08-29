@@ -187,9 +187,11 @@ describe("viewer regression guardrails", () => {
     expect(VIEWER_CSS).toContain("--focus-ring:");
     expect(VIEWER_CSS).toContain("--text-mute: #9ba4ba");
     expect(cssRule(".response-card-grid button")).toContain("min-height: 62px");
-    expect(cssRule(".response-privacy")).toContain("text-transform: uppercase");
     expect(html).toContain('class="response-stepper"');
+    expect(html).toContain('<legend class="visually-hidden">Claim</legend>');
     expect(html).toContain('<legend class="visually-hidden">Position</legend>');
+    expect(html).not.toContain("Build a case");
+    expect(html).not.toContain("No typing");
     expect(html).not.toContain("nothing typed");
     expect(html).not.toContain("Tap a choice to edit");
     expect(VIEWER_CSS).toContain('body :focus-visible:not([disabled]):not([tabindex="-1"])');
@@ -1183,6 +1185,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "Earlier room summary");
     expectScriptToContain(script, 'event === "player-line"');
     expectScriptToContain(script, 'event === "student"');
+    expectScriptToContain(script, 'event === "opinion-response"');
     expectScriptToContain(script, 'event === "waiting" || event === "opinion-graded"');
     expectScriptToContain(script, "refreshSessionAfterStreamEvent();");
     expectScriptToContain(script, "body: JSON.stringify({ force: true })");

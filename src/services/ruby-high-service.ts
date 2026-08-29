@@ -7781,7 +7781,14 @@ export class RubyHighService extends Service {
         correct: correctChoice,
         wasCorrect,
         at: round.player.answeredAt ?? round.expiresAt,
-        ...(isTypedQuestion ? { answerText, expectedAnswer: q.expectedAnswer ?? acceptedAnswers[0] } : {}),
+        questionPrompt: q.prompt,
+        answerText: isTypedQuestion ? answerText : q.options?.[picked] ?? picked,
+        answerKind: isTypedQuestion ? "typed" : "choice",
+        ...(round.classSession ? {
+          classMode: round.classSession.mode,
+          ...(round.classSession.date ? { classDate: round.classSession.date } : {}),
+        } : {}),
+        ...(isTypedQuestion ? { expectedAnswer: q.expectedAnswer ?? acceptedAnswers[0] } : {}),
       };
       this.appendAnswerHistory(state, record);
     }
@@ -8965,6 +8972,20 @@ export class RubyHighService extends Service {
     }
     state.updatedAt = now;
     void this.persistSession(sessionId);
+    return state;
+  }
+
+  /** Replace a recorded bounded response with the teacher LLM's connected
+   *  rendering of the same choices. No new player input enters this path. */
+  replaceOpinionResponse(sessionId: string, responder: string, text: string): QuizState {
+    const state = this.getOrCreate(sessionId);
+    const round = state.activeRound;
+    if (!round || round.type !== "opinion" || round.resolved) return state;
+    const response = round.opinionResponses.find((entry) => entry.responder === responder);
+    const bounded = text.replace(/\s+/g, " ").trim().slice(0, 600);
+    if (!response || bounded.length < 20) return state;
+    response.text = bounded;
+    state.updatedAt = Date.now();
     return state;
   }
 

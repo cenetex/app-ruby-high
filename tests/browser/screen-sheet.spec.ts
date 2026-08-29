@@ -93,7 +93,7 @@ async function closeAccount(page: Page): Promise<void> {
 }
 
 async function completeResponseBuilder(page: Page): Promise<void> {
-  for (const group of ["stance", "evidence", "impact"]) {
+  for (const group of ["claim", "stance", "evidence", "impact"]) {
     await page.locator(`[data-response-group="${group}"] [data-response-card]`).first().click();
   }
   await expect(page.locator("#typed-submit-btn")).toBeEnabled();
