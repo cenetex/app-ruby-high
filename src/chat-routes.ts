@@ -745,7 +745,7 @@ function answerGradedContextMatchesReveal(state: QuizState, context: AnswerGrade
   return true;
 }
 
-const CORE_LOUNGE_TEACHERS = ["ruby", "sally-science", "professor-edward"];
+const CORE_LOUNGE_TEACHERS = ["ruby", "sally-science", "professor-edward", "roko"];
 
 function loungeTeacherIdsForState(state: QuizState): string[] {
   const roster = facultyForSession(state)
@@ -4354,7 +4354,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const assetBase = publicBase + "/api/apps/ruby-high/assets/";
     const topTeacherId = highestScoringFaculty(yearbookEntry.subjectScores || ch.subjectScores);
     const teacherNames: Record<string, string> = {
-      ruby: "Ruby", "sally-science": "Sally Science", "professor-edward": "Professor Edward",
+      ruby: "Ruby", "sally-science": "Sally Science", "professor-edward": "Professor Edward", roko: "Roko",
     };
     const teacherName = teacherNames[topTeacherId] || topTeacherId;
     const teacherImageUrl = assetBase + "teachers/" + topTeacherId + "-full-sticker.png";

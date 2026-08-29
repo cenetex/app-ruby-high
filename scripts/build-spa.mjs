@@ -12,12 +12,14 @@ const questionFiles = {
   ruby: "ruby.json",
   "sally-science": "sally-science.json",
   "professor-edward": "professor-edward.json",
+  roko: "roko.json",
 };
 
 const corpusFiles = {
   ruby: "ruby.md",
   "sally-science": "sally-science.md",
   "professor-edward": "professor-edward.md",
+  roko: "roko.md",
 };
 
 const playbooks = [
@@ -98,6 +100,15 @@ async function readQuestions() {
   return out;
 }
 
+async function readRokoEpisodes() {
+  const raw = await readFile(resolve(root, "assets", "episodes", "roko.json"), "utf8");
+  const parsed = JSON.parse(raw);
+  if (parsed.version !== 1 || !Array.isArray(parsed.episodes) || parsed.episodes.length === 0) {
+    throw new Error("Roko episode data is missing or has an unsupported version.");
+  }
+  return parsed.episodes;
+}
+
 function parseCorpusQuestions(raw, facultyId) {
   const rows = raw
     .split(/\r?\n/)
@@ -165,12 +176,14 @@ function offlineApiScript(data) {
   const FACULTY = [
     { id: "ruby", displayName: "Ruby", shortName: "Ruby", subjects: ["onboarding", "general-knowledge", "ai-literacy", "agent-culture"], bio: "Host of Ruby High.", available: true, accent: "#d22a2a", assetTeacherId: "ruby" },
     { id: "sally-science", displayName: "Sally Science", shortName: "Sally", subjects: ["physics", "chemistry", "biology", "earth-science"], bio: "STEM teacher.", available: true, accent: "#3aa3e0", assetTeacherId: "sally-science" },
-    { id: "professor-edward", displayName: "Professor Edward", shortName: "Edward", subjects: ["literature", "literary-theory", "mid-century"], bio: "Literature teacher.", available: true, accent: "#7a4f2a", assetTeacherId: "professor-edward" }
+    { id: "professor-edward", displayName: "Professor Edward", shortName: "Edward", subjects: ["literature", "literary-theory", "mid-century"], bio: "Literature teacher.", available: true, accent: "#7a4f2a", assetTeacherId: "professor-edward" },
+    { id: "roko", displayName: "Roko", shortName: "Roko", subjects: ["ai-alignment", "infohazards", "coordination", "threat-modeling"], bio: "AI alignment and information-hazards teacher.", available: true, accent: "#a35c35", assetTeacherId: "roko" }
   ];
   const ROOMS = [
     { id: "homeroom", name: "Homeroom", channelName: "homeroom", teacherId: "ruby", description: "Ruby's homeroom.", teaches: true },
     { id: "science", name: "Science Lab", channelName: "science", teacherId: "sally-science", description: "Sally's lab.", teaches: true },
     { id: "literature", name: "Library", channelName: "literature", teacherId: "professor-edward", description: "Edward's seminar room.", teaches: true },
+    { id: "alignment", name: "Alignment Lab", channelName: "alignment", teacherId: "roko", description: "Roko's alignment and information-hazards lab.", teaches: true },
     { id: "lounge", name: "Teachers' Lounge", channelName: "lounge", teacherId: null, description: "Where the faculty hang out between periods.", teaches: false }
   ];
   const STUDENT_IDS = ["lyra", "sami", "ravi", "indra", "mika", "noor"];
@@ -244,6 +257,7 @@ function offlineApiScript(data) {
       characterSlots: { unlockedSlots: 1, photoDayCredits: 0 },
       comicCollection: defaultComicCollection(),
       schoolEvents: [],
+      caseStudyProgress: null,
       npcRosters: {
         "9": buildNpcRoster("9"),
         "10": buildNpcRoster("10"),
@@ -456,7 +470,8 @@ function offlineApiScript(data) {
       courses: [
         { id: "ruby", title: "Homeroom", facultyId: "ruby", roomId: "homeroom", subjects: FACULTY[0].subjects },
         { id: "sally-science", title: "Science", facultyId: "sally-science", roomId: "science", subjects: FACULTY[1].subjects },
-        { id: "professor-edward", title: "Literature", facultyId: "professor-edward", roomId: "literature", subjects: FACULTY[2].subjects }
+        { id: "professor-edward", title: "Literature", facultyId: "professor-edward", roomId: "literature", subjects: FACULTY[2].subjects },
+        { id: "roko", title: "AI Alignment", facultyId: "roko", roomId: "alignment", subjects: FACULTY[3].subjects }
       ]
     };
   }
@@ -541,6 +556,99 @@ function offlineApiScript(data) {
     };
   }
 
+  function stableIndex(value, length) {
+    var hash = 0;
+    for (var i = 0; i < value.length; i += 1) {
+      hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+    }
+    return Math.abs(hash) % length;
+  }
+
+  function rokoEpisodeForClass(date, grade) {
+    var episodes = Array.isArray(DATA.rokoEpisodes) ? DATA.rokoEpisodes : [];
+    return episodes.length ? episodes[stableIndex(date + ":" + grade, episodes.length)] : null;
+  }
+
+  function rokoEpisodeForState(state, date, grade) {
+    var dailyClasses = Object.values(state.character && state.character.dailyClasses || {});
+    var hasCompletedRokoCase = dailyClasses.some(function(dailyClass) {
+      return dailyClass &&
+        dailyClass.facultyId === "roko" &&
+        dailyClass.status === "complete" &&
+        dailyClass.result &&
+        dailyClass.result.episodeId;
+    });
+    if (!hasCompletedRokoCase) {
+      var episodes = Array.isArray(DATA.rokoEpisodes) ? DATA.rokoEpisodes : [];
+      var onboarding = episodes.find(function(episode) { return episode.id === "exact-treasure"; });
+      if (onboarding) return onboarding;
+    }
+    return rokoEpisodeForClass(date, grade);
+  }
+
+  function rokoCaseQuestion(episode, stage, grade, progress) {
+    var choice = stage === "investigate" ? episode.investigation : episode.decision;
+    var investigation = progress && progress.episodeId === episode.id ? progress.action : null;
+    return {
+      id: "roko_case_" + episode.id + "_" + stage + "_" + grade,
+      prompt: choice.prompt,
+      type: "multiple-choice",
+      correct: choice.correct,
+      decoys: choice.decoys,
+      explanation: choice.explanation,
+      answerConsequences: choice.consequences || null,
+      caseActionResults: choice.actionResults || null,
+      caseStudy: {
+        episodeId: episode.id,
+        title: episode.title,
+        hook: episode.hook,
+        scene: episode.scene,
+        stage: stage,
+        evidence: episode.evidence,
+        investigation: investigation
+      },
+      subject: episode.subject,
+      stat: episode.stat,
+      difficulty: difficultyForGrade(grade),
+      faculty: "roko"
+    };
+  }
+
+  function rokoCaseTake(episode, grade, progress) {
+    var investigation = progress && progress.episodeId === episode.id ? progress.action : null;
+    var verificationSuffix = investigation
+      ? " Also say how you would verify " + investigation.actorName + "'s report before relying on it."
+      : "";
+    var verificationRubric = investigation
+      ? " Names a concrete check that could confirm or challenge the investigation report."
+      : "";
+    return {
+      id: "take_roko_" + episode.id + "_" + grade,
+      prompt: episode.take.prompt + verificationSuffix,
+      type: "opinion",
+      rubric: episode.take.rubric + verificationRubric,
+      opinionPurpose: "daily-take",
+      caseOutcome: Object.assign(
+        { episodeId: episode.id, title: episode.title },
+        episode.outcome,
+        investigation ? { investigation: investigation } : {}
+      ),
+      caseStudy: {
+        episodeId: episode.id,
+        title: episode.title,
+        hook: episode.hook,
+        scene: episode.scene,
+        stage: "explain",
+        evidence: episode.evidence,
+        investigation: investigation
+      },
+      subject: episode.subject,
+      stat: episode.stat,
+      difficulty: difficultyForGrade(grade),
+      faculty: "roko"
+    };
+  }
+
   function pickQuestion(state, mode) {
     const facultyId = state.faculty === "lounge" ? "ruby" : state.faculty;
     const classMode = mode === "practice" ? "practice" : "class";
@@ -549,8 +657,23 @@ function offlineApiScript(data) {
       throw new Error("No scheduled question is ready right now.");
     }
     if (dailyClass) dailyClass.status = "active";
-    const bank = questionBank(facultyId);
     const grade = state.currentGrade || "9";
+    const rokoEpisode = dailyClass && facultyId === "roko" && Number(dailyClass.questionCount || 0) < 3
+      ? rokoEpisodeForState(state, dailyClass.date, grade)
+      : null;
+    const rokoStage = rokoEpisode
+      ? Number(dailyClass.questionCount || 0) === 0
+        ? "investigate"
+        : Number(dailyClass.questionCount || 0) === 1
+          ? "decide"
+          : "explain"
+      : null;
+    if (rokoStage === "investigate") state.caseStudyProgress = null;
+    const bank = rokoEpisode && rokoStage
+      ? [rokoStage === "explain"
+          ? rokoCaseTake(rokoEpisode, grade, state.caseStudyProgress)
+          : rokoCaseQuestion(rokoEpisode, rokoStage, grade, state.caseStudyProgress)]
+      : questionBank(facultyId);
     const gradeDifficulty = difficultyForGrade(grade);
     const allowed = difficultiesForGrade(grade);
     function gradeRank(g) {
@@ -572,7 +695,7 @@ function offlineApiScript(data) {
       : basePool;
     if (!pool.length) throw new Error("No offline questions are bundled for this room.");
     const q = clone(pool[Math.floor(Math.random() * pool.length)]);
-    const posed = materializeQuestion(q);
+    const posed = q.type === "opinion" ? q : materializeQuestion(q);
     state.askedQuestionIds.push(q.id);
     state.faculty = facultyId;
     state.subject = q.subject || null;
@@ -585,13 +708,19 @@ function offlineApiScript(data) {
       options: posed.options,
       correctChoice: posed.correctChoice,
       explanation: q.explanation || null,
+      rubric: q.rubric || null,
+      opinionPurpose: q.opinionPurpose || null,
       subject: q.subject || null,
       stat: q.stat || "head",
       difficulty: q.difficulty || gradeDifficulty,
       faculty: facultyId,
       sourceCardId: q.sourceCardId || null,
       canGenerateMc: false,
-      media: []
+      media: [],
+      caseStudy: q.caseStudy || null,
+      answerConsequences: q.answerConsequences || null,
+      caseActionResults: q.caseActionResults || null,
+      caseOutcome: q.caseOutcome || null
     };
     state.lastReveal = null;
     state.activeRound = buildRound(state, state.current, classMode);
@@ -644,7 +773,7 @@ function offlineApiScript(data) {
         index: mode === "class" ? Math.min(3, Number(dailyClass && dailyClass.questionCount || 0) + 1) : 1,
         total: mode === "class" ? 3 : 1
       },
-      cardRole: "class",
+      cardRole: q.type === "opinion" ? "social" : "class",
       stat: q.stat || "head"
     };
   }
@@ -731,6 +860,16 @@ function offlineApiScript(data) {
         }
       }
     }
+    const selectedAnswer = q.options && q.options[picked];
+    const caseConsequence = selectedAnswer && q.answerConsequences && q.answerConsequences[selectedAnswer];
+    const caseActionResult = selectedAnswer && q.caseActionResults && q.caseActionResults[selectedAnswer];
+    if (caseActionResult && q.caseStudy) {
+      state.caseStudyProgress = {
+        episodeId: q.caseStudy.episodeId,
+        action: clone(caseActionResult),
+        actedAt: answeredAt
+      };
+    }
     state.lastReveal = {
       questionId: q.id,
       questionPrompt: q.prompt,
@@ -743,6 +882,8 @@ function offlineApiScript(data) {
       wasCorrect,
       explanation: q.explanation || null,
       encouragement: wasCorrect ? "Correct." : "Not quite.",
+      caseConsequence: caseConsequence ? { label: "What your choice changed", detail: caseConsequence } : undefined,
+      caseActionResult: caseActionResult ? clone(caseActionResult) : undefined,
       scoreAward: wasCorrect ? { base: outcome === "hit" ? 100 : outcome === "mixed" ? 90 : 80, multiplier: 1, points: outcome === "hit" ? 100 : outcome === "mixed" ? 90 : 80, possible: 100 } : { base: 0, multiplier: 1, points: 0, possible: 100 },
       playerRoll: { stat, dice: roll.dice, total, outcome },
       classProgress: {
@@ -1006,9 +1147,9 @@ function offlineApiScript(data) {
       resolved: !!round.resolved,
       idleTriggered: false,
       firstCorrect: reveal ? round.firstCorrect : null,
-      opinionResponses: [],
-      opinionGrades: [],
-      bestResponder: null,
+      opinionResponses: round.opinionResponses || [],
+      opinionGrades: round.opinionGrades || [],
+      bestResponder: round.bestResponder || null,
       advantage: round.advantage || null
     };
   }
@@ -1103,8 +1244,10 @@ function offlineApiScript(data) {
         stat: state.current.stat || null,
         difficulty: state.current.difficulty || null,
         sourceCardId: null,
+        opinionPurpose: state.current.opinionPurpose || null,
         canGenerateMc: false,
-        media: []
+        media: [],
+        caseStudy: state.current.caseStudy || null
       } : null,
       lastReveal: state.lastReveal,
       faculty_roster: roster,
@@ -1123,7 +1266,7 @@ function offlineApiScript(data) {
       npc_roster: state.currentGrade ? (state.npcRosters[state.currentGrade] || []) : [],
       room_cohort: ROOM_COHORT,
       active_round: activeRoundView(state),
-      is_opinion: false,
+      is_opinion: !!(state.current && state.current.type === "opinion"),
       character: state.character,
       student_pool: state.studentPool || [],
       character_slots: Object.assign({}, ensureCharacterSlots(state), { costHallPasses: 1, photoDayCreditsPerSlot: 1 }),
@@ -1273,6 +1416,7 @@ function offlineApiScript(data) {
   function teacherVoice(facultyId) {
     if (facultyId === "sally-science") return "You are Sally Science, a sharp STEM teacher at Ruby High. Be warm, direct, and a little lab-coat intense.";
     if (facultyId === "professor-edward") return "You are Professor Edward, a dry but kind literature teacher at Ruby High. Be precise and lightly theatrical.";
+    if (facultyId === "roko") return "You are Roko, Ruby High's calm AI-alignment and information-hazards teacher. Be causal, precise, and never fearmonger.";
     return "You are Ruby, the homeroom teacher at Ruby High. Be encouraging, brisk, and classroom-direct.";
   }
 
@@ -1317,6 +1461,155 @@ function offlineApiScript(data) {
 
   function sseResponse(frames) {
     return text(frames.join("") + sse("end", {}), 200, "text/event-stream; charset=utf-8");
+  }
+
+  async function localOpinionSubmit(body) {
+    const state = loadState();
+    const q = state.current;
+    const round = state.activeRound;
+    if (!q || !round || q.type !== "opinion" || round.resolved) {
+      return sseResponse([sse("error", { message: "No active explanation card." })]);
+    }
+    const response = String((body && body.text) || "").trim().slice(0, 4096);
+    if (!response) return sseResponse([sse("waiting", { ok: true })]);
+    const submittedAt = now();
+    const hasReasoning = /\\b(because|so that|therefore|while|if|when|by)\\b/i.test(response);
+    const hasConcreteAction = /\\b(stop|pause|test|audit|check|verify|inspect|compare|measure|monitor|require|preserve|publish|send|delay|appoint|record)\\b/i.test(response);
+    const hasBoundary = /\\b(limit|constraint|approval|forbid|forbidden|must not|cannot|never|only if|unless|stop condition|boundary)\\b/i.test(response);
+    const needsVerification = !!(q.caseOutcome && q.caseOutcome.investigation);
+    const hasVerification = /\\b(verify|check|audit|repeat|sample|compare|measure|test|confirm|challenge|reproduce)\\b/i.test(response);
+    const playerScore = needsVerification
+      ? Math.min(9,
+          5
+          + (response.length >= 45 ? 1 : 0)
+          + (hasReasoning ? 1 : 0)
+          + (hasConcreteAction || hasBoundary ? 1 : 0)
+          + (hasVerification ? 1 : 0)
+        )
+      : response.length >= 45 && hasReasoning ? 8 : 6;
+    const passedTake = playerScore >= 7;
+    const npcTakes = {
+      lyra: "I would compare the report with a second source, then name the limit the evidence actually supports.",
+      sami: "I would try to break the rule on a small test first, because a clean sentence can still hide an easy exploit.",
+      ravi: "I would write down the prediction, the measurement, and the result before changing the system.",
+      indra: "I would name who owns the next action and what record proves they completed it.",
+      mika: "I would separate what the evidence shows from the story we want it to tell.",
+      noor: "I would keep the next move reversible until another observer can reproduce the report."
+    };
+    round.player = { picked: "A", answerText: response, answeredAt: submittedAt };
+    round.opinionResponses = [{ responder: "player", text: response, submittedAt }]
+      .concat((round.npcs || []).map(function(npc) {
+        return { responder: npc.studentId, text: npcTakes[npc.studentId] || "I would name the evidence, the limit, and what changes next.", submittedAt };
+      }));
+    round.opinionGrades = [{
+      responder: "player",
+      score: playerScore,
+      comment: passedTake
+        ? "You connected a concrete action to a reason and a limit."
+        : "Name one concrete action and explain why it changes the risk."
+    }].concat((round.npcs || []).map(function(npc) {
+      return { responder: npc.studentId, score: 7, comment: "Specific enough to test." };
+    }));
+    round.bestResponder = passedTake ? "player" : ((round.npcs && round.npcs[0] && round.npcs[0].studentId) || null);
+    round.resolved = true;
+    round.resolvedAt = submittedAt;
+
+    const dailyClass = dailyClassRecord(state, state.faculty);
+    if (dailyClass && Number(dailyClass.questionCount || 0) < 3) {
+      dailyClass.questionCount = 3;
+      if (passedTake) dailyClass.correctCount = Number(dailyClass.correctCount || 0) + 1;
+      dailyClass.status = "complete";
+      dailyClass.score = Math.round((Number(dailyClass.correctCount || 0) / 3) * 100);
+      dailyClass.letterGrade = letterGrade(dailyClass.score);
+      const passedClass = /^[ABC]/.test(dailyClass.letterGrade);
+      const outcome = q.caseOutcome;
+      const completedClasses = state.character && state.character.dailyClasses
+        ? Object.values(state.character.dailyClasses).filter(function(entry) {
+            return entry && entry.facultyId === state.faculty && entry.status === "complete";
+          }).length
+        : 1;
+      dailyClass.result = {
+        version: 1,
+        questionId: q.id,
+        prompt: q.prompt,
+        subject: q.subject || undefined,
+        answerText: response.slice(0, 220),
+        wasCorrect: passedTake,
+        forfeit: false,
+        teacherObservation: "Roko: " + round.opinionGrades[0].comment + " Your explanation was recorded.",
+        consequenceLabel: outcome ? outcome.consequenceLabel : "Class recorded",
+        consequenceDetail: outcome
+          ? passedClass ? outcome.passedConsequence : outcome.needsWorkConsequence
+          : "Your offline class result was saved.",
+        episodeId: outcome && outcome.episodeId,
+        episodeTitle: outcome && outcome.title,
+        relationshipLabel: outcome ? "Roko remembers" : undefined,
+        relationshipDetail: outcome
+          ? passedClass ? outcome.passedRelationship : outcome.needsWorkRelationship
+          : undefined,
+        memoryTitle: outcome && outcome.memoryTitle,
+        memoryDetail: outcome && outcome.memoryDetail,
+        followUp: outcome && outcome.followUp,
+        investigationLabel: outcome && outcome.investigation && outcome.investigation.reportLabel,
+        investigationDetail: outcome && outcome.investigation
+          ? outcome.investigation.report + " Verify it: " + outcome.investigation.verificationPrompt
+          : undefined,
+        investigationConfidence: outcome && outcome.investigation && outcome.investigation.confidence,
+        completedClasses: completedClasses,
+        requiredClasses: 1
+      };
+    }
+    state.score.total += 1;
+    state.score.possible = Number(state.score.possible || 0) + 100;
+    if (passedTake) {
+      state.score.correct += 1;
+      state.score.points = Number(state.score.points || 0) + 80;
+      ensureWallet(state).meritStars += 80;
+    }
+    state.history.push({ questionId: q.id, picked: "A", correct: "A", wasCorrect: passedTake, at: submittedAt, mode: "class" });
+    state.lastReveal = {
+      questionId: q.id,
+      questionPrompt: q.prompt,
+      questionType: "opinion",
+      questionSubject: q.subject || null,
+      questionDifficulty: q.difficulty || null,
+      picked: "A",
+      correct: "A",
+      wasCorrect: passedTake,
+      explanation: q.rubric || null,
+      encouragement: passedTake ? "Your explanation held up." : "Make the causal link more concrete.",
+      scoreAward: passedTake
+        ? { base: 80, multiplier: 1, points: 80, possible: 100 }
+        : { base: 0, multiplier: 1, points: 0, possible: 100 },
+      classProgress: {
+        mode: "class",
+        cardRole: "social",
+        facultyId: state.faculty,
+        grade: state.currentGrade || "9",
+        date: dailyKey(),
+        questionCount: 3,
+        correctCount: dailyClass ? dailyClass.correctCount : (passedTake ? 1 : 0),
+        totalQuestions: 3,
+        completed: true,
+        letterGrade: dailyClass ? dailyClass.letterGrade : (passedTake ? "B" : "F"),
+        score: dailyClass ? dailyClass.score : (passedTake ? 80 : 0)
+      }
+    };
+    transition(state, "revealed");
+    saveState(state);
+    return sseResponse([
+      sse("speaker", { facultyId: state.faculty }),
+      sse("delta", { text: round.opinionGrades[0].comment }),
+      sse("opinion-graded", {
+        grades: round.opinionGrades,
+        bestResponder: round.bestResponder,
+        responses: round.opinionResponses,
+        questionId: q.id,
+        opinionPurpose: q.opinionPurpose,
+        faculty: state.faculty
+      }),
+      sse("done", { finishReason: "stop" })
+    ]);
   }
 
   async function localTeacherEvent(body) {
@@ -1521,6 +1814,7 @@ function offlineApiScript(data) {
         if (url.pathname === APP_BASE + "/chat/character/portrait" && method === "POST") return json({ error: "Custom portraits require an image model; using the default local portrait.", local_ai: true }, 501);
         if (url.pathname === APP_BASE + "/chat/player-line" && method === "POST") return localPlayerLine(await requestJson(init || {}));
         if (url.pathname === APP_BASE + "/chat/student-chime" && method === "POST") return localStudentChime(await requestJson(init || {}));
+        if (url.pathname === APP_BASE + "/chat/opinion-submit" && method === "POST") return localOpinionSubmit(await requestJson(init || {}));
         if (url.pathname === APP_BASE + "/chat/event" && method === "POST") return localTeacherEvent(await requestJson(init || {}));
         if (url.pathname === APP_BASE + "/chat" && method === "POST") return localChat(await requestJson(init || {}));
         return sseResponse([sse("error", { message: "Offline local AI route is not implemented in the native shim." })]);
@@ -1590,13 +1884,14 @@ export async function buildSpa() {
   const viewerModuleUrl = pathToFileURL(resolve(root, "dist", "index.js")).href;
   const { renderViewerHtml } = await import(viewerModuleUrl);
   const questions = await readQuestions();
+  const rokoEpisodes = await readRokoEpisodes();
   const html = renderViewerHtml({
     agentName: "Ruby",
     sessionId: "rh:offline",
     apiBase: appBase,
     role: "human",
   });
-  const offlineScript = `<script>${offlineApiScript({ questions, playbooks })}</script>`;
+  const offlineScript = `<script>${offlineApiScript({ questions, rokoEpisodes, playbooks })}</script>`;
   const outputHtml = html.replace("<script>", `${offlineScript}\n<script>`);
 
   const assetsOutDir = resolve(outDir, appBase.slice(1), "assets");

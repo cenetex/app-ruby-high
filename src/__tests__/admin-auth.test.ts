@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { requireAdminAuth } from "../routes/admin-auth.js";
+import { requireAdminAuth, requireSchedulerAuth } from "../routes/admin-auth.js";
 import type { RouteContext } from "../routes/context.js";
 
 function authContext(authorizationHeader?: string | string[]): {
@@ -52,6 +52,27 @@ describe("requireAdminAuth", () => {
     expect(invalid.response()).toEqual({
       status: 401,
       error: "Admin authentication required.",
+    });
+  });
+});
+
+describe("requireSchedulerAuth", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("uses a separate least-privilege scheduler token", () => {
+    vi.stubEnv("RUBY_HIGH_ADMIN_TOKEN", "admin-route-test");
+    vi.stubEnv("RUBY_HIGH_SCHEDULER_TOKEN", "scheduler-route-test");
+    const scheduler = authContext("Bearer scheduler-route-test");
+    const admin = authContext("Bearer admin-route-test");
+
+    expect(requireSchedulerAuth(scheduler.ctx)).toBe("scheduler-route-test");
+    expect(scheduler.response()).toBeNull();
+    expect(requireSchedulerAuth(admin.ctx)).toBeNull();
+    expect(admin.response()).toEqual({
+      status: 401,
+      error: "Scheduler authentication required.",
     });
   });
 });

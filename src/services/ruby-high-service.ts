@@ -51,6 +51,12 @@ import {
   multipleChoiceDefinition,
 } from "../question-choices.js";
 import { teacherById, type TeacherCharacter } from "../characters/teachers.js";
+import {
+  rokoOnboardingEpisode,
+  rokoEpisodeForClass,
+  rokoEpisodeQuestion,
+  rokoEpisodeTake,
+} from "../content/roko-episodes.js";
 import { Service, type IAgentRuntime } from "../runtime.js";
 import {
   ADVANTAGE_ROLLS_PER_GRADE,
@@ -88,6 +94,9 @@ import {
   type BankedQuestion,
   type CardMemory,
   type CardReviewRating,
+  type CaseStudyCard,
+  type CaseStudyOutcome,
+  type CaseStudyProgress,
   type CharacterSlotEntitlements,
   type CharacterStats,
   type ClassPhotoArchive,
@@ -299,6 +308,8 @@ export interface PoseOpinionInput {
   /** Server-owned purpose. Callers may omit it; grade essays are also
    *  recognized by matching the character's assigned essay prompt. */
   purpose?: "daily-take" | "grade-essay";
+  caseStudy?: CaseStudyCard;
+  caseOutcome?: CaseStudyOutcome;
 }
 
 export interface PickAndPoseInput {
@@ -476,6 +487,7 @@ function teacherPortraitUrl(facultyId: string, assetTeacherId?: string, profileI
     assetId === RUBY_FACULTY.id
     || assetId === "sally-science"
     || assetId === "professor-edward"
+    || assetId === "roko"
     || assetId === "eliza"
     || assetId === "seraph"
   ) {
@@ -491,6 +503,7 @@ function teacherFullPortraitUrl(facultyId: string, assetTeacherId?: string, prof
     assetId === RUBY_FACULTY.id
     || assetId === "sally-science"
     || assetId === "professor-edward"
+    || assetId === "roko"
     || assetId === "eliza"
     || assetId === "seraph"
   ) {
@@ -1600,6 +1613,7 @@ interface DailyClassResultInput {
   wasCorrect: boolean;
   forfeit: boolean;
   teacherFeedback?: string;
+  caseOutcome?: CaseStudyOutcome;
 }
 
 type MetricEventInput = Omit<StoredMetricEventRecord, "id" | "name" | "occurredAt" | "day" | "metadata"> & {
@@ -1610,7 +1624,7 @@ type MetricEventInput = Omit<StoredMetricEventRecord, "id" | "name" | "occurredA
 const GLOBAL_PACK_OWNER = "__ruby_high_global__";
 const CLASS_QUESTIONS_PER_DAY = 3;
 const GRADUATION_ROOM_TARGETS: Record<Grade, number> = { "9": 1, "10": 2, "11": 3, "12": 4 };
-const CORE_GRADUATION_FACULTY_ORDER = [RUBY_FACULTY.id, "sally-science", "professor-edward"] as const;
+const CORE_GRADUATION_FACULTY_ORDER = [RUBY_FACULTY.id, "sally-science", "professor-edward", "roko"] as const;
 const CORE_DAILY_CLASS_FACULTY = new Set<string>(CORE_GRADUATION_FACULTY_ORDER);
 const DAILY_CLASS_PRACTICE_BEFORE_CARD: readonly number[] = [0, 0, 0] as const;
 const DAILY_CLASS_TAKES_PER_DAY = 1;
@@ -1666,6 +1680,23 @@ const DAILY_CLASS_TAKE_CARDS: Record<string, ReadonlyArray<{ prompt: string; rub
       rubric: "Names a genuine tension, takes a clear position, and supports it with a specific reason or detail.",
     },
   ],
+  roko: [
+    {
+      subject: "ai-alignment",
+      prompt: "Name the objective in one system from today's class. What behavior could satisfy its wording while defeating its purpose?",
+      rubric: "States a concrete objective and a plausible specification-gaming behavior tied to the exact wording.",
+    },
+    {
+      subject: "coordination",
+      prompt: "What is the larger shared threat in today's example, and what coordination failure could still stop the group from responding?",
+      rubric: "Separates threat pressure from a specific remaining failure such as free riding, missing common knowledge, weak commitment, or absent supplies.",
+    },
+    {
+      subject: "infohazards",
+      prompt: "Who needs which part of today's information, and what detail should stay limited until safeguards are ready?",
+      rubric: "Names distinct audiences, gives a task-based disclosure boundary, and explains the harm the boundary reduces.",
+    },
+  ],
 };
 const FIRST_BELL_COMIC_ISSUE_ID = "first-bell";
 const FIRST_BELL_COMIC_TITLE = "Ruby High: Book One - First Bell";
@@ -1674,6 +1705,7 @@ const COMIC_CLASS_LABELS: Record<string, string> = {
   ruby: "Homeroom",
   "sally-science": "Science",
   "professor-edward": "Literature",
+  roko: "AI Alignment",
 };
 const TEACHER_STORY_COMIC_PAGES: Record<string, Partial<Record<Grade, number>>> = {
   ruby: { "9": 1, "11": 4 },
@@ -6217,6 +6249,7 @@ export class RubyHighService extends Service {
         },
         comicCollection: normalizeComicCollection(null),
         schoolEvents: [],
+        caseStudyProgress: null,
         publicWorldHiddenEventIds: [],
         publicWorldEventReports: [],
         essayReports: [],
@@ -7124,6 +7157,7 @@ export class RubyHighService extends Service {
             : `${teacherName} marked “${answerText}” for another pass before the next graded class.`;
     const standing = this.courseStandingForState(state, record.facultyId);
     const passed = letterGradePasses(record.letterGrade);
+    const caseOutcome = input.caseOutcome;
     return {
       version: 1,
       questionId: clippedMetricValue(input.questionId, 160),
@@ -7134,8 +7168,24 @@ export class RubyHighService extends Service {
       wasCorrect: input.wasCorrect,
       forfeit: input.forfeit,
       teacherObservation: clippedMetricValue(teacherObservation, 520),
-      consequenceLabel: passed ? "Passing class recorded" : "Review mark recorded",
-      consequenceDetail: `${GRADE_LABELS[record.grade]} with ${teacherName}: ${record.letterGrade ?? "—"}, ${record.correctCount} of ${record.questionCount} graded cards correct.`,
+      consequenceLabel: caseOutcome?.consequenceLabel ?? (passed ? "Passing class recorded" : "Review mark recorded"),
+      consequenceDetail: caseOutcome
+        ? passed ? caseOutcome.passedConsequence : caseOutcome.needsWorkConsequence
+        : `${GRADE_LABELS[record.grade]} with ${teacherName}: ${record.letterGrade ?? "—"}, ${record.correctCount} of ${record.questionCount} graded cards correct.`,
+      ...(caseOutcome ? {
+        episodeId: caseOutcome.episodeId,
+        episodeTitle: caseOutcome.title,
+        relationshipLabel: `${teacherName} remembers`,
+        relationshipDetail: passed ? caseOutcome.passedRelationship : caseOutcome.needsWorkRelationship,
+        memoryTitle: caseOutcome.memoryTitle,
+        memoryDetail: caseOutcome.memoryDetail,
+        followUp: caseOutcome.followUp,
+        ...(caseOutcome.investigation ? {
+          investigationLabel: caseOutcome.investigation.reportLabel,
+          investigationDetail: `${caseOutcome.investigation.report} Verify it: ${caseOutcome.investigation.verificationPrompt}`,
+          investigationConfidence: caseOutcome.investigation.confidence,
+        } : {}),
+      } : {}),
       completedClasses: standing.completed,
       requiredClasses: standing.required,
     };
@@ -7855,6 +7905,25 @@ export class RubyHighService extends Service {
       ...(q.subject ? { questionSubject: q.subject } : {}),
       ...(q.difficulty ? { questionDifficulty: q.difficulty } : {}),
     };
+    const selectedAnswer = picked == null ? undefined : q.options?.[picked];
+    const caseConsequence = selectedAnswer ? q.answerConsequences?.[selectedAnswer] : undefined;
+    const caseActionResult = selectedAnswer ? q.caseActionResults?.[selectedAnswer] : undefined;
+    if (caseActionResult && q.caseStudy) {
+      const progress: CaseStudyProgress = {
+        episodeId: q.caseStudy.episodeId,
+        action: { ...caseActionResult },
+        actedAt: reviewAt,
+      };
+      state.caseStudyProgress = progress;
+      log.event("case.action-resolved", {
+        sessionId: state.sessionId,
+        episodeId: progress.episodeId,
+        actionId: progress.action.actionId,
+        actorId: progress.action.actorId,
+        kind: progress.action.kind,
+        confidence: progress.action.confidence,
+      });
+    }
     state.lastReveal = {
       questionId: q.id,
       ...questionSnapshot,
@@ -7870,6 +7939,13 @@ export class RubyHighService extends Service {
         : affinitySave
         ? "Class affinity kicked in — second chance counted."
         : forfeit ? "Time\'s up. Take a breath." : pickEncouragement(wasCorrect || classClownVoid),
+      ...(caseConsequence ? {
+        caseConsequence: {
+          label: "What your choice changed",
+          detail: caseConsequence,
+        },
+      } : {}),
+      ...(caseActionResult ? { caseActionResult: { ...caseActionResult } } : {}),
       scoreMultiplier,
       scoreAward,
       classProgress,
@@ -8816,6 +8892,8 @@ export class RubyHighService extends Service {
       subject,
       faculty: facultyId,
       rarity: input.rarity,
+      ...(input.caseStudy ? { caseStudy: input.caseStudy } : {}),
+      ...(input.caseOutcome ? { caseOutcome: input.caseOutcome } : {}),
     };
     state.current = question;
     state.subject = question.subject ?? state.subject;
@@ -8953,6 +9031,7 @@ export class RubyHighService extends Service {
           wasCorrect: passed,
           forfeit: !playerResponse?.text?.trim(),
           ...(playerGrade?.comment ? { teacherFeedback: playerGrade.comment } : {}),
+          ...(q.caseOutcome ? { caseOutcome: q.caseOutcome } : {}),
         },
       );
       const reportFaculty = q.faculty ?? round.classSession?.facultyId ?? state.faculty;
@@ -9059,16 +9138,33 @@ export class RubyHighService extends Service {
     return state;
   }
 
+  private rokoEpisodeForState(state: QuizState, date: string, grade: Grade) {
+    const dailyClasses = Object.values(state.character?.dailyClasses ?? {});
+    const hasCompletedRokoCase = dailyClasses.some(
+      (dailyClass) =>
+        dailyClass.facultyId === "roko" &&
+        dailyClass.status === "complete" &&
+        Boolean(dailyClass.result?.episodeId),
+    );
+
+    return hasCompletedRokoCase
+      ? rokoEpisodeForClass(date, grade)
+      : rokoOnboardingEpisode();
+  }
+
   private poseDailyClassTake(sessionId: string, state: QuizState, facultyId: string): QuizState {
     const date = dailyKey();
     const grade = state.currentGrade ?? DEFAULT_GRADE;
     const record = this.dailyClassRecord(state, facultyId, date);
     const socialIndex = (record?.socialCount ?? 0) + 1;
+    const rokoTake = facultyId === "roko"
+      ? rokoEpisodeTake(this.rokoEpisodeForState(state, date, grade), state.caseStudyProgress)
+      : null;
     const pool = DAILY_CLASS_TAKE_CARDS[facultyId] ?? DAILY_CLASS_TAKE_CARDS.ruby!;
     let seed = 0;
     const key = `${facultyId}:${grade}:${date}`;
     for (let i = 0; i < key.length; i++) seed = ((seed << 5) - seed + key.charCodeAt(i)) | 0;
-    const take = pool[Math.abs(seed) % pool.length]!;
+    const take = rokoTake ?? pool[Math.abs(seed) % pool.length]!;
     const next = this.poseOpinion(sessionId, {
       faculty: facultyId,
       subject: take.subject,
@@ -9076,6 +9172,10 @@ export class RubyHighService extends Service {
       prompt: take.prompt,
       rubric: take.rubric,
       purpose: "daily-take",
+      ...(rokoTake ? {
+        caseStudy: rokoTake.caseStudy,
+        caseOutcome: rokoTake.caseOutcome,
+      } : {}),
     });
     const classSession = next.activeRound?.classSession;
     if (classSession?.mode === "class") {
@@ -9119,6 +9219,10 @@ export class RubyHighService extends Service {
     }
     const cardRole = this.peekCardRoleForPose(state, facultyId, filter.mode);
     const importedReviewCourse = this.isImportedReviewCourse(state, facultyId);
+    const grade = state.currentGrade ?? DEFAULT_GRADE;
+    const classRecord = cardRole === "class"
+      ? this.dailyClassRecord(state, facultyId, dailyKey())
+      : null;
     const explicitDifficulty = filter.difficulty;
     const allowedDifficulties = !filter.difficulty && state.currentGrade && !importedReviewCourse
       ? difficultiesForGrade(state.currentGrade)
@@ -9129,8 +9233,17 @@ export class RubyHighService extends Service {
       : undefined;
     const displayDifficulty = explicitDifficulty
       ?? (state.currentGrade && !importedReviewCourse ? difficultyForGrade(state.currentGrade) : undefined);
+    const rokoEpisode = facultyId === "roko" && cardRole === "class" && !importedReviewCourse
+      ? this.rokoEpisodeForState(state, dailyKey(), grade)
+      : null;
+    const rokoStage = rokoEpisode && (classRecord?.questionCount ?? 0) < 2
+      ? (classRecord?.questionCount ?? 0) === 0 ? "investigate" as const : "decide" as const
+      : null;
+    if (rokoStage === "investigate") state.caseStudyProgress = null;
     const question = cardRole === "social"
       ? undefined
+      : rokoEpisode && rokoStage
+        ? rokoEpisodeQuestion(rokoEpisode, rokoStage, grade, state.caseStudyProgress)
       : this.pickReviewQuestion(state, facultyId, {
           subject: filter.subject,
           difficulty: explicitDifficulty,
@@ -9560,6 +9673,7 @@ export class RubyHighService extends Service {
     state.completedGrades = [];
     state.hasSeenIntro = true;
     state.schoolEvents = [];
+    state.caseStudyProgress = null;
     state.essayReports = [];
     state.npcRosters = {};
     state.npcCohort = initialNpcCohort();
@@ -13431,6 +13545,9 @@ function normalizeLoaded(s: QuizState): QuizState {
     characterSlots: normalizeCharacterSlots((s as { characterSlots?: unknown }).characterSlots),
     comicCollection: normalizeComicCollection((s as { comicCollection?: unknown }).comicCollection),
     schoolEvents: normalizeSchoolEvents((s as { schoolEvents?: unknown }).schoolEvents),
+    caseStudyProgress: s.caseStudyProgress?.episodeId && s.caseStudyProgress.action
+      ? s.caseStudyProgress
+      : null,
     publicWorldHiddenEventIds: normalizePublicWorldHiddenEventIds((s as { publicWorldHiddenEventIds?: unknown }).publicWorldHiddenEventIds),
     publicWorldEventReports: normalizePublicWorldEventReports((s as { publicWorldEventReports?: unknown }).publicWorldEventReports),
     essayReports: normalizeEssayReports((s as { essayReports?: unknown }).essayReports),

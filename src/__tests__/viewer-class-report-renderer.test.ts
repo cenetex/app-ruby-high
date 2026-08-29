@@ -147,6 +147,58 @@ describe("class report renderer", () => {
     expect(textTree(report)).toContain("You completed 0 of 3 required Sally class days for Freshman. Pass 3 more days to finish the course.");
   });
 
+  it("renders a case consequence, relationship beat, memory, and review pointer", () => {
+    const report = renderer().buildCard(
+      { displayName: "Roko" },
+      "9",
+      {
+        displayName: "Roko",
+        completedClasses: 1,
+        requiredClasses: 1,
+        today: {
+          status: "complete",
+          letterGrade: "A",
+          score: 96,
+          correctCount: 3,
+          totalQuestions: 3,
+          result: {
+            episodeTitle: "The Tribute That Never Arrived",
+            prompt: "Name the shared evidence.",
+            wasCorrect: true,
+            forfeit: false,
+            teacherObservation: "Roko noticed the causal link.",
+            consequenceLabel: "The pass holds",
+            consequenceDetail: "Both sides inspect one ledger.",
+            investigationLabel: "Lyra's ledger audit",
+            investigationDetail: "One seal was copied. Verify it against the clerk's press.",
+            investigationConfidence: "high",
+            relationshipLabel: "Roko remembers",
+            relationshipDetail: "Roko lets you hold the original.",
+            memoryTitle: "Shared ledgers beat shared vibes",
+            memoryDetail: "Create evidence both sides can inspect.",
+            followUp: "Review provenance tomorrow.",
+            completedClasses: 1,
+            requiredClasses: 1,
+          },
+        },
+      },
+    ) as unknown as FakeElement;
+
+    expect(textTree(report)).toEqual(expect.arrayContaining([
+      "The Tribute That Never Arrived",
+      "The pass holds",
+      "Both sides inspect one ledger.",
+      "Lyra's ledger audit · high confidence",
+      "One seal was copied. Verify it against the clerk's press.",
+      "Roko remembers",
+      "Roko lets you hold the original.",
+      "Shared ledgers beat shared vibes",
+      "Create evidence both sides can inspect.",
+      "Next review",
+      "Review provenance tomorrow.",
+    ]));
+  });
+
   it("renders next-step copy for signup, essay, social, practice, and complete states", () => {
     const signup = renderer({ guestSignupRequired: () => true }).buildNextStep({});
     const essay = renderer({ postClassState: () => ({ essayReady: true }) }).buildNextStep({});

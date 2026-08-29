@@ -1,7 +1,7 @@
 {
   "name": "@cenetex/app-ruby-high",
   "version": "0.1.0",
-  "description": "Ruby High standalone app. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward, etc.) handle deep-domain teaching.",
+  "description": "Ruby High standalone app. Ruby hosts the school; Sally Science, Professor Edward, and Roko handle deep-domain teaching.",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",

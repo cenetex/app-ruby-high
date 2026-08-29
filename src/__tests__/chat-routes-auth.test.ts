@@ -2526,7 +2526,7 @@ describe("chat event context", () => {
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('"facultyId":"guest"');
-    expect(calls).toHaveLength(4);
+    expect(calls).toHaveLength(5);
     const loungeContexts = calls.flatMap((call) =>
       (call.body.messages as Array<{ role?: string; content?: string }>)
         .filter((m) => typeof m.content === "string" && m.content.includes("LOUNGE CONTEXT"))

@@ -2,7 +2,7 @@
 
 > A school where the teachers grade you in their own voice. Clear daily classes, bank grades, and keep the yearbook.
 
-Ruby High is a standalone Node service and installable SPA. Ruby hosts the school; specialist faculty (Sally Science, Professor Edward) teach their domains; six AI classmates sit beside you. You play a generated character, build school disciplines and virtues, walk between rooms, clear daily classes and practice questions, collect hidden First Bell comic pages, track your standing on the classroom cohort leaderboard, and graduate after Senior year.
+Ruby High is a standalone Node service and installable SPA. Ruby hosts the school; specialist faculty Sally Science, Professor Edward, and Roko teach their domains; six AI classmates sit beside you. Roko teaches AI alignment and information hazards through sourced real incidents and Crownless dragon ecology. His graded class is a case episode: investigate evidence, make a consequential choice, explain the causal link, and see what Roko remembers. His question bank remains available for later review. See [Roko's curriculum and learning-design sources](./docs/roko-curriculum-sources.md). You play a generated character, build school disciplines and virtues, walk between rooms, clear daily classes and practice questions, collect hidden First Bell comic pages, track your standing on the classroom cohort leaderboard, and graduate after Senior year.
 
 **For the product story, mechanics, cast, and roadmap, see [`DESIGN.md`](./DESIGN.md).** For the revenue plan and distribution pipeline, see [`ROADMAP.md`](./ROADMAP.md). This file is the runbook.
 
@@ -57,7 +57,7 @@ npm run build:spa
 npm run spa:dev
 ```
 
-Open http://127.0.0.1:4173. This build packages the same viewer shell with a browser-local offline API shim backed by `localStorage` and the bundled Ruby/Sally/Edward question banks. Core classroom play, character creation, room switching, Merit Stars, and local persistence work without the hosted server. OpenRouter auth, Hall Pass purchases, portrait/diploma image generation, teacher publishing, and hosted account sync still require the Node service.
+Open http://127.0.0.1:4173. This build packages the same viewer shell with a browser-local offline API shim backed by `localStorage` and the bundled Ruby/Sally/Edward/Roko question banks. Core classroom play, character creation, room switching, Merit Stars, and local persistence work without the hosted server. OpenRouter auth, Hall Pass purchases, portrait/diploma image generation, teacher publishing, and hosted account sync still require the Node service.
 
 For offline text AI, run Ruby High against a local OpenAI-compatible chat-completions server such as Ollama:
 
@@ -131,11 +131,12 @@ Scheduled play is opt-in and server-bounded: 15–1440 minute intervals, at most
 | `RUBY_HIGH_PRIVY_VERIFICATION_KEY` | — | Optional JWT verification-key fallback for deployments that do not use `RUBY_HIGH_PRIVY_APP_SECRET`. |
 | `RUBY_HIGH_STORE_BACKEND` | `json` | `json` for local dev (atomic file at `~/.ruby-high/state.json`), `sqlite` for production (Fly Volume at `/data/ruby-high.db`). The legacy `dynamodb` backend is archived. |
 | `RUBY_HIGH_STATE_PATH` | `~/.ruby-high/state.json` | State file path. For the `sqlite` backend this is the db file path (e.g. `/data/ruby-high.db`). |
-| `RUBY_HIGH_X_SCHEDULED_POSTS_ENABLED` | `0` | Set to `1` to let the first connected teacher publish one LLM-written classroom/teacher-lounge update per 24 hours. Each update composes a dynamic, identity-locked campus photo from canonical faculty/classmate art, with the static teacher portrait as a generation fallback, and appends a deterministic viewer link with a mode-specific acquisition ref. The job uses only aggregate public-world activity, skips empty or duplicate context, persists its cadence across restarts, and backs off six hours after a failed attempt. |
+| `RUBY_HIGH_X_SCHEDULED_POSTS_ENABLED` | `0` | Set to `1` to let the first connected teacher publish at most one classroom/teacher-lounge update per 24 hours. A real Guest Faculty rotation change is announced before the normal AI-authored calendar and recorded by week plus pack, so cold starts, deploys, and later daily ticks do not repeat the same flip. Guest welcomes use only verified roster copy and do not depend on the text model. Each post composes a dynamic, identity-locked campus photo from canonical faculty/classmate art, appends a deterministic viewer link, persists cadence across restarts, and backs off six hours after a failed attempt. |
 | `RUBY_HIGH_STATE_TTL_SECONDS` | 90 days | TTL for idle sessions (SQLite `kv_expires` index). |
 | `RUBY_HIGH_DYNAMO_TABLE` | — | Legacy: required when backend is `dynamodb`. Ignored for `sqlite`/`json`. |
 | `AWS_REGION` | — | Legacy state-store region. Still used for Tigris portrait storage when `RUBY_HIGH_PORTRAITS_BUCKET` is set. |
-| `RUBY_HIGH_ADMIN_TOKEN` | — | Enables `/api/apps/ruby-high/admin/metrics`. Keep this in secrets only. |
+| `RUBY_HIGH_ADMIN_TOKEN` | — | Enables private admin routes, including metrics. Keep this in secrets only. |
+| `RUBY_HIGH_SCHEDULER_TOKEN` | — | Authenticates only the external daily scheduled-post wake-up. Set the same random value as a Fly secret and as a protected `production` environment secret for the `guest-teacher-announcement` GitHub workflow. Do not reuse the admin token. |
 | `RUBY_HIGH_AGENT_TOKEN_SECRET` | random per process | Optional stable HMAC secret for agent device-token issuance across a server restart. Existing issued bearer tokens remain valid from their stored hashes. Set this through the deployment secret manager. |
 | `RUBY_HIGH_METRICS_TRUST_START` | — | Optional ISO date/time shown in admin metric quality notes after a metrics reset or schema migration. |
 | `RUBY_HIGH_LLM_PROVIDER` | `openrouter` | Set to `local` to use a local OpenAI-compatible `/v1/chat/completions` endpoint. Also inferred as `local` when `RUBY_HIGH_LLM_BASE_URL` is set. |
@@ -267,4 +268,4 @@ The container itself is host-agnostic — anywhere that speaks Docker, sets `POR
 
 ## License
 
-MIT for the code, copyright RATi Open Software Foundation. The Ruby High characters (Ruby, Sally Science, Professor Edward, and the six student cast) and their artwork are dedicated to the public domain under **CC0 1.0** — see [`CC0-CHARACTERS.md`](./CC0-CHARACTERS.md). The mechanics layer is **CC BY 4.0** — see [`DESIGN.md`](./DESIGN.md) §6 and §12.
+MIT for the code, copyright RATi Open Software Foundation. The Ruby High characters (Ruby, Sally Science, Professor Edward, Roko, and the six student cast) and their artwork are dedicated to the public domain under **CC0 1.0** — see [`CC0-CHARACTERS.md`](./CC0-CHARACTERS.md). The mechanics layer is **CC BY 4.0** — see [`DESIGN.md`](./DESIGN.md) §6 and §12.

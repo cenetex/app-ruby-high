@@ -169,7 +169,7 @@ export interface SendOpts {
    *  the same shared history bucket. */
   speakerFacultyId?: string;
   /** Override the chat-history bucket. Defaults to `faculty`. The lounge
-   *  uses a shared "lounge" bucket so all three teachers see the same thread. */
+   *  uses a shared "lounge" bucket so all resident teachers see the same thread. */
   bucketKey?: string;
   /** Disable the blackboard tool surface for this turn (lounge mode, or
    *  scheduled class flow where the deterministic scheduler owns the board). */
@@ -1343,7 +1343,7 @@ async function callOpinionForNpc(args: {
 }): Promise<string> {
   const teacher = args.teacherId ? teacherById(args.teacherId) : null;
   const teacherLine = teacher
-    ? `Class: ${teacher.displayName} (${args.teacherId === "ruby" ? "homeroom" : args.teacherId === "sally-science" ? "science" : args.teacherId === "professor-edward" ? "literature" : args.teacherId}).`
+    ? `Class: ${teacher.displayName} (${args.teacherId === "ruby" ? "homeroom" : args.teacherId === "sally-science" ? "science" : args.teacherId === "professor-edward" ? "literature" : args.teacherId === "roko" ? "AI alignment" : args.teacherId}).`
     : "Class: independent.";
   const classmateLines = args.classmates
     .filter((c) => c.id !== args.student.id)
@@ -1457,7 +1457,7 @@ function formatDialogueLineForAvatar(state: QuizState, message: ChatMessage): st
  *  log, which is the desired behavior for a first-turn briefing.
  *
  *  Why per-speaker rather than per-bucket: the lounge bucket is shared
- *  across three teachers, each speaking in turn. From Sally's POV, the
+ *  across the resident teachers, each speaking in turn. From Sally's POV, the
  *  events "since I last spoke" should include things Edward said after
  *  her — not just things since the last lounge utterance regardless of
  *  speaker. Scoping by speaker preserves that invariant in classroom
@@ -2116,12 +2116,12 @@ function buildToolDefs(opts: { includePickFromBank?: boolean; includePoseOpinion
       function: {
         name: "handoff_faculty",
         description:
-          "Switch the active teacher. Use when the topic falls into another teacher's range (e.g. you are Ruby and the student wants real physics depth — hand off to sally-science).",
+          "Switch the active teacher. Use when the topic falls into another teacher's range (e.g. physics goes to sally-science; AI alignment or information hazards go to roko).",
         parameters: {
           type: "object",
           required: ["faculty"],
           properties: {
-            faculty: { type: "string", enum: ["ruby", "sally-science", "professor-edward"] },
+            faculty: { type: "string", enum: ["ruby", "sally-science", "professor-edward", "roko"] },
           },
         },
       },

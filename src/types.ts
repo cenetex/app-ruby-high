@@ -176,6 +176,66 @@ export interface QuestionMediaAsset {
   dataUrl: string;
 }
 
+export interface CaseStudyEvidence {
+  label: string;
+  source: string;
+  detail: string;
+}
+
+export type CaseStudyActionKind = "delegate" | "inspect" | "test" | "consult";
+export type CaseStudyConfidence = "low" | "medium" | "high";
+
+/** Authored, bounded result of one investigation move. The engine selects this
+ *  from an answer-text key; an LLM may narrate it, but cannot invent or change
+ *  the report, evidence, confidence, or verification requirement. */
+export interface CaseStudyActionResult {
+  actionId: string;
+  kind: CaseStudyActionKind;
+  actorId: string;
+  actorName: string;
+  actionLabel: string;
+  reportLabel: string;
+  report: string;
+  confidence: CaseStudyConfidence;
+  revealedEvidence?: CaseStudyEvidence;
+  verificationPrompt: string;
+}
+
+/** Private per-player progress for the current case. */
+export interface CaseStudyProgress {
+  episodeId: string;
+  action: CaseStudyActionResult;
+  actedAt: number;
+}
+
+/** Authored context shown above a question in a case-based lesson. */
+export interface CaseStudyCard {
+  episodeId: string;
+  title: string;
+  hook: string;
+  scene: string;
+  stage: "investigate" | "decide" | "explain";
+  evidence: CaseStudyEvidence[];
+  /** The investigation selected earlier in this case. It appears only after
+   *  the move has resolved, so later stages can ask the player to verify it. */
+  investigation?: CaseStudyActionResult;
+}
+
+/** Final story and relationship beat attached to a completed case. */
+export interface CaseStudyOutcome {
+  episodeId: string;
+  title: string;
+  consequenceLabel: string;
+  passedConsequence: string;
+  needsWorkConsequence: string;
+  passedRelationship: string;
+  needsWorkRelationship: string;
+  memoryTitle: string;
+  memoryDetail: string;
+  followUp: string;
+  investigation?: CaseStudyActionResult;
+}
+
 /**
  * Authoritative session phase. The single source of truth that replaces
  * the prior distributed coordination (state.status + activeRound.resolved
@@ -242,6 +302,17 @@ export interface Question {
   sourceCardId?: string;
   canGenerateMc?: boolean;
   media?: QuestionMediaAsset[];
+  /** Optional case lesson context. The answer stays in the normal question
+   *  fields so case cards still work with grading and spaced review. */
+  caseStudy?: CaseStudyCard;
+  /** Story result for each authored answer. Keys are semantic answer text,
+   *  not shuffled A/B/C/D positions. */
+  answerConsequences?: Record<string, string>;
+  /** Bounded investigation reports keyed by semantic answer text. */
+  caseActionResults?: Record<string, CaseStudyActionResult>;
+  /** Stored on a case's final explanation card so the class report can show
+   *  the consequence, relationship beat, and durable memory. */
+  caseOutcome?: CaseStudyOutcome;
   /** Opinion fields — describes what a strong response looks like, fed to
    *  both the responding LLMs and the grading teacher. */
   rubric?: string;
@@ -334,6 +405,11 @@ export interface LastReveal {
   forfeit?: boolean;
   explanation: string | null;
   encouragement: string | null;
+  caseConsequence?: {
+    label: string;
+    detail: string;
+  };
+  caseActionResult?: CaseStudyActionResult;
   answerText?: string;
   expectedAnswer?: string;
   answerJudge?: {
@@ -744,6 +820,10 @@ export interface QuizState {
    *  counterpart to volatile chat room events; AI can react to these but must
    *  not invent or mutate them. */
   schoolEvents: SchoolEvent[];
+  /** Private action trail for the current authored case. This is deliberately
+   *  separate from public school events: a student's investigation is not a
+   *  school-wide announcement. */
+  caseStudyProgress?: CaseStudyProgress | null;
   /** Per-player school activity safety controls. Hidden event ids are filtered
    *  from this player's feed immediately; reports are kept on the session for
    *  moderation/admin review surfaces. */
@@ -873,26 +953,35 @@ export const PLANNED_FACULTY: FacultyMember[] = [
     available: true,
     accent: "#7a4f2a",
   },
+  {
+    id: "roko",
+    displayName: "Roko",
+    shortName: "Roko",
+    subjects: ["ai-alignment", "infohazards", "coordination", "threat-modeling"],
+    bio: "AI alignment and information hazards. Teaches threat models, incentives, safe disclosure, and cooperation under pressure.",
+    available: true,
+    accent: "#a35c35",
+  },
 ];
 
 export const ALL_FACULTY: FacultyMember[] = [RUBY_FACULTY, ...PLANNED_FACULTY];
 
 /** Special pseudo-faculty: the Teachers' Lounge is a hangout channel where
- *  Ruby, Sally, and Edward chat with each other. Not a real teacher; can't
+ *  Ruby, Sally, Edward, and Roko chat with each other. Not a real teacher; can't
  *  pose questions. The chat-service treats faculty="lounge" specially. */
 export const LOUNGE_FACULTY: FacultyMember = {
   id: "lounge",
   displayName: "Teachers' Lounge",
   shortName: "Lounge",
   subjects: ["lounge"],
-  bio: "The faculty hangout. Ruby, Sally, and Edward swap notes between classes — pull up a chair.",
+  bio: "The faculty hangout. Ruby, Sally, Edward, and Roko swap notes between classes — pull up a chair.",
   available: true,
   accent: "#9b6dff",
 };
 
-/** Ruby High has four rooms. Three are classrooms (one per teacher). The
- *  fourth is the lounge. Rooms are fixed — they don't change per grade. */
-export type RoomId = "homeroom" | "science" | "literature" | "lounge";
+/** Ruby High has five rooms. Four are classrooms (one per teacher). The
+ *  fifth is the lounge. Rooms are fixed — they don't change per grade. */
+export type RoomId = "homeroom" | "science" | "literature" | "alignment" | "lounge";
 
 export interface Room {
   id: RoomId;
@@ -930,6 +1019,14 @@ export const ROOMS: Room[] = [
     teaches: true,
   },
   {
+    id: "alignment",
+    name: "Alignment Lab",
+    channelName: "alignment",
+    teacherId: "roko",
+    description: "Roko's room. AI alignment, information hazards, coordination, and threat modeling.",
+    teaches: true,
+  },
+  {
     id: "lounge",
     name: "Teachers' Lounge",
     channelName: "lounge",
@@ -948,7 +1045,7 @@ export function roomForFaculty(facultyId: string): Room | null {
 }
 
 export type TeachingRoomId = Exclude<RoomId, "lounge">;
-export const TEACHING_ROOMS: TeachingRoomId[] = ["homeroom", "science", "literature"];
+export const TEACHING_ROOMS: TeachingRoomId[] = ["homeroom", "science", "literature", "alignment"];
 
 /** Four-stat character profile used by both the player and NPC students.
  *  Range -1 to +3. Each playbook starts with one +2, one +1, one 0, one -1. */
@@ -1262,9 +1359,9 @@ export function dayOfWeekForKey(key: string): number {
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
-/** Daily faculty rotation — runs every day of the week. The 5-teacher cycle
- *  (Sally / Edward / Ruby / Sally / Edward) extends across Sat/Sun by
- *  continuing the rotation: Sat → Ruby, Sun → Sally. Always returns a
+/** Daily faculty rotation — runs every day of the week. The four resident
+ *  teachers each receive a weekday slot, with the weekend continuing the
+ *  rotation. Always returns a
  *  faculty id; the daily class is available 7 days a week. */
 export function facultyForDay(key: string): string {
   const dow = dayOfWeekForKey(key);
@@ -1272,10 +1369,10 @@ export function facultyForDay(key: string): string {
     case 1: return "sally-science";    // Monday
     case 2: return "professor-edward"; // Tuesday
     case 3: return "ruby";             // Wednesday
-    case 4: return "sally-science";    // Thursday
-    case 5: return "professor-edward"; // Friday
-    case 6: return "ruby";             // Saturday
-    case 0: return "sally-science";    // Sunday
+    case 4: return "roko";             // Thursday
+    case 5: return "sally-science";    // Friday
+    case 6: return "professor-edward"; // Saturday
+    case 0: return "ruby";             // Sunday
     default: return "sally-science";   // unreachable; defensive default
   }
 }
@@ -1471,6 +1568,16 @@ export interface DailyClassResult {
   teacherObservation: string;
   consequenceLabel: string;
   consequenceDetail: string;
+  episodeId?: string;
+  episodeTitle?: string;
+  relationshipLabel?: string;
+  relationshipDetail?: string;
+  memoryTitle?: string;
+  memoryDetail?: string;
+  followUp?: string;
+  investigationLabel?: string;
+  investigationDetail?: string;
+  investigationConfidence?: CaseStudyConfidence;
   completedClasses: number;
   requiredClasses: number;
 }
@@ -1582,10 +1689,10 @@ export function rollNpcAnswer(stats: CharacterStats, correct: Choice, stat: keyo
  *  alongside). Static for the year now that per-question redistribution
  *  is gone (cohort dice, not seating, drive arc progression). */
 export const INITIAL_STUDENT_LAYOUT: Record<Grade, Record<TeachingRoomId, string[]>> = {
-  "9":  { homeroom: ["lyra", "mika"],  science: ["sami", "ravi"],  literature: ["indra", "noor"] },
-  "10": { homeroom: ["sami", "noor"],  science: ["ravi", "mika"],  literature: ["lyra", "indra"] },
-  "11": { homeroom: ["ravi", "indra"], science: ["lyra", "noor"],  literature: ["sami", "mika"] },
-  "12": { homeroom: ["mika", "indra"], science: ["noor", "lyra"],  literature: ["ravi", "sami"] },
+  "9":  { homeroom: ["lyra", "mika"], science: ["sami"], literature: ["indra"], alignment: ["ravi", "noor"] },
+  "10": { homeroom: ["sami"], science: ["ravi", "mika"], literature: ["lyra", "indra"], alignment: ["noor"] },
+  "11": { homeroom: ["ravi", "indra"], science: ["lyra"], literature: ["sami", "mika"], alignment: ["noor"] },
+  "12": { homeroom: ["mika"], science: ["noor", "lyra"], literature: ["ravi"], alignment: ["indra", "sami"] },
 };
 
 const ALL_STUDENT_IDS = ["lyra", "sami", "ravi", "indra", "mika", "noor"] as const;

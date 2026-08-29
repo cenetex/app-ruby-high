@@ -11,6 +11,27 @@ type NullableRecord = LooseRecord | null | undefined;
 type MarkdownRenderOptions = { inline?: boolean };
 type LegacyCryptoWindow = Window & { msCrypto?: Crypto };
 type QuestionPromptImageView = { src: string; alt: string };
+export type QuestionPromptCaseActionView = {
+  actionId: string;
+  kind: "delegate" | "inspect" | "test" | "consult";
+  actorId: string;
+  actorName: string;
+  actionLabel: string;
+  reportLabel: string;
+  report: string;
+  confidence: "low" | "medium" | "high";
+  revealedEvidence?: { label: string; source: string; detail: string };
+  verificationPrompt: string;
+};
+export type QuestionPromptCaseView = {
+  episodeId: string;
+  title: string;
+  hook: string;
+  scene: string;
+  stage: "investigate" | "decide" | "explain";
+  evidence: Array<{ label: string; source: string; detail: string }>;
+  investigation?: QuestionPromptCaseActionView;
+};
 export type LeaderboardGradeChipView = { className: string; text: string };
 export type LeaderboardRowView = {
   rank: string;
@@ -93,13 +114,29 @@ export function dailyClassProgressView(telemetry: NullableRecord): DailyClassPro
   const count = Math.max(0, Math.min(3, Math.floor(Number(today && today.questionCount) || 0)));
   const complete = !!(today && today.status === "complete");
   const offlineStatic = telemetry && telemetry.store_path === "localStorage";
+  const isRokoCase = !!(
+    telemetry
+    && telemetry.faculty === "roko"
+    && (
+      !offlineStatic
+      || (telemetry.current && telemetry.current.caseStudy)
+      || (today && today.result && today.result.episodeId)
+    )
+  );
   const currentIndex = complete ? 3 : Math.min(2, count);
-  const definitions: Array<{ key: DailyClassProgressStepView["key"]; label: string }> = [
-    { key: "evidence-1", label: "Question 1" },
-    { key: "evidence-2", label: "Question 2" },
-    { key: "take", label: offlineStatic ? "Question 3" : "Build a Case" },
-    { key: "result", label: "Result" },
-  ];
+  const definitions: Array<{ key: DailyClassProgressStepView["key"]; label: string }> = isRokoCase
+    ? [
+        { key: "evidence-1", label: "Investigate" },
+        { key: "evidence-2", label: "Decide" },
+        { key: "take", label: "Explain" },
+        { key: "result", label: "Outcome" },
+      ]
+      : [
+        { key: "evidence-1", label: "Question 1" },
+        { key: "evidence-2", label: "Question 2" },
+        { key: "take", label: offlineStatic ? "Question 3" : "Build a Case" },
+        { key: "result", label: "Result" },
+      ];
   const steps = definitions.map((definition, index): DailyClassProgressStepView => ({
     ...definition,
     state: index < currentIndex ? "complete" : index === currentIndex ? "current" : "upcoming",
@@ -107,13 +144,21 @@ export function dailyClassProgressView(telemetry: NullableRecord): DailyClassPro
   return {
     visible: hasContext,
     steps,
-    continuationLabel: currentIndex === 1
-      ? "Next: Question 2"
-      : currentIndex === 2
-        ? offlineStatic ? "Next: Question 3" : "Next: Build a Case"
-        : currentIndex === 3
-          ? "View Result"
-          : "Start Question 1",
+    continuationLabel: isRokoCase
+      ? currentIndex === 1
+        ? "Next: Decide"
+        : currentIndex === 2
+          ? "Next: Explain"
+          : currentIndex === 3
+            ? "View Outcome"
+            : "Start Investigation"
+      : currentIndex === 1
+        ? "Next: Question 2"
+        : currentIndex === 2
+          ? offlineStatic ? "Next: Question 3" : "Next: Build a Case"
+          : currentIndex === 3
+            ? "View Result"
+            : "Start Question 1",
   };
 }
 export type AccountPublicWorldView = {
@@ -401,8 +446,8 @@ export const VIEWER_CONSTANTS = {
   GRADE_ORDER: ["9", "10", "11", "12"],
   WALLET_ACTION_TIMEOUT_MS: 120000,
   STREAK_REQUIRED: { "9": 1, "10": 2, "11": 3, "12": 4 },
-  TEACHING_FACULTY_IDS: ["ruby", "sally-science", "professor-edward"],
-  TEACHING_FACULTY_LABELS: { ruby: "Homeroom", "sally-science": "Science", "professor-edward": "Literature" },
+  TEACHING_FACULTY_IDS: ["ruby", "sally-science", "professor-edward", "roko"],
+  TEACHING_FACULTY_LABELS: { ruby: "Homeroom", "sally-science": "Science", "professor-edward": "Literature", roko: "AI Alignment" },
   LOUNGE_ID: "lounge",
   FIRST_BELL_PAGE_COUNT: 12,
   FIRST_BELL_PAGE_TITLES: {
@@ -1402,6 +1447,12 @@ export function hallPassCardProfile(cardInput: NullableRecord): AccountHallPassC
       stats: { head: 5, heart: 3, hustle: 1, honor: 4 },
       quote: "Context changes meaning. Curiosity finds truth.",
     },
+    roko: {
+      subtitle: "AI Alignment Teacher",
+      teaches: "AI Alignment · Information Hazards · Coordination · Threat Modeling",
+      stats: { head: 5, heart: 2, hustle: 1, honor: 5 },
+      quote: "Name the objective. Then name what it eats.",
+    },
     "captain-null": {
       subtitle: "Observatory",
       teaches: "Void Theory · Impossible Engines · Page 10",
@@ -1785,7 +1836,11 @@ export function raceStripPickText(pick: unknown, locked: unknown, timedOut: unkn
 }
 
 // ── blackboard question prompt view helpers ────────────────────────
-export function questionPromptView(question: unknown): { images: QuestionPromptImageView[]; prompt: string } {
+export function questionPromptView(question: unknown): {
+  images: QuestionPromptImageView[];
+  prompt: string;
+  caseStudy?: QuestionPromptCaseView;
+} {
   const record = question && typeof question === "object" ? question as LooseRecord : {};
   const media = Array.isArray(record.media) ? record.media : [];
   const images = media
@@ -1795,9 +1850,79 @@ export function questionPromptView(question: unknown): { images: QuestionPromptI
       src: String((asset as LooseRecord).dataUrl),
       alt: String((asset as LooseRecord).name || "Source card image"),
     }));
+  const rawCase = record.caseStudy && typeof record.caseStudy === "object"
+    ? record.caseStudy as LooseRecord
+    : null;
+  const stage = rawCase && ["investigate", "decide", "explain"].includes(String(rawCase.stage))
+    ? String(rawCase.stage) as QuestionPromptCaseView["stage"]
+    : null;
+  const evidence = rawCase && Array.isArray(rawCase.evidence)
+    ? rawCase.evidence
+        .filter((item) => item && typeof item === "object")
+        .slice(0, 4)
+        .map((item) => {
+          const evidenceItem = item as LooseRecord;
+          return {
+            label: String(evidenceItem.label || "Evidence"),
+            source: String(evidenceItem.source || "Source unknown"),
+            detail: String(evidenceItem.detail || ""),
+          };
+        })
+        .filter((item) => item.detail.length > 0)
+    : [];
+  const rawInvestigation = rawCase?.investigation && typeof rawCase.investigation === "object"
+    ? rawCase.investigation as LooseRecord
+    : null;
+  const rawRevealedEvidence = rawInvestigation?.revealedEvidence && typeof rawInvestigation.revealedEvidence === "object"
+    ? rawInvestigation.revealedEvidence as LooseRecord
+    : null;
+  const revealedEvidence = rawRevealedEvidence && String(rawRevealedEvidence.detail || "").trim()
+    ? {
+        label: String(rawRevealedEvidence.label || "New evidence"),
+        source: String(rawRevealedEvidence.source || "Investigation"),
+        detail: String(rawRevealedEvidence.detail),
+      }
+    : null;
+  const actionKind = rawInvestigation && ["delegate", "inspect", "test", "consult"].includes(String(rawInvestigation.kind))
+    ? String(rawInvestigation.kind) as QuestionPromptCaseActionView["kind"]
+    : null;
+  const confidence = rawInvestigation && ["low", "medium", "high"].includes(String(rawInvestigation.confidence))
+    ? String(rawInvestigation.confidence) as QuestionPromptCaseActionView["confidence"]
+    : null;
+  const investigation = rawInvestigation
+    && actionKind
+    && confidence
+    && String(rawInvestigation.actorName || "").trim()
+    && String(rawInvestigation.report || "").trim()
+    && String(rawInvestigation.verificationPrompt || "").trim()
+    ? {
+        actionId: String(rawInvestigation.actionId || "case-action"),
+        kind: actionKind,
+        actorId: String(rawInvestigation.actorId || "actor"),
+        actorName: String(rawInvestigation.actorName),
+        actionLabel: String(rawInvestigation.actionLabel || "Investigation"),
+        reportLabel: String(rawInvestigation.reportLabel || `${String(rawInvestigation.actorName)}'s report`),
+        report: String(rawInvestigation.report),
+        confidence,
+        ...(revealedEvidence ? { revealedEvidence } : {}),
+        verificationPrompt: String(rawInvestigation.verificationPrompt),
+      }
+    : null;
+  const caseStudy = rawCase && stage && String(rawCase.title || "").trim() && String(rawCase.scene || "").trim()
+    ? {
+        episodeId: String(rawCase.episodeId || ""),
+        title: String(rawCase.title),
+        hook: String(rawCase.hook || ""),
+        scene: String(rawCase.scene),
+        stage,
+        evidence,
+        ...(investigation ? { investigation } : {}),
+      }
+    : null;
   return {
     images,
     prompt: String(record.prompt || ""),
+    ...(caseStudy ? { caseStudy } : {}),
   };
 }
 

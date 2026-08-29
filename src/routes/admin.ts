@@ -28,11 +28,12 @@ export const ADMIN_WORLD_MODERATION_PATH = `${APP_ROUTE_PREFIX}/admin/world/mode
 export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v10";
 const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-08-21";
 const ADMIN_METRICS_DEFAULT_TRUST_START = "2026-07-26";
-const BUILT_IN_GENERATOR_FACULTY_IDS = new Set(["ruby", "sally-science", "professor-edward"]);
+const BUILT_IN_GENERATOR_FACULTY_IDS = new Set(["ruby", "sally-science", "professor-edward", "roko"]);
 const BUILT_IN_QUESTION_FILES: Record<string, string> = {
   ruby: "assets/questions/ruby.json",
   "sally-science": "assets/questions/sally-science.json",
   "professor-edward": "assets/questions/professor-edward.json",
+  roko: "assets/questions/roko.json",
 };
 
 interface AdminDeps {
@@ -3334,7 +3335,7 @@ async function postTelegramSnapshot() {
     // ── X Social ──────────────────────────────────────────────────────────
     const xPanel = document.getElementById("x-social-panel");
     const socialTeacherSelect = document.getElementById("social-teacher-select");
-    const FACULTY_IDS = ["ruby", "sally-science", "professor-edward"];
+    const FACULTY_IDS = ["ruby", "sally-science", "professor-edward", "roko"];
     let connectedTeachers = [];
 
     function renderSocialTeacherSelect() {

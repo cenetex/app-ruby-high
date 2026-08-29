@@ -1147,6 +1147,45 @@ describe("XSocialService", () => {
       expect(String((imageCall![1] as RequestInit).body)).toContain("STORY BEAT");
     });
 
+    it("posts a deterministic guest-teacher flip announcement with the guest activation link", async () => {
+      await connectRuby(svc);
+      vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "test-key");
+      vi.stubEnv("RUBY_HIGH_PUBLIC_BASE", "https://ruby-high.ai");
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ choices: [{ message: { images: [{ image_url: { url: PNG_URL } }] } }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: "media-guest-welcome" } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { id: "tweet-guest-welcome" } }),
+        });
+
+      await expect(svc.postScheduledSchoolUpdate(
+        RUBY_TEACHER,
+        FEATURED_GUEST_CONTEXT,
+        { editorialMode: "guest-welcome" },
+      )).resolves.toBe("tweet-guest-welcome");
+
+      const openRouterCalls = mockFetch.mock.calls.filter(
+        (call: unknown[]) => String((call as string[])[0]).includes("openrouter.ai"),
+      );
+      expect(openRouterCalls).toHaveLength(1);
+      expect(String((openRouterCalls[0]![1] as RequestInit).body)).toContain('"modalities":["image","text"]');
+      const tweetCall = mockFetch.mock.calls.find(
+        (call: unknown[]) => String((call as string[])[0]) === "https://api.x.com/2/tweets",
+      );
+      const body = JSON.parse((tweetCall![1] as RequestInit).body as string);
+      expect(body).toEqual({
+        text: "Welcome this week's featured guest teacher, Eliza (@elizaOS), to Ruby High! This week's course: elizaOS Systems Lab. #RubyHigh https://ruby-high.ai/api/apps/ruby-high/viewer?ref=activation-x-guest-welcome",
+        media: { media_ids: ["media-guest-welcome"] },
+      });
+    });
+
     it("asks the social editor agent for a varied seven-day plan", async () => {
       await connectRuby(svc);
       vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "test-key");

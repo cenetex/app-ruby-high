@@ -153,6 +153,76 @@ describe("TweetPlanningScheduler", () => {
     });
   });
 
+  it("announces each new guest flip before asking the AI for a daily plan", async () => {
+    const scheduler = new TweetPlanningScheduler({ enabled: true });
+    const social = xSocial({
+      tweetId: "tweet-guest-welcome",
+      teacherId: "ruby",
+      text: "Welcome Eliza to Ruby High. #RubyHigh",
+    });
+    const now = Date.UTC(2026, 6, 22, 17);
+
+    await expect(scheduler.tick(social, TEACHER, GUEST_CONTEXT, now)).resolves.toMatchObject({
+      tweetId: "tweet-guest-welcome",
+      teacherId: "ruby",
+      pillar: "guest-spotlight",
+      planId: "guest-welcome:2026-W30",
+    });
+    expect(social.planScheduledSchoolUpdates).not.toHaveBeenCalled();
+    expect(social.postScheduledSchoolUpdateWithFallback).toHaveBeenCalledWith(
+      TEACHER,
+      GUEST_CONTEXT,
+      {
+        editorialMode: "guest-welcome",
+        recentPosts: [],
+      },
+    );
+    expect(scheduler.getSnapshot()).toMatchObject({
+      lastAnnouncedGuestKey: "2026-W30:teacher:eliza-elizaos-systems-lab",
+      lastGuestAnnouncementTweetId: "tweet-guest-welcome",
+      lastPostAt: now,
+      recentPosts: [expect.objectContaining({
+        pillar: "guest-spotlight",
+        angle: "Guest teacher flip: Eliza",
+      })],
+    });
+  });
+
+  it("does not repeat the same guest flip on the next daily tick", async () => {
+    const scheduler = new TweetPlanningScheduler({ enabled: true });
+    const now = Date.UTC(2026, 6, 22, 17);
+    await scheduler.tick(
+      xSocial({ tweetId: "welcome", teacherId: "ruby", text: "Welcome. #RubyHigh" }),
+      TEACHER,
+      GUEST_CONTEXT,
+      now,
+    );
+
+    const nextContext = { ...GUEST_CONTEXT, date: "2026-07-23" };
+    const dailySocial = xSocial(
+      { tweetId: "daily", teacherId: "ruby", text: "Today's post. #RubyHigh" },
+      plannedWeek(GUEST_CONTEXT),
+    );
+    await expect(scheduler.tick(
+      dailySocial,
+      TEACHER,
+      nextContext,
+      now + MIN_POST_INTERVAL_MS + 1,
+    )).resolves.toMatchObject({ tweetId: "daily" });
+    expect(dailySocial.planScheduledSchoolUpdates).toHaveBeenCalledOnce();
+    expect(dailySocial.postScheduledSchoolUpdateWithFallback).toHaveBeenCalledWith(
+      TEACHER,
+      nextContext,
+      expect.objectContaining({
+        editorialMode: "school-update",
+        plannedSlot: expect.objectContaining({ id: "slot-1" }),
+      }),
+    );
+    expect(scheduler.getSnapshot().lastAnnouncedGuestKey).toBe(
+      "2026-W30:teacher:eliza-elizaos-systems-lab",
+    );
+  });
+
   it("blocks the same context and enforces one successful post per day", async () => {
     const scheduler = new TweetPlanningScheduler({ enabled: true });
     const social = xSocial({ tweetId: "tweet-1", teacherId: "ruby", text: "First. #RubyHigh" });
@@ -217,38 +287,49 @@ describe("TweetPlanningScheduler", () => {
     });
   });
 
-  it("replans immediately when the featured guest changes", async () => {
+  it("announces a midweek guest pack change even when the week key is unchanged", async () => {
     const scheduler = new TweetPlanningScheduler({ enabled: true });
-    const schoolSocial = xSocial({ tweetId: "tweet-school", teacherId: "ruby", text: "School pulse. #RubyHigh" });
     const now = Date.UTC(2026, 6, 22, 17);
-
-    await scheduler.tick(schoolSocial, TEACHER, CONTEXT, now);
-
-    const guestPlan = plannedWeek(GUEST_CONTEXT, "guest-spotlight");
-    const insightSocial = xSocial(
-      { tweetId: "tweet-insights", teacherId: "ruby", text: "A sourced guest idea. #RubyHigh" },
-      guestPlan,
-    );
-    await expect(scheduler.tick(
-      insightSocial,
-      { ...TEACHER },
+    await scheduler.tick(
+      xSocial({ tweetId: "eliza", teacherId: "ruby", text: "Welcome Eliza. #RubyHigh" }),
+      TEACHER,
       GUEST_CONTEXT,
+      now,
+    );
+
+    const changedGuest = {
+      ...GUEST_CONTEXT,
+      featuredGuest: {
+        ...GUEST_CONTEXT.featuredGuest!,
+        packId: "teacher:seraph-signal-lab",
+        facultyId: "seraph",
+        displayName: "Seraph",
+        courseTitle: "Signal & Timeline Lab",
+        xHandle: "project_89",
+      },
+    };
+    const changedSocial = xSocial({
+      tweetId: "seraph",
+      teacherId: "ruby",
+      text: "Welcome Seraph. #RubyHigh",
+    });
+    await expect(scheduler.tick(
+      changedSocial,
+      TEACHER,
+      changedGuest,
       now + 60_000,
       { force: true },
-    )).resolves.toMatchObject({ tweetId: "tweet-insights" });
-    expect(insightSocial.planScheduledSchoolUpdates).toHaveBeenCalledWith(
+    )).resolves.toMatchObject({ tweetId: "seraph" });
+    expect(changedSocial.planScheduledSchoolUpdates).not.toHaveBeenCalled();
+    expect(changedSocial.postScheduledSchoolUpdateWithFallback).toHaveBeenCalledWith(
       TEACHER,
-      GUEST_CONTEXT,
-      [expect.objectContaining({ text: "School pulse. #RubyHigh" })],
-      now + 60_000,
-    );
-    expect(insightSocial.postScheduledSchoolUpdateWithFallback).toHaveBeenCalledWith(
-      TEACHER,
-      GUEST_CONTEXT,
+      changedGuest,
       expect.objectContaining({
-        editorialMode: "guest-insights",
-        plannedSlot: expect.objectContaining({ pillar: "guest-spotlight" }),
+        editorialMode: "guest-welcome",
       }),
+    );
+    expect(scheduler.getSnapshot().lastAnnouncedGuestKey).toBe(
+      "2026-W30:teacher:seraph-signal-lab",
     );
   });
 
@@ -262,7 +343,7 @@ describe("TweetPlanningScheduler", () => {
     expect(scheduler.canPostNow(CONTEXT, now + FAILED_POST_RETRY_INTERVAL_MS + 1)).toBe(true);
   });
 
-  it("backs off a failed plan without suppressing a materially different guest plan", async () => {
+  it("does not let a failed school plan suppress a new guest announcement", async () => {
     const scheduler = new TweetPlanningScheduler({ enabled: true });
     const now = Date.UTC(2026, 6, 22, 17);
     const failedPlanner = xSocial(null, null);
@@ -282,7 +363,12 @@ describe("TweetPlanningScheduler", () => {
       GUEST_CONTEXT,
       now + 120_000,
     )).resolves.toMatchObject({ tweetId: "guest" });
-    expect(guestPlanner.planScheduledSchoolUpdates).toHaveBeenCalledOnce();
+    expect(guestPlanner.planScheduledSchoolUpdates).not.toHaveBeenCalled();
+    expect(guestPlanner.postScheduledSchoolUpdateWithFallback).toHaveBeenCalledWith(
+      TEACHER,
+      GUEST_CONTEXT,
+      expect.objectContaining({ editorialMode: "guest-welcome" }),
+    );
   });
 
   it("round-trips scheduler state and ignores malformed fields", () => {
@@ -293,6 +379,8 @@ describe("TweetPlanningScheduler", () => {
       lastTweetId: "tweet-1",
       lastTeacherId: "ruby",
       lastContextFingerprint: "abc",
+      lastAnnouncedGuestKey: "2026-W30:teacher:eliza-elizaos-systems-lab",
+      lastGuestAnnouncementTweetId: "tweet-guest",
     };
     expect(hydrateScheduledPostSchedulerState(scheduledPostSchedulerStateRecord(state, 200))).toEqual(state);
     expect(hydrateScheduledPostSchedulerState({
