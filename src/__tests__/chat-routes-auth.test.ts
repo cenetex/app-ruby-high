@@ -2296,6 +2296,18 @@ describe("chat event context", () => {
     const round = ruby.getOrCreate(sessionId).activeRound;
     expect(round?.type).toBe("opinion");
     expect(round!.npcs.length).toBeGreaterThan(0);
+    const claimAt = Date.now() - 100;
+    ruby.getOrCreate(sessionId).history.push({
+      questionId: "q-class-claim",
+      faculty: "ruby",
+      picked: "A",
+      correct: "A",
+      wasCorrect: true,
+      at: claimAt,
+      questionPrompt: "What makes a confident answer trustworthy?",
+      answerText: "Evidence that can be checked",
+      answerKind: "choice",
+    });
 
     (globalThis.fetch as any).mockImplementation(async () => {
       return new Response("openrouter down", { status: 500, statusText: "Bad Gateway" });
@@ -2311,6 +2323,7 @@ describe("chat event context", () => {
         apiKeyHeader: "sk-test",
         body: {
           responseCards: {
+            claimId: `q-class-claim:${claimAt}`,
             stance: "support",
             evidence: "source",
             impact: "people",
@@ -2321,6 +2334,8 @@ describe("chat event context", () => {
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("event: opinion-response");
+    expect(res.body).toContain("Evidence that can be checked");
     expect(res.body).toContain("event: opinion-graded");
     expect(res.body).not.toContain("event: waiting");
     expect(res.body).not.toContain("event: error");
@@ -2331,8 +2346,93 @@ describe("chat event context", () => {
     );
     const playerGrade = state.activeRound?.opinionGrades.find((g) => g.responder === "player");
     expect(playerGrade?.score).toBeGreaterThanOrEqual(7);
-    expect(playerGrade?.comment).toContain("evidence");
+    expect(playerGrade?.comment).toContain("Evidence that can be checked");
     expect(state.lastReveal?.wasCorrect).toBe(true);
+  });
+
+  it("uses the existing teacher LLM pass to connect bounded choices into the visible answer", async () => {
+    const token = "route-opinion-connected-response-token";
+    auth.injectSessionForTest(token, {
+      userId: "route-opinion-connected-response-user",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      label: "Route Opinion Connected Response",
+    });
+    const sessionId = auth.stateKeyForToken(token);
+    ruby.createCharacter(sessionId, {
+      name: "Vince",
+      playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "Private character setup text that must not enter the response prompt.",
+      personality: "Private character profile text that must stay out of the response prompt.",
+    });
+    ruby.selectGrade(sessionId, "9");
+    ruby.poseOpinion(sessionId, {
+      prompt: "When should a confident answer be trusted?",
+      faculty: "ruby",
+    });
+    const state = ruby.getOrCreate(sessionId);
+    const round = state.activeRound!;
+    const claimAt = Date.now() - 100;
+    state.history.push({
+      questionId: "q-checkable-claim",
+      faculty: "ruby",
+      picked: "A",
+      correct: "A",
+      wasCorrect: true,
+      at: claimAt,
+      questionPrompt: "What makes an answer trustworthy?",
+      answerText: "Evidence that can be checked",
+      answerKind: "choice",
+    });
+    for (const npc of round.npcs) {
+      ruby.recordOpinion(sessionId, npc.studentId, "I would ask where the claim came from before trusting it.");
+    }
+    const connected = "I trust “Evidence that can be checked” when the source holds up. I would compare examples, then judge the effect on people.";
+    (globalThis.fetch as any).mockImplementation(async (_url: unknown, init: RequestInit) => {
+      capturedChatRequest = { body: JSON.parse(String(init.body ?? "{}")) };
+      const gradeLines = [
+        `PLAYER_RESPONSE: ${connected}`,
+        "GRADE responder=player score=8 comment=the checkable source and comparison make the reasoning specific",
+        ...round.npcs.map((npc) => `GRADE responder=${npc.studentId} score=7 comment=the source question gives this answer a concrete test`),
+        "BEST: player",
+        "The source check gives this claim something real to stand on.",
+      ];
+      return new Response(JSON.stringify({ choices: [{ message: { content: gradeLines.join("\n") } }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const res = new TestResponse();
+    const handled = await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/opinion-submit"),
+      res,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${token}`,
+        apiKeyHeader: "sk-test",
+        body: {
+          responseCards: {
+            claimId: `q-checkable-claim:${claimAt}`,
+            stance: "support",
+            evidence: "compare",
+            impact: "people",
+          },
+        },
+      },
+    ));
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("event: opinion-response");
+    expect(res.body).toContain("Evidence that can be checked");
+    expect(ruby.getOrCreate(sessionId).activeRound?.opinionResponses.find((entry) => entry.responder === "player")?.text).toBe(connected);
+    const prompt = JSON.stringify(capturedChatRequest?.body.messages);
+    expect(prompt).toContain("PLAYER_RESPONSE:");
+    expect(prompt).toContain("four bounded class choices");
+    expect(prompt).not.toContain("Private character setup text");
+    expect(prompt).not.toContain("Private character profile text");
   });
 
   it("rejects free-form player writing on opinion submission", async () => {

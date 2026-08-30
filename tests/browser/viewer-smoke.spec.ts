@@ -130,10 +130,10 @@ test("keeps a specific Class Result after refresh with one truthful next step", 
     }
   }
 
+  await page.locator('[data-response-group="claim"] [data-response-card]:not([hidden])').first().click();
   await page.locator('[data-response-group="stance"] [data-response-card][data-value="conditional"]').click();
   await page.locator('[data-response-group="evidence"] [data-response-card][data-value="source"]').click();
   await page.locator('[data-response-group="impact"] [data-response-card][data-value="systems"]').click();
-  const finalResponse = "The answer depends on the context and who is affected. I would check the source and look for missing evidence. The wider system and its rules should carry the most weight.";
   await expect(page.locator("#typed-submit-btn")).toBeEnabled();
   await page.locator("#typed-submit-btn").click();
   await expect(page.locator("#board-reveal")).toBeVisible({ timeout: 15_000 });
@@ -143,7 +143,8 @@ test("keeps a specific Class Result after refresh with one truthful next step", 
   await expect(report.locator(".class-report-title")).toContainText("class result");
   await expect(report.locator(".class-result-prompt")).toContainText("Final prompt:");
   await expect(report.locator(".class-result-section.observation")).toContainText("What Ruby noticed");
-  await expect(report.locator(".class-result-section.observation")).toContainText(finalResponse);
+  await expect(report.locator(".class-result-section.observation")).toContainText("depends on the context and who is affected");
+  await expect(report.locator(".class-result-section.observation")).toContainText("judge it by the wider system and its rules");
   await expect(report.locator(".class-result-section.consequence")).toContainText(/class recorded|mark recorded/i);
   await expect(report.locator(".class-result-section.progress")).toContainText("Course progress");
   await expect(page.locator(".class-report-next")).toContainText(/return tomorrow for the next graded class/i);

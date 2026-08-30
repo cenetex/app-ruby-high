@@ -2283,55 +2283,9 @@ export const VIEWER_CSS = `
   .response-builder[hidden] {
     display: none;
   }
-  .response-builder-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  .response-builder-brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .response-builder-mark {
-    display: grid;
-    place-items: center;
-    width: 34px;
-    height: 34px;
-    border: 1px solid color-mix(in srgb, var(--accent) 46%, var(--line));
-    border-radius: 11px;
-    background: var(--accent-soft);
-    color: var(--accent);
-    font-size: 13px;
-  }
-  .response-privacy {
-    color: var(--text-mute);
-    font: 800 9px/1.2 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
-  .response-builder-head strong {
-    color: var(--text);
-    font-size: 16px;
-  }
-  .response-privacy {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    flex: 0 0 auto;
-    padding: 6px 9px;
-    border: 1px solid color-mix(in srgb, #65d6a8 45%, var(--line));
-    border-radius: 999px;
-    color: #8de2be;
-    letter-spacing: 0.06em;
-  }
-  .response-privacy span {
-    font-size: 10px;
-  }
   .response-stepper {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
   }
   .response-stepper button {
@@ -2467,6 +2421,23 @@ export const VIEWER_CSS = `
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .response-claim-grid button {
+    min-height: 78px;
+  }
+  .response-claim-grid button strong,
+  .response-claim-grid button small {
+    display: -webkit-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+  }
+  .response-claim-grid button strong {
+    -webkit-line-clamp: 2;
+  }
+  .response-claim-grid button small {
+    -webkit-line-clamp: 2;
+  }
   .response-card-grid button:hover:not(:disabled),
   .response-card-grid button:focus-visible {
     transform: translateY(-1px);
@@ -2535,9 +2506,6 @@ export const VIEWER_CSS = `
     .response-builder {
       gap: 10px;
       padding: 12px;
-    }
-    .response-builder-head strong {
-      font-size: 15px;
     }
     .response-stepper button {
       display: grid;

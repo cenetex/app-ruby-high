@@ -46,6 +46,21 @@ describe("parseTeacherGrades", () => {
     expect(r.narrativeText).not.toContain("BEST:");
   });
 
+  it("extracts the AI-built player response without leaking it into teacher narration", () => {
+    const text = [
+      "PLAYER_RESPONSE: I would challenge the claim because the source is unclear. I would compare examples, then judge the effect on people.",
+      "GRADE responder=player score=8 comment=the source check makes the challenge concrete",
+      "BEST: player",
+      "That source check is the part worth keeping.",
+    ].join("\n");
+    const result = parseTeacherGrades(text);
+
+    expect(result.playerResponse).toBe(
+      "I would challenge the claim because the source is unclear. I would compare examples, then judge the effect on people.",
+    );
+    expect(result.narrativeText).toBe("That source check is the part worth keeping.");
+  });
+
   it("clamps scores to [0, 10]", () => {
     const text = [
       "GRADE responder=a score=15 comment=overshoot",

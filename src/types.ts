@@ -355,8 +355,16 @@ export interface AnswerRecord {
   correct: Choice;
   wasCorrect: boolean;
   at: number;
+  /** Authored class content kept so a later response board can show the
+   *  exact claim the player selected without asking them to write anything. */
+  questionPrompt?: string;
   answerText?: string;
   expectedAnswer?: string;
+  /** Only bounded authored choices may become response-board claims. Typed
+   *  answers are never reused or sent through this path. */
+  answerKind?: "choice" | "typed";
+  classMode?: "class" | "practice";
+  classDate?: string;
 }
 
 export interface AnswerStats {
@@ -1602,7 +1610,7 @@ export interface DailyClassRecord {
   updatedAt: number;
 }
 
-export const OPINION_ROUND_DURATION_MS = 120000; // 2 minutes — typing takes time
+export const OPINION_ROUND_DURATION_MS = 120000; // 2 minutes to review and build the response
 
 export const DEFAULT_ROUND_DURATION_MS = 25000;
 
