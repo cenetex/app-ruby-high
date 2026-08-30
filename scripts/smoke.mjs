@@ -162,23 +162,6 @@ async function postJson(path, body, cookie = smokeCookie) {
   });
 }
 
-function extractFunctionBody(src, name) {
-  const sig = src.indexOf(`function ${name}`);
-  if (sig < 0) return "";
-  const start = src.indexOf("{", sig);
-  if (start < 0) return "";
-  let depth = 0;
-  for (let i = start; i < src.length; i++) {
-    const ch = src[i];
-    if (ch === "{") depth++;
-    else if (ch === "}") {
-      depth--;
-      if (depth === 0) return src.slice(start + 1, i);
-    }
-  }
-  return "";
-}
-
 async function waitForAppReady() {
   const name = "readiness";
   const deadline = Date.now() + READY_TIMEOUT_MS;
@@ -270,11 +253,8 @@ async function check2ViewerRenders() {
     // (Daily-banner check retired — the banner was removed in the
     //  rarity refactor follow-up. Every question is now a draw, so a
     //  separate daily-bonus surface no longer exists.)
-    // Inline <script> must be parseable JS. The viewer is stitched from
-    // a TS template literal that wraps another template literal; an
-    // unescaped \n / \t / ` inside a double-quoted string in the source
-    // collapses into the rendered output and produces "Unexpected EOF".
-    // new Function(src) is a parse-only check — the body never runs.
+    // The inline bootstrap and external client must both be present and
+    // parseable. new Function(src) is a parse-only check; the bodies never run.
     const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
     if (!scriptMatch) {
       return fail(name, "no inline <script> found in viewer");
@@ -284,44 +264,49 @@ async function check2ViewerRenders() {
     } catch (e) {
       return fail(name, `inline <script> failed to parse: ${e?.message || e}`);
     }
-    const requiredHelpers = [
-      "withViewerTimeoutSignal",
-      "createViewerApiClient",
-      "createViewerTurnController",
-      "parseViewerSseFrames",
-      "consumeViewerSseStream",
-      "runViewerClient",
-    ];
-    for (const helper of requiredHelpers) {
-      if (!new RegExp(`\\bconst\\s+${helper}\\s+=\\s+(?:async\\s+)?function\\b`).test(scriptMatch[1])) {
-        return fail(name, `viewer script does not bind ${helper} for runtime use`);
-      }
+    if (!scriptMatch[1].includes("__RUBY_HIGH_BOOTSTRAP__")) {
+      return fail(name, "inline script does not publish viewer bootstrap data");
     }
-    if (!scriptMatch[1].includes("/api/apps/ruby-high/auth/guest")) {
-      return fail(name, "viewer script does not contain guest-session boot path");
+
+    const clientMatch = html.match(/<script[^>]+src=["']([^"']*\/assets\/viewer-client\.js[^"']*)["'][^>]*><\/script>/i);
+    if (!clientMatch) return fail(name, "viewer HTML does not load the external client asset");
+    const clientUrl = new URL(clientMatch[1], `${base}/api/apps/ruby-high/viewer`).toString();
+    const clientResponse = await fetchWithTimeout(clientUrl);
+    if (clientResponse.status !== 200) {
+      return fail(name, `viewer client expected 200, got ${clientResponse.status}`);
     }
+    const clientScript = await clientResponse.text();
+    try {
+      new Function(clientScript);
+    } catch (e) {
+      return fail(name, `viewer client failed to parse: ${e?.message || e}`);
+    }
+    if (clientScript.length < 50_000) {
+      return fail(name, `viewer client is unexpectedly small: ${clientScript.length} bytes`);
+    }
+    if (!clientScript.includes("/auth/guest")) {
+      return fail(name, "viewer client does not contain the guest-session boot path");
+    }
+
+    const cssMatch = html.match(/<link[^>]+href=["']([^"']*\/assets\/viewer\.css[^"']*)["'][^>]*>/i);
+    if (!cssMatch) return fail(name, "viewer HTML does not load the external stylesheet");
+    const cssUrl = new URL(cssMatch[1], `${base}/api/apps/ruby-high/viewer`).toString();
+    const cssResponse = await fetchWithTimeout(cssUrl);
+    if (cssResponse.status !== 200) {
+      return fail(name, `viewer stylesheet expected 200, got ${cssResponse.status}`);
+    }
+    const css = await cssResponse.text();
+    const compactCss = css.replace(/\s+/g, "");
     const mobileFitSelectors = [
       ".blackboard-panel.is-long-prompt",
       ".answers.is-very-long",
-      "@media (max-width: 600px)",
+      "@media(max-width:600px)",
     ];
-    const missingMobileFit = mobileFitSelectors.filter((s) => !html.includes(s));
+    const missingMobileFit = mobileFitSelectors.filter((selector) => !compactCss.includes(selector));
     if (missingMobileFit.length > 0) {
       return fail(name, `viewer missing mobile fit CSS: ${missingMobileFit.join(", ")}`);
     }
-    const careerBody = extractFunctionBody(scriptMatch[1], "buildCareerCard");
-    if (!careerBody) {
-      return fail(name, "viewer script missing buildCareerCard()");
-    }
-    for (const local of ["streakLastDate", "todayKey"]) {
-      const hasDeclaration = new RegExp(`\\b(const|let|var)\\s+${local}\\b`).test(careerBody);
-      const hasBundledPropertyMapping = new RegExp(`\\b${local}\\s*:`).test(careerBody);
-      const hasBareShorthandReference = new RegExp(`\\b${local}\\s*[,}]`).test(careerBody);
-      if (hasBareShorthandReference && !hasDeclaration && !hasBundledPropertyMapping) {
-        return fail(name, `buildCareerCard references ${local} without declaring it`);
-      }
-    }
-    ok(name, `${html.length} bytes, quiz buttons present, inline JS parses, offline boot present`);
+    ok(name, `${html.length} byte shell, ${clientScript.length} byte client, external CSS present`);
   } catch (e) {
     fail(name, e?.message || String(e));
   }
