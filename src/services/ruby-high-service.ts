@@ -1068,6 +1068,10 @@ export interface RubyHighMetricEventsSnapshot {
     instrumentationStart: string;
     humanViewer: ActivationFunnelCohortSnapshot;
   };
+  onboardingFailures: {
+    total: number;
+    byKind: Record<string, number>;
+  };
   acquisition: AcquisitionAnalyticsSnapshot;
   classRitual: {
     dailyClassStarted: number;
@@ -1111,11 +1115,38 @@ export interface RubyHighMetricEventsSnapshot {
     successes: number;
     errors: number;
     byProvider: Record<string, number>;
+    recent: {
+      last24h: RubyHighLlmWindowSnapshot;
+      last7d: RubyHighLlmWindowSnapshot;
+      sinceDeploy: RubyHighLlmWindowSnapshot | null;
+    };
   };
   errors: {
     total: number;
     byFeature: Record<string, number>;
+    recent: {
+      last24h: RubyHighErrorWindowSnapshot;
+      last7d: RubyHighErrorWindowSnapshot;
+      sinceDeploy: RubyHighErrorWindowSnapshot | null;
+    };
   };
+}
+
+export interface RubyHighLlmWindowSnapshot {
+  windowStart: string;
+  windowEnd: string;
+  calls: number;
+  successes: number;
+  errors: number;
+  errorRate: number | null;
+  byProvider: Record<string, number>;
+}
+
+export interface RubyHighErrorWindowSnapshot {
+  windowStart: string;
+  windowEnd: string;
+  total: number;
+  byFeature: Record<string, number>;
 }
 
 export interface ActivationFunnelStepSnapshot {
@@ -1170,6 +1201,7 @@ export interface AcquisitionAnalyticsSnapshot {
   instrumentationStart: string;
   totalEligibleVisitors: number;
   canonicalExperiment174: {
+    status: "paused";
     path: string;
     proposition: string;
     attribution: Omit<AcquisitionAttribution, "releaseMarker">;
@@ -2621,7 +2653,10 @@ export class RubyHighService extends Service {
     return null;
   }
 
-  analyticsSnapshot(now: number = Date.now()): RubyHighAnalyticsSnapshot {
+  analyticsSnapshot(
+    now: number = Date.now(),
+    options: { sinceDeployAt?: number } = {},
+  ): RubyHighAnalyticsSnapshot {
     this.pruneExpiredMetricEvents(now, true);
     const dayMs = 24 * 60 * 60 * 1000;
     const { days, byDate } = buildRubyHighDailyBuckets(now, 14);
@@ -2701,6 +2736,7 @@ export class RubyHighService extends Service {
       byDate,
       now,
       excludedSyntheticMetricEvents,
+      options.sinceDeployAt,
     );
     const eventRetention = buildEventRetentionSnapshot(productMetricEvents, now);
     return {
@@ -3781,6 +3817,7 @@ export class RubyHighService extends Service {
     const rows = new Map<string, MutableCurriculumCoverageRow>();
     let activeCharacterSessions = 0;
     for (const state of states) {
+      if (isSyntheticQuizState(state)) continue;
       if (!state.character || !state.currentGrade) continue;
       activeCharacterSessions += 1;
       const grade = state.currentGrade;
@@ -13818,6 +13855,7 @@ function buildMetricEventsSnapshot(
   byDate: Map<string, RubyHighAnalyticsDay>,
   now: number,
   excludedSynthetic = 0,
+  sinceDeployAt?: number,
 ): RubyHighMetricEventsSnapshot {
   const orderedEvents = Array.from(events).sort((a, b) => a.occurredAt - b.occurredAt);
   const visitorsBySession = new Map<string, Set<string>>();
@@ -13920,6 +13958,10 @@ function buildMetricEventsSnapshot(
     seen: 0,
     started: 0,
     overrideSet: 0,
+  };
+  const onboardingFailures = {
+    total: 0,
+    byKind: {} as Record<string, number>,
   };
   const balance = {
     samples: 0,
@@ -14064,6 +14106,13 @@ function buildMetricEventsSnapshot(
       errors.total += 1;
       const feature = event.feature || "unknown";
       errors.byFeature[feature] = (errors.byFeature[feature] ?? 0) + 1;
+      if (feature === "first_run_onboarding" && event.step === "onboarding_enrollment_failed") {
+        const kind = typeof event.metadata?.failureKind === "string"
+          ? event.metadata.failureKind
+          : "unknown";
+        onboardingFailures.total += 1;
+        onboardingFailures.byKind[kind] = (onboardingFailures.byKind[kind] ?? 0) + 1;
+      }
       if (day) day.durableErrors += 1;
     }
   }
@@ -14118,6 +14167,14 @@ function buildMetricEventsSnapshot(
     ),
   };
   const acquisition = buildAcquisitionAnalyticsSnapshot(orderedEvents, now);
+  const last24h = buildOperationalMetricWindow(orderedEvents, now - 24 * 60 * 60 * 1000, now);
+  const last7d = buildOperationalMetricWindow(orderedEvents, now - 7 * 24 * 60 * 60 * 1000, now);
+  const deployStart = Number.isFinite(sinceDeployAt) && Number(sinceDeployAt) <= now
+    ? Math.max(0, Number(sinceDeployAt))
+    : null;
+  const sinceDeploy = deployStart == null
+    ? null
+    : buildOperationalMetricWindow(orderedEvents, deployStart, now);
   return {
     total,
     excludedSynthetic,
@@ -14144,6 +14201,7 @@ function buildMetricEventsSnapshot(
     byClientSurface,
     activationFunnel,
     onboardingFunnel,
+    onboardingFailures,
     acquisition,
     classRitual: {
       dailyClassStarted: byName.daily_class_started,
@@ -14171,8 +14229,68 @@ function buildMetricEventsSnapshot(
       payingSessions: payingSessions.size,
     },
     conversionFunnel,
-    llm,
-    errors,
+    llm: {
+      ...llm,
+      recent: {
+        last24h: last24h.llm,
+        last7d: last7d.llm,
+        sinceDeploy: sinceDeploy?.llm ?? null,
+      },
+    },
+    errors: {
+      ...errors,
+      recent: {
+        last24h: last24h.errors,
+        last7d: last7d.errors,
+        sinceDeploy: sinceDeploy?.errors ?? null,
+      },
+    },
+  };
+}
+
+function buildOperationalMetricWindow(
+  events: Iterable<StoredMetricEventRecord>,
+  windowStart: number,
+  windowEnd: number,
+): { llm: RubyHighLlmWindowSnapshot; errors: RubyHighErrorWindowSnapshot } {
+  const llm = {
+    calls: 0,
+    successes: 0,
+    errors: 0,
+    byProvider: {} as Record<string, number>,
+  };
+  const errors = {
+    total: 0,
+    byFeature: {} as Record<string, number>,
+  };
+  for (const event of events) {
+    if (event.occurredAt < windowStart || event.occurredAt > windowEnd) continue;
+    if (event.name === "llm_usage") {
+      llm.calls += 1;
+      if (event.status === "success") llm.successes += 1;
+      else if (event.status === "error") llm.errors += 1;
+      const provider = event.provider || "unknown";
+      llm.byProvider[provider] = (llm.byProvider[provider] ?? 0) + 1;
+    } else if (event.name === "error") {
+      errors.total += 1;
+      const feature = event.feature || "unknown";
+      errors.byFeature[feature] = (errors.byFeature[feature] ?? 0) + 1;
+    }
+  }
+  const start = new Date(windowStart).toISOString();
+  const end = new Date(windowEnd).toISOString();
+  return {
+    llm: {
+      windowStart: start,
+      windowEnd: end,
+      ...llm,
+      errorRate: llm.calls > 0 ? llm.errors / llm.calls : null,
+    },
+    errors: {
+      windowStart: start,
+      windowEnd: end,
+      ...errors,
+    },
   };
 }
 
@@ -14399,6 +14517,7 @@ function buildAcquisitionAnalyticsSnapshot(
     instrumentationStart: windowStart,
     totalEligibleVisitors: visitors.length,
     canonicalExperiment174: {
+      status: "paused",
       path: EXPERIMENT_174_CANONICAL_PATH,
       proposition: EXPERIMENT_174_PROPOSITION,
       attribution: { ...EXPERIMENT_174_ATTRIBUTION },
