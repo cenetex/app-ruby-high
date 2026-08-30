@@ -6,8 +6,10 @@ WORKDIR /app
 COPY package.json package-lock.json* .npmrc ./
 RUN npm ci --include=dev
 COPY tsconfig.json tsup.config.ts ./
+COPY scripts/build-viewer-assets.mjs ./scripts/build-viewer-assets.mjs
 COPY scripts/check-privy-client-bundle.mjs ./scripts/check-privy-client-bundle.mjs
 COPY scripts/check-viewer-bundle.mjs ./scripts/check-viewer-bundle.mjs
+COPY scripts/check-performance-budgets.mjs ./scripts/check-performance-budgets.mjs
 COPY scripts/fix-node-sqlite-import.mjs ./scripts/fix-node-sqlite-import.mjs
 COPY src ./src
 COPY assets ./assets
