@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { renderViewerHtml } from "../viewer.js";
+import { renderViewerClientScript } from "../viewer.js";
 
 const CLIENT_SOURCE = readFileSync(
   new URL("../viewer-parts/client.ts", import.meta.url),
@@ -28,15 +28,7 @@ function expectScriptNotToContain(script: string, snippet: string): void {
 }
 
 function renderedViewerScript(): string {
-  const html = renderViewerHtml({
-    agentName: "Ruby",
-    sessionId: "rh:test-creation",
-    apiBase: "/api/apps/ruby-high",
-    role: "human",
-  });
-  const match = html.match(/<script>([\s\S]*?)<\/script>/);
-  if (!match) throw new Error("viewer HTML has no inline script");
-  return match[1]!;
+  return renderViewerClientScript();
 }
 
 describe("character creation flow", () => {

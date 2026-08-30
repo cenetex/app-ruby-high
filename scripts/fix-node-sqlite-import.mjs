@@ -2,9 +2,9 @@
 // `import { DatabaseSync } from "node:sqlite"` into `import ... from "sqlite"`.
 // Node 24 can only resolve the `node:`-prefixed form for the sqlite built-in,
 // so we restore it after bundling.
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 
-for (const file of ["dist/index.js", "dist/routes.js"]) {
+for (const file of readdirSync("dist").filter((name) => name.endsWith(".js")).map((name) => `dist/${name}`)) {
   try {
     const before = readFileSync(file, "utf-8");
     const after = before.replace(

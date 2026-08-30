@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { renderViewerHtml } from "../viewer.js";
+import { renderViewerClientScript, renderViewerHtml } from "../viewer.js";
 import { VIEWER_CSS } from "../viewer-parts/css.js";
 
 const PRIVY_CLIENT_SOURCE = readFileSync(new URL("../viewer-privy-client.ts", import.meta.url), "utf8");
@@ -16,9 +16,8 @@ function renderedViewer(opts: Partial<Parameters<typeof renderViewerHtml>[0]> = 
 }
 
 function inlineScript(html: string): string {
-  const match = html.match(/<script>([\s\S]*?)<\/script>/);
-  if (!match) throw new Error("viewer HTML has no inline script");
-  return match[1]!;
+  const bootstrap = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
+  return `${bootstrap}\n${renderViewerClientScript()}`;
 }
 
 function compactScript(value: string): string {
@@ -74,6 +73,10 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "SESSION_RESUME_INACTIVE_MS");
     expectScriptToContain(script, 'postViewerMetricEvent("session_resume"');
     expectScriptToContain(script, 'document.addEventListener("visibilitychange"');
+    expectScriptToContain(script, "pauseSessionPolling();");
+    expect(readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8"))
+      .toContain("fast ? 750 : 15000");
+    expectScriptToContain(script, 'postViewerMetricEvent("performance_sample"');
     expectScriptToContain(script, 'window.addEventListener("focus"');
     expectScriptToContain(script, 'window.addEventListener("pageshow"');
   });
@@ -810,7 +813,8 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("Trying Phantom directly...");
     expect(script).not.toContain("startPhantomLogin");
     expectScriptToContain(script, 'apiBase + "/auth/privy"');
-    expectScriptToContain(script, "initializePrivyFromStoredSession();");
+    expectScriptToContain(script, "async function initializePrivyFromStoredSession()");
+    expectScriptToContain(script, "await initializePrivyFromStoredSession();");
     expect(script).not.toContain("sendEmailCode");
     expect(script).not.toContain("loginWithEmailCode");
   });
@@ -1506,7 +1510,7 @@ describe("viewer regression guardrails", () => {
 
     expect(html).toContain('id="course-materials-input"');
     expect(html).toContain("Add course materials here");
-    expect(html).toContain("Generate Course");
+    expect(html).toContain("Generate course");
     expect(html).not.toContain('id="pack-name-input"');
     expect(html).not.toContain('id="pack-description-input"');
     expect(html).not.toContain('id="pack-add-teacher-btn"');
@@ -1528,7 +1532,7 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="course-generation-progress"');
     expect(html).toContain('id="course-generation-checklist"');
     expect(html).toContain("Add course materials here");
-    expect(html).toContain("Generate Course");
+    expect(html).toContain("Generate course");
     expect(html).toContain("Publish course (3 Hall Passes)");
     expect(html).toContain('id="course-generate-btn"');
     expect(html).not.toContain('class="pack-teacher-tab pack-new-teacher-tab"');

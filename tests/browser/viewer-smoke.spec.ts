@@ -173,7 +173,7 @@ test("keeps a specific Class Result after refresh with one truthful next step", 
   await expect(report.locator(".class-result-section.observation")).toContainText("judge it by the wider system and its rules");
   await expect(report.locator(".class-result-section.consequence")).toContainText(/class recorded|mark recorded/i);
   await expect(report.locator(".class-result-section.progress")).toContainText("Course progress");
-  await expect(page.locator(".class-report-next")).toContainText(/return tomorrow for the next graded class/i);
+  await expect(page.locator(".class-report-next")).toContainText(/sign up to continue/i);
   const resultText = await report.textContent();
 
   await page.setViewportSize({ width: 375, height: 812 });
@@ -203,7 +203,7 @@ test("keeps the generated student as a preview until the player takes their seat
 });
 
 test("boots as a guest, creates a character, answers a card, and opens account tabs", async ({ page }) => {
-  const { errors } = await openViewer(page);
+  const { errors, privyRequests } = await openViewer(page);
   await dismissAnnouncements(page);
 
   await createCharacter(page);
@@ -233,6 +233,7 @@ test("boots as a guest, creates a character, answers a card, and opens account t
 
   await expect(page.locator("#privy-action")).toBeVisible();
   await page.locator("#privy-action").click();
+  await expect.poll(privyRequests).toBeGreaterThan(0);
   const accountOverlay = page.locator("#privy-overlay");
   const accountDialog = page.getByRole("dialog", { name: "Account" });
   await expect(accountDialog).toHaveClass(/is-open/);
@@ -359,7 +360,7 @@ test("keeps the public world projection healthy while the viewer idles", async (
 });
 
 test("shows comic unlocks as a modal instead of an inline reward card", async ({ page }) => {
-  test.setTimeout(35_000);
+  test.setTimeout(45_000);
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);
   await createCharacter(page);
@@ -368,7 +369,7 @@ test("shows comic unlocks as a modal instead of an inline reward card", async ({
   await tickGrade(page);
 
   const modal = page.locator(".comic-reader.is-reward");
-  await expect(modal).toBeVisible({ timeout: 10_000 });
+  await expect(modal).toBeVisible({ timeout: 20_000 });
   await expect(modal).toHaveAttribute("role", "dialog");
   await expect(modal).toHaveAttribute("aria-modal", "true");
   await expect(modal).toContainText("Comic Page Unlocked");

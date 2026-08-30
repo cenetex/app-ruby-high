@@ -13,61 +13,19 @@
 //   - structure → src/viewer-parts/html.ts
 //   - behavior → src/viewer-parts/script.ts
 
-const VIEWER_FRAME_ANCESTORS_DIRECTIVE =
-  "frame-ancestors 'self' http://localhost:* http://127.0.0.1:* " +
-  "https://localhost:* https://127.0.0.1:*";
-
-export { VIEWER_FRAME_ANCESTORS_DIRECTIVE };
-
-export interface ViewerRenderOptions {
-  agentName: string;
-  sessionId: string;
-  apiBase: string;
-  role: "agent" | "human";
-  build?: string;
-  privy?: {
-    appId: string;
-    clientId: string;
-    loginMethods?: string[];
-  };
-}
-
 import { VIEWER_CSS } from "./viewer-parts/css.js";
-import { viewerHtmlBody } from "./viewer-parts/html.js";
-import { viewerScript } from "./viewer-parts/script.js";
+import { viewerClientScript } from "./viewer-parts/script.js";
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+export {
+  renderViewerHtml,
+  VIEWER_FRAME_ANCESTORS_DIRECTIVE,
+  type ViewerRenderOptions,
+} from "./viewer-shell.js";
+
+export function renderViewerCss(): string {
+  return VIEWER_CSS;
 }
 
-export function renderViewerHtml(opts: ViewerRenderOptions): string {
-  const safeAgent = escapeHtml(opts.agentName);
-  const safeApiBase = escapeHtml(opts.apiBase.replace(/\/$/, ""));
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#1a1c25" />
-<meta name="application-name" content="Ruby High" />
-<meta name="mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-title" content="Ruby High" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<link rel="manifest" href="${safeApiBase}/manifest.webmanifest" />
-<link rel="icon" type="image/png" href="${safeApiBase}/assets/brand/ruby-high-app-icon.png?v=brand-face-20260815" />
-<link rel="apple-touch-icon" href="${safeApiBase}/assets/brand/ruby-high-app-icon.png?v=brand-face-20260815" />
-<title>Ruby High — ${safeAgent}</title>
-<style>${VIEWER_CSS}</style>
-</head>
-<body>
-${viewerHtmlBody(opts)}
-<script>${viewerScript(opts)}</script>
-</body>
-</html>`;
+export function renderViewerClientScript(): string {
+  return viewerClientScript();
 }

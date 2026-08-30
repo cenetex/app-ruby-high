@@ -1863,8 +1863,8 @@ function manifestJson() {
 }
 
 function serviceWorkerJs() {
-  return `const CACHE_NAME = "ruby-high-spa-v2";
-const CORE = ["/", "/index.html", "${appBase}/manifest.webmanifest", "${appBase}/assets/logo.png", "${appBase}/assets/brand/ruby-high-app-icon.png", "${appBase}/assets/ruby.png"];
+  return `const CACHE_NAME = "ruby-high-spa-v3";
+const CORE = ["/", "/index.html", "${appBase}/manifest.webmanifest", "${appBase}/assets/viewer.css", "${appBase}/assets/viewer-client.js", "${appBase}/assets/optimized/ruby-high-logo.webp", "${appBase}/assets/optimized/ruby-high-app-icon.webp"];
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE)).then(() => self.skipWaiting()));
 });
@@ -1898,6 +1898,8 @@ export async function buildSpa() {
   await rm(outDir, { recursive: true, force: true });
   await mkdir(assetsOutDir, { recursive: true });
   await cp(resolve(root, "assets"), assetsOutDir, { recursive: true });
+  await cp(resolve(root, "dist", "viewer-client.js"), resolve(assetsOutDir, "viewer-client.js"));
+  await cp(resolve(root, "dist", "viewer.css"), resolve(assetsOutDir, "viewer.css"));
   await cp(resolve(assetsOutDir, "ruby-high-logo.png"), resolve(assetsOutDir, "logo.png"));
   await cp(resolve(assetsOutDir, "ruby-classroom.png"), resolve(assetsOutDir, "ruby.png"));
   await writeFile(resolve(outDir, "index.html"), outputHtml, "utf8");

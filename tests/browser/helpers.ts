@@ -53,8 +53,8 @@ export async function stubPrivyBundle(page: Page): Promise<() => number> {
 
 /**
  * Open the Ruby High viewer and wait for it to be ready (no sign-in overlay,
- * you-state not "checking", Privy stub was loaded). Returns the runtime error
- * collector so tests can assert errors are empty.
+ * you-state not "checking"). The Privy request counter verifies that the
+ * wallet bundle stays lazy until the Account surface opens.
  */
 export async function openViewer(page: Page) {
   const errors = watchRuntimeErrors(page);
@@ -65,7 +65,7 @@ export async function openViewer(page: Page) {
   await expect(page.locator("#signin-overlay")).not.toHaveClass(/is-open/);
   await expect.poll(async () => (await page.locator("#you-state").textContent()) ?? "")
     .not.toMatch(/checking/i);
-  await expect.poll(privyRequests).toBeGreaterThan(0);
+  expect(privyRequests()).toBe(0);
   await page.evaluate(async () => {
     const resp = await fetch("/api/apps/ruby-high/session/browser-smoke/command", {
       method: "POST",
@@ -78,7 +78,7 @@ export async function openViewer(page: Page) {
       throw new Error(`guest session bootstrap failed: ${JSON.stringify(body)}`);
     }
   });
-  return { errors };
+  return { errors, privyRequests };
 }
 
 /**

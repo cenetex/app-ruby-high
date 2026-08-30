@@ -164,6 +164,7 @@ export interface StoredPackInstallationRecord {
 export type StoredMetricEventName =
   | "visitor_seen"
   | "app_open"
+  | "performance_sample"
   | "session_resume"
   | "funnel_step"
   | "yearbook_open"
@@ -898,6 +899,7 @@ export function isStoredMetricEventName(value: unknown): value is StoredMetricEv
   return (
     value === "visitor_seen" ||
     value === "app_open" ||
+    value === "performance_sample" ||
     value === "session_resume" ||
     value === "funnel_step" ||
     value === "yearbook_open" ||

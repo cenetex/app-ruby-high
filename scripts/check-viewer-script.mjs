@@ -58,14 +58,5 @@ function loadTsModule(file) {
 }
 
 const viewer = loadTsModule(resolve(root, "src/viewer.ts"));
-const html = viewer.renderViewerHtml({
-  agentName: "Ruby",
-  sessionId: "rh:viewer-check",
-  apiBase: "/api/apps/ruby-high",
-  role: "human",
-});
-const match = html.match(/<script>([\s\S]*?)<\/script>/);
-if (!match) throw new Error("viewer HTML has no inline script");
-
-new Function(match[1]);
+new Function(viewer.renderViewerClientScript());
 console.log("viewer script syntax ok");

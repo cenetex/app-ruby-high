@@ -55,6 +55,12 @@ type MetricsEventBody = {
   statusCode?: unknown;
   beats?: unknown;
   items?: unknown;
+  ttfbMs?: unknown;
+  fcpMs?: unknown;
+  lcpMs?: unknown;
+  inpMs?: unknown;
+  cls?: unknown;
+  sessionReadyMs?: unknown;
 };
 
 const VIEWER_ONBOARDING_STEPS = new Set([
@@ -100,6 +106,26 @@ export async function handleMetricsEventRoute(
         entrypoint: body.entrypoint,
       },
     }));
+  }
+  if (type === "performance_sample") {
+    return await respondAfterMetricPersist(ctx, async () => {
+      const metadata: Record<string, number> = {};
+      for (const key of ["ttfbMs", "fcpMs", "lcpMs", "inpMs", "sessionReadyMs"] as const) {
+        const value = boundedMetricNumber(body[key], 0, 120_000);
+        if (value != null) metadata[key] = value;
+      }
+      const cls = boundedMetricNumber(body.cls, 0, 100);
+      if (cls != null) metadata.cls = cls;
+      await deps.ruby.recordMetricEventDurably("performance_sample", {
+        sessionId: deps.sessionId,
+        ...(visitorHash ? { visitorHash } : {}),
+        ...(clientSurface ? { clientSurface } : {}),
+        source: "viewer",
+        feature: "load_performance",
+        status: "success",
+        metadata,
+      });
+    });
   }
   if (type === "take_card_started" || type === "class_result_viewed") {
     return await respondAfterMetricPersist(ctx, async () => {
@@ -305,6 +331,12 @@ function onboardingEnrollmentFailureKind(value: unknown): string {
   return kind === "http" || kind === "network" || kind === "timeout"
     ? kind
     : "missing_response";
+}
+
+function boundedMetricNumber(value: unknown, min: number, max: number): number | null {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < min || number > max) return null;
+  return Math.round(number * 1000) / 1000;
 }
 
 function privyAuthErrorMetadata(body: MetricsEventBody): Record<string, string | boolean> {

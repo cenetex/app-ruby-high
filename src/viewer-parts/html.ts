@@ -1,4 +1,4 @@
-import type { ViewerRenderOptions } from "../viewer.js";
+import type { ViewerRenderOptions } from "../viewer-shell.js";
 
 function escapeHtml(value: string): string {
   return value
@@ -16,15 +16,17 @@ function escapeHtml(value: string): string {
 export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   const safeAgent = escapeHtml(opts.agentName);
   const safeApiBase = escapeHtml(opts.apiBase);
-  const crestLogoSrc = `${safeApiBase}/assets/brand/ruby-high-app-icon.png?v=brand-face-20260815`;
-  const wordmarkLogoSrc = `${safeApiBase}/assets/logo.png?v=brand-face-20260815`;
+  const build = (opts.build ?? "dev").trim();
+  const assetVersion = build && build !== "dev" ? `?v=${encodeURIComponent(build)}` : "";
+  const crestLogoSrc = `${safeApiBase}/assets/optimized/ruby-high-app-icon.webp${assetVersion}`;
+  const wordmarkLogoSrc = `${safeApiBase}/assets/optimized/ruby-high-logo.webp${assetVersion}`;
   return `
 <div class="shell" id="shell">
 
   <!-- servers (grades) rail -->
   <aside class="servers-rail" id="servers-rail">
     <button class="server-btn is-home" data-grade="home" id="home-btn" title="Ruby High home">
-      <img src="${crestLogoSrc}" alt="" />
+      <img src="${crestLogoSrc}" alt="" width="128" height="128" />
     </button>
     <div class="servers-divider"></div>
     <!-- grade buttons injected -->
@@ -38,7 +40,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           <path d="M6 6l12 12"/><path d="M18 6L6 18"/>
         </svg>
       </button>
-      <img class="school-logo" src="${wordmarkLogoSrc}" alt="Ruby High" />
+      <img class="school-logo" src="${wordmarkLogoSrc}" alt="Ruby High" width="970" height="815" />
       <div class="school-context">
         <div class="grade-name" id="grade-title">Ruby High</div>
       </div>
@@ -100,10 +102,10 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <div class="onboarding-hero" aria-hidden="true">
           <div class="onboarding-hero-copy">
             <span class="onboarding-kicker">First bell</span>
-            <img class="onboarding-wordmark" src="${safeApiBase}/assets/ruby-high-logo.png?v=first-bell-20260823" alt="" />
+            <img class="onboarding-wordmark" src="${wordmarkLogoSrc}" alt="" width="970" height="815" fetchpriority="high" />
             <span class="onboarding-hero-line">Your story starts in homeroom.</span>
           </div>
-          <img class="onboarding-ruby" src="${safeApiBase}/assets/teachers/ruby-full-sticker.png?v=first-bell-20260823" alt="" />
+          <img class="onboarding-ruby" src="${safeApiBase}/assets/teachers/ruby-full-sticker.png?v=first-bell-20260823" alt="" width="150" height="512" fetchpriority="high" />
         </div>
         <div id="blackboard-empty-text">
           <div class="onboarding-title">Ruby High</div>

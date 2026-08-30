@@ -5,7 +5,7 @@ import { gunzipSync } from "node:zlib";
 import { handleAppRoutes, type RouteContext } from "../routes.js";
 import { assetCacheControlFor } from "../routes/assets.js";
 import { setGeneratedPortraitAssetLoaderForTest } from "../services/generated-portrait-assets.js";
-import { renderViewerHtml } from "../viewer.js";
+import { renderViewerClientScript, renderViewerHtml } from "../viewer.js";
 
 function makeResponse() {
   const headers = new Map<string, string>();
@@ -105,12 +105,13 @@ describe("PWA surface", () => {
     });
 
     expect(html).toContain('rel="manifest" href="/api/apps/ruby-high/manifest.webmanifest"');
-    expect(html).toContain('rel="apple-touch-icon" href="/api/apps/ruby-high/assets/brand/ruby-high-app-icon.png?v=brand-face-20260815"');
-    expect(html).toContain('/api/apps/ruby-high/assets/brand/ruby-high-app-icon.png?v=brand-face-20260815');
-    expect(html).toContain('/api/apps/ruby-high/assets/logo.png?v=brand-face-20260815');
-    expect(compactScript(html)).toContain(compactScript('["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)'));
-    expect(html).toContain("navigator.serviceWorker.getRegistrations()");
-    expect(compactScript(html)).toContain(compactScript('navigator.serviceWorker.register(apiBase + "/service-worker.js", { scope: apiBase + "/" })'));
+    expect(html).toContain('rel="apple-touch-icon" href="/api/apps/ruby-high/assets/optimized/ruby-high-app-icon.webp"');
+    expect(html).toContain('/api/apps/ruby-high/assets/optimized/ruby-high-logo.webp');
+    expect(html).toContain('/api/apps/ruby-high/assets/viewer-client.js');
+    const script = renderViewerClientScript();
+    expect(compactScript(script)).toContain(compactScript('["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)'));
+    expect(script).toContain("navigator.serviceWorker.getRegistrations()");
+    expect(compactScript(script)).toContain(compactScript('navigator.serviceWorker.register(apiBase + "/service-worker.js", { scope: apiBase + "/" })'));
   });
 
   it("serves a valid app manifest", async () => {
@@ -163,7 +164,7 @@ describe("PWA surface", () => {
 
     const text = gunzipSync(response.raw as Buffer).toString("utf8");
     expect(text).toContain("<title>Ruby High");
-    expect(text).toContain("/api/apps/ruby-high/auth/guest");
+    expect(text).toContain("/api/apps/ruby-high/assets/viewer-client.js");
     const script = text.match(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/)?.[1] ?? "";
     const scriptHash = `'sha256-${createHash("sha256").update(script, "utf8").digest("base64")}'`;
     const scriptSrc = cspDirective(csp, "script-src");
@@ -272,10 +273,11 @@ describe("PWA surface", () => {
     expect(response.res.statusCode).toBe(200);
     expect(response.headers.get("content-type")).toMatch(/text\/javascript/);
     expect(response.headers.get("service-worker-allowed")).toBe("/api/apps/ruby-high/");
-    expect(response.text).toContain('const CACHE_NAME = "ruby-high-pwa-v5";');
+    expect(response.text).toContain('const CACHE_NAME = "ruby-high-pwa-dev";');
     expect(response.text).toContain('const APP_BASE = "/api/apps/ruby-high/";');
-    expect(response.text).toContain('"/api/apps/ruby-high/assets/logo.png"');
-    expect(response.text).toContain('"/api/apps/ruby-high/assets/brand/ruby-high-app-icon.png"');
+    expect(response.text).toContain('"/api/apps/ruby-high/assets/viewer.css"');
+    expect(response.text).toContain('"/api/apps/ruby-high/assets/viewer-client.js"');
+    expect(response.text).toContain('"/api/apps/ruby-high/assets/optimized/ruby-high-app-icon.webp"');
     expect(response.text).toContain("url.pathname === VIEWER_PATH");
     expect(response.text).toContain('url.pathname.startsWith(APP_BASE + "session/")');
     expect(response.text).toContain('url.pathname === ASSET_PREFIX + "privy-client.global.js"');

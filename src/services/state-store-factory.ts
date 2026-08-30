@@ -1,5 +1,4 @@
 import { StateStore, type StateStoreLike } from "./state-store.js";
-import { DynamoStateStore } from "./dynamo-state-store.js";
 
 /**
  * Pick a state-store backend based on env vars (or explicit opts in tests).
@@ -54,6 +53,7 @@ export async function createStateStore(opts: CreateStateStoreOptions = {}): Prom
         "RUBY_HIGH_STORE_BACKEND=dynamodb requires RUBY_HIGH_DYNAMO_TABLE to be set.",
       );
     }
+    const { DynamoStateStore } = await import("./dynamo-state-store.js");
     return new DynamoStateStore({
       tableName,
       region: opts.region ?? process.env.AWS_REGION,
