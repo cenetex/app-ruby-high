@@ -58,19 +58,20 @@ These are analogies, not claims that people or AI systems are goblins or dragons
 
 ## Case-class learning design
 
-Roko's graded class is an authored assignment graph instead of unrelated multiple-choice questions or a fixed timeline:
+Roko's graded class is a stateful dungeon instead of unrelated multiple-choice questions or a fixed timeline:
 
-1. **Enter:** read a Sign, compare evidence, and commit a move without a correctness verdict.
-2. **Follow the event:** the move causes an authored world event which opens a specific assignment node.
-3. **Cross the labyrinth:** act inside the changed situation. Routes can diverge, reconverge, or end with different unresolved costs without erasing their history.
-4. **Return:** explain which moves caused which events, what changed, and which future event should reopen the policy.
-5. **Outcome:** receive Roko's observation, a relationship beat, one durable memory, and a pointer to review.
+1. **Enter:** read the room, its pressures, carried objects, visible passages, and human gate.
+2. **Choose a method:** use HEAD, HEART, HUSTLE, or HONOR. These are approaches to the situation, not four possible answers.
+3. **Follow the event:** the room resolves that method against its current state and opens a passage. Walking or retreating changes position without completing a room.
+4. **Cross the labyrinth:** complete any three rooms. The Hall, Map Room, and Evidence Well form a solo route; six optional rooms require increasingly large sets of asynchronous human handprints.
+5. **Return:** build a response from claims, positions, evidence, and impacts. Students do not have to author action or essay text.
+6. **Outcome:** receive Roko's observation, a relationship beat, one durable memory, and a pointer to review.
 
-Every labyrinth move counts as participation, not correctness. Only the final written Return is graded. The rubric can support or criticize any earlier branch if it follows the causal record well. This lets a reasonable move open a bad situation, and it keeps hindsight from turning uncertainty into a fake answer key.
+No attribute is graded as the correct room answer. Only a completed room advances the three-room requirement; movement, retreat, and under-filled co-op attempts still change durable state. Only the final response-board Return is graded. The rubric can support or criticize any earlier method if it follows the causal record well. This lets a reasonable move open a bad situation, and it keeps hindsight from turning uncertainty into a fake answer key.
 
-The runtime does not read elapsed time to choose a scene. Each choice emits a named, durable event and names the node that event opens. The student's route stores visited rooms and event receipts. This follows the Cosyworld rule that a clock is an unresolved question rather than a timer, that every transition needs a committed causal event, and that a quest may branch, reconverge, retreat, or remain unresolved.
+The runtime does not read elapsed time to choose a scene. Each attribute or passage move emits a named, durable event. The student's route stores visited rooms, pressure tracks, completed rooms, carried objects, event receipts, and co-op contributions. An under-filled human gate records the student's HEAD, HEART, HUSTLE, or HONOR handprint for a later visitor. This follows the Cosyworld rule that a clock is an unresolved question rather than a timer, that every transition needs a committed causal event, and that a quest may branch, reconverge, retreat, or remain unresolved.
 
-The basilisk labyrinth has one entrance, four first-route rooms, and four event-selected convergence rooms. It offers 64 authored three-move routes before the Return. Reconvergence controls writing cost, but it does not wipe state: the Return and class report retain every door, event, and piece of evidence from the student's actual route.
+The basilisk labyrinth has nine linked rooms. Hall of Four Doors → Map Room → Evidence Well is the clear solo spine. The other six rooms require two, three, or four humans; contributions persist asynchronously, so no one waits on a simultaneous pressure plate. Passage moves create loops and retreats without consuming a required room. The Return and class report retain every method, passage, room event, and piece of evidence from the student's actual route.
 
 The old question bank remains useful. It now acts as spaced practice after the case, where short factual retrieval is a better fit. This split follows evidence that retrieval practice with feedback can improve retention, while short-answer and multiple-choice retrieval can both work. The class itself adds self-explanation because recognition alone does not show whether the student can state the causal link.
 
@@ -90,3 +91,6 @@ The relationship beat borrows the useful part of mobile otome and dating-sim str
 - [Twine Cookbook — Storylets](https://twinery.org/cookbook/storylets/harlowe/harlowe_storylets.html): describes nonlinear passages that become available when their requirements are true. Roko uses named world events as those requirements.
 - [DeMatthews et al. — Choose Your Own Adventure web-based case studies](https://pmc.ncbi.nlm.nih.gov/articles/PMC9994267/): participants recognized the ripple effect of acting with incomplete information and adapting as the situation disclosed more evidence.
 - [Gamebooks and branching narratives in education](https://doi.org/10.3389/feduc.2023.1335605): connects branching narratives with active reflection and competence building rather than passive consumption.
+- [Muster — Some Core Principles for Players](https://www.arkenstonepublishing.net/isabout/wp-content/uploads/2022/05/Muster-Manifesto.pdf): motivates concrete situations, real consequences, retreat, cooperation, and achievement earned through play rather than a planned story.
+- [The Alexandrian — Jaquaying the Dungeon](https://www.thealexandrian.net/archive/archive2010-07c.html): motivates loops, alternate approaches, secret paths, and navigation that changes the strategy rather than decorating a linear sequence.
+- [His Majesty the Worm — Creating the Map](https://dungeons.hismajestytheworm.games/docs/chapter4/): motivates telegraphed passages, informed exploration, and several logical ways around a blocked challenge.

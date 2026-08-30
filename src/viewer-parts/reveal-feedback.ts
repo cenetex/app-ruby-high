@@ -81,6 +81,7 @@ export function createRevealFeedbackRenderer(deps: RevealFeedbackRendererDeps): 
 
   function resultBadgeText(reveal: RevealFeedbackReveal): string {
     if (reveal.questionType === "story-choice") return "◆ choice";
+    if (reveal.questionType === "story-action") return "◆ action";
     const isTypedReveal = reveal.answerText != null || reveal.expectedAnswer != null || reveal.answerJudge != null;
     if (isTypedReveal) {
       if (reveal.forfeit) return "⏱ timeout";
@@ -92,6 +93,7 @@ export function createRevealFeedbackRenderer(deps: RevealFeedbackRendererDeps): 
 
   function resultSummaryText(reveal: RevealFeedbackReveal, questionCounter: number): string {
     if (reveal.questionType === "story-choice") return "Story note Q" + questionCounter + " · event path locked";
+    if (reveal.questionType === "story-action") return "Labyrinth note Q" + questionCounter + " · world state changed";
     return "Class note Q" + questionCounter + " · " + (reveal.forfeit ? "timed out" : reveal.wasCorrect ? "correct" : "missed");
   }
 
@@ -149,7 +151,7 @@ export function createRevealFeedbackRenderer(deps: RevealFeedbackRendererDeps): 
       const main = deps.document.createElement("div");
       main.className = "class-note-main";
       const badge = deps.document.createElement("span");
-      badge.className = "badge-mini " + (reveal.questionType === "story-choice" ? "neutral" : reveal.wasCorrect ? "ok" : "bad");
+      badge.className = "badge-mini " + (["story-choice", "story-action"].includes(String(reveal.questionType || "")) ? "neutral" : reveal.wasCorrect ? "ok" : "bad");
       badge.textContent = resultBadgeText(reveal);
       main.appendChild(badge);
       const title = deps.document.createElement("span");

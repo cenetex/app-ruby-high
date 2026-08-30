@@ -5436,7 +5436,7 @@ describe("RubyHighService Phase 1", () => {
     expect(restored.courseProgress(sid, "ruby").today.result).toEqual(record.result);
   });
 
-  it("runs Roko's basilisk class as an event-driven labyrinth followed by one graded return", async () => {
+  it("runs Roko's basilisk class with attribute moves, navigation, and one graded return", async () => {
     const { ruby } = await makeServices();
     const sid = "test:roko-case-class";
     ruby.selectGrade(sid, "10");
@@ -5453,78 +5453,80 @@ describe("RubyHighService Phase 1", () => {
 
     const investigate = ruby.pickAndPose(sid, { faculty: "roko" });
     expect(investigate.current).toMatchObject({
-      type: "story-choice",
+      type: "story-action",
       faculty: "roko",
-      caseStudy: { episodeId: "basilisk-archive", stage: "investigate" },
+      caseStudy: {
+        episodeId: "basilisk-archive",
+        stage: "investigate",
+        labyrinth: { completedRooms: 0, requiredRooms: 3, requiredHumans: 1 },
+      },
     });
     expect(investigate.current?.correctChoice).toBeUndefined();
+    expect(investigate.current?.options).toBeUndefined();
     const episodeId = investigate.current!.caseStudy!.episodeId;
-    const firstChoice = investigate.current!.options!.A;
-    const investigationReveal = ruby.submitAnswer(sid, "A");
+    expect(() => ruby.submitTextAnswer(sid, "I inspect the scroll")).toThrow(/Choose HEAD, HEART, HUSTLE, HONOR/);
+
+    const investigationReveal = ruby.submitTextAnswer(sid, "head");
     expect(investigationReveal.lastReveal).toMatchObject({
-      questionType: "story-choice",
-      picked: "A",
-      caseChoice: { choiceLabel: firstChoice },
+      questionType: "story-action",
+      answerText: "head",
+      caseChoice: { choiceLabel: "HEAD · Study the mechanism" },
+      caseConsequence: { detail: expect.any(String) },
     });
     expect(investigationReveal.caseStudyProgress).toMatchObject({
       episodeId,
-      choices: [{ choiceLabel: firstChoice, stage: "investigate", event: { eventId: expect.any(String) } }],
-      currentNodeId: "sealed-reading-cell",
-      visitedNodeIds: ["hall-of-four-doors"],
+      choices: [{ choiceLabel: "HEAD · Study the mechanism", roomCompleted: true }],
+      currentNodeId: "map-room",
+      labyrinth: { completedNodeIds: ["hall-of-four-doors"], actionCount: 1 },
     });
     expect(investigationReveal.score.total).toBe(0);
     ruby.clearBoard(sid);
 
     const decide = ruby.pickAndPose(sid, { faculty: "roko" });
     expect(decide.current).toMatchObject({
-      type: "story-choice",
+      type: "story-action",
       caseStudy: {
         episodeId,
         stage: "decide",
-        nodeId: "sealed-reading-cell",
-        priorChoices: [{ choiceLabel: firstChoice, event: { detail: expect.any(String) } }],
+        nodeId: "map-room",
+        priorChoices: [{ choiceLabel: "HEAD · Study the mechanism", event: { detail: expect.any(String) } }],
+        labyrinth: { completedRooms: 1 },
       },
     });
-    const secondChoice = decide.current!.options!.B;
-    const decisionReveal = ruby.submitAnswer(sid, "B");
+    const decisionReveal = ruby.submitTextAnswer(sid, "head");
     expect(decisionReveal.lastReveal).toMatchObject({
-      questionType: "story-choice",
-      caseChoice: { choiceLabel: secondChoice, stage: "decide" },
+      questionType: "story-action",
+      caseChoice: { choiceLabel: "HEAD · Study the mechanism", stage: "decide" },
     });
-    expect(decisionReveal.lastReveal?.caseConsequence).toBeUndefined();
+    expect(decisionReveal.lastReveal?.caseConsequence).toBeDefined();
     expect(decisionReveal.caseStudyProgress).toMatchObject({
-      currentNodeId: "repair-workshop",
-      visitedNodeIds: ["hall-of-four-doors", "sealed-reading-cell"],
+      currentNodeId: "evidence-well",
+      labyrinth: { completedNodeIds: ["hall-of-four-doors", "map-room"], actionCount: 2 },
     });
     expect(decisionReveal.caseStudyProgress?.choices[1]).toMatchObject({
-      choiceLabel: secondChoice,
-      event: { eventId: "reader-council-formed" },
+      choiceLabel: "HEAD · Study the mechanism",
+      event: { eventId: "premise-map-completed" },
     });
     ruby.clearBoard(sid);
 
     const navigate = ruby.pickAndPose(sid, { faculty: "roko" });
     expect(navigate.current).toMatchObject({
-      type: "story-choice",
+      type: "story-action",
       caseStudy: {
         episodeId,
         stage: "navigate",
-        nodeId: "repair-workshop",
+        nodeId: "evidence-well",
         storyFunction: "discover",
-        priorChoices: [
-          { choiceLabel: firstChoice, event: { detail: expect.any(String) } },
-          { choiceLabel: secondChoice, event: { detail: expect.any(String) } },
-        ],
+        labyrinth: { completedRooms: 2, requiredHumans: 1 },
       },
     });
-    const thirdChoice = navigate.current!.options!.C;
-    ruby.submitAnswer(sid, "C");
+    ruby.submitTextAnswer(sid, "head");
     expect(ruby.getOrCreate(sid).caseStudyProgress).toMatchObject({
       currentNodeId: null,
-      choices: [
-        { choiceLabel: firstChoice },
-        { choiceLabel: secondChoice },
-        { choiceLabel: thirdChoice, stage: "navigate", event: { eventId: expect.any(String) } },
-      ],
+      labyrinth: {
+        completedNodeIds: ["hall-of-four-doors", "map-room", "evidence-well"],
+        actionCount: 3,
+      },
     });
     ruby.clearBoard(sid);
 
@@ -5532,16 +5534,12 @@ describe("RubyHighService Phase 1", () => {
     expect(explain.current).toMatchObject({
       type: "opinion",
       opinionPurpose: "daily-take",
-      prompt: expect.stringContaining(firstChoice),
+      prompt: expect.stringContaining("HEAD · Study the mechanism"),
       caseStudy: {
         episodeId,
         stage: "explain",
         storyFunction: "return",
-        priorChoices: [
-          { choiceLabel: firstChoice, event: { detail: expect.any(String) } },
-          { choiceLabel: secondChoice, event: { detail: expect.any(String) } },
-          { choiceLabel: thirdChoice, event: { detail: expect.any(String) } },
-        ],
+        priorChoices: expect.any(Array),
       },
       caseOutcome: { episodeId, choices: expect.any(Array) },
     });
@@ -5559,7 +5557,7 @@ describe("RubyHighService Phase 1", () => {
         memoryTitle: expect.any(String),
         memoryDetail: expect.any(String),
         followUp: expect.any(String),
-        pathSummary: expect.stringContaining(firstChoice),
+        pathSummary: expect.stringContaining("HEAD · Study the mechanism"),
       },
     });
 

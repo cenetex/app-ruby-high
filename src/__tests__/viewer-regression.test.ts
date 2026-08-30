@@ -52,6 +52,21 @@ function cssRule(selector: string): string {
 }
 
 describe("viewer regression guardrails", () => {
+  it("gives the labyrinth fixed actions instead of a writing field", () => {
+    const html = renderedViewer();
+    const script = inlineScript(html);
+
+    expect(html).toContain('id="labyrinth-attribute-grid"');
+    expect(html).toContain('id="labyrinth-exit-grid"');
+    expect(html).not.toContain('id="labyrinth-action-input"');
+    expectScriptToContain(script, 'const moves = [');
+    expectScriptToContain(script, '{ id: "head", label: "HEAD"');
+    expectScriptToContain(script, '{ id: "heart", label: "HEART"');
+    expectScriptToContain(script, '{ id: "hustle", label: "HUSTLE"');
+    expectScriptToContain(script, '{ id: "honor", label: "HONOR"');
+    expectScriptToContain(script, 'els.typedAnswerForm.hidden = active');
+  });
+
   it("renders parseable inline JS with the critical offline boot and PWA paths", () => {
     const script = inlineScript(renderedViewer());
 
