@@ -3212,6 +3212,35 @@ describe("admin metrics route", () => {
     });
   });
 
+  it("accepts scene-flow events without storing dialogue prose", async () => {
+    const { token } = await auth.createGuestSession();
+    const cookieHeader = `rh_session=${token}`;
+
+    const inputs = [
+      { type: "scene_summary_opened", questionId: "take-ruby-9", beats: 4 },
+      { type: "dialogue_log_opened", items: 7 },
+      { type: "scene_latest_used", questionId: "take-ruby-9" },
+      { type: "scene_advanced", questionId: "take-ruby-9" },
+    ];
+    for (const body of inputs) {
+      const response = await appRoute({
+        method: "POST",
+        path: "/api/apps/ruby-high/metrics/event",
+        cookieHeader,
+        visitorHeader: "rhv_scene_flow_visitor",
+        body: { ...body, content: "private dialogue must not be stored" },
+      });
+      expect(response.status).toBe(200);
+    }
+
+    const events = (await store.loadMetricEvents()).filter((event) => event.feature === "scene_flow");
+    expect(events).toHaveLength(4);
+    expect(events.map((event) => event.name)).toEqual(inputs.map((input) => input.type));
+    expect(JSON.stringify(events)).not.toContain("private dialogue");
+    expect(events[0]?.metadata).toMatchObject({ questionId: "take-ruby-9", count: 4 });
+    expect(events[1]?.metadata).toMatchObject({ count: 7 });
+  });
+
   it("accepts Privy wallet auth diagnostics as durable error metrics", async () => {
     const { token } = await auth.createGuestSession();
     const cookieHeader = `rh_session=${token}`;

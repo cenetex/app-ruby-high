@@ -164,14 +164,38 @@ describe("viewer regression guardrails", () => {
     expect(clientSource).not.toContain("worldController.attach();");
   });
 
-  it("keeps live-round mobile chrome from crowding the answer loop", () => {
+  it("lets the board and scene share one mobile scroll", () => {
     expect(VIEWER_CSS).toContain("@media (max-width: 600px)");
     expect(VIEWER_CSS).toContain("--composer-min: 50px");
-    expect(VIEWER_CSS).toContain("grid-template-rows: auto minmax(0, auto) minmax(56px, 1fr) auto");
-    expect(VIEWER_CSS).toContain("max-height: 46dvh");
+    expect(cssRule("main.workspace")).toContain("grid-template-rows: auto minmax(0, 1fr) auto");
+    expect(cssRule(".classroom-scroll")).toContain("overflow-y: auto");
+    expect(cssRule(".blackboard-panel")).toContain("overflow: visible");
+    expect(cssRule(".answers-host")).toContain("overflow: visible");
+    expect(cssRule(".stream")).toContain("overflow: visible");
     expect(cssRule(".blackboard-meta .pill.class-mode")).toContain("order: -1");
     expect(cssRule(".blackboard-meta .pill.faculty")).toContain("display: none");
     expect(VIEWER_CSS).not.toContain('.shell[data-mode="round-live"] .world-panel');
+  });
+
+  it("keeps only the live exchange open and moves history behind disclosure", () => {
+    const html = renderedViewer();
+    const script = inlineScript(html);
+    const boardAt = html.indexOf('id="blackboard-panel"');
+    const summaryAt = html.indexOf('id="scene-summary-host"');
+    const streamAt = html.indexOf('id="stream"');
+
+    expect(html).toContain('<div class="classroom-scroll" id="classroom-scroll">');
+    expect(html).toContain('<details id="scene-summary">');
+    expect(html).toContain('<details id="dialogue-log">');
+    expect(html).toContain('id="scene-latest"');
+    expect(boardAt).toBeGreaterThan(-1);
+    expect(summaryAt).toBeGreaterThan(boardAt);
+    expect(streamAt).toBeGreaterThan(summaryAt);
+    expectScriptToContain(script, "function mountLiveDialogue");
+    expectScriptToContain(script, "archiveLiveDialogue(0)");
+    expectScriptToContain(script, "archiveLiveDialogue(1)");
+    expectScriptToContain(script, "function renderSceneSummary");
+    expectScriptToContain(script, 'postViewerMetricEvent("dialogue_log_opened"');
   });
 
   it("keeps compact class-flow controls readable, focusable, and viewport-safe", () => {
@@ -1182,7 +1206,7 @@ describe("viewer regression guardrails", () => {
 
     expectScriptToContain(script, '/api/apps/ruby-high/chat/opinion-submit');
     expectScriptToContain(script, '/api/apps/ruby-high/chat/room-turn');
-    expectScriptToContain(script, "Earlier room summary");
+    expectScriptToContain(script, "setDialogueCompaction(summary)");
     expectScriptToContain(script, 'event === "player-line"');
     expectScriptToContain(script, 'event === "student"');
     expectScriptToContain(script, 'event === "opinion-response"');
