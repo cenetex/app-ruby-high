@@ -48,6 +48,8 @@ export interface RokoAssignmentNode {
   prompt: string;
   explanation: string;
   evidence?: CaseStudyCard["evidence"];
+  discussion?: NonNullable<CaseStudyCard["tour"]>["discussion"];
+  sharedGate?: CaseStudyCard["sharedGate"];
   choices: RokoAssignmentChoice[];
 }
 
@@ -69,6 +71,7 @@ export interface RokoEpisode {
   stat: keyof CharacterStats;
   evidence: CaseStudyCard["evidence"];
   sources?: CaseStudyCard["sources"];
+  tour?: Omit<NonNullable<CaseStudyCard["tour"]>, "discussion">;
   assignmentGraph?: RokoAssignmentGraph;
   investigation?: RokoEpisodeChoice;
   decision?: RokoEpisodeChoice;
@@ -110,6 +113,14 @@ for (const episode of parsed.episodes) {
       if (choice.nextNodeId && !ids.has(choice.nextNodeId)) {
         throw new Error(`Roko assignment ${node.id} points to missing node ${choice.nextNodeId}.`);
       }
+    }
+    if (node.sharedGate) {
+      if (node.sharedGate.roles.length < 2) throw new Error(`Roko gate ${node.sharedGate.gateId} needs at least two human roles.`);
+      if (!node.choices.some((choice) => choice.choiceId === node.sharedGate!.gatedChoiceId)) {
+        throw new Error(`Roko gate ${node.sharedGate.gateId} does not gate a passage in ${node.id}.`);
+      }
+      const roleIds = new Set(node.sharedGate.roles.map((role) => role.id));
+      if (roleIds.size !== node.sharedGate.roles.length) throw new Error(`Roko gate ${node.sharedGate.gateId} repeats a role.`);
     }
   }
   const reachable = new Set<string>();
@@ -177,6 +188,14 @@ function caseCard(
   node?: RokoAssignmentNode | null,
 ): CaseStudyCard {
   const route = routeFor(episode, progress, node ?? null);
+  const passages = node?.choices.map((choice) => ({
+    choiceId: choice.choiceId,
+    label: choice.label,
+    destination: choice.nextNodeId
+      ? graphNode(episode, choice.nextNodeId)?.title ?? "Unknown passage"
+      : "Council Chamber",
+    ...(node.sharedGate?.gatedChoiceId === choice.choiceId ? { gateId: node.sharedGate.gateId } : {}),
+  }));
   return {
     episodeId: episode.id,
     title: episode.title,
@@ -194,6 +213,14 @@ function caseCard(
       storyFunction: "return" as const,
     } : {}),
     ...(route ? { route } : {}),
+    ...(episode.tour ? {
+      tour: {
+        ...episode.tour,
+        discussion: node?.discussion?.map((line) => ({ ...line })) ?? [],
+      },
+    } : {}),
+    ...(passages ? { passages } : {}),
+    ...(node?.sharedGate ? { sharedGate: structuredClone(node.sharedGate) } : {}),
     evidence: (node?.evidence ?? episode.evidence).map((item) => ({ ...item })),
     ...(episode.sources ? { sources: episode.sources.map((source) => ({ ...source })) } : {}),
     ...(progress?.episodeId === episode.id

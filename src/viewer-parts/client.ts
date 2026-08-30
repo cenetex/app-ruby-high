@@ -3819,10 +3819,154 @@ export function runViewerClient(bootstrap) {
     return wrap;
   }
 
+  let labyrinthGateBusy = false;
+  let labyrinthGateRefreshTimer = null;
+  function syncLabyrinthGateRefresh(gate) {
+    const shouldRefresh = !!(gate && !gate.complete && role !== "agent");
+    if (!shouldRefresh) {
+      if (labyrinthGateRefreshTimer) clearInterval(labyrinthGateRefreshTimer);
+      labyrinthGateRefreshTimer = null;
+      return;
+    }
+    if (labyrinthGateRefreshTimer) return;
+    labyrinthGateRefreshTimer = setInterval(() => {
+      if (document.visibilityState === "visible") void fetchSession({ timeoutMs: SESSION_REFRESH_TIMEOUT_MS });
+    }, 5000);
+  }
+  async function contributeLabyrinthGate(gateId, gateRoleId, button) {
+    if (labyrinthGateBusy || !gateId || !gateRoleId) return;
+    labyrinthGateBusy = true;
+    if (button) button.disabled = true;
+    try {
+      await command({ type: "contribute-labyrinth-gate", gateId, gateRoleId });
+    } finally {
+      labyrinthGateBusy = false;
+      if (button && button.isConnected) button.disabled = false;
+    }
+  }
+
+  function buildLabyrinthTour(caseStudy) {
+    const wrap = document.createElement("section");
+    wrap.className = "labyrinth-tour";
+
+    const stage = document.createElement("div");
+    stage.className = "labyrinth-stage";
+    const background = document.createElement("img");
+    background.className = "labyrinth-background";
+    background.src = caseStudy.tour.backgroundAsset;
+    background.alt = caseStudy.tour.backgroundAlt;
+    const wash = document.createElement("div");
+    wash.className = "labyrinth-wash";
+    wash.setAttribute("aria-hidden", "true");
+    const stop = document.createElement("div");
+    stop.className = "labyrinth-stop";
+    const stopKind = document.createElement("span");
+    stopKind.textContent = "Roko's field trip";
+    const stopTitle = document.createElement("strong");
+    stopTitle.textContent = caseStudy.nodeTitle || caseStudy.title;
+    stop.append(stopKind, stopTitle);
+    const guide = document.createElement("img");
+    guide.className = "labyrinth-guide";
+    guide.src = caseStudy.tour.guideAsset;
+    guide.alt = caseStudy.tour.guideAlt;
+    const discussion = document.createElement("div");
+    discussion.className = "labyrinth-discussion";
+    caseStudy.tour.discussion.forEach((line) => {
+      const exchange = document.createElement("article");
+      exchange.className = "labyrinth-line" + (line.speakerId === "roko" ? " is-roko" : " is-goblin");
+      const speaker = document.createElement("strong");
+      speaker.textContent = line.speakerName;
+      const text = document.createElement("p");
+      text.textContent = line.text;
+      exchange.append(speaker, text);
+      discussion.appendChild(exchange);
+    });
+    stage.append(background, wash, stop, guide, discussion);
+    wrap.appendChild(stage);
+
+    if (caseStudy.sharedGate) {
+      const gate = caseStudy.sharedGate;
+      const gateWrap = document.createElement("aside");
+      gateWrap.className = "labyrinth-gate" + (gate.complete ? " is-open" : "");
+      const gateTop = document.createElement("div");
+      gateTop.className = "labyrinth-gate-top";
+      const gateCopy = document.createElement("div");
+      const gateTitle = document.createElement("strong");
+      gateTitle.textContent = gate.complete ? gate.label + " · open" : gate.label;
+      const gateDescription = document.createElement("p");
+      gateDescription.textContent = gate.description;
+      gateCopy.append(gateTitle, gateDescription);
+      const gateCount = document.createElement("span");
+      gateCount.className = "labyrinth-gate-count";
+      gateCount.textContent = gate.filledRoleIds.length + "/" + gate.roles.length + " humans";
+      gateTop.append(gateCopy, gateCount);
+      const roles = document.createElement("div");
+      roles.className = "labyrinth-gate-roles";
+      gate.roles.forEach((gateRole) => {
+        const filled = gate.filledRoleIds.includes(gateRole.id);
+        const mine = gate.currentRoleId === gateRole.id;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "labyrinth-gate-role" + (filled ? " is-filled" : "") + (mine ? " is-mine" : "");
+        button.disabled = role === "agent" || gate.complete || filled || !!gate.currentRoleId;
+        button.setAttribute("aria-pressed", mine ? "true" : "false");
+        const seal = document.createElement("span");
+        seal.className = "labyrinth-gate-seal";
+        seal.textContent = filled ? "✋" : "◇";
+        const copy = document.createElement("span");
+        const label = document.createElement("strong");
+        label.textContent = gateRole.label;
+        const detail = document.createElement("small");
+        detail.textContent = mine ? "Your seal is holding this job." : filled ? "Held by another human student." : gateRole.detail;
+        copy.append(label, detail);
+        button.append(seal, copy);
+        button.addEventListener("click", () => void contributeLabyrinthGate(gate.gateId, gateRole.id, button));
+        roles.appendChild(button);
+      });
+      gateWrap.append(gateTop, roles);
+      wrap.appendChild(gateWrap);
+    }
+
+    const trail = document.createElement("div");
+    trail.className = "labyrinth-trail";
+    const route = document.createElement("span");
+    route.textContent = (caseStudy.route || []).map((step) => step.label).join(" → ");
+    trail.appendChild(route);
+    if (caseStudy.evidence.length > 0 || (caseStudy.sources && caseStudy.sources.length > 0)) {
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      summary.textContent = "Open Roko's field notes";
+      details.appendChild(summary);
+      caseStudy.evidence.forEach((item) => {
+        const note = document.createElement("p");
+        note.textContent = item.label + " · " + item.detail;
+        details.appendChild(note);
+      });
+      (caseStudy.sources || []).forEach((source) => {
+        const link = document.createElement("a");
+        link.href = source.url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = source.label;
+        details.appendChild(link);
+      });
+      trail.appendChild(details);
+    }
+    wrap.appendChild(trail);
+    (caseStudy.priorChoices || []).forEach((choice) => {
+      const pathResult = buildCasePathResult(choice);
+      if (pathResult) wrap.appendChild(pathResult);
+    });
+    return wrap;
+  }
+
   function renderQuestionPrompt(question) {
     const view = questionPromptView(question);
     els.boardPrompt.replaceChildren();
     if (view.caseStudy) {
+      if (view.caseStudy.tour) {
+        els.boardPrompt.appendChild(buildLabyrinthTour(view.caseStudy));
+      } else {
       const caseWrap = document.createElement("section");
       caseWrap.className = "case-study-card case-stage-" + view.caseStudy.stage;
       const top = document.createElement("div");
@@ -3909,6 +4053,7 @@ export function runViewerClient(bootstrap) {
         caseWrap.appendChild(sources);
       }
       els.boardPrompt.appendChild(caseWrap);
+      }
     }
     if (view.images.length > 0) {
       const wrap = document.createElement("div");
@@ -3930,6 +4075,7 @@ export function runViewerClient(bootstrap) {
   function renderBlackboard(question, faculty, currentGrade) {
     const isLounge = !!((faculty && faculty.id === LOUNGE_ID) || (!faculty && lastTelemetry && lastTelemetry.faculty === LOUNGE_ID));
     if (isLounge) {
+      syncLabyrinthGateRefresh(null);
       // Lounge mode: hide blackboard and show the faculty lounge roster.
       // Keep the compact guest-teacher panel and do not carry over
       // stale classroom start/progress chrome above it.
@@ -3955,6 +4101,7 @@ export function runViewerClient(bootstrap) {
     renderTeacherFigure(faculty);
     els.blackboardPanel.dataset.faculty = faculty ? faculty.id : "";
     if (!question) {
+      syncLabyrinthGateRefresh(null);
       if (authed && lastTelemetry && lastTelemetry.character && shouldShowClassReport(lastTelemetry)) {
         showBlackboardClassReport(faculty, currentGrade);
         return;
@@ -4041,6 +4188,7 @@ export function runViewerClient(bootstrap) {
     }
 
     const isOpinion = (lastTelemetry && lastTelemetry.is_opinion) || question.type === "opinion";
+    const isStoryChoice = question.type === "story-choice";
     const isTypedAnswer = question.type === "typed-answer" || question.type === "image-occlusion";
     const isFreeformAnswer = isTypedAnswer || isOpinion;
     if (isNewQuestion) {
@@ -4068,12 +4216,19 @@ export function runViewerClient(bootstrap) {
       const f = document.createElement("span"); f.className = "pill faculty"; f.textContent = faculty.displayName || "Teacher"; els.blackboardMeta.appendChild(f);
     }
     if (question.subject) { const s = document.createElement("span"); s.className = "pill subject"; s.textContent = question.subject; els.blackboardMeta.appendChild(s); }
-    if (question.difficulty) { const d = document.createElement("span"); d.className = "pill difficulty " + question.difficulty; d.textContent = question.difficulty; els.blackboardMeta.appendChild(d); }
+    if (!isStoryChoice && question.difficulty) { const d = document.createElement("span"); d.className = "pill difficulty " + question.difficulty; d.textContent = question.difficulty; els.blackboardMeta.appendChild(d); }
     const stat = (ar && ar.stat) || (question && question.stat);
-    const statPill = document.createElement("span");
-    statPill.className = "pill stat " + (stat || "head");
-    statPill.textContent = statLabel(stat);
-    els.blackboardMeta.appendChild(statPill);
+    if (!isStoryChoice) {
+      const statPill = document.createElement("span");
+      statPill.className = "pill stat " + (stat || "head");
+      statPill.textContent = statLabel(stat);
+      els.blackboardMeta.appendChild(statPill);
+    } else {
+      const trip = document.createElement("span");
+      trip.className = "pill class-mode";
+      trip.textContent = "LABYRINTH FIELD TRIP";
+      els.blackboardMeta.appendChild(trip);
+    }
     if (ar && ar.isBonus) {
       const bonus = document.createElement("span");
       bonus.className = "pill bonus";
@@ -4083,7 +4238,9 @@ export function runViewerClient(bootstrap) {
     if (ar && ar.classSession) {
       const cls = document.createElement("span");
       cls.className = "pill class-mode";
-      cls.textContent = cardRole === "social"
+      cls.textContent = isStoryChoice
+        ? "ROOM " + (ar.classSession.index || "?") + "/" + (ar.classSession.total || 4)
+        : cardRole === "social"
         ? ar.classSession.mode === "class"
           ? "GRADED TAKE " + (ar.classSession.index || "?") + "/" + (ar.classSession.total || 3)
           : "REFLECTION"
@@ -4094,8 +4251,12 @@ export function runViewerClient(bootstrap) {
     }
 
     // Prompt — always wipe + rewrite on new question (chalkboard re-erasing).
-    if (isNewQuestion) {
+    const promptView = questionPromptView(question);
+    syncLabyrinthGateRefresh(isStoryChoice ? promptView.caseStudy && promptView.caseStudy.sharedGate : null);
+    if (isNewQuestion || isStoryChoice) {
       renderQuestionPrompt(question);
+    }
+    if (isNewQuestion) {
       els.boardReveal.hidden = true;
       els.boardReveal.textContent = "";
       els.boardReveal.classList.remove("correct", "wrong", "neutral");
@@ -4104,17 +4265,39 @@ export function runViewerClient(bootstrap) {
     // Answer buttons
     let maxLen = 0;
     let hasLineBreakAnswer = false;
+    els.answers.classList.toggle("is-adventure", isStoryChoice);
     els.answers.forEach((btn) => {
       const pick = btn.dataset.pick;
       const label = btn.querySelector(".label");
+      const badge = btn.querySelector(".badge");
       const text = (question.options && question.options[pick]) || "—";
+      const passage = isStoryChoice && promptView.caseStudy
+        ? (promptView.caseStudy.passages || []).find((item) => item.label === text)
+        : null;
+      const gate = promptView.caseStudy && promptView.caseStudy.sharedGate;
+      const gateLocked = !!(passage && gate && passage.choiceId === gate.gatedChoiceId && !gate.complete);
       renderMarkdownInto(label, text, { inline: true });
+      const oldDestination = btn.querySelector(".answer-destination");
+      if (oldDestination) oldDestination.remove();
+      if (isStoryChoice && passage) {
+        const destination = document.createElement("small");
+        destination.className = "answer-destination";
+        destination.textContent = gateLocked
+          ? "Shared passage · " + gate.filledRoleIds.length + "/" + gate.roles.length + " humans"
+          : "Enter " + passage.destination;
+        btn.appendChild(destination);
+      }
+      if (badge) badge.textContent = isStoryChoice ? (gateLocked ? "🔒" : "→") : pick;
+      btn.classList.toggle("is-gate-locked", gateLocked);
+      btn.setAttribute("aria-label", isStoryChoice
+        ? (gateLocked ? "Locked passage: " : "Take passage: ") + text
+        : String(pick) + ": " + text);
       if (text.length > maxLen) maxLen = text.length;
       if (String(text).includes("\n")) hasLineBreakAnswer = true;
       if (isNewQuestion) {
         btn.classList.remove("is-correct", "is-wrong", "is-selected");
       }
-      btn.disabled = role === "agent";
+      btn.disabled = role === "agent" || gateLocked;
     });
     const round = lastTelemetry && lastTelemetry.active_round;
     const playerLocked = !!(round && round.player && round.player.isLocked);

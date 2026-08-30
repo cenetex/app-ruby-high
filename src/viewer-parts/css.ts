@@ -3004,6 +3004,226 @@ export const VIEWER_CSS = `
     font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
     white-space: normal;
   }
+  /* Roko's class is staged as a field trip, not a timed quiz board. */
+  .blackboard-panel[data-question-type="story-choice"] .teacher-figure,
+  .blackboard-panel[data-question-type="story-choice"] .race-strip,
+  .blackboard-panel[data-question-type="story-choice"] .advantage-bar,
+  .blackboard-panel[data-question-type="story-choice"] .daily-class-progress {
+    display: none !important;
+  }
+  .blackboard-panel[data-question-type="story-choice"] .board-frame-host {
+    padding-inline: 0;
+  }
+  .blackboard-panel[data-question-type="story-choice"] .board-frame {
+    padding: 0;
+    background: #20162c;
+    box-shadow: none;
+  }
+  .blackboard-panel[data-question-type="story-choice"] .board {
+    padding: 0;
+    border-radius: 0;
+    background: #20162c;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    box-shadow: none;
+  }
+  .blackboard-panel[data-question-type="story-choice"] .prompt-text {
+    padding: 12px 14px 2px;
+    color: #fff5df;
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1.35;
+  }
+  .labyrinth-tour {
+    display: grid;
+    gap: 0;
+    color: #fff5df;
+  }
+  .labyrinth-stage {
+    position: relative;
+    overflow: hidden;
+    min-height: 330px;
+    aspect-ratio: 16 / 9;
+    isolation: isolate;
+    background: #20162c;
+  }
+  .labyrinth-background,
+  .labyrinth-wash {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .labyrinth-background {
+    z-index: -3;
+    object-fit: cover;
+  }
+  .labyrinth-wash {
+    z-index: -2;
+    background:
+      linear-gradient(90deg, rgba(22,12,31,0.18), rgba(22,12,31,0.02) 44%, rgba(22,12,31,0.68)),
+      linear-gradient(0deg, rgba(17,9,24,0.70), transparent 54%);
+    pointer-events: none;
+  }
+  .labyrinth-stop {
+    position: absolute;
+    z-index: 2;
+    top: 12px;
+    left: 14px;
+    display: grid;
+    gap: 2px;
+    max-width: 48%;
+    padding: 7px 9px;
+    background: rgba(26,14,33,0.78);
+    border-left: 3px solid #f2bd62;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.55);
+  }
+  .labyrinth-stop span {
+    color: #f2bd62;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+  .labyrinth-stop strong {
+    color: #fff5df;
+    font-size: 15px;
+    line-height: 1.15;
+  }
+  .labyrinth-guide {
+    position: absolute;
+    z-index: 1;
+    left: 2%;
+    bottom: -9%;
+    width: auto;
+    height: 68%;
+    object-fit: contain;
+    filter: drop-shadow(0 14px 15px rgba(0,0,0,0.52));
+    pointer-events: none;
+  }
+  .labyrinth-discussion {
+    position: absolute;
+    z-index: 3;
+    top: 12px;
+    right: 12px;
+    display: grid;
+    gap: 7px;
+    width: min(58%, 520px);
+  }
+  .labyrinth-line {
+    margin: 0;
+    padding: 8px 10px;
+    border: 1px solid rgba(255,255,255,0.28);
+    background: rgba(248,240,219,0.94);
+    color: #282029;
+    box-shadow: 3px 4px 0 rgba(20,10,27,0.24);
+  }
+  .labyrinth-line.is-goblin {
+    margin-left: 11%;
+    background: rgba(224,238,191,0.95);
+    border-color: rgba(92,124,56,0.72);
+  }
+  .labyrinth-line strong {
+    display: block;
+    margin-bottom: 2px;
+    color: #86404c;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .labyrinth-line.is-goblin strong { color: #476925; }
+  .labyrinth-line p {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.28;
+  }
+  .labyrinth-gate {
+    display: grid;
+    gap: 9px;
+    padding: 12px 14px;
+    background: linear-gradient(135deg, rgba(82,52,91,0.94), rgba(40,25,50,0.98));
+    border-top: 1px solid rgba(242,189,98,0.42);
+    border-bottom: 1px solid rgba(242,189,98,0.26);
+  }
+  .labyrinth-gate.is-open {
+    background: linear-gradient(135deg, rgba(49,91,66,0.96), rgba(33,57,43,0.98));
+  }
+  .labyrinth-gate-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .labyrinth-gate-top strong { color: #ffe2a1; font-size: 13px; }
+  .labyrinth-gate-top p {
+    margin: 3px 0 0;
+    max-width: 64ch;
+    color: rgba(255,245,223,0.78);
+    font-size: 10px;
+    line-height: 1.35;
+  }
+  .labyrinth-gate-count {
+    flex: 0 0 auto;
+    padding: 4px 7px;
+    border: 1px solid rgba(255,226,161,0.4);
+    color: #ffe2a1;
+    font-size: 9px;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+  .labyrinth-gate-roles {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+  }
+  .labyrinth-gate-role {
+    appearance: none;
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 7px;
+    align-items: center;
+    min-width: 0;
+    min-height: 58px;
+    padding: 7px;
+    border: 1px solid rgba(255,255,255,0.19);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.08);
+    color: #fff5df;
+    text-align: left;
+    cursor: pointer;
+  }
+  .labyrinth-gate-role:disabled { cursor: default; opacity: 0.68; }
+  .labyrinth-gate-role.is-filled { background: rgba(111,158,91,0.22); }
+  .labyrinth-gate-role.is-mine { border-color: #f2bd62; opacity: 1; }
+  .labyrinth-gate-seal {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: rgba(255,226,161,0.13);
+    font-size: 15px;
+  }
+  .labyrinth-gate-role strong,
+  .labyrinth-gate-role small { display: block; }
+  .labyrinth-gate-role strong { font-size: 10px; line-height: 1.2; }
+  .labyrinth-gate-role small { margin-top: 2px; color: rgba(255,245,223,0.70); font-size: 9px; line-height: 1.25; }
+  .labyrinth-trail {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 14px;
+    background: #191020;
+    color: rgba(255,245,223,0.72);
+    font-size: 10px;
+  }
+  .labyrinth-trail details { text-align: right; }
+  .labyrinth-trail summary { color: #cdb3e8; cursor: pointer; }
+  .labyrinth-trail details p { max-width: 62ch; margin: 7px 0 0 auto; line-height: 1.35; }
+  .labyrinth-trail details a { display: inline-block; margin: 7px 0 0 10px; color: #a6ddff; }
+  .labyrinth-tour > .case-path-result {
+    margin: 0 14px 10px;
+  }
   .board .case-study-topline {
     display: flex;
     align-items: baseline;
@@ -3325,6 +3545,56 @@ export const VIEWER_CSS = `
   .answer.C .badge { color: #1a2238; }
   .answer.D { --bg: #3aa3e0; color: #1a2238; }
   .answer.D .badge { color: #1a2238; }
+  .answers.is-adventure {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+  .answers.is-adventure .answer {
+    min-height: 72px;
+    padding: 12px 12px 12px 50px;
+    border: 1px solid rgba(242,189,98,0.30);
+    border-radius: 8px;
+    background: linear-gradient(135deg, #42304c, #2b2035);
+    color: #fff5df;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.24);
+  }
+  .answers.is-adventure .answer .badge {
+    width: 30px;
+    height: 30px;
+    background: rgba(242,189,98,0.15);
+    color: #ffe2a1;
+    font-size: 15px;
+  }
+  .answers.is-adventure .answer .label { font-size: 13px; line-height: 1.25; }
+  .answers.is-adventure .answer-destination {
+    display: block;
+    margin-top: 5px;
+    color: #cdb3e8;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .answers.is-adventure .answer.is-gate-locked {
+    border-color: rgba(255,255,255,0.12);
+    background: linear-gradient(135deg, #342b38, #262129);
+  }
+  @media (max-width: 700px) {
+    .labyrinth-stage { min-height: 420px; aspect-ratio: auto; }
+    .labyrinth-background { object-position: 50% center; }
+    .labyrinth-guide { left: -2%; bottom: -5%; height: 45%; }
+    .labyrinth-stop { max-width: 70%; }
+    .labyrinth-discussion { top: 74px; right: 8px; width: 78%; }
+    .labyrinth-line { padding: 7px 8px; }
+    .labyrinth-line p { font-size: 10px; }
+    .labyrinth-gate-top,
+    .labyrinth-trail { align-items: stretch; flex-direction: column; }
+    .labyrinth-gate-count { align-self: flex-start; }
+    .labyrinth-gate-roles,
+    .answers.is-adventure { grid-template-columns: 1fr; }
+    .labyrinth-trail details { text-align: left; }
+    .labyrinth-trail details p { margin-left: 0; }
+  }
   .answer.is-correct { outline: 3px solid #1f7c2a; outline-offset: -1px; opacity: 1; }
   .answer.is-wrong { outline: 3px solid #a01818; outline-offset: -1px; opacity: 0.72; }
   .answer.is-selected { outline: 3px solid #8a52bf; outline-offset: -1px; opacity: 1; }

@@ -80,6 +80,8 @@ type CommandBody = {
   publicWorldVisible?: boolean;
   eventId?: string;
   reason?: string;
+  gateId?: string;
+  gateRoleId?: string;
 } | null;
 
 async function sendPersistedCommandState(
@@ -419,6 +421,20 @@ export async function handleCommandRoute(args: {
       state.updatedAt = Date.now();
       void ruby.flushSession(stateKey);
       return await persist(state, visible ? "Student shown in shared school activity" : "Student hidden from shared school activity");
+    },
+    "contribute-labyrinth-gate": async () => {
+      const gateId = typeof body?.gateId === "string" ? body.gateId : "";
+      const gateRoleId = typeof body?.gateRoleId === "string" ? body.gateRoleId : "";
+      const result = ruby.contributeLabyrinthGate(stateKey, gateId, gateRoleId);
+      await ruby.flushLabyrinthGateState();
+      return await persist(
+        result.state,
+        result.gate.complete
+          ? `${result.gate.label} opened for every student.`
+          : result.duplicate
+            ? "Your gate job is already held."
+            : "Your seal is in place. Another human must take a different job.",
+      );
     },
     "hide-public-world-event": async () => {
       const result = ruby.hidePublicWorldEvent(stateKey, body?.eventId ?? "");

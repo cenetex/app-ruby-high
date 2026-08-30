@@ -245,6 +245,52 @@ export interface CaseStudyProgress {
   actedAt: number;
 }
 
+/** A short, authored exchange staged inside an adventure room. */
+export interface CaseStudyDiscussionLine {
+  speakerId: string;
+  speakerName: string;
+  text: string;
+}
+
+/** One distinct job a human student can take at a shared labyrinth gate. */
+export interface CaseStudySharedGateRole {
+  id: string;
+  label: string;
+  detail: string;
+}
+
+/**
+ * A cooperative passage. The authored fields describe the lock; the optional
+ * status fields are added to public telemetry from durable service state.
+ */
+export interface CaseStudySharedGate {
+  gateId: string;
+  label: string;
+  description: string;
+  gatedChoiceId: string;
+  roles: CaseStudySharedGateRole[];
+  filledRoleIds?: string[];
+  currentRoleId?: string | null;
+  complete?: boolean;
+}
+
+/** Visual-novel staging for an authored room. */
+export interface CaseStudyTourScene {
+  backgroundAsset: string;
+  backgroundAlt: string;
+  guideAsset: string;
+  guideAlt: string;
+  discussion: CaseStudyDiscussionLine[];
+}
+
+/** Semantic passage metadata. Letter slots remain an internal wire format. */
+export interface CaseStudyPassage {
+  choiceId: string;
+  label: string;
+  destination: string;
+  gateId?: string;
+}
+
 /** Authored context shown above a question in a case-based lesson. */
 export interface CaseStudyCard {
   episodeId: string;
@@ -259,6 +305,9 @@ export interface CaseStudyCard {
   route?: Array<{ nodeId: string; label: string }>;
   evidence: CaseStudyEvidence[];
   sources?: CaseStudySource[];
+  tour?: CaseStudyTourScene;
+  passages?: CaseStudyPassage[];
+  sharedGate?: CaseStudySharedGate;
   /** Earlier choices appear only after their causal events are available. */
   priorChoices?: CaseStudyChoiceResult[];
   /** The investigation selected earlier in this case. It appears only after

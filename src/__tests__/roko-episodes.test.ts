@@ -60,6 +60,27 @@ describe("Roko case episodes", () => {
       nextNodeId: "sealed-reading-cell",
       event: { eventId: "review-circle-convened" },
     });
+    expect(investigation.caseStudy).toMatchObject({
+      tour: {
+        backgroundAsset: expect.stringContaining("roko-labyrinth-hall.webp"),
+        guideAsset: expect.stringContaining("roko-full-sticker.png"),
+        discussion: expect.arrayContaining([
+          expect.objectContaining({ speakerName: "Roko", text: expect.any(String) }),
+          expect.objectContaining({ speakerName: expect.stringContaining("goblin"), text: expect.any(String) }),
+        ]),
+      },
+      passages: expect.arrayContaining([
+        expect.objectContaining({ choiceId: "restricted-review", destination: "Sealed Reading Cell", gateId: "three-hand-archive-door" }),
+      ]),
+      sharedGate: {
+        gatedChoiceId: "restricted-review",
+        roles: expect.arrayContaining([
+          expect.objectContaining({ id: "witness" }),
+          expect.objectContaining({ id: "skeptic" }),
+          expect.objectContaining({ id: "steward" }),
+        ]),
+      },
+    });
 
     const progress = {
       episodeId: episode.id,
@@ -81,6 +102,7 @@ describe("Roko case episodes", () => {
       ],
     });
     expect(decision.caseStudy?.sources?.some((source) => source.url.includes("lesswrong.com"))).toBe(true);
+    expect(decision.caseStudy?.sources?.some((source) => source.url.includes("metr.org"))).toBe(true);
     const secondBranch = decision.storyChoiceResults![decision.storyChoices![0]!]!;
     expect(secondBranch.nextNodeId).toBe("evidence-well");
     const secondProgress = {

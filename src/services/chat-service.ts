@@ -1929,7 +1929,7 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
   // A round may pass its answer window without being resolved. That is a soft
   // timeout: classmates may already be locked in, but the player can still
   // answer and the teacher must not reveal the correct answer.
-  const clockExpired = !!round && round.questionId === q.id && !round.resolved &&
+  const clockExpired = q.type !== "story-choice" && !!round && round.questionId === q.id && !round.resolved &&
     !!round.expiresAt && Date.now() >= round.expiresAt;
   const resolvedThisQ =
     !!round && round.questionId === q.id && round.resolved &&
@@ -1969,11 +1969,9 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
       : ["Expected answer: hidden until reveal."]
     : q.type === "story-choice"
       ? [
-        `  A) ${opts.A}`,
-        `  B) ${opts.B}`,
-        `  C) ${opts.C}`,
-        `  D) ${opts.D}`,
-        "No correct choice is defined. Progression is gated by authored world events, not elapsed time.",
+        "Available passages:",
+        ...Object.values(opts).filter(Boolean).map((passage) => `  - ${passage}`),
+        "No correct passage is defined. Progression is gated by authored world events, not elapsed time.",
       ]
     : [
         `  A) ${opts.A}`,

@@ -48,6 +48,24 @@ export type QuestionPromptCaseView = {
   sources?: Array<{ label: string; url: string; note: string }>;
   priorChoices?: QuestionPromptCaseChoiceView[];
   investigation?: QuestionPromptCaseActionView;
+  tour?: {
+    backgroundAsset: string;
+    backgroundAlt: string;
+    guideAsset: string;
+    guideAlt: string;
+    discussion: Array<{ speakerId: string; speakerName: string; text: string }>;
+  };
+  passages?: Array<{ choiceId: string; label: string; destination: string; gateId?: string }>;
+  sharedGate?: {
+    gateId: string;
+    label: string;
+    description: string;
+    gatedChoiceId: string;
+    roles: Array<{ id: string; label: string; detail: string }>;
+    filledRoleIds: string[];
+    currentRoleId: string | null;
+    complete: boolean;
+  };
 };
 export type LeaderboardGradeChipView = { className: string; text: string };
 export type LeaderboardRowView = {
@@ -1996,6 +2014,83 @@ export function questionPromptView(question: unknown): {
           label: String((step as LooseRecord).label || "Unknown room"),
         }))
     : [];
+  const safeTourAsset = (value: unknown): string => {
+    const asset = String(value || "");
+    return /^\/api\/apps\/ruby-high\/assets\/[a-z0-9/_\-.]+$/i.test(asset) ? asset : "";
+  };
+  const rawTour = rawCase?.tour && typeof rawCase.tour === "object" ? rawCase.tour as LooseRecord : null;
+  const discussion = rawTour && Array.isArray(rawTour.discussion)
+    ? rawTour.discussion
+        .filter((line) => line && typeof line === "object")
+        .slice(0, 4)
+        .map((line) => ({
+          speakerId: String((line as LooseRecord).speakerId || "speaker"),
+          speakerName: String((line as LooseRecord).speakerName || "Speaker"),
+          text: String((line as LooseRecord).text || ""),
+        }))
+        .filter((line) => line.text.trim().length > 0)
+    : [];
+  const backgroundAsset = safeTourAsset(rawTour?.backgroundAsset);
+  const guideAsset = safeTourAsset(rawTour?.guideAsset);
+  const tour = rawTour && backgroundAsset && guideAsset && discussion.length > 0
+    ? {
+        backgroundAsset,
+        backgroundAlt: String(rawTour.backgroundAlt || "Labyrinth room"),
+        guideAsset,
+        guideAlt: String(rawTour.guideAlt || "Roko"),
+        discussion,
+      }
+    : null;
+  const passages = rawCase && Array.isArray(rawCase.passages)
+    ? rawCase.passages
+        .filter((passage) => passage && typeof passage === "object")
+        .slice(0, 4)
+        .map((passage) => {
+          const item = passage as LooseRecord;
+          return {
+            choiceId: String(item.choiceId || "passage"),
+            label: String(item.label || "Take the passage"),
+            destination: String(item.destination || "Unknown room"),
+            ...(String(item.gateId || "").trim() ? { gateId: String(item.gateId) } : {}),
+          };
+        })
+    : [];
+  const rawGate = rawCase?.sharedGate && typeof rawCase.sharedGate === "object"
+    ? rawCase.sharedGate as LooseRecord
+    : null;
+  const gateRoles = rawGate && Array.isArray(rawGate.roles)
+    ? rawGate.roles
+        .filter((role) => role && typeof role === "object")
+        .slice(0, 4)
+        .map((role) => ({
+          id: String((role as LooseRecord).id || "role"),
+          label: String((role as LooseRecord).label || "Take a gate job"),
+          detail: String((role as LooseRecord).detail || ""),
+        }))
+        .filter((role) => role.detail.trim().length > 0)
+    : [];
+  const gateRoleIds = new Set(gateRoles.map((role) => role.id));
+  const filledRoleIds = rawGate && Array.isArray(rawGate.filledRoleIds)
+    ? rawGate.filledRoleIds.map(String).filter((roleId) => gateRoleIds.has(roleId))
+    : [];
+  const currentRoleId = rawGate && gateRoleIds.has(String(rawGate.currentRoleId || ""))
+    ? String(rawGate.currentRoleId)
+    : null;
+  const sharedGate = rawGate
+    && String(rawGate.gateId || "").trim()
+    && String(rawGate.gatedChoiceId || "").trim()
+    && gateRoles.length >= 2
+    ? {
+        gateId: String(rawGate.gateId),
+        label: String(rawGate.label || "Shared gate"),
+        description: String(rawGate.description || "Different human students must take different jobs."),
+        gatedChoiceId: String(rawGate.gatedChoiceId),
+        roles: gateRoles,
+        filledRoleIds,
+        currentRoleId,
+        complete: rawGate.complete === true,
+      }
+    : null;
   const caseStudy = rawCase && stage && String(rawCase.title || "").trim() && String(rawCase.scene || "").trim()
     ? {
         episodeId: String(rawCase.episodeId || ""),
@@ -2012,6 +2107,9 @@ export function questionPromptView(question: unknown): {
         ...(sources.length > 0 ? { sources } : {}),
         ...(priorChoices.length > 0 ? { priorChoices } : {}),
         ...(investigation ? { investigation } : {}),
+        ...(tour ? { tour } : {}),
+        ...(passages.length > 0 ? { passages } : {}),
+        ...(sharedGate ? { sharedGate } : {}),
       }
     : null;
   return {

@@ -130,4 +130,60 @@ describe("viewer question prompt pure helpers", () => {
       sources: [{ label: "Roko's Basilisk", url: "https://www.lesswrong.com/w/rokos-basilisk" }],
     });
   });
+
+  it("builds a safe visual tour with semantic passages and a shared human gate", () => {
+    const view = questionPromptView({
+      prompt: "Choose a passage.",
+      caseStudy: {
+        episodeId: "basilisk-archive",
+        title: "The Basilisk in the Archive",
+        hook: "A scroll arrives.",
+        scene: "Goblins gather around a stone map.",
+        stage: "investigate",
+        nodeId: "hall-of-four-doors",
+        nodeTitle: "Hall of Four Doors",
+        evidence: [],
+        tour: {
+          backgroundAsset: "/api/apps/ruby-high/assets/episodes/roko-labyrinth-hall.png",
+          backgroundAlt: "Goblin archive",
+          guideAsset: "/api/apps/ruby-high/assets/teachers/roko-full-sticker.png",
+          guideAlt: "Roko",
+          discussion: [
+            { speakerId: "roko", speakerName: "Roko", text: "Look at what each path changes." },
+            { speakerId: "nib", speakerName: "Nib", text: "Three human hands open this door." },
+          ],
+        },
+        passages: [
+          { choiceId: "restricted-review", label: "Open the shared door", destination: "Sealed Reading Cell", gateId: "three-hand-archive-door" },
+        ],
+        sharedGate: {
+          gateId: "three-hand-archive-door",
+          label: "The Three-Hand Door",
+          description: "Three humans take different jobs.",
+          gatedChoiceId: "restricted-review",
+          roles: [
+            { id: "witness", label: "Evidence", detail: "Hold sources." },
+            { id: "skeptic", label: "Dissent", detail: "Hold appeal." },
+            { id: "steward", label: "Care", detail: "Hold impact." },
+          ],
+          filledRoleIds: ["witness", "not-a-role"],
+          currentRoleId: "witness",
+          complete: false,
+        },
+      },
+    });
+
+    expect(view.caseStudy).toMatchObject({
+      tour: {
+        backgroundAsset: "/api/apps/ruby-high/assets/episodes/roko-labyrinth-hall.png",
+        discussion: [{ speakerName: "Roko" }, { speakerName: "Nib" }],
+      },
+      passages: [{ choiceId: "restricted-review", destination: "Sealed Reading Cell" }],
+      sharedGate: {
+        filledRoleIds: ["witness"],
+        currentRoleId: "witness",
+        complete: false,
+      },
+    });
+  });
 });

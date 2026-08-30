@@ -386,7 +386,9 @@ export function buildSessionState(args: {
           opinionPurpose: state.current.opinionPurpose ?? null,
           canGenerateMc: !!state.current.canGenerateMc,
           media: state.current.media ?? [],
-          caseStudy: state.current.caseStudy ?? null,
+          caseStudy: state.current.caseStudy
+            ? ruby?.caseStudyCardForSession(sessionId, state.current.caseStudy) ?? state.current.caseStudy
+            : null,
         }
       : null,
     lastReveal: state.lastReveal,
@@ -498,11 +500,17 @@ export function buildSessionState(args: {
     : `${fac.displayName} on the floor · ${state.score.correct}/${state.score.total} · ${wallet.meritStars} Merit Stars`;
 
   const suggested = state.current
-    ? [
-        "Wait for the student to pick A, B, C, or D.",
-        "Riff in character while they think.",
-        "If they're stuck, narrow it down without giving the answer.",
-      ]
+    ? state.current.type === "story-choice"
+      ? [
+          "Let the student inspect the room and choose a passage.",
+          "Discuss tradeoffs without naming a correct door.",
+          "If a shared gate is present, explain the distinct human jobs without opening it for them.",
+        ]
+      : [
+          "Wait for the student to pick A, B, C, or D.",
+          "Riff in character while they think.",
+          "If they're stuck, narrow it down without giving the answer.",
+        ]
     : [
         "Pick the next question with PICK_QUESTION (filter by subject or difficulty).",
         "Hand off with HANDOFF_FACULTY when the topic shifts.",

@@ -5459,6 +5459,44 @@ describe("RubyHighService Phase 1", () => {
     });
     expect(investigate.current?.correctChoice).toBeUndefined();
     const episodeId = investigate.current!.caseStudy!.episodeId;
+    const authoredGate = investigate.current!.caseStudy!.sharedGate!;
+    expect(ruby.caseStudyCardForSession(sid, investigate.current!.caseStudy!).sharedGate).toMatchObject({
+      gateId: "three-hand-archive-door",
+      filledRoleIds: [],
+      complete: false,
+    });
+    expect(() => ruby.submitAnswer(sid, "A")).toThrow(/needs all 3 human jobs/i);
+
+    const gateSessions = [sid, "test:roko-gate-two", "test:roko-gate-three"];
+    gateSessions.slice(1).forEach((gateSid) => {
+      ruby.selectGrade(gateSid, "10");
+      const gateState = ruby.getOrCreate(gateSid);
+      gateState.character = {
+        name: "Gate Student",
+        playbookId: "heart",
+        stats: { head: 2, heart: 1, hustle: 0, honor: -1 },
+        arcAnswer: "—",
+        personality: "—",
+        yearbook: [],
+        createdAt: Date.now(),
+      };
+      ruby.pickAndPose(gateSid, { faculty: "roko" });
+    });
+    authoredGate.roles.forEach((gateRole, index) => {
+      expect(ruby.contributeLabyrinthGate(gateSessions[index]!, authoredGate.gateId, gateRole.id)).toMatchObject({
+        accepted: true,
+        duplicate: false,
+      });
+    });
+    expect(ruby.contributeLabyrinthGate(sid, authoredGate.gateId, authoredGate.roles[1]!.id)).toMatchObject({
+      accepted: false,
+      duplicate: true,
+    });
+    expect(ruby.caseStudyCardForSession(sid, investigate.current!.caseStudy!).sharedGate).toMatchObject({
+      filledRoleIds: authoredGate.roles.map((gateRole) => gateRole.id),
+      currentRoleId: authoredGate.roles[0]!.id,
+      complete: true,
+    });
     const firstChoice = investigate.current!.options!.A;
     const investigationReveal = ruby.submitAnswer(sid, "A");
     expect(investigationReveal.lastReveal).toMatchObject({

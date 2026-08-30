@@ -100,6 +100,7 @@ import {
   type CaseStudyChoiceResult,
   type CaseStudyOutcome,
   type CaseStudyProgress,
+  type CaseStudySharedGate,
   type CharacterSlotEntitlements,
   type CharacterStats,
   type ClassPhotoArchive,
@@ -1314,6 +1315,7 @@ const PUBLIC_WORLD_TEACHER_AGENDAS_STATE_ID = "ruby-high:public-world-teacher-ag
 const PUBLIC_WORLD_SUMMARY_STATE_ID = "ruby-high:public-world-summary:v1";
 const PUBLIC_WORLD_MODERATION_STATE_ID = "ruby-high:public-world-moderation:v1";
 const LIVE_ROOM_GOALS_STATE_ID = "ruby-high:live-room-goals:v1";
+const LABYRINTH_GATES_STATE_ID = "ruby-high:labyrinth-gates:v1";
 const PUBLIC_WORLD_ROOM_RECORD_LIMIT = 80;
 const PUBLIC_WORLD_ROOM_OUTCOME_LIMIT = 120;
 const PUBLIC_WORLD_TERM_RECORD_LIMIT = 12;
@@ -1346,6 +1348,21 @@ interface LiveRoomGoalState {
   ruleLabel?: string;
   contributors: Set<string>;
   startedAt: number;
+  updatedAt: number;
+}
+
+export interface LabyrinthGateContributionResult {
+  state: QuizState;
+  gate: CaseStudySharedGate;
+  accepted: boolean;
+  duplicate: boolean;
+}
+
+interface LabyrinthGateState {
+  episodeId: string;
+  gateId: string;
+  grade: Grade;
+  roleHolders: Map<string, string>;
   updatedAt: number;
 }
 
@@ -1864,6 +1881,7 @@ export class RubyHighService extends Service {
   private metricEventsPrunedAt = 0;
   private readonly schoolEventRecords = new Map<string, StoredSchoolEventRecord>();
   private readonly liveRoomGoalStates = new Map<string, LiveRoomGoalState>();
+  private readonly labyrinthGateStates = new Map<string, LabyrinthGateState>();
   private readonly publicWorldRoomRecords = new Map<string, PublicWorldRoomRecord>();
   private readonly publicWorldRoomOutcomeRecords = new Map<string, PublicWorldRoomOutcomeRecord>();
   private readonly publicWorldTermRecords = new Map<string, PublicWorldTermRecord>();
@@ -1915,6 +1933,7 @@ export class RubyHighService extends Service {
     this.metricEvents.clear();
     this.schoolEventRecords.clear();
     this.liveRoomGoalStates.clear();
+    this.labyrinthGateStates.clear();
     this.publicWorldRoomRecords.clear();
     this.publicWorldRoomOutcomeRecords.clear();
     this.publicWorldTermRecords.clear();
@@ -1941,6 +1960,7 @@ export class RubyHighService extends Service {
       this.persistPublicWorldSummaryState({ surfaceErrors: true }),
       this.persistPublicWorldModerationState({ surfaceErrors: true }),
       this.persistLiveRoomGoalState({ surfaceErrors: true }),
+      this.persistLabyrinthGateState({ surfaceErrors: true }),
     ]);
     if (typeof this.store.flush === "function") await this.store.flush();
     await Promise.allSettled(Array.from(this.backgroundWrites));
@@ -2005,15 +2025,24 @@ export class RubyHighService extends Service {
     }
     for (const id of publicEventIds) this.publicWorldEventLog.delete(id);
     let liveRoomGoalsChanged = false;
+    let labyrinthGatesChanged = false;
     if (publicSessionId) {
       for (const goal of this.liveRoomGoalStates.values()) {
         if (goal.contributors.delete(publicSessionId)) liveRoomGoalsChanged = true;
+      }
+      for (const gate of this.labyrinthGateStates.values()) {
+        for (const [roleId, holder] of gate.roleHolders) {
+          if (holder !== publicSessionId) continue;
+          gate.roleHolders.delete(roleId);
+          labyrinthGatesChanged = true;
+        }
       }
     }
 
     await Promise.all([
       this.persistPublicWorldEventLog({ surfaceErrors: true }),
       liveRoomGoalsChanged ? this.persistLiveRoomGoalState({ surfaceErrors: true }) : Promise.resolve(),
+      labyrinthGatesChanged ? this.persistLabyrinthGateState({ surfaceErrors: true }) : Promise.resolve(),
       this.persistPublicWorldSummaryState({ surfaceErrors: true }),
     ]);
     return result;
@@ -3758,6 +3787,83 @@ export class RubyHighService extends Service {
     if (!options.surfaceErrors) this.trackBackgroundWrite(save);
     if (!options.surfaceErrors) void this.persistPublicWorldSummaryState({}, now);
     return save;
+  }
+
+  private labyrinthGateStateKey(grade: Grade, episodeId: string, gateId: string): string {
+    return `${grade}:${episodeId}:${gateId}`;
+  }
+
+  private hydrateLabyrinthGateState(record: StoredServiceStateRecord | null): void {
+    this.labyrinthGateStates.clear();
+    const data = record?.data;
+    const gates = data && data.version === 1 && Array.isArray(data.gates) ? data.gates : [];
+    for (const raw of gates) {
+      if (!raw || typeof raw !== "object") continue;
+      const source = raw as Record<string, unknown>;
+      const grade = typeof source.grade === "string" && (GRADES as readonly string[]).includes(source.grade)
+        ? source.grade as Grade
+        : null;
+      const episodeId = publicWorldStoredText(source.episodeId, 100);
+      const gateId = publicWorldStoredText(source.gateId, 100);
+      if (!grade || !episodeId || !gateId) continue;
+      const roleHolders = new Map<string, string>();
+      const rawRoles = Array.isArray(source.roleHolders) ? source.roleHolders : [];
+      for (const rawRole of rawRoles) {
+        if (!rawRole || typeof rawRole !== "object") continue;
+        const role = rawRole as Record<string, unknown>;
+        const roleId = publicWorldStoredText(role.roleId, 80);
+        const holder = publicWorldSessionId(typeof role.holder === "string" ? role.holder : "");
+        if (roleId && holder) roleHolders.set(roleId, holder);
+      }
+      if (roleHolders.size === 0) continue;
+      const updatedAt = Math.max(0, Math.floor(Number(source.updatedAt) || 0));
+      this.labyrinthGateStates.set(this.labyrinthGateStateKey(grade, episodeId, gateId), {
+        episodeId,
+        gateId,
+        grade,
+        roleHolders,
+        updatedAt,
+      });
+    }
+  }
+
+  private labyrinthGateStateRecord(now = Date.now()): StoredServiceStateRecord {
+    return {
+      id: LABYRINTH_GATES_STATE_ID,
+      updatedAt: now,
+      data: {
+        version: 1,
+        gates: Array.from(this.labyrinthGateStates.values())
+          .filter((gate) => gate.roleHolders.size > 0)
+          .sort((left, right) => this.labyrinthGateStateKey(left.grade, left.episodeId, left.gateId)
+            .localeCompare(this.labyrinthGateStateKey(right.grade, right.episodeId, right.gateId)))
+          .map((gate) => ({
+            episodeId: gate.episodeId,
+            gateId: gate.gateId,
+            grade: gate.grade,
+            roleHolders: Array.from(gate.roleHolders.entries())
+              .sort(([left], [right]) => left.localeCompare(right))
+              .map(([roleId, holder]) => ({ roleId, holder })),
+            updatedAt: gate.updatedAt,
+          })),
+      },
+    };
+  }
+
+  private persistLabyrinthGateState(options: { surfaceErrors?: boolean } = {}, now = Date.now()): Promise<void> {
+    if (!this.store.saveServiceState) return Promise.resolve();
+    const record = this.labyrinthGateStateRecord(now);
+    const save = this.store.saveServiceState(record).catch((err) => {
+      log.error("labyrinth-gates.persist-failed", err);
+      if (options.surfaceErrors) throw err;
+    });
+    if (!options.surfaceErrors) this.trackBackgroundWrite(save);
+    return save;
+  }
+
+  async flushLabyrinthGateState(): Promise<void> {
+    await this.persistLabyrinthGateState({ surfaceErrors: true });
+    if (typeof this.store.flush === "function") await this.store.flush();
   }
 
   private recordPhotoPostAttempt(): void {
@@ -5708,6 +5814,7 @@ export class RubyHighService extends Service {
       storedPublicWorldEventLogState,
       storedPublicWorldModerationState,
       storedLiveRoomGoalState,
+      storedLabyrinthGateState,
     ] = await Promise.all([
       this.store.loadPacks(),
       this.store.loadTeachers(),
@@ -5725,6 +5832,7 @@ export class RubyHighService extends Service {
       this.store.loadServiceState?.(PUBLIC_WORLD_EVENTS_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(PUBLIC_WORLD_MODERATION_STATE_ID) ?? Promise.resolve(null),
       this.store.loadServiceState?.(LIVE_ROOM_GOALS_STATE_ID) ?? Promise.resolve(null),
+      this.store.loadServiceState?.(LABYRINTH_GATES_STATE_ID) ?? Promise.resolve(null),
     ]);
     const staleBuiltInPackRecords = storedPacks.filter(isPersistedBuiltInPackOverride);
     const restoredPackRecords = storedPacks
@@ -5827,6 +5935,7 @@ export class RubyHighService extends Service {
     this.hydratePublicWorldEventLog(storedPublicWorldEventLogState);
     this.hydratePublicWorldModerationState(storedPublicWorldModerationState);
     this.hydrateLiveRoomGoalState(storedLiveRoomGoalState);
+    this.hydrateLabyrinthGateState(storedLabyrinthGateState);
     this.loaded = true;
     if (repaired) await this.persistAll();
   }
@@ -6565,7 +6674,9 @@ export class RubyHighService extends Service {
     // unresolved, the board is live and the scheduler/AI must wait for the
     // player answer before replacing it. The timer is only a soft idle window.
     if (state.activeRound && !state.activeRound.resolved) {
-      const remaining = Math.max(0, state.activeRound.expiresAt - Date.now());
+      const remaining = state.activeRound.type === "story-choice"
+        ? 0
+        : Math.max(0, state.activeRound.expiresAt - Date.now());
       const verb = action === "clear" ? "clear the board" : "post another question";
       const waitDetail = remaining > 0
         ? ` (${Math.ceil(remaining / 1000)}s before the soft window)`
@@ -7688,10 +7799,9 @@ export class RubyHighService extends Service {
   private tickRound(state: QuizState): void {
     const round = state.activeRound;
     if (!round || round.resolved) return;
-    // Opinion rounds resolve only when the chat layer calls recordGrades
-    // (after generating + grading written responses). The MC dice timing
-    // doesn't apply.
-    if (round.type === "opinion") return;
+    // Opinion rounds resolve in the chat layer. Story rooms resolve only
+    // when a student commits a passage. Neither is driven by a clock.
+    if (round.type === "opinion" || round.type === "story-choice") return;
     const now = Date.now();
     let mutated = false;
     for (const entry of round.npcs) {
@@ -8761,7 +8871,9 @@ export class RubyHighService extends Service {
   private materializeQuestionChoices(question: Question): void {
     if (question.type === "story-choice") {
       const materialized = materializeStoryChoices(question.storyChoices, {
-        shuffle: process.env.RUBY_HIGH_SHUFFLE_CHOICES !== "0",
+        // Passage placement is part of the authored room. Randomizing doors
+        // makes an adventure read like a quiz and breaks spatial memory.
+        shuffle: false,
       });
       question.storyChoices = materialized.storyChoices;
       question.options = materialized.options;
@@ -8933,7 +9045,7 @@ export class RubyHighService extends Service {
     const durationMs = isOpinion ? OPINION_ROUND_DURATION_MS : DEFAULT_ROUND_DURATION_MS;
     const room = roomForFacultyForSession(state, state.faculty);
     let entries: NpcRoundEntry[] = [];
-    if (room && room.teaches && state.currentGrade && !isTypedAnswer) {
+    if (room && room.teaches && state.currentGrade && !isTypedAnswer && !isStoryChoice) {
       const teachingRoom = room.id as TeachingRoomId;
       const roster = this.ensureRoster(state, state.currentGrade);
       const inRoom = npcsInRoom(roster, teachingRoom)
@@ -8942,15 +9054,13 @@ export class RubyHighService extends Service {
       let pepTalkUsed = false;
       const isHeart = state.character?.playbookId === "heart";
       entries = inRoom.map((npc) => {
-        if (isOpinion || isStoryChoice) {
-          // Opinions and story branches have no correct slot. NPCs still
-          // commit so the room feels live, but their choices are not graded.
-          // The actual response text is generated externally and stored via
-          // recordOpinion() for opinion cards; story cards use a random move.
+        if (isOpinion) {
+          // Opinion cards have no correct slot. NPCs still commit so the room
+          // feels live; their response text is generated in the chat layer.
           return {
             studentId: npc.id,
-            delayMs: isOpinion ? rollOpinionDelay(npc.stats) : Math.round(2200 + Math.random() * 7600),
-            plannedPick: isOpinion ? "A" as Choice : CHOICES[Math.floor(Math.random() * CHOICES.length)]!,
+            delayMs: rollOpinionDelay(npc.stats),
+            plannedPick: "A" as Choice,
             rolledTotal: 0,
             rolledDice: [0, 0] as [number, number],
             outcome: "hit" as const,
@@ -9595,6 +9705,15 @@ export class RubyHighService extends Service {
     }
     if (round.advantage?.eliminated.includes(picked)) {
       throw new Error(`${picked} was crossed out by your advantage roll — pick a different choice.`);
+    }
+    if (q.type === "story-choice" && q.caseStudy?.sharedGate) {
+      const selectedAnswer = q.options?.[picked];
+      const branch = selectedAnswer ? q.storyChoiceResults?.[selectedAnswer] : null;
+      const gate = this.labyrinthGateForState(state, q.caseStudy.sharedGate);
+      if (branch?.choiceId === gate.gatedChoiceId && gate.complete !== true) {
+        const filled = gate.filledRoleIds?.length ?? 0;
+        throw new Error(`${gate.label} needs all ${gate.roles.length} human jobs before that passage opens (${filled}/${gate.roles.length}).`);
+      }
     }
     round.player.picked = picked;
     round.player.answeredAt = Date.now();
@@ -10825,6 +10944,80 @@ export class RubyHighService extends Service {
   async getFreshSchoolSnapshot(now = Date.now()): Promise<SchoolSnapshot> {
     await this.refreshWorldSessionsFromStore(now);
     return this.getSchoolSnapshot(now);
+  }
+
+  private labyrinthGateForState(state: QuizState, authored: CaseStudySharedGate): CaseStudySharedGate {
+    const grade = state.currentGrade;
+    const episodeId = state.current?.caseStudy?.episodeId ?? "";
+    const contributorId = publicWorldSessionId(state.sessionId);
+    const stored = grade && episodeId
+      ? this.labyrinthGateStates.get(this.labyrinthGateStateKey(grade, episodeId, authored.gateId))
+      : null;
+    const filledRoleIds = authored.roles
+      .map((role) => role.id)
+      .filter((roleId) => stored?.roleHolders.has(roleId));
+    const currentRoleId = contributorId && stored
+      ? Array.from(stored.roleHolders.entries()).find(([, holder]) => holder === contributorId)?.[0] ?? null
+      : null;
+    return {
+      ...structuredClone(authored),
+      filledRoleIds,
+      currentRoleId,
+      complete: authored.roles.every((role) => filledRoleIds.includes(role.id)),
+    };
+  }
+
+  caseStudyCardForSession(sessionId: string, card: CaseStudyCard): CaseStudyCard {
+    const state = this.getOrCreate(sessionId);
+    const copy = structuredClone(card);
+    if (copy.sharedGate) copy.sharedGate = this.labyrinthGateForState(state, copy.sharedGate);
+    return copy;
+  }
+
+  contributeLabyrinthGate(sessionId: string, gateId: string, roleId: string, now = Date.now()): LabyrinthGateContributionResult {
+    const state = this.getOrCreate(sessionId);
+    const authored = state.current?.caseStudy?.sharedGate;
+    const episodeId = state.current?.caseStudy?.episodeId;
+    const grade = state.currentGrade;
+    if (!state.character || !grade || state.faculty !== "roko") {
+      throw new Error("Enter Roko's labyrinth as a student before taking a gate job.");
+    }
+    if (state.current?.type !== "story-choice" || !authored || !episodeId || authored.gateId !== gateId) {
+      throw new Error("That shared gate is not in the current room.");
+    }
+    if (!authored.roles.some((role) => role.id === roleId)) throw new Error("That gate job does not exist.");
+    const contributorId = publicWorldSessionId(state.sessionId);
+    if (!contributorId) throw new Error("This student session cannot hold a gate seal.");
+    const key = this.labyrinthGateStateKey(grade, episodeId, gateId);
+    let stored = this.labyrinthGateStates.get(key);
+    if (!stored) {
+      stored = { episodeId, gateId, grade, roleHolders: new Map(), updatedAt: 0 };
+      this.labyrinthGateStates.set(key, stored);
+    }
+    const existingRole = Array.from(stored.roleHolders.entries())
+      .find(([, holder]) => holder === contributorId)?.[0] ?? null;
+    if (existingRole) {
+      return {
+        state,
+        gate: this.labyrinthGateForState(state, authored),
+        accepted: existingRole === roleId,
+        duplicate: true,
+      };
+    }
+    if (stored.roleHolders.has(roleId)) throw new Error("Another human student is already holding that seal. Take an open job.");
+    stored.roleHolders.set(roleId, contributorId);
+    stored.updatedAt = now;
+    void this.persistLabyrinthGateState({}, now);
+    const gate = this.labyrinthGateForState(state, authored);
+    log.event("case.shared-gate-contributed", {
+      sessionId,
+      episodeId,
+      gateId,
+      roleId,
+      grade,
+      complete: gate.complete === true,
+    });
+    return { state, gate, accepted: true, duplicate: false };
   }
 
   contributeLiveRoomGoal(sessionId: string, now = Date.now()): LiveRoomGoalContributionResult | null {
