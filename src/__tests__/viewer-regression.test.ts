@@ -164,40 +164,38 @@ describe("viewer regression guardrails", () => {
     expect(clientSource).not.toContain("worldController.attach();");
   });
 
-  it("lets the board and scene share one mobile scroll", () => {
+  it("keeps the board and conversation as separate mobile panes", () => {
     expect(VIEWER_CSS).toContain("@media (max-width: 600px)");
     expect(VIEWER_CSS).toContain("--composer-min: 50px");
-    expect(cssRule("main.workspace")).toContain("grid-template-rows: auto minmax(0, 1fr) auto");
-    expect(cssRule(".classroom-scroll")).toContain("overflow-y: auto");
-    expect(cssRule(".blackboard-panel")).toContain("overflow: visible");
-    expect(cssRule(".answers-host")).toContain("overflow: visible");
-    expect(cssRule(".stream")).toContain("overflow: visible");
+    expect(cssRule("main.workspace")).toContain("grid-template-rows: auto auto 1fr auto");
+    expect(cssRule(".blackboard-panel")).toContain("overflow: hidden");
+    expect(cssRule(".answers-host")).toContain("overflow-y: auto");
+    expect(cssRule(".stream")).toContain("overflow-y: auto");
     expect(cssRule(".blackboard-meta .pill.class-mode")).toContain("order: -1");
     expect(cssRule(".blackboard-meta .pill.faculty")).toContain("display: none");
     expect(VIEWER_CSS).not.toContain('.shell[data-mode="round-live"] .world-panel');
   });
 
-  it("keeps only the live exchange open and moves history behind disclosure", () => {
+  it("shows compacted context, recent conversation, and roll results without scene chrome", () => {
     const html = renderedViewer();
     const script = inlineScript(html);
     const boardAt = html.indexOf('id="blackboard-panel"');
-    const summaryAt = html.indexOf('id="scene-summary-host"');
     const streamAt = html.indexOf('id="stream"');
 
-    expect(html).toContain('<div class="classroom-scroll" id="classroom-scroll">');
-    expect(html).toContain('<details id="scene-summary">');
-    expect(html).toContain('<details id="dialogue-log">');
-    expect(html).toContain('id="scene-latest"');
     expect(boardAt).toBeGreaterThan(-1);
-    expect(summaryAt).toBeGreaterThan(boardAt);
-    expect(streamAt).toBeGreaterThan(summaryAt);
-    expectScriptToContain(script, "function mountLiveDialogue");
-    expectScriptToContain(script, "archiveLiveDialogue(0)");
-    expectScriptToContain(script, "archiveLiveDialogue(1)");
-    expectScriptToContain(script, "function dialogueNodeSignature");
-    expectScriptToContain(script, "rebuildingHistory = true");
-    expectScriptToContain(script, "function renderSceneSummary");
-    expectScriptToContain(script, 'postViewerMetricEvent("dialogue_log_opened"');
+    expect(streamAt).toBeGreaterThan(boardAt);
+    expect(html).not.toContain('id="classroom-scroll"');
+    expect(html).not.toContain('id="scene-summary"');
+    expect(html).not.toContain('id="dialogue-log"');
+    expect(html).not.toContain('id="scene-latest"');
+    expect(VIEWER_CSS).toContain(".conversation-summary");
+    expectScriptToContain(script, "function setDialogueCompaction(summary)");
+    expectScriptToContain(script, 'node.textContent = "Earlier conversation: " + summary');
+    expectScriptToContain(script, 'event === "summary"');
+    expectScriptToContain(script, "appendResultChip(t.lastReveal)");
+    expectScriptToContain(script, "appendSocialSummary(t.lastReveal, t)");
+    expect(script).not.toContain("function archiveLiveDialogue");
+    expect(script).not.toContain("function renderSceneSummary");
   });
 
   it("keeps compact class-flow controls readable, focusable, and viewport-safe", () => {

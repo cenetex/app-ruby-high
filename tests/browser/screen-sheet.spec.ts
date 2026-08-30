@@ -389,16 +389,6 @@ test("generates the complete Ruby High app screen sheet", async ({ page }) => {
   await expect(page.locator("#board-reveal")).toBeVisible();
   await capture("Answer feedback", "Class journey");
 
-  const sceneSummary = page.locator("#scene-summary");
-  await expect(sceneSummary).toBeVisible();
-  await sceneSummary.scrollIntoViewIfNeeded();
-  await sceneSummary.locator("summary").click();
-  await expect(sceneSummary).toHaveAttribute("open", "");
-  await capture("Scene summary", "Class journey");
-  await sceneSummary.locator("summary").click();
-
-  const dialogueLog = page.locator("#dialogue-log");
-
   let comicCaptured = false;
   const captureComicIfVisible = async (): Promise<boolean> => {
     const comic = page.locator(".comic-reader.is-reward").first();
@@ -430,12 +420,6 @@ test("generates the complete Ruby High app screen sheet", async ({ page }) => {
 
   await continueUntil(page.locator(".answer:not([disabled])").first());
   await capture("Second question", "Class journey");
-  await expect(dialogueLog).toBeVisible();
-  await dialogueLog.scrollIntoViewIfNeeded();
-  await dialogueLog.locator("summary").click();
-  await expect(dialogueLog).toHaveAttribute("open", "");
-  await capture("Dialogue log", "Class journey");
-  await dialogueLog.locator("summary").click();
   await page.locator(".answer:not([disabled])").first().click();
   await expect(page.locator("#board-reveal")).toBeVisible();
   await capture("Second answer feedback", "Class journey");
