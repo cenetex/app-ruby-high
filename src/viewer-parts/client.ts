@@ -4265,7 +4265,8 @@ export function runViewerClient(bootstrap) {
     // Answer buttons
     let maxLen = 0;
     let hasLineBreakAnswer = false;
-    els.answers.classList.toggle("is-adventure", isStoryChoice);
+    const answersGrid = document.getElementById("answers");
+    if (answersGrid) answersGrid.classList.toggle("is-adventure", isStoryChoice);
     els.answers.forEach((btn) => {
       const pick = btn.dataset.pick;
       const label = btn.querySelector(".label");
@@ -4318,7 +4319,6 @@ export function runViewerClient(bootstrap) {
     // viewports (handled in CSS). Threshold tuned so a 4-line
     // explanation-style answer triggers it but a regular MC option
     // ("the mitochondria is the powerhouse of the cell") doesn't.
-    const answersGrid = document.getElementById("answers");
     if (answersGrid) {
       answersGrid.classList.toggle("is-long", maxLen > 34 || hasLineBreakAnswer);
       answersGrid.classList.toggle("is-very-long", maxLen > 72 || hasLineBreakAnswer);
