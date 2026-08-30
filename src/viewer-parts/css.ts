@@ -746,24 +746,10 @@ export const VIEWER_CSS = `
     grid-row: 1;
     grid-column: 1;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto 1fr auto;
     height: 100dvh;
     overflow: hidden;
     background: var(--bg-deep);
-  }
-
-  /* The board and dialogue share one document scroll. This lets any board
-     grow to its natural height without trapping chat in a second pane. */
-  .classroom-scroll {
-    grid-row: 2;
-    min-height: 0;
-    min-width: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    overscroll-behavior-y: contain;
-    scrollbar-gutter: stable;
-    scroll-padding-bottom: calc(var(--composer-min) + var(--safe-bot) + 20px);
-    -webkit-overflow-scrolling: touch;
   }
 
   /* ── sticky top bar ────────────────────────────────────────────────────── */
@@ -1761,11 +1747,12 @@ export const VIEWER_CSS = `
   }
   /* ── blackboard panel (single, persistent, updates in place) ───────────── */
   .blackboard-panel {
+    grid-row: 2;
     background: var(--bg);
     border-bottom: 1px solid var(--line);
     display: flex;
     flex-direction: column;
-    overflow: visible;
+    overflow: hidden;
     position: relative;
     min-height: 0;
   }
@@ -2224,6 +2211,7 @@ export const VIEWER_CSS = `
     to { opacity: 1; transform: none; }
   }
   .lounge-stage {
+    grid-row: 2;
     background: linear-gradient(180deg, var(--bg) 0%, var(--bg-elev) 100%);
     border-bottom: 1px solid var(--line);
     padding: 14px calc(var(--safe-right) + 12px) 12px calc(var(--safe-left) + 12px);
@@ -2252,15 +2240,22 @@ export const VIEWER_CSS = `
   }
   .answers-host {
     padding: 10px calc(var(--safe-right) + 10px) 10px calc(var(--safe-left) + 10px);
-    overflow: visible;
-    flex: 0 0 auto;
+    overflow-y: auto;
+    max-height: 55vh;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
+    flex: 0 1 auto;
+    min-height: 0;
     min-width: 0;
   }
   .typed-answer-host {
     padding: 10px calc(var(--safe-right) + 10px) 10px calc(var(--safe-left) + 10px);
     flex: 0 0 auto;
     min-width: 0;
-    overflow: visible;
+    max-height: 58vh;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
   }
   .typed-answer-form {
     display: flex;
@@ -2687,161 +2682,23 @@ export const VIEWER_CSS = `
   }
   /* ── chat stream ───────────────────────────────────────────────────────── */
   .stream {
-    overflow: visible;
-    padding: 6px 0 4px;
+    grid-row: 3;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 12px calc(var(--safe-right) + 12px) 14px calc(var(--safe-left) + 12px);
     display: flex;
     flex-direction: column;
     gap: 12px;
+    -webkit-overflow-scrolling: touch;
+    scroll-padding-bottom: 100px;
   }
 
-  /* ── scene-first dialogue ─────────────────────────────────────────────── */
-  .live-scene,
-  .scene-summary,
-  .dialogue-log {
-    margin: 0 calc(var(--safe-right) + 12px) 0 calc(var(--safe-left) + 12px);
-  }
-  .live-scene {
-    padding: 14px 0 16px;
-    min-height: 132px;
-  }
-  .live-scene:has(.stream:empty) { display: none; }
-  .live-scene-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 4px;
-  }
-  .live-scene-head h2 {
-    margin: 0;
-    color: var(--text-mute);
-    font-size: 10px;
-    font-weight: 900;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-  }
-  .scene-latest {
-    position: fixed;
-    right: calc(var(--safe-right) + 14px);
-    bottom: calc(var(--safe-bot) + var(--composer-min) + 18px);
-    z-index: 12;
-    appearance: none;
-    border: 1px solid color-mix(in srgb, var(--accent) 60%, #fff 18%);
-    border-radius: 999px;
-    background: var(--accent);
-    color: #fff;
-    padding: 8px 13px;
-    font-size: 12px;
-    font-weight: 900;
-    box-shadow: var(--shadow);
-  }
-  .scene-summary,
-  .dialogue-log {
-    padding-top: 10px;
-  }
-  .scene-summary details,
-  .dialogue-log details {
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 14px;
-    background: rgba(255,255,255,0.025);
-    overflow: hidden;
-  }
-  .scene-summary summary,
-  .dialogue-log summary {
-    min-height: 44px;
-    padding: 10px 12px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    cursor: pointer;
+  .conversation-summary {
+    padding: 2px 0 12px;
+    border-bottom: 1px solid var(--line);
     color: var(--text-soft);
-    font-size: 12px;
-    font-weight: 900;
-    list-style: none;
-  }
-  .scene-summary summary::-webkit-details-marker,
-  .dialogue-log summary::-webkit-details-marker { display: none; }
-  .scene-summary summary::before,
-  .dialogue-log summary::before {
-    content: "›";
-    color: var(--text-mute);
-    font-size: 18px;
-    line-height: 1;
-    transform-origin: center;
-    transition: transform 0.15s ease;
-  }
-  .scene-summary details[open] summary::before,
-  .dialogue-log details[open] summary::before { transform: rotate(90deg); }
-  .scene-summary summary > span:first-child,
-  .dialogue-log summary > span:first-child { margin-right: auto; }
-  .scene-summary-count,
-  .dialogue-log-count {
-    color: var(--text-mute);
-    font-size: 11px;
-    font-weight: 700;
-  }
-  .scene-summary-body {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    padding: 0 10px 10px;
-  }
-  .scene-summary-beat {
-    min-width: 0;
-    padding: 10px;
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 11px;
-    background: var(--bg-elev);
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-areas: "icon label" "icon value";
-    column-gap: 9px;
-    align-items: center;
-  }
-  .scene-summary-beat-icon {
-    grid-area: icon;
-    width: 28px;
-    height: 28px;
-    display: grid;
-    place-items: center;
-    border-radius: 9px;
-    background: var(--accent-soft);
-    font-size: 15px;
-  }
-  .scene-summary-beat-label {
-    grid-area: label;
-    color: var(--text-mute);
-    font-size: 9px;
-    font-weight: 900;
-    letter-spacing: 0.11em;
-    text-transform: uppercase;
-  }
-  .scene-summary-beat-value {
-    grid-area: value;
-    min-width: 0;
-    overflow: hidden;
-    color: var(--text);
     font-size: 13px;
-    font-weight: 800;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-  .dialogue-log { padding-bottom: 18px; }
-  .dialogue-log-body {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 2px 12px 14px;
-  }
-  .dialogue-compaction {
-    padding: 9px 10px;
-    border-left: 2px solid var(--accent);
-    border-radius: 0 8px 8px 0;
-    background: rgba(255,255,255,0.035);
-    color: var(--text-soft);
-    font-size: 12px;
-    line-height: 1.4;
+    line-height: 1.5;
   }
 
   /* ── chat messages ─────────────────────────────────────────────────────── */
@@ -3098,7 +2955,8 @@ export const VIEWER_CSS = `
     line-height: 1.38;
     box-shadow: inset 0 0 60px rgba(0,0,0,0.35);
     min-width: 0;
-    overflow: visible;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   /* When the teacher portrait is visible, push board text away from the figure.
    * Figure is position:absolute inside .board-frame-host; board is inside .board-frame.
@@ -5780,7 +5638,8 @@ export const VIEWER_CSS = `
   .blackboard-panel[data-question-type="graduation"] .board {
     min-height: clamp(320px, 34vw, 430px);
     display: block;
-    overflow: visible;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
   .blackboard-panel[data-question-type="graduation"] .board .prompt {
     width: 100%;
@@ -7372,7 +7231,7 @@ export const VIEWER_CSS = `
 
   /* ── composer ──────────────────────────────────────────────────────────── */
   .composer-zone {
-    grid-row: 3;
+    grid-row: 4;
     border-top: 1px solid var(--line);
     background: rgba(21, 23, 31, 0.96);
     backdrop-filter: blur(14px);
@@ -8218,6 +8077,12 @@ export const VIEWER_CSS = `
     :root {
       --composer-min: 50px;
     }
+    main.workspace {
+      grid-template-rows: auto minmax(0, auto) minmax(72px, 1fr) auto;
+    }
+    .shell[data-mode="round-live"] main.workspace {
+      grid-template-rows: auto minmax(0, auto) minmax(56px, 1fr) auto;
+    }
     .top-bar {
       gap: 6px;
       padding-right: calc(var(--safe-right) + 8px);
@@ -8239,6 +8104,12 @@ export const VIEWER_CSS = `
       gap: 4px;
       padding: 6px 9px;
       font-size: 11px;
+    }
+    .blackboard-panel {
+      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 176px);
+    }
+    .blackboard-panel[data-mode="round-revealed"] {
+      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 144px);
     }
     .blackboard-meta {
       flex-wrap: nowrap;
@@ -8271,6 +8142,7 @@ export const VIEWER_CSS = `
     .board-frame { padding: 6px; }
     .board {
       min-height: 82px;
+      max-height: 27dvh;
       padding: 10px 56px 10px 12px;
       font-size: 18px;
       line-height: 1.3;
@@ -8285,10 +8157,12 @@ export const VIEWER_CSS = `
       line-height: 1.35;
     }
     .blackboard-panel.is-long-prompt .board {
+      max-height: 29dvh;
       font-size: 17px;
       line-height: 1.31;
     }
     .blackboard-panel.is-essay-prompt .board {
+      max-height: 31dvh;
       font-size: 16px;
       line-height: 1.31;
     }
@@ -8311,6 +8185,7 @@ export const VIEWER_CSS = `
     }
     .answers-host {
       padding: 7px calc(var(--safe-right) + 8px) 8px calc(var(--safe-left) + 8px);
+      max-height: 46dvh;
     }
     .answers { gap: 6px; }
     .answer {
@@ -8348,14 +8223,9 @@ export const VIEWER_CSS = `
     .race-row { flex-wrap: nowrap; }
     .race-card { flex: 0 0 auto; }
     .stream {
-      padding-block: 6px 4px;
+      padding: 8px calc(var(--safe-right) + 10px) 10px calc(var(--safe-left) + 10px);
+      scroll-padding-bottom: calc(var(--composer-min) + var(--safe-bot) + 14px);
     }
-    .live-scene,
-    .scene-summary,
-    .dialogue-log {
-      margin-inline: calc(var(--safe-left) + 10px) calc(var(--safe-right) + 10px);
-    }
-    .scene-summary-body { grid-template-columns: 1fr; }
     .msg {
       grid-template-columns: 32px minmax(0, 1fr);
       column-gap: 9px;
@@ -8409,7 +8279,11 @@ export const VIEWER_CSS = `
 
   @media (max-width: 380px) {
     .answers { grid-template-columns: 1fr; }
+    .blackboard-panel {
+      max-height: calc(100dvh - var(--safe-top) - var(--safe-bot) - var(--top-h) - 156px);
+    }
     .board {
+      max-height: 25dvh;
       padding-right: 50px;
     }
     .teacher-figure {
@@ -8427,9 +8301,7 @@ export const VIEWER_CSS = `
   @media (min-width: 720px) {
     aside.channels-rail { width: var(--channels-w); }
     .answers { grid-template-columns: 1fr 1fr; gap: 10px; }
-    .live-scene,
-    .scene-summary,
-    .dialogue-log { margin-inline: 18px; }
+    .stream { padding: 14px 18px; }
   }
 
   /* ── desktop ≥1100 ─────────────────────────────────────────────────────── */
@@ -8448,9 +8320,7 @@ export const VIEWER_CSS = `
     .scrim { display: none !important; }
     .hamburger { display: none; }
     .channels-close { display: none; }
-    .live-scene,
-    .scene-summary,
-    .dialogue-log { margin-inline: 24px; }
+    .stream { padding: 18px 24px; }
   }
 
   /* ── Social card (relationship layer) ────────────────────────────────── */
@@ -8804,7 +8674,7 @@ export const VIEWER_CSS = `
 
   /* ── Honor Roll leaderboard ────────────────────────────────────────────── */
   .leaderboard-panel {
-    grid-row: 2 / 4;
+    grid-row: 2 / 5;
     background: var(--bg);
     display: flex;
     flex-direction: column;

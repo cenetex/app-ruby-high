@@ -281,6 +281,55 @@ describe("ChatService.send — message composition", () => {
     await rehydrated.stop();
   });
 
+  it("replaces the fallback digest with an LLM-written plain-text summary", async () => {
+    const { chat } = await makeServices();
+    for (let i = 0; i < 51; i += 1) {
+      chat.appendPlayerMessage(
+        { sessionToken: `student-${i}`, faculty: "ruby", authorName: `Student ${i}` },
+        `classroom claim ${i}`,
+        1_700_000_005_000 + i,
+      );
+    }
+
+    const requestBodies: any[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      const requestBody = init?.body ? JSON.parse(String(init.body)) : null;
+      requestBodies.push(requestBody);
+      if (requestBody?.stream) {
+        return new Response(buildSseChunk([{ content: "Let’s pick up from there.", finish: "stop" }]) as BodyInit, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        });
+      }
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: "## Summary\nStudents compared the early classroom claims and left one question open for Ruby." } }],
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const events = [];
+    for await (const event of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "late-student",
+      agentSessionId: "session:summary-refresh",
+      faculty: "ruby",
+      disableTools: true,
+      systemEventNote: "Continue the class conversation.",
+    })) {
+      events.push(event);
+    }
+
+    const summary = "Students compared the early classroom claims and left one question open for Ruby.";
+    expect(events).toContainEqual({ type: "summary", text: summary });
+    expect(chat.roomSummary({ sessionToken: "late-student", faculty: "ruby" })).toBe(summary);
+    const summaryRequest = requestBodies.find((body) => !body?.stream);
+    expect(summaryRequest.messages[0].content).toContain("plain-text paragraph");
+    expect(summaryRequest.messages[1].content).toContain("Student 0: classroom claim 0");
+    expect(chat.history({ sessionToken: "late-student", faculty: "ruby" })).toHaveLength(21);
+  });
+
   it("keeps compacted shared-room text out of system instructions", async () => {
     mockOpenRouter(buildSseChunk([{ content: "Noted.", finish: "stop" }]));
     const { chat } = await makeServices();
