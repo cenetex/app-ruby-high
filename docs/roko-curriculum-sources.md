@@ -23,16 +23,27 @@ The lesson stays defensive. Course material may discuss reward hacking, containm
 - [ExploitGym paper](https://arxiv.org/abs/2605.11086): the 898-instance real-world vulnerability benchmark used in the evaluation. It is useful for discussing why capability evaluation needs hardened containment.
 - [OpenAI — Monitoring reasoning models for misbehavior and the risks of promoting obfuscation](https://openai.com/index/chain-of-thought-monitoring/): evidence that reasoning traces can help reveal reward hacking, with the warning that direct optimization against suspicious thoughts may teach a model to hide them.
 
-## Crownless dragon ecology
+## LessWrong decision-theory material
 
-The Crownless examples come from design notes and tests in the sibling `crownless` repository:
+The basilisk story uses LessWrong as a source for the actual dispute, not as a source of authority. The class separates the argument's technical premises from the effects of publishing, restricting, or banning it.
+
+- [Roko's Basilisk](https://www.lesswrong.com/w/rokos-basilisk): history, major objections, and the moderation backlash. The page describes the argument as broadly rejected and explains why ordinary causal reasoning gives a future agent no incentive to carry out punishment after the fact.
+- [Information hazards](https://www.lesswrong.com/tag/information-hazards/): the general problem of true information that can cause harm, including the risks of overbroad controls.
+- [Logical decision theories](https://www.lesswrong.com/w/logical-decision-theories/) and [Acausal trade](https://www.lesswrong.com/w/acausal-trade/): background for the stronger assumptions about prediction, logical dependence, shared information, and trust that the basilisk story skips.
+- [Pascal's Mugging](https://www.lesswrong.com/w/pascal-s-mugging): why a tiny probability multiplied by an enormous claimed cost can dominate naive expected-value reasoning.
+- [Decision Theory FAQ](https://www.lesswrong.com/posts/zEWJBFFMvQ835nq6h/decision-theory-faq) and [Newcomb's Problem](https://www.lesswrong.com/w/newcomb-s-problem): a wider map of the decision problems behind the argument.
+- [Corrigibility](https://www.lesswrong.com/w/corrigibility-1): background for systems that remain open to correction, modification, and shutdown.
+
+## Dragon-and-goblin fables
+
+The fictional ecology is adapted from the sibling `crownless` repository. That name stays here as provenance; learner-facing scenes use the fiction without treating it as a separate canon to memorize:
 
 - `docs/05-threats-and-dungeons.md`: goblin material needs, tribute delivery, hoard ownership, dragon body and crown states, alliance couriers, and Afterdragon effects.
 - `docs/11-metagame-playtest.md`: diplomacy, information flow, public commitments, and campaign-scale coordination.
 - `tests/dragon_ecology_tests.c`: executable checks for goblin shortages, tribute transfer, cult roles, and raid consequences.
 - `tests/dragon_cycle_tests.c`: executable checks for the dragon life cycle, hoard memory, retaliation, succession, and persistent regional effects.
 
-Roko's recurring goblin examples follow these rules:
+The occasional goblin examples follow these rules:
 
 - Goblin raids answer real Food, Tool, or Weapon shortages.
 - Portable loot reaches a lair first, then a tribute carrier must physically deliver it to the cave.
@@ -47,12 +58,19 @@ These are analogies, not claims that people or AI systems are goblins or dragons
 
 ## Case-class learning design
 
-Roko's graded class is an authored three-beat case instead of three unrelated multiple-choice questions:
+Roko's graded class is an authored assignment graph instead of unrelated multiple-choice questions or a fixed timeline:
 
-1. **Investigate:** read a scene and compare three evidence cards.
-2. **Decide:** choose an action and see its immediate story consequence.
-3. **Explain:** write a short causal explanation in the student's own words.
-4. **Outcome:** receive Roko's observation, a relationship beat, one durable memory, and a pointer to later review.
+1. **Enter:** read a Sign, compare evidence, and commit a move without a correctness verdict.
+2. **Follow the event:** the move causes an authored world event which opens a specific assignment node.
+3. **Cross the labyrinth:** act inside the changed situation. Routes can diverge, reconverge, or end with different unresolved costs without erasing their history.
+4. **Return:** explain which moves caused which events, what changed, and which future event should reopen the policy.
+5. **Outcome:** receive Roko's observation, a relationship beat, one durable memory, and a pointer to review.
+
+Every labyrinth move counts as participation, not correctness. Only the final written Return is graded. The rubric can support or criticize any earlier branch if it follows the causal record well. This lets a reasonable move open a bad situation, and it keeps hindsight from turning uncertainty into a fake answer key.
+
+The runtime does not read elapsed time to choose a scene. Each choice emits a named, durable event and names the node that event opens. The student's route stores visited rooms and event receipts. This follows the Cosyworld rule that a clock is an unresolved question rather than a timer, that every transition needs a committed causal event, and that a quest may branch, reconverge, retreat, or remain unresolved.
+
+The basilisk labyrinth has one entrance, four first-route rooms, and four event-selected convergence rooms. It offers 64 authored three-move routes before the Return. Reconvergence controls writing cost, but it does not wipe state: the Return and class report retain every door, event, and piece of evidence from the student's actual route.
 
 The old question bank remains useful. It now acts as spaced practice after the case, where short factual retrieval is a better fit. This split follows evidence that retrieval practice with feedback can improve retention, while short-answer and multiple-choice retrieval can both work. The class itself adds self-explanation because recognition alone does not show whether the student can state the causal link.
 
@@ -68,3 +86,7 @@ The relationship beat borrows the useful part of mobile otome and dating-sim str
 - [Fiorella and Mayer — Improving academic learning from computer-based narrative games](https://doi.org/10.1016/j.cedpsych.2015.12.002): found that an in-game explanation worksheet improved learning without reducing enjoyment; supports putting reflection inside the episode.
 - [Ryan and Deci — Self-determination theory and the facilitation of intrinsic motivation, social development, and well-being](https://pubmed.ncbi.nlm.nih.gov/11392867/): motivates giving the student agency, clear competence feedback, and a continuing relationship with the teacher.
 - [Sellier — Mobile Otome Games: Desire and Suspense as Economic Strategy](https://doi.org/10.34382/00014542): analyzes character gacha and progress gates in four games from Japanese studios. Ruby High borrows story continuity and remembered character response, while rejecting monetized random rewards.
+- [Cardona-Rivera et al. — Foreseeing Meaningful Choices](https://doi.org/10.1609/aiide.v10i1.12716): players reported more agency when options visibly led to meaningfully different situations. Roko's doors therefore change the room, audience, evidence, or institution rather than only changing feedback text.
+- [Twine Cookbook — Storylets](https://twinery.org/cookbook/storylets/harlowe/harlowe_storylets.html): describes nonlinear passages that become available when their requirements are true. Roko uses named world events as those requirements.
+- [DeMatthews et al. — Choose Your Own Adventure web-based case studies](https://pmc.ncbi.nlm.nih.gov/articles/PMC9994267/): participants recognized the ripple effect of acting with incomplete information and adapting as the situation disclosed more evidence.
+- [Gamebooks and branching narratives in education](https://doi.org/10.3389/feduc.2023.1335605): connects branching narratives with active reflection and competence building rather than passive consumption.

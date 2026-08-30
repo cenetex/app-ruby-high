@@ -582,6 +582,33 @@ function buildResolvedAnswerBriefing(args: {
   const prompt = cleanText(c?.prompt) ?? q?.prompt ?? reveal?.questionPrompt;
   const type = cleanText(c?.type) ?? q?.type ?? reveal?.questionType ?? (reveal?.expectedAnswer || c?.expectedAnswer ? "typed-answer" : "multiple-choice");
 
+  if (type === "story-choice") {
+    const picked = cleanText(c?.picked)?.toUpperCase() ?? reveal?.picked;
+    const pickedAnswer = cleanText(c?.pickedAnswer) ?? choiceAnswer(options, picked) ?? "no choice";
+    const lockedText = reveal?.caseChoice?.lockedText;
+    const pickedLine = `${playerName} chose ${pickedAnswer}. No correctness verdict exists for this scene.`;
+    const eventText = [
+      prompt ? `Story scene resolved for "${clipped(prompt, 180)}".` : "Story scene resolved.",
+      pickedLine,
+      "Its authored event will open the next assignment.",
+    ].join(" ");
+    const contextLines = [
+      "RESOLVED STORY CHOICE for this reaction.",
+      "This was not a quiz. Do not call the move correct, wrong, safe, optimal, or a mistake.",
+      "React to the tradeoff the player accepted. The next story card, not this reaction, reveals what happened.",
+      `Question ID: ${questionId}`,
+      prompt ? `Scene prompt: ${prompt}` : "",
+      `Player move: ${pickedAnswer}`,
+      lockedText ? `Immediate state: ${lockedText}` : "",
+    ].filter(Boolean);
+    return {
+      correctChoice: picked ?? "A",
+      pickedLine,
+      eventText,
+      extraSystemContext: contextLines.join("\n"),
+    };
+  }
+
   // Opinion rounds carry no picked letter / correct letter — the teacher's
   // briefing has to come from activeRound.opinionResponses + opinionGrades
   // instead. Without this branch the teacher reacts to a bogus "picked A —
@@ -3119,7 +3146,9 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         for (const n of round.npcs) {
           const nm = STUDENTS[n.studentId]?.name ?? n.studentId;
           const pick = n.plannedPick ?? "?";
-          parts.push(`${nm} picked ${pick} — ${pick === correctAns ? "right" : "wrong"}.`);
+          parts.push(round.type === "story-choice"
+            ? `${nm} chose ${pick}; that branch has no correctness verdict.`
+            : `${nm} picked ${pick} — ${pick === correctAns ? "right" : "wrong"}.`);
         }
       }
       chat.appendEvent(

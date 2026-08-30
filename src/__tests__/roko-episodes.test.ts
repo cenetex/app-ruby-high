@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   ROKO_EPISODES,
+  rokoAssignmentCount,
   rokoOnboardingEpisode,
+  rokoEpisodeAssignment,
   rokoEpisodeForClass,
   rokoEpisodeQuestion,
   rokoEpisodeTake,
@@ -15,47 +17,107 @@ describe("Roko case episodes", () => {
     expect(ROKO_EPISODES.some((episode) => episode.scene.toLowerCase().includes("goblin"))).toBe(true);
   });
 
-  it("turns one episode into investigate, decide, and explain cards", () => {
-    const episode = ROKO_EPISODES[0]!;
+  it("turns a legacy episode into two ungraded event branches and a graded return", () => {
+    const episode = ROKO_EPISODES[1]!;
     const investigation = rokoEpisodeQuestion(episode, "investigate", "10");
-    const decision = rokoEpisodeQuestion(episode, "decide", "10");
+    const firstBranch = investigation.storyChoiceResults![investigation.storyChoices![0]!]!;
+    const progress = { episodeId: episode.id, choices: [firstBranch], actedAt: 1 };
+    const decision = rokoEpisodeQuestion(episode, "decide", "10", progress);
     const take = rokoEpisodeTake(episode);
 
     expect(investigation).toMatchObject({
-      type: "multiple-choice",
+      type: "story-choice",
       faculty: "roko",
       caseStudy: { episodeId: episode.id, stage: "investigate" },
     });
     expect(decision).toMatchObject({
-      type: "multiple-choice",
+      type: "story-choice",
       caseStudy: { episodeId: episode.id, stage: "decide" },
     });
-    expect(decision.answerConsequences?.[decision.correct!]).toBeTruthy();
+    expect(investigation.correct).toBeUndefined();
+    expect(investigation.storyChoices).toHaveLength(4);
+    expect(Object.keys(investigation.storyChoiceResults ?? {})).toHaveLength(4);
+    expect(decision.correct).toBeUndefined();
     expect(take).toMatchObject({
       caseStudy: { episodeId: episode.id, stage: "explain" },
       caseOutcome: { episodeId: episode.id, title: episode.title },
     });
   });
 
-  it("uses the agentic treasure case for onboarding and carries its investigation forward", () => {
+  it("uses an event-driven 64-route basilisk labyrinth for onboarding", () => {
     const episode = rokoOnboardingEpisode();
-    expect(episode.id).toBe("exact-treasure");
+    expect(episode.id).toBe("basilisk-archive");
+    expect(rokoAssignmentCount(episode)).toBe(3);
+    expect(episode.assignmentGraph?.nodes).toHaveLength(9);
 
-    const investigation = rokoEpisodeQuestion(episode, "investigate", "9");
-    const action = investigation.caseActionResults?.[investigation.correct!];
-    expect(action).toMatchObject({
-      kind: "delegate",
-      actorId: "lyra",
-      confidence: "high",
-      revealedEvidence: { source: "Lyra" },
+    const investigation = rokoEpisodeAssignment(episode, "9")!;
+    const picked = investigation.storyChoices![0]!;
+    const branch = investigation.storyChoiceResults?.[picked];
+    expect(branch).toMatchObject({
+      choiceId: "restricted-review",
+      stage: "investigate",
+      nodeId: "hall-of-four-doors",
+      nextNodeId: "sealed-reading-cell",
+      event: { eventId: "review-circle-convened" },
     });
 
-    const progress = { episodeId: episode.id, action: action!, actedAt: 123 };
-    const decision = rokoEpisodeQuestion(episode, "decide", "9", progress);
-    const take = rokoEpisodeTake(episode, progress);
-    expect(decision.caseStudy?.investigation).toEqual(action);
-    expect(take.prompt).toContain("verify Lyra's report");
-    expect(take.rubric).toContain("confirm or challenge");
-    expect(take.caseOutcome.investigation).toEqual(action);
+    const progress = {
+      episodeId: episode.id,
+      choices: [branch!],
+      currentNodeId: branch!.nextNodeId,
+      visitedNodeIds: [branch!.nodeId!],
+      events: [branch!.event],
+      actedAt: 123,
+    };
+    const decision = rokoEpisodeAssignment(episode, "9", progress)!;
+    expect(decision.caseStudy?.priorChoices).toEqual([branch]);
+    expect(decision.caseStudy).toMatchObject({
+      nodeId: "sealed-reading-cell",
+      nodeTitle: "Sealed Reading Cell",
+      storyFunction: "challenge",
+      route: [
+        { nodeId: "hall-of-four-doors" },
+        { nodeId: "sealed-reading-cell" },
+      ],
+    });
+    expect(decision.caseStudy?.sources?.some((source) => source.url.includes("lesswrong.com"))).toBe(true);
+    const secondBranch = decision.storyChoiceResults![decision.storyChoices![0]!]!;
+    expect(secondBranch.nextNodeId).toBe("evidence-well");
+    const secondProgress = {
+      ...progress,
+      choices: [branch!, secondBranch],
+      currentNodeId: secondBranch.nextNodeId,
+      visitedNodeIds: [branch!.nodeId!, secondBranch.nodeId!],
+      events: [branch!.event, secondBranch.event],
+    };
+    const navigate = rokoEpisodeAssignment(episode, "9", secondProgress)!;
+    expect(navigate.caseStudy).toMatchObject({
+      stage: "navigate",
+      nodeId: "evidence-well",
+      storyFunction: "discover",
+    });
+    const finalBranch = navigate.storyChoiceResults![navigate.storyChoices![0]!]!;
+    expect(finalBranch.nextNodeId).toBeUndefined();
+    const finalProgress = {
+      ...secondProgress,
+      choices: [branch!, secondBranch, finalBranch],
+      currentNodeId: null,
+      visitedNodeIds: [branch!.nodeId!, secondBranch.nodeId!, finalBranch.nodeId!],
+      events: [branch!.event, secondBranch.event, finalBranch.event],
+    };
+    expect(rokoEpisodeAssignment(episode, "9", finalProgress)).toBeNull();
+    const take = rokoEpisodeTake(episode, finalProgress);
+    expect(take.prompt).toContain(picked);
+    expect(take.prompt).toContain(branch!.event.label);
+    expect(take.rubric).toContain("whole route");
+    expect(take.caseOutcome.choices).toHaveLength(3);
+    expect(take.caseStudy).toMatchObject({ storyFunction: "return", nodeTitle: "Council Chamber" });
+
+    const routes = episode.assignmentGraph!.nodes
+      .filter((node) => node.id === episode.assignmentGraph!.entryNodeId)
+      .flatMap((entry) => entry.choices)
+      .flatMap((first) => episode.assignmentGraph!.nodes.find((node) => node.id === first.nextNodeId)!.choices)
+      .flatMap((second) => episode.assignmentGraph!.nodes.find((node) => node.id === second.nextNodeId)!.choices);
+    expect(routes).toHaveLength(64);
   });
 });

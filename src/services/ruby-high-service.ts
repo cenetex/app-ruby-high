@@ -48,13 +48,15 @@ import {
   correctAnswerForQuestion,
   correctChoiceForQuestion,
   materializeMultipleChoice,
+  materializeStoryChoices,
   multipleChoiceDefinition,
 } from "../question-choices.js";
 import { teacherById, type TeacherCharacter } from "../characters/teachers.js";
 import {
+  rokoAssignmentCount,
   rokoOnboardingEpisode,
+  rokoEpisodeAssignment,
   rokoEpisodeForClass,
-  rokoEpisodeQuestion,
   rokoEpisodeTake,
 } from "../content/roko-episodes.js";
 import { Service, type IAgentRuntime } from "../runtime.js";
@@ -95,6 +97,7 @@ import {
   type CardMemory,
   type CardReviewRating,
   type CaseStudyCard,
+  type CaseStudyChoiceResult,
   type CaseStudyOutcome,
   type CaseStudyProgress,
   type CharacterSlotEntitlements,
@@ -1626,7 +1629,7 @@ const CLASS_QUESTIONS_PER_DAY = 3;
 const GRADUATION_ROOM_TARGETS: Record<Grade, number> = { "9": 1, "10": 2, "11": 3, "12": 4 };
 const CORE_GRADUATION_FACULTY_ORDER = [RUBY_FACULTY.id, "sally-science", "professor-edward", "roko"] as const;
 const CORE_DAILY_CLASS_FACULTY = new Set<string>(CORE_GRADUATION_FACULTY_ORDER);
-const DAILY_CLASS_PRACTICE_BEFORE_CARD: readonly number[] = [0, 0, 0] as const;
+const DAILY_CLASS_PRACTICE_BEFORE_CARD: readonly number[] = [0, 0, 0, 0] as const;
 const DAILY_CLASS_TAKES_PER_DAY = 1;
 const DAILY_CLASS_TAKE_CARDS: Record<string, ReadonlyArray<{ prompt: string; rubric: string; subject: string }>> = {
   ruby: [
@@ -6802,14 +6805,26 @@ export class RubyHighService extends Service {
       && facultyId !== LOUNGE_FACULTY.id;
   }
 
-  private dailyClassTakeDeckRole(record: DailyClassRecord | null): DeckCardRole {
-    if (record?.status === "complete" || (record?.questionCount ?? 0) >= CLASS_QUESTIONS_PER_DAY) {
+  private dailyClassQuestionTotalForState(
+    state: QuizState,
+    facultyId: string,
+    date = dailyKey(),
+  ): number {
+    if (facultyId !== "roko") return CLASS_QUESTIONS_PER_DAY;
+    const grade = state.currentGrade;
+    if (!grade) return CLASS_QUESTIONS_PER_DAY;
+    return rokoAssignmentCount(this.rokoEpisodeForState(state, date, grade)) + DAILY_CLASS_TAKES_PER_DAY;
+  }
+
+  private dailyClassTakeDeckRole(state: QuizState, facultyId: string, record: DailyClassRecord | null): DeckCardRole {
+    const totalQuestions = this.dailyClassQuestionTotalForState(state, facultyId, record?.date);
+    if (record?.status === "complete" || (record?.questionCount ?? 0) >= totalQuestions) {
       return "practice";
     }
     const classCount = record?.questionCount ?? 0;
     const practiceCount = record?.practiceCount ?? 0;
     const socialCount = record?.socialCount ?? 0;
-    if (classCount >= CLASS_QUESTIONS_PER_DAY - DAILY_CLASS_TAKES_PER_DAY && socialCount < DAILY_CLASS_TAKES_PER_DAY) {
+    if (classCount >= totalQuestions - DAILY_CLASS_TAKES_PER_DAY && socialCount < DAILY_CLASS_TAKES_PER_DAY) {
       return "social";
     }
     const requiredPractice = DAILY_CLASS_PRACTICE_BEFORE_CARD[classCount] ?? Number.POSITIVE_INFINITY;
@@ -6830,7 +6845,7 @@ export class RubyHighService extends Service {
     const record = this.dailyClassRecord(state, facultyId);
     if (record?.status === "complete") return "practice";
     if (this.dailyClassTakeDeckApplies(state, facultyId, requestedMode)) {
-      return this.dailyClassTakeDeckRole(record);
+      return this.dailyClassTakeDeckRole(state, facultyId, record);
     }
     return "class";
   }
@@ -6861,6 +6876,7 @@ export class RubyHighService extends Service {
     const required = grade && selection.selected.includes(facultyId) ? selection.requiredDays : 0;
     const todayKey = dailyKey();
     const todayRecord = grade ? this.dailyClassRecord(state, facultyId, todayKey) : null;
+    const totalQuestions = this.dailyClassQuestionTotalForState(state, facultyId, todayKey);
     const today: CourseProgress["today"] = required === 0
       ? {
           mode: "practice",
@@ -6868,7 +6884,7 @@ export class RubyHighService extends Service {
           date: todayKey,
           questionCount: 0,
           correctCount: 0,
-          totalQuestions: CLASS_QUESTIONS_PER_DAY,
+          totalQuestions,
           ...(todayRecord?.practiceCount ? { practiceCount: todayRecord.practiceCount } : {}),
           ...(todayRecord?.socialCount ? { socialCount: todayRecord.socialCount } : {}),
         }
@@ -6879,7 +6895,7 @@ export class RubyHighService extends Service {
           date: todayKey,
           questionCount: todayRecord.questionCount,
           correctCount: todayRecord.correctCount,
-          totalQuestions: CLASS_QUESTIONS_PER_DAY,
+          totalQuestions,
           practiceCount: todayRecord.practiceCount ?? 0,
           socialCount: todayRecord.socialCount ?? 0,
           letterGrade: todayRecord.letterGrade,
@@ -6893,7 +6909,7 @@ export class RubyHighService extends Service {
             date: todayKey,
             questionCount: todayRecord.questionCount,
             correctCount: todayRecord.correctCount,
-            totalQuestions: CLASS_QUESTIONS_PER_DAY,
+            totalQuestions,
             practiceCount: todayRecord.practiceCount ?? 0,
             socialCount: todayRecord.socialCount ?? 0,
           }
@@ -6903,7 +6919,7 @@ export class RubyHighService extends Service {
             date: todayKey,
             questionCount: 0,
             correctCount: 0,
-            totalQuestions: CLASS_QUESTIONS_PER_DAY,
+            totalQuestions,
           };
 
     if (!ch || !grade || required === 0) {
@@ -6972,6 +6988,7 @@ export class RubyHighService extends Service {
     const ch = state.character;
     const grade = state.currentGrade;
     const date = dailyKey();
+    const totalQuestions = this.dailyClassQuestionTotalForState(state, facultyId, date);
     if (cardRole && cardRole !== "class" && !(cardRole === "social" && dailyTake)) {
       return { mode: "practice", facultyId, grade: grade ?? undefined, date };
     }
@@ -6988,7 +7005,7 @@ export class RubyHighService extends Service {
     if (record?.status === "complete") {
       return { mode: "practice", facultyId, grade, date };
     }
-    if (dailyTake && (record?.questionCount ?? 0) !== CLASS_QUESTIONS_PER_DAY - 1) {
+    if (dailyTake && (record?.questionCount ?? 0) !== totalQuestions - 1) {
       return { mode: "practice", facultyId, grade, date };
     }
     return {
@@ -6997,7 +7014,7 @@ export class RubyHighService extends Service {
       grade,
       date,
       index: (record?.questionCount ?? 0) + 1,
-      total: CLASS_QUESTIONS_PER_DAY,
+      total: totalQuestions,
     };
   }
 
@@ -7035,6 +7052,7 @@ export class RubyHighService extends Service {
       };
     }
     const record = this.ensureDailyClassRecord(state, session.facultyId, session.date, now)!;
+    const totalQuestions = session.total ?? this.dailyClassQuestionTotalForState(state, session.facultyId, session.date);
     if (record.status === "complete") {
       return {
         mode: "practice",
@@ -7043,7 +7061,7 @@ export class RubyHighService extends Service {
         grade: session.grade,
         date: session.date,
         questionCount: record.questionCount,
-        totalQuestions: CLASS_QUESTIONS_PER_DAY,
+        totalQuestions,
         completed: true,
         letterGrade: record.letterGrade,
         score: classAverage(record),
@@ -7058,7 +7076,7 @@ export class RubyHighService extends Service {
     else if (rollOutcome === "mixed") record.rollMixedCount = (record.rollMixedCount ?? 0) + 1;
     else if (rollOutcome === "miss") record.rollMissCount = (record.rollMissCount ?? 0) + 1;
     record.updatedAt = now;
-    if (record.questionCount >= CLASS_QUESTIONS_PER_DAY) {
+    if (record.questionCount >= totalQuestions) {
       record.status = "complete";
       record.completedAt = now;
       const avg = classAverage(record);
@@ -7114,7 +7132,7 @@ export class RubyHighService extends Service {
       grade: session.grade,
       date: session.date,
       questionCount: record.questionCount,
-      totalQuestions: CLASS_QUESTIONS_PER_DAY,
+      totalQuestions,
       completed: record.status === "complete",
       letterGrade: record.letterGrade,
       score: classAverage(record),
@@ -7185,6 +7203,11 @@ export class RubyHighService extends Service {
           investigationDetail: `${caseOutcome.investigation.report} Verify it: ${caseOutcome.investigation.verificationPrompt}`,
           investigationConfidence: caseOutcome.investigation.confidence,
         } : {}),
+        ...(caseOutcome.choices?.length ? {
+          pathSummary: caseOutcome.choices
+            .map((choice, index) => `${index + 1}. ${choice.choiceLabel} → ${choice.event.label}: ${choice.event.detail}`)
+            .join(" "),
+        } : {}),
       } : {}),
       completedClasses: standing.completed,
       requiredClasses: standing.required,
@@ -7197,6 +7220,7 @@ export class RubyHighService extends Service {
     reveal: LastReveal,
     now = Date.now(),
   ): FirstBellReport | null {
+    if (question.type === "story-choice") return null;
     const ch = state.character;
     if (!ch || ch.firstBellReport) return null;
     const facultyId = question.faculty ?? state.faculty;
@@ -7703,6 +7727,10 @@ export class RubyHighService extends Service {
       round.resolvedAt = Date.now();
       return;
     }
+    if (q.type === "story-choice") {
+      this.resolveStoryChoiceRound(state, q, forfeit);
+      return;
+    }
     const isTypedQuestion = q.type === "typed-answer" || q.type === "image-occlusion";
     const answerText = round.player.answerText?.trim() ?? "";
     const acceptedAnswers = q.acceptedAnswers ?? (q.expectedAnswer ? [q.expectedAnswer] : []);
@@ -7915,22 +7943,6 @@ export class RubyHighService extends Service {
     const selectedAnswer = picked == null ? undefined : q.options?.[picked];
     const caseConsequence = selectedAnswer ? q.answerConsequences?.[selectedAnswer] : undefined;
     const caseActionResult = selectedAnswer ? q.caseActionResults?.[selectedAnswer] : undefined;
-    if (caseActionResult && q.caseStudy) {
-      const progress: CaseStudyProgress = {
-        episodeId: q.caseStudy.episodeId,
-        action: { ...caseActionResult },
-        actedAt: reviewAt,
-      };
-      state.caseStudyProgress = progress;
-      log.event("case.action-resolved", {
-        sessionId: state.sessionId,
-        episodeId: progress.episodeId,
-        actionId: progress.action.actionId,
-        actorId: progress.action.actorId,
-        kind: progress.action.kind,
-        confidence: progress.action.confidence,
-      });
-    }
     state.lastReveal = {
       questionId: q.id,
       ...questionSnapshot,
@@ -7973,6 +7985,116 @@ export class RubyHighService extends Service {
     this.transition(state, { kind: "resolve-round" });
     // resolveRound is a private helper that operates on `state` directly;
     // there's no sessionId param, so pull it off the state.
+    void this.persistSession(state.sessionId);
+  }
+
+  /** Resolve a branch without pretending it was right or wrong. The class
+   *  records participation now; its causal event opens the next assignment,
+   *  and only the final written update is graded. */
+  private resolveStoryChoiceRound(state: QuizState, q: Question, forfeit: boolean): void {
+    const round = state.activeRound;
+    if (!round || round.resolved) return;
+    const reviewAt = round.player.answeredAt ?? Date.now();
+    for (const entry of round.npcs) {
+      if (entry.answeredAt == null) {
+        entry.answeredAt = Math.min(round.startedAt + entry.delayMs, round.expiresAt);
+      }
+    }
+    const picked = round.player.picked;
+    const selectedAnswer = !forfeit && picked ? q.options?.[picked] : undefined;
+    const branch = selectedAnswer ? q.storyChoiceResults?.[selectedAnswer] : undefined;
+    if (branch && q.caseStudy) {
+      const previous = state.caseStudyProgress?.episodeId === q.caseStudy.episodeId
+        ? state.caseStudyProgress.choices
+        : [];
+      state.caseStudyProgress = {
+        episodeId: q.caseStudy.episodeId,
+        choices: [
+          ...previous.filter((choice) => branch.nodeId
+            ? choice.nodeId !== branch.nodeId
+            : choice.stage !== branch.stage),
+          structuredClone(branch),
+        ],
+        currentNodeId: branch.nextNodeId ?? null,
+        visitedNodeIds: Array.from(new Set([
+          ...(state.caseStudyProgress?.visitedNodeIds ?? []),
+          ...(branch.nodeId ? [branch.nodeId] : []),
+        ])),
+        events: [
+          ...(state.caseStudyProgress?.events ?? []),
+          structuredClone(branch.event),
+        ],
+        actedAt: reviewAt,
+      };
+      log.event("case.choice-locked", {
+        sessionId: state.sessionId,
+        episodeId: q.caseStudy.episodeId,
+        choiceId: branch.choiceId,
+        eventId: branch.event.eventId,
+        nextNodeId: branch.nextNodeId ?? null,
+        stage: branch.stage,
+      });
+    }
+    const completedChoice = Boolean(selectedAnswer && branch && !forfeit);
+    const classProgress = this.recordDailyClassQuestion(
+      state,
+      completedChoice,
+      completedChoice ? 100 : 0,
+      reviewAt,
+      null,
+      {
+        questionId: q.id,
+        prompt: q.prompt,
+        ...(q.subject ? { subject: q.subject } : {}),
+        answerText: selectedAnswer ?? "No choice",
+        wasCorrect: completedChoice,
+        forfeit: !completedChoice,
+      },
+    );
+    if (
+      classProgress.mode === "class"
+      && round.cardRole === "class"
+      && CORE_DAILY_CLASS_FACULTY.has(classProgress.facultyId)
+    ) {
+      this.recordClassFlowMetric("evidence_card_completed", state, {
+        faculty: classProgress.facultyId,
+        grade: classProgress.grade,
+        date: classProgress.date,
+        step: `evidence_${classProgress.questionCount ?? 0}`,
+        status: completedChoice ? "success" : "error",
+        metadata: { questionId: q.id, choiceId: branch?.choiceId ?? null },
+      });
+    }
+    round.firstCorrect = null;
+    state.lastReveal = {
+      questionId: q.id,
+      questionPrompt: q.prompt,
+      questionType: "story-choice",
+      ...(q.options ? { questionOptions: { ...q.options } } : {}),
+      ...(q.subject ? { questionSubject: q.subject } : {}),
+      ...(q.difficulty ? { questionDifficulty: q.difficulty } : {}),
+      picked: picked ?? "A",
+      correct: picked ?? "A",
+      wasCorrect: completedChoice,
+      forfeit: !completedChoice,
+      explanation: q.explanation ?? null,
+      encouragement: completedChoice
+        ? "Choice locked. Its meaning is not settled yet."
+        : "The story moved on without a choice.",
+      ...(branch ? {
+        caseChoice: {
+          choiceId: branch.choiceId,
+          stage: branch.stage,
+          choiceLabel: branch.choiceLabel,
+          lockedText: branch.lockedText,
+        },
+      } : {}),
+      classProgress,
+    };
+    round.resolved = true;
+    round.resolvedAt = reviewAt;
+    this.transition(state, { kind: "resolve-round" });
+    state.updatedAt = reviewAt;
     void this.persistSession(state.sessionId);
   }
 
@@ -8637,6 +8759,17 @@ export class RubyHighService extends Service {
    * slot in `correctChoice`. Grading reads only that posed mapping.
    */
   private materializeQuestionChoices(question: Question): void {
+    if (question.type === "story-choice") {
+      const materialized = materializeStoryChoices(question.storyChoices, {
+        shuffle: process.env.RUBY_HIGH_SHUFFLE_CHOICES !== "0",
+      });
+      question.storyChoices = materialized.storyChoices;
+      question.options = materialized.options;
+      delete question.correct;
+      delete question.correctChoice;
+      delete question.decoys;
+      return;
+    }
     if ((question.type ?? "multiple-choice") !== "multiple-choice") return;
     const materialized = materializeMultipleChoice(question, {
       shuffle: process.env.RUBY_HIGH_SHUFFLE_CHOICES !== "0",
@@ -8714,7 +8847,7 @@ export class RubyHighService extends Service {
       ...(q.decoys ? { decoys: [...q.decoys] } : {}),
       ...(q.options ? { options: { ...q.options } } : {}),
     };
-    if (type === "multiple-choice") {
+    if (type === "multiple-choice" || type === "story-choice") {
       this.materializeQuestionChoices(question);
     } else if (type === "typed-answer" || type === "image-occlusion") {
       const answers = question.acceptedAnswers?.filter((answer) => answer.trim().length > 0) ?? [];
@@ -8795,6 +8928,7 @@ export class RubyHighService extends Service {
   private openRound(state: QuizState, question: Question): ActiveRound {
     const startedAt = Date.now();
     const isOpinion = question.type === "opinion";
+    const isStoryChoice = question.type === "story-choice";
     const isTypedAnswer = question.type === "typed-answer" || question.type === "image-occlusion";
     const durationMs = isOpinion ? OPINION_ROUND_DURATION_MS : DEFAULT_ROUND_DURATION_MS;
     const room = roomForFacultyForSession(state, state.faculty);
@@ -8808,14 +8942,15 @@ export class RubyHighService extends Service {
       let pepTalkUsed = false;
       const isHeart = state.character?.playbookId === "heart";
       entries = inRoom.map((npc) => {
-        if (isOpinion) {
-          // Opinion round — accuracy doesn't apply, only commit timing matters.
+        if (isOpinion || isStoryChoice) {
+          // Opinions and story branches have no correct slot. NPCs still
+          // commit so the room feels live, but their choices are not graded.
           // The actual response text is generated externally and stored via
-          // recordOpinion(); the dice fields are placeholders.
+          // recordOpinion() for opinion cards; story cards use a random move.
           return {
             studentId: npc.id,
-            delayMs: rollOpinionDelay(npc.stats),
-            plannedPick: "A" as Choice,
+            delayMs: isOpinion ? rollOpinionDelay(npc.stats) : Math.round(2200 + Math.random() * 7600),
+            plannedPick: isOpinion ? "A" as Choice : CHOICES[Math.floor(Math.random() * CHOICES.length)]!,
             rolledTotal: 0,
             rolledDice: [0, 0] as [number, number],
             outcome: "hit" as const,
@@ -9257,14 +9392,14 @@ export class RubyHighService extends Service {
     const rokoEpisode = facultyId === "roko" && cardRole === "class" && !importedReviewCourse
       ? this.rokoEpisodeForState(state, dailyKey(), grade)
       : null;
-    const rokoStage = rokoEpisode && (classRecord?.questionCount ?? 0) < 2
-      ? (classRecord?.questionCount ?? 0) === 0 ? "investigate" as const : "decide" as const
+    if (rokoEpisode && (classRecord?.questionCount ?? 0) === 0) state.caseStudyProgress = null;
+    const rokoAssignment = rokoEpisode
+      ? rokoEpisodeAssignment(rokoEpisode, grade, state.caseStudyProgress)
       : null;
-    if (rokoStage === "investigate") state.caseStudyProgress = null;
     const question = cardRole === "social"
       ? undefined
-      : rokoEpisode && rokoStage
-        ? rokoEpisodeQuestion(rokoEpisode, rokoStage, grade, state.caseStudyProgress)
+      : rokoAssignment
+        ? rokoAssignment
       : this.pickReviewQuestion(state, facultyId, {
           subject: filter.subject,
           difficulty: explicitDifficulty,
@@ -9350,6 +9485,7 @@ export class RubyHighService extends Service {
   }
 
   courseProgress(sessionId: string, facultyId?: string): CourseProgress {
+    const state = this.getOrCreate(sessionId);
     const status = this.questionBankStatus(sessionId, facultyId);
     return {
       mode: status.mode,
@@ -9370,7 +9506,7 @@ export class RubyHighService extends Service {
         date: dailyKey(),
         questionCount: 0,
         correctCount: 0,
-        totalQuestions: CLASS_QUESTIONS_PER_DAY,
+        totalQuestions: this.dailyClassQuestionTotalForState(state, status.facultyId),
       },
       mastered: status.masteredCount ?? status.asked,
       learning: status.learningCount ?? 0,
@@ -9440,7 +9576,7 @@ export class RubyHighService extends Service {
     const state = this.getOrCreate(sessionId);
     const q = state.current;
     if (!q) throw new Error("No question is currently on the board.");
-    if ((q.type ?? "multiple-choice") !== "multiple-choice") {
+    if (!["multiple-choice", "story-choice"].includes(q.type ?? "multiple-choice")) {
       throw new Error("This question needs a typed answer.");
     }
     if (!CHOICES.includes(picked)) throw new Error(`Pick must be one of ${CHOICES.join(", ")}`);
@@ -9465,14 +9601,14 @@ export class RubyHighService extends Service {
     log.event("answer.picked", {
       sessionId, faculty: state.faculty, questionId: q.id,
       picked,
-      correct: correctChoiceForQuestion(q),
-      wasCorrect: picked === correctChoiceForQuestion(q),
+      correct: q.type === "story-choice" ? null : correctChoiceForQuestion(q),
+      wasCorrect: q.type === "story-choice" ? null : picked === correctChoiceForQuestion(q),
       rarity: q.rarity,
     });
     this.recordFunnelStep(state, "first_question_answered", {
       faculty: state.faculty,
       questionId: q.id,
-      type: "multiple-choice",
+      type: q.type ?? "multiple-choice",
     });
     this.contributeLiveRoomGoal(sessionId);
     // Tick first so any NPCs whose delay HAS already elapsed lock in honestly.
@@ -13529,6 +13665,52 @@ function repairGeneratedPortraitAssetRefs(value: unknown, seen = new Set<object>
   return repaired;
 }
 
+function normalizeCaseStudyProgress(value: unknown): CaseStudyProgress | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<CaseStudyProgress> & { choices?: unknown[] };
+  if (typeof raw.episodeId !== "string" || !Array.isArray(raw.choices)) return null;
+  const choices = raw.choices.flatMap((entry): CaseStudyChoiceResult[] => {
+    if (!entry || typeof entry !== "object") return [];
+    const choice = entry as Partial<CaseStudyChoiceResult> & {
+      delayedLabel?: unknown;
+      delayedConsequence?: unknown;
+    };
+    if (typeof choice.choiceId !== "string" || typeof choice.choiceLabel !== "string") return [];
+    const stage = choice.stage === "decide" || choice.stage === "navigate" ? choice.stage : "investigate";
+    const event = choice.event && typeof choice.event.eventId === "string"
+      ? structuredClone(choice.event)
+      : {
+          eventId: `legacy:${choice.choiceId}`,
+          label: typeof choice.delayedLabel === "string" ? choice.delayedLabel : "The situation changed",
+          detail: typeof choice.delayedConsequence === "string" ? choice.delayedConsequence : "The route carried this choice forward.",
+        };
+    return [{
+      choiceId: choice.choiceId,
+      stage,
+      choiceLabel: choice.choiceLabel,
+      lockedText: typeof choice.lockedText === "string" ? choice.lockedText : "The move was recorded.",
+      ...(typeof choice.nodeId === "string" ? { nodeId: choice.nodeId } : {}),
+      ...(typeof choice.nextNodeId === "string" ? { nextNodeId: choice.nextNodeId } : {}),
+      event,
+      ...(Array.isArray(choice.revealedEvidence) ? { revealedEvidence: structuredClone(choice.revealedEvidence) } : {}),
+      reflection: typeof choice.reflection === "string" ? choice.reflection : "What did this event change?",
+    }];
+  });
+  const events = Array.isArray(raw.events)
+    ? raw.events.filter((event) => event && typeof event.eventId === "string").map((event) => structuredClone(event))
+    : choices.map((choice) => structuredClone(choice.event));
+  return {
+    episodeId: raw.episodeId,
+    choices,
+    currentNodeId: typeof raw.currentNodeId === "string" ? raw.currentNodeId : null,
+    visitedNodeIds: Array.isArray(raw.visitedNodeIds)
+      ? raw.visitedNodeIds.filter((nodeId): nodeId is string => typeof nodeId === "string")
+      : choices.flatMap((choice) => choice.nodeId ? [choice.nodeId] : []),
+    events,
+    actedAt: typeof raw.actedAt === "number" ? raw.actedAt : 0,
+  };
+}
+
 function normalizeLoaded(s: QuizState): QuizState {
   // Migrate stale K-8 grades from previous schema versions to a high-school
   // grade so the player isn't stranded on a grade that no longer exists.
@@ -13566,9 +13748,7 @@ function normalizeLoaded(s: QuizState): QuizState {
     characterSlots: normalizeCharacterSlots((s as { characterSlots?: unknown }).characterSlots),
     comicCollection: normalizeComicCollection((s as { comicCollection?: unknown }).comicCollection),
     schoolEvents: normalizeSchoolEvents((s as { schoolEvents?: unknown }).schoolEvents),
-    caseStudyProgress: s.caseStudyProgress?.episodeId && s.caseStudyProgress.action
-      ? s.caseStudyProgress
-      : null,
+    caseStudyProgress: normalizeCaseStudyProgress(s.caseStudyProgress),
     publicWorldHiddenEventIds: normalizePublicWorldHiddenEventIds((s as { publicWorldHiddenEventIds?: unknown }).publicWorldHiddenEventIds),
     publicWorldEventReports: normalizePublicWorldEventReports((s as { publicWorldEventReports?: unknown }).publicWorldEventReports),
     essayReports: normalizeEssayReports((s as { essayReports?: unknown }).essayReports),

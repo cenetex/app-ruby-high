@@ -257,7 +257,12 @@ export async function handleCommandRoute(args: {
       if (!CHOICES.includes(picked)) throw new Error("Pick must be A, B, C, or D");
       const state = ruby.submitAnswer(stateKey, picked);
       noteReveal(state);
-      return await persist(state, state.lastReveal?.wasCorrect ? "Correct" : "Marked");
+      return await persist(
+        state,
+        state.lastReveal?.questionType === "story-choice"
+          ? "Choice locked; its event will open the next assignment."
+          : state.lastReveal?.wasCorrect ? "Correct" : "Marked",
+      );
     },
     "answer-text": async () => {
       throw new Error("Free-form answers are disabled. Use answer choices or response cards.");

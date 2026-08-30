@@ -79,4 +79,55 @@ describe("viewer question prompt pure helpers", () => {
       },
     });
   });
+
+  it("keeps causal branch events, labyrinth routes, and safe reading links", () => {
+    const view = questionPromptView({
+      prompt: "What do you do now?",
+      caseStudy: {
+        episodeId: "basilisk-archive",
+        title: "The Basilisk in the Archive",
+        hook: "A threat arrives.",
+        scene: "The review circle produces a leak.",
+        stage: "decide",
+        assignmentLabel: "The Black-Wax Labyrinth",
+        nodeId: "sealed-reading-cell",
+        nodeTitle: "Sealed Reading Cell",
+        storyFunction: "challenge",
+        route: [
+          { nodeId: "hall-of-four-doors", label: "Hall of Four Doors" },
+          { nodeId: "sealed-reading-cell", label: "Sealed Reading Cell" },
+        ],
+        evidence: [],
+        priorChoices: [{
+          choiceId: "restricted-review",
+          stage: "investigate",
+          choiceLabel: "Use a review circle",
+          event: {
+            eventId: "review-circle-convened",
+            label: "The sealed circle produces both an objection and a leak",
+            detail: "A careful objection and two context-free leaks appear.",
+          },
+          revealedEvidence: [{ label: "Memo", source: "Reviewers", detail: "The causal incentive is missing." }],
+          reflection: "Who selected into the review?",
+        }],
+        sources: [
+          { label: "Roko's Basilisk", url: "https://www.lesswrong.com/w/rokos-basilisk", note: "Background" },
+          { label: "Unsafe", url: "javascript:alert(1)", note: "No" },
+        ],
+      },
+    });
+
+    expect(view.caseStudy).toMatchObject({
+      priorChoices: [{
+        choiceId: "restricted-review",
+        eventId: "review-circle-convened",
+        eventConsequence: expect.stringContaining("two context-free leaks"),
+        revealedEvidence: [{ detail: "The causal incentive is missing." }],
+      }],
+      assignmentLabel: "The Black-Wax Labyrinth",
+      storyFunction: "challenge",
+      route: [{ label: "Hall of Four Doors" }, { label: "Sealed Reading Cell" }],
+      sources: [{ label: "Roko's Basilisk", url: "https://www.lesswrong.com/w/rokos-basilisk" }],
+    });
+  });
 });

@@ -7,6 +7,7 @@ export interface RevealFeedbackRoll {
 
 export interface RevealFeedbackReveal {
   questionId?: unknown;
+  questionType?: unknown;
   wasCorrect?: boolean;
   picked?: unknown;
   correct?: unknown;
@@ -17,6 +18,7 @@ export interface RevealFeedbackReveal {
   playerRoll?: RevealFeedbackRoll | null;
   scoreAward?: unknown;
   scoreMultiplier?: unknown;
+  caseChoice?: { choiceLabel?: unknown } | null;
 }
 
 export interface RevealFeedbackRelationshipEvent {
@@ -78,6 +80,7 @@ export function createRevealFeedbackRenderer(deps: RevealFeedbackRendererDeps): 
   }
 
   function resultBadgeText(reveal: RevealFeedbackReveal): string {
+    if (reveal.questionType === "story-choice") return "◆ choice";
     const isTypedReveal = reveal.answerText != null || reveal.expectedAnswer != null || reveal.answerJudge != null;
     if (isTypedReveal) {
       if (reveal.forfeit) return "⏱ timeout";
@@ -88,6 +91,7 @@ export function createRevealFeedbackRenderer(deps: RevealFeedbackRendererDeps): 
   }
 
   function resultSummaryText(reveal: RevealFeedbackReveal, questionCounter: number): string {
+    if (reveal.questionType === "story-choice") return "Story note Q" + questionCounter + " · event path locked";
     return "Class note Q" + questionCounter + " · " + (reveal.forfeit ? "timed out" : reveal.wasCorrect ? "correct" : "missed");
   }
 
@@ -145,7 +149,7 @@ export function createRevealFeedbackRenderer(deps: RevealFeedbackRendererDeps): 
       const main = deps.document.createElement("div");
       main.className = "class-note-main";
       const badge = deps.document.createElement("span");
-      badge.className = "badge-mini " + (reveal.wasCorrect ? "ok" : "bad");
+      badge.className = "badge-mini " + (reveal.questionType === "story-choice" ? "neutral" : reveal.wasCorrect ? "ok" : "bad");
       badge.textContent = resultBadgeText(reveal);
       main.appendChild(badge);
       const title = deps.document.createElement("span");

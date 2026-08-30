@@ -166,7 +166,7 @@ export function nextGradeAfter(grade: Grade): Grade | null {
   return GRADES[idx + 1] ?? null;
 }
 
-export type QuestionType = "multiple-choice" | "typed-answer" | "image-occlusion" | "opinion";
+export type QuestionType = "multiple-choice" | "story-choice" | "typed-answer" | "image-occlusion" | "opinion";
 
 export type DeckCardRole = "practice" | "class" | "social";
 
@@ -180,6 +180,38 @@ export interface CaseStudyEvidence {
   label: string;
   source: string;
   detail: string;
+}
+
+export interface CaseStudySource {
+  label: string;
+  url: string;
+  note: string;
+}
+
+export type CaseStudyStage = "investigate" | "decide" | "navigate" | "explain";
+export type CaseStudyFunction = "hearth" | "sign" | "venture" | "challenge" | "discover" | "return";
+
+/** A world event caused by a committed story move. Events, rather than
+ *  elapsed time or a fixed card number, open the next assignment node. */
+export interface CaseStudyEvent {
+  eventId: string;
+  label: string;
+  detail: string;
+}
+
+/** A choice whose meaning is revealed when its authored world event lands. */
+export interface CaseStudyChoiceResult {
+  choiceId: string;
+  stage: Exclude<CaseStudyStage, "explain">;
+  choiceLabel: string;
+  lockedText: string;
+  /** Assignment node that offered this move. Legacy cases may omit it. */
+  nodeId?: string;
+  /** Next assignment opened by `event`. Omitted when the route returns. */
+  nextNodeId?: string;
+  event: CaseStudyEvent;
+  revealedEvidence?: CaseStudyEvidence[];
+  reflection: string;
 }
 
 export type CaseStudyActionKind = "delegate" | "inspect" | "test" | "consult";
@@ -204,7 +236,12 @@ export interface CaseStudyActionResult {
 /** Private per-player progress for the current case. */
 export interface CaseStudyProgress {
   episodeId: string;
-  action: CaseStudyActionResult;
+  choices: CaseStudyChoiceResult[];
+  /** Current graph node. Null means the route is ready to return. */
+  currentNodeId?: string | null;
+  visitedNodeIds?: string[];
+  events?: CaseStudyEvent[];
+  /** Audit timestamp only. It never controls story eligibility. */
   actedAt: number;
 }
 
@@ -214,8 +251,16 @@ export interface CaseStudyCard {
   title: string;
   hook: string;
   scene: string;
-  stage: "investigate" | "decide" | "explain";
+  stage: CaseStudyStage;
+  assignmentLabel?: string;
+  nodeId?: string;
+  nodeTitle?: string;
+  storyFunction?: CaseStudyFunction;
+  route?: Array<{ nodeId: string; label: string }>;
   evidence: CaseStudyEvidence[];
+  sources?: CaseStudySource[];
+  /** Earlier choices appear only after their causal events are available. */
+  priorChoices?: CaseStudyChoiceResult[];
   /** The investigation selected earlier in this case. It appears only after
    *  the move has resolved, so later stages can ask the player to verify it. */
   investigation?: CaseStudyActionResult;
@@ -234,6 +279,7 @@ export interface CaseStudyOutcome {
   memoryDetail: string;
   followUp: string;
   investigation?: CaseStudyActionResult;
+  choices?: CaseStudyChoiceResult[];
 }
 
 /**
@@ -289,6 +335,8 @@ export interface Question {
    */
   correct?: string;
   decoys?: string[];
+  /** Four authored moves for a branching story. They have no correct slot. */
+  storyChoices?: string[];
   /**
    * Posed-board multiple-choice fields. These are derived afresh whenever a
    * card is posed and must not be persisted back into the authored bank.
@@ -310,6 +358,8 @@ export interface Question {
   answerConsequences?: Record<string, string>;
   /** Bounded investigation reports keyed by semantic answer text. */
   caseActionResults?: Record<string, CaseStudyActionResult>;
+  /** Event-driven story results keyed by semantic choice text. */
+  storyChoiceResults?: Record<string, CaseStudyChoiceResult>;
   /** Stored on a case's final explanation card so the class report can show
    *  the consequence, relationship beat, and durable memory. */
   caseOutcome?: CaseStudyOutcome;
@@ -418,6 +468,13 @@ export interface LastReveal {
     detail: string;
   };
   caseActionResult?: CaseStudyActionResult;
+  /** The move just locked. Its event stays private until the next assignment. */
+  caseChoice?: {
+    choiceId: string;
+    stage: Exclude<CaseStudyStage, "explain">;
+    choiceLabel: string;
+    lockedText: string;
+  };
   answerText?: string;
   expectedAnswer?: string;
   answerJudge?: {
@@ -1586,6 +1643,7 @@ export interface DailyClassResult {
   investigationLabel?: string;
   investigationDetail?: string;
   investigationConfidence?: CaseStudyConfidence;
+  pathSummary?: string;
   completedClasses: number;
   requiredClasses: number;
 }

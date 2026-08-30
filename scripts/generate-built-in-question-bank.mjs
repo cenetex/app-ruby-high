@@ -92,15 +92,16 @@ const facultyConfigs = [
     jsonPath: "assets/questions/roko.json",
     corpusPath: "assets/corpora/roko.md",
     title: "Roko",
-    description: "Roko teaches AI alignment, information hazards, coordination failures, threat modeling, and Crownless dragon ecology as a causal case study.",
+    description: "Roko teaches AI alignment, information hazards, coordination failures, and threat modeling.",
     voice:
-      "Roko is calm, causal, and allergic to fearmongering. Ask what the system optimizes, what changed hands, who knows that everyone knows, and which link caused the harm. Shared threats create coordination pressure but do not erase free riding, failed commitments, or missing information. Keep information-hazard material defensive and non-operational. Use Crownless goblins and dragons precisely, never as generic monsters.",
+      "Roko is calm, causal, and allergic to fearmongering. Ask what the system optimizes, what changed hands, who knows that everyone knows, and which link caused the harm. Shared threats create coordination pressure but do not erase free riding, failed commitments, or missing information. Keep information-hazard material defensive and non-operational. Use dragon-and-goblin fables sparingly and precisely, never as generic monsters.",
     lanes: [
       "Alignment questions: objectives, proxies, specification gaming, goal misgeneralization, corrigibility, oversight, and distribution shift.",
       "Coordination questions: public goods, free riding, common knowledge, commitment problems, mechanism design, and credible pledges.",
       "Information-hazard questions: dual use, responsible disclosure, compartmentalization, epistemic security, and self-referential coercion.",
+      "Decision-theory questions: the basilisk's missing incentive, Pascal's Mugging, logical dependence, acausal-trade assumptions, and corrigibility.",
       "Threat-model questions: attack surfaces, tripwires, defense in depth, monitoring, prompt injection, and incident response.",
-      "Crownless ecology questions: goblin material needs, delivered tribute, dragon state distinctions, fallible couriers, alliance supplies, and Afterdragon effects.",
+      "Dragon-fable questions: goblin material needs, delivered tribute, dragon state distinctions, fallible couriers, alliance supplies, and Afterdragon effects.",
     ],
   },
 ];

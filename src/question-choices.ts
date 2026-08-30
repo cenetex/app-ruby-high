@@ -16,6 +16,30 @@ export interface MaterializedMultipleChoice extends MultipleChoiceDefinition {
   correctChoice: Choice;
 }
 
+export interface MaterializedStoryChoice {
+  storyChoices: string[];
+  options: Record<Choice, string>;
+}
+
+/** Put four story moves on A-D without inventing a correct answer. */
+export function materializeStoryChoices(
+  choices: unknown,
+  options: { shuffle?: boolean; rng?: () => number } = {},
+): MaterializedStoryChoice {
+  const authored = uniqueAnswers(cleanAnswers(choices));
+  if (authored.length !== 4) {
+    throw new Error("Story-choice question needs exactly four unique choices.");
+  }
+  const placedChoices = options.shuffle === false
+    ? authored
+    : shuffled(authored, options.rng ?? Math.random);
+  const placed = {} as Record<Choice, string>;
+  placedChoices.forEach((answer, index) => {
+    placed[CHOICES[index]!] = answer;
+  });
+  return { storyChoices: authored, options: placed };
+}
+
 /**
  * Read the semantic MCQ definition.
  *

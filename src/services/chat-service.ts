@@ -1875,7 +1875,10 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
     const reveal = state.lastReveal;
     if (reveal?.questionPrompt) {
       const opts = reveal.questionOptions;
-      const answerLines = opts
+      const storyChoice = reveal.questionType === "story-choice";
+      const answerLines = storyChoice
+        ? [reveal.caseChoice?.lockedText ?? "The choice is locked; follow the event it causes."]
+        : opts
         ? [
             `  A) ${opts.A ?? ""}`,
             `  B) ${opts.B ?? ""}`,
@@ -1890,7 +1893,9 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
         ...header,
         "BOARD STATUS: RECENTLY_RESOLVED.",
         "No live question is on the board now, but the last resolved card is still relevant for this turn.",
-        reveal.forfeit
+        storyChoice
+          ? `The player chose ${reveal.caseChoice?.choiceLabel ?? reveal.picked}. This scene has no correct answer; its authored event determines which assignment opens.`
+        : reveal.forfeit
           ? "The player did not answer before the timer expired."
           : `The player answered ${reveal.answerText ?? reveal.picked} and was ${reveal.wasCorrect ? "correct" : "wrong"}.`,
         `Resolved question (${reveal.questionDifficulty ?? "?"} · ${reveal.questionSubject ?? "?"}):`,
@@ -1930,7 +1935,14 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
     !!round && round.questionId === q.id && round.resolved &&
     !!state.lastReveal && state.lastReveal.questionId === q.id;
   const statusLines = resolvedThisQ && state.lastReveal
-    ? [
+    ? q.type === "story-choice"
+      ? [
+        "BOARD STATUS: STORY_CHOICE_LOCKED.",
+        `The player chose ${state.lastReveal.caseChoice?.choiceLabel ?? state.lastReveal.picked}. Do not call it right or wrong; follow the event and the assignment it opens.`,
+        state.lastReveal.caseChoice?.lockedText ?? "",
+        "The question scheduler will post the next story scene when the board clears.",
+      ]
+      : [
         "BOARD STATUS: RESOLVED.",
         state.lastReveal.forfeit
           ? `The timer expired before the player answered; correct was ${state.lastReveal.correct}.`
@@ -1944,7 +1956,9 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
       ]
     : [
         "BOARD STATUS: WAITING_FOR_STUDENT_ANSWER.",
-        "The player has not answered this board yet. Do not reveal the correct answer. Wait for the answer-graded event before calling another tool.",
+        q.type === "story-choice"
+          ? "The player has not chosen a branch yet. The choices have no known correctness verdict."
+          : "The player has not answered this board yet. Do not reveal the correct answer. Wait for the answer-graded event before calling another tool.",
       ];
   const answerLines = q.type === "typed-answer" || q.type === "image-occlusion"
     ? resolvedThisQ && state.lastReveal
@@ -1953,6 +1967,14 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
           state.lastReveal.expectedAnswer ? `Expected answer: ${state.lastReveal.expectedAnswer}` : "",
         ].filter(Boolean)
       : ["Expected answer: hidden until reveal."]
+    : q.type === "story-choice"
+      ? [
+        `  A) ${opts.A}`,
+        `  B) ${opts.B}`,
+        `  C) ${opts.C}`,
+        `  D) ${opts.D}`,
+        "No correct choice is defined. Progression is gated by authored world events, not elapsed time.",
+      ]
     : [
         `  A) ${opts.A}`,
         `  B) ${opts.B}`,

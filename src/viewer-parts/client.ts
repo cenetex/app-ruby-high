@@ -1199,7 +1199,10 @@ export function runViewerClient(bootstrap) {
     if (intent === "report") {
       if (reveal) {
         const prompt = clipPlayerContext(reveal.questionPrompt || (current && current.prompt) || "", 110);
-        const result = reveal.forfeit
+        const isStoryChoice = reveal.questionType === "story-choice";
+        const result = isStoryChoice
+          ? "I locked in a story choice"
+          : reveal.forfeit
           ? "I timed out"
           : reveal.wasCorrect
             ? "I got it right"
@@ -1211,7 +1214,7 @@ export function runViewerClient(bootstrap) {
           ? clipPlayerContext(reveal.expectedAnswer, 70)
           : revealAnswerText(reveal, reveal.correct);
         const answerLine = answer && !reveal.forfeit ? " My answer was " + answer + "." : "";
-        const correctLine = correct ? " The correct answer was " + correct + "." : "";
+        const correctLine = !isStoryChoice && correct ? " The correct answer was " + correct + "." : "";
         return result + (prompt ? " on " + prompt : "") + "." + answerLine + correctLine + " What should I take from that?";
       }
       const progress = t.active_course_progress && t.active_course_progress.today;
@@ -3782,6 +3785,40 @@ export function runViewerClient(bootstrap) {
     return wrap;
   }
 
+  function buildCasePathResult(choice) {
+    if (!choice || !choice.eventConsequence) return null;
+    const wrap = document.createElement("article");
+    wrap.className = "case-path-result";
+    const label = document.createElement("strong");
+    label.textContent = choice.eventLabel || "The situation changes";
+    const move = document.createElement("p");
+    move.className = "case-path-move";
+    move.textContent = "You chose: " + choice.choiceLabel;
+    const result = document.createElement("p");
+    result.className = "case-path-consequence";
+    result.textContent = choice.eventConsequence;
+    wrap.append(label, move, result);
+    (choice.revealedEvidence || []).forEach((item) => {
+      const evidence = document.createElement("div");
+      evidence.className = "case-path-evidence";
+      const heading = document.createElement("strong");
+      heading.textContent = item.label || "New evidence";
+      const source = document.createElement("span");
+      source.textContent = item.source || "Later report";
+      const detail = document.createElement("p");
+      detail.textContent = item.detail || "";
+      evidence.append(heading, source, detail);
+      wrap.appendChild(evidence);
+    });
+    if (choice.reflection) {
+      const reflection = document.createElement("p");
+      reflection.className = "case-path-reflection";
+      reflection.textContent = "Question now: " + choice.reflection;
+      wrap.appendChild(reflection);
+    }
+    return wrap;
+  }
+
   function renderQuestionPrompt(question) {
     const view = questionPromptView(question);
     els.boardPrompt.replaceChildren();
@@ -3792,16 +3829,33 @@ export function runViewerClient(bootstrap) {
       top.className = "case-study-topline";
       const stage = document.createElement("span");
       stage.className = "case-study-stage";
-      stage.textContent = view.caseStudy.stage === "investigate"
-        ? "1 · Investigate"
-        : view.caseStudy.stage === "decide"
-          ? "2 · Decide"
-          : "3 · Explain";
+      stage.textContent = view.caseStudy.storyFunction
+        ? view.caseStudy.storyFunction + (view.caseStudy.nodeTitle ? " · " + view.caseStudy.nodeTitle : "")
+        : view.caseStudy.stage === "investigate"
+          ? "Sign"
+          : view.caseStudy.stage === "decide"
+            ? "Challenge"
+            : view.caseStudy.stage === "navigate"
+              ? "Discover"
+              : "Return";
       const title = document.createElement("strong");
       title.className = "case-study-title";
       title.textContent = view.caseStudy.title;
       top.append(stage, title);
       caseWrap.appendChild(top);
+      if (view.caseStudy.assignmentLabel || (view.caseStudy.route && view.caseStudy.route.length > 0)) {
+        const route = document.createElement("div");
+        route.className = "case-study-route";
+        const routeLabel = document.createElement("strong");
+        routeLabel.textContent = view.caseStudy.assignmentLabel || "Assignment route";
+        route.appendChild(routeLabel);
+        (view.caseStudy.route || []).forEach((step, index) => {
+          const node = document.createElement("span");
+          node.textContent = (index > 0 ? "→ " : "") + step.label;
+          route.appendChild(node);
+        });
+        caseWrap.appendChild(route);
+      }
       if (view.caseStudy.hook) {
         const hook = document.createElement("p");
         hook.className = "case-study-hook";
@@ -3829,9 +3883,30 @@ export function runViewerClient(bootstrap) {
         });
         caseWrap.appendChild(evidence);
       }
+      (view.caseStudy.priorChoices || []).forEach((choice) => {
+        const pathResult = buildCasePathResult(choice);
+        if (pathResult) caseWrap.appendChild(pathResult);
+      });
       if (view.caseStudy.investigation) {
         const investigation = buildCaseActionResult(view.caseStudy.investigation, false);
         if (investigation) caseWrap.appendChild(investigation);
+      }
+      if (view.caseStudy.sources && view.caseStudy.sources.length > 0) {
+        const sources = document.createElement("div");
+        sources.className = "case-study-sources";
+        const label = document.createElement("span");
+        label.textContent = "Further reading";
+        sources.appendChild(label);
+        view.caseStudy.sources.forEach((source) => {
+          const link = document.createElement("a");
+          link.href = source.url;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = source.label;
+          link.title = source.note || source.label;
+          sources.appendChild(link);
+        });
+        caseWrap.appendChild(sources);
       }
       els.boardPrompt.appendChild(caseWrap);
     }
@@ -4023,7 +4098,7 @@ export function runViewerClient(bootstrap) {
       renderQuestionPrompt(question);
       els.boardReveal.hidden = true;
       els.boardReveal.textContent = "";
-      els.boardReveal.classList.remove("correct", "wrong");
+      els.boardReveal.classList.remove("correct", "wrong", "neutral");
     }
 
     // Answer buttons
@@ -4037,7 +4112,7 @@ export function runViewerClient(bootstrap) {
       if (text.length > maxLen) maxLen = text.length;
       if (String(text).includes("\n")) hasLineBreakAnswer = true;
       if (isNewQuestion) {
-        btn.classList.remove("is-correct", "is-wrong");
+        btn.classList.remove("is-correct", "is-wrong", "is-selected");
       }
       btn.disabled = role === "agent";
     });
@@ -4118,11 +4193,16 @@ export function runViewerClient(bootstrap) {
 
   function applyRevealToBlackboard(reveal) {
     if (!reveal) return;
+    const isStoryChoice = reveal.questionType === "story-choice";
     const isTypedReveal = reveal.answerText != null || reveal.expectedAnswer != null || reveal.answerJudge != null;
     els.answers.forEach((btn) => {
       btn.disabled = true;
-      if (btn.dataset.pick === reveal.correct) btn.classList.add("is-correct");
-      if (!reveal.forfeit && btn.dataset.pick === reveal.picked && !reveal.wasCorrect) btn.classList.add("is-wrong");
+      if (isStoryChoice) {
+        if (!reveal.forfeit && btn.dataset.pick === reveal.picked) btn.classList.add("is-selected");
+      } else {
+        if (btn.dataset.pick === reveal.correct) btn.classList.add("is-correct");
+        if (!reveal.forfeit && btn.dataset.pick === reveal.picked && !reveal.wasCorrect) btn.classList.add("is-wrong");
+      }
     });
     els.responseCardButtons.forEach((button) => { button.disabled = true; });
     els.responseStepButtons.forEach((button) => { button.disabled = true; });
@@ -4132,13 +4212,16 @@ export function runViewerClient(bootstrap) {
     // showBlackboardLoaded so it survives re-renders driven by the
     // telemetry poll. Don't duplicate it here.
     els.boardReveal.hidden = false;
-    els.boardReveal.classList.toggle("correct", !!reveal.wasCorrect);
-    els.boardReveal.classList.toggle("wrong", !reveal.wasCorrect);
+    els.boardReveal.classList.toggle("neutral", isStoryChoice);
+    els.boardReveal.classList.toggle("correct", !isStoryChoice && !!reveal.wasCorrect);
+    els.boardReveal.classList.toggle("wrong", !isStoryChoice && !reveal.wasCorrect);
     // Build the reveal block by parts so the dice render alongside the result.
     els.boardReveal.replaceChildren();
     const result = document.createElement("span");
     result.className = "reveal-result";
-    result.textContent = reveal.forfeit
+    result.textContent = isStoryChoice
+      ? reveal.forfeit ? "The scene moved on" : "Choice locked — no verdict yet"
+      : reveal.forfeit
       ? "⏱ Time's up — answer was " + (isTypedReveal ? (reveal.expectedAnswer || reveal.correct) : reveal.correct)
       : isTypedReveal
       ? (reveal.wasCorrect ? "✓ Correct" : "✗ Not quite")
@@ -4148,6 +4231,16 @@ export function runViewerClient(bootstrap) {
       ? "✓ Correct (" + reveal.picked + ")"
       : "✗ You picked " + reveal.picked + " — answer was " + reveal.correct;
     els.boardReveal.appendChild(result);
+    if (isStoryChoice && reveal.caseChoice && reveal.caseChoice.lockedText) {
+      const choiceNote = document.createElement("div");
+      choiceNote.className = "reveal-case-consequence";
+      const label = document.createElement("strong");
+      label.textContent = "Immediate state";
+      const detail = document.createElement("span");
+      detail.textContent = reveal.caseChoice.lockedText;
+      choiceNote.append(label, detail);
+      els.boardReveal.appendChild(choiceNote);
+    }
     if (isTypedReveal) {
       const answerBlock = document.createElement("div");
       answerBlock.className = "typed-reveal";
@@ -4225,7 +4318,9 @@ export function runViewerClient(bootstrap) {
       if (!liveReveal || liveReveal.questionId !== reveal.questionId || liveReveal.picked !== reveal.picked || liveReveal.correct !== reveal.correct) return;
       const q = t.current && t.current.id === reveal.questionId ? t.current : null;
       const type = (q && q.type) || reveal.questionType || (reveal.expectedAnswer != null ? "typed-answer" : "multiple-choice");
-      const options = type === "multiple-choice" && q && q.options ? q.options : (reveal.questionOptions || null);
+      const options = (type === "multiple-choice" || type === "story-choice") && q && q.options
+        ? q.options
+        : (reveal.questionOptions || null);
       const optionAnswer = (letter) => {
         if (!letter || !options) return null;
         const text = options[letter];
@@ -4243,7 +4338,7 @@ export function runViewerClient(bootstrap) {
         picked: reveal.forfeit ? null : reveal.picked,
         correct: reveal.correct,
         pickedAnswer: reveal.forfeit ? null : (reveal.answerText || optionAnswer(reveal.picked)),
-        correctAnswer: reveal.expectedAnswer || optionAnswer(reveal.correct),
+        correctAnswer: type === "story-choice" ? null : (reveal.expectedAnswer || optionAnswer(reveal.correct)),
         answerText: reveal.forfeit ? null : (reveal.answerText || null),
         expectedAnswer: reveal.expectedAnswer || null,
         answerJudge: reveal.answerJudge || null,
@@ -5509,7 +5604,9 @@ export function runViewerClient(bootstrap) {
           applyRevealToBlackboard(t.lastReveal);
           appendResultChip(t.lastReveal);
         }
-        showCongrats(t.lastReveal.encouragement, t.lastReveal.wasCorrect);
+        if (t.lastReveal.questionType !== "story-choice") {
+          showCongrats(t.lastReveal.encouragement, t.lastReveal.wasCorrect);
+        }
         // Teacher reacts + queues next question. Fire immediately so the
         // teacher's response starts streaming first; the student chime
         // (scheduled below) lands later as a follow-up reaction, not as
@@ -5524,7 +5621,9 @@ export function runViewerClient(bootstrap) {
         // room doesn't feel like the students are doing all the talking
         // before the teacher catches up. Long delay; the cooldown still
         // suppresses pile-ons.
-        scheduleStudentChime(t.lastReveal.wasCorrect, t.current_grade, 4500);
+        if (t.lastReveal.questionType !== "story-choice") {
+          scheduleStudentChime(t.lastReveal.wasCorrect, t.current_grade, 4500);
+        }
       }
     } else if (t.active_round && !t.active_round.resolved && t.active_round.idleTriggered) {
       maybeRunRoomIdle(t);
