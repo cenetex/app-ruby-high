@@ -86,6 +86,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       </div>
     </header>
 
+    <div class="classroom-scroll" id="classroom-scroll">
     <section class="lounge-stage" id="lounge-stage">
       <div class="lounge-title">Teachers' Lounge — listen in</div>
       <div class="lounge-figures" id="lounge-figures">
@@ -198,6 +199,35 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       </div>
     </section>
 
+    <section class="scene-summary" id="scene-summary-host" hidden>
+      <details id="scene-summary">
+        <summary>
+          <span>Scene summary</span>
+          <span class="scene-summary-count" id="scene-summary-count"></span>
+        </summary>
+        <div class="scene-summary-body" id="scene-summary-body"></div>
+      </details>
+    </section>
+
+    <section class="live-scene" aria-labelledby="live-scene-title">
+      <div class="live-scene-head">
+        <h2 id="live-scene-title">Now</h2>
+        <button class="scene-latest" id="scene-latest" type="button" hidden>Latest</button>
+      </div>
+      <section class="stream" id="stream" aria-live="polite" aria-atomic="false"></section>
+    </section>
+
+    <section class="dialogue-log" id="dialogue-log-host" hidden>
+      <details id="dialogue-log">
+        <summary>
+          <span>Dialogue log</span>
+          <span class="dialogue-log-count" id="dialogue-log-count"></span>
+        </summary>
+        <div class="dialogue-log-body" id="dialogue-log-body"></div>
+      </details>
+    </section>
+    </div>
+
     <section class="leaderboard-panel" id="leaderboard-panel" aria-labelledby="leaderboard-title" hidden>
       <div class="leaderboard-header">
         <div class="leaderboard-header-icon">🏆</div>
@@ -211,8 +241,6 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <div class="leaderboard-loading">Loading…</div>
       </div>
     </section>
-
-    <section class="stream" id="stream"></section>
 
     <section class="composer-zone" id="composer-zone">
       <button class="chat-action-btn" id="next-btn" type="button" hidden>Chat</button>

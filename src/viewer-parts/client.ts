@@ -478,7 +478,17 @@ export function runViewerClient(bootstrap) {
     arcXp: $("arc-xp"),
     arcEssaySep: $("arc-essay-sep"),
     arcEssay: $("arc-essay"),
+    classroomScroll: $("classroom-scroll"),
     stream: $("stream"),
+    sceneSummaryHost: $("scene-summary-host"),
+    sceneSummary: $("scene-summary"),
+    sceneSummaryBody: $("scene-summary-body"),
+    sceneSummaryCount: $("scene-summary-count"),
+    sceneLatest: $("scene-latest"),
+    dialogueLogHost: $("dialogue-log-host"),
+    dialogueLog: $("dialogue-log"),
+    dialogueLogBody: $("dialogue-log-body"),
+    dialogueLogCount: $("dialogue-log-count"),
     blackboardPanel: $("blackboard-panel"),
     loungeStage: $("lounge-stage"),
     loungeFigures: $("lounge-figures"),
@@ -855,6 +865,7 @@ export function runViewerClient(bootstrap) {
   let lastChatButtonAt = 0;
   let lastAgentTrigger = null; // dedupe key so we don't re-fire on poll
   let lastSocialSummaryId = null;
+  let lastSceneSummarySig = null;
   let leaderboardViewOpen = false;
   let billingProductsCache = null;
   let billingMode = "hall-passes";
@@ -870,6 +881,8 @@ export function runViewerClient(bootstrap) {
   let packSyncWalletAddress = "";
   let packSyncAt = 0;
   let chatViewSeq = 0;         // bumps on room/lounges switches; invalidates stale history/SSE work
+  let rebuildingHistory = false;
+  const archivedSceneDialogueSignatures = new Set();
   function setNextButtonDisabled(disabled) {
     if (els.nextBtn) els.nextBtn.disabled = !!disabled;
   }
@@ -1172,7 +1185,7 @@ export function runViewerClient(bootstrap) {
   }
   function latestConversationLine() {
     if (!els.stream) return "";
-    const nodes = Array.from(els.stream.querySelectorAll(".msg.teacher .body, .msg.student .body"));
+    const nodes = dialogueNodes(".msg.teacher .body, .msg.student .body");
     for (let i = nodes.length - 1; i >= 0; i--) {
       const node = nodes[i];
       const text = node && (node.dataset.markdownRaw || node.textContent || "");
@@ -1294,7 +1307,7 @@ export function runViewerClient(bootstrap) {
     const ch = lastTelemetry && lastTelemetry.character;
     const portraitSrc = ch && ch.portraitDataUrl ? ch.portraitDataUrl : null;
     const initial = displayName ? displayName.slice(0, 1).toUpperCase() : "U";
-    els.stream.querySelectorAll(".msg.you").forEach((node) => {
+    dialogueNodes(".msg.you").forEach((node) => {
       const nameEl = node.querySelector(".head .name");
       if (nameEl && nameEl.textContent !== displayName) nameEl.textContent = displayName;
       const avatar = node.querySelector(".avatar");
@@ -1323,23 +1336,111 @@ export function runViewerClient(bootstrap) {
     });
   }
 
+  function dialogueNodes(selector) {
+    const archived = els.dialogueLogBody ? Array.from(els.dialogueLogBody.querySelectorAll(selector)) : [];
+    const live = els.stream ? Array.from(els.stream.querySelectorAll(selector)) : [];
+    return archived.concat(live);
+  }
   function isNearBottom() {
-    const { scrollTop, scrollHeight, clientHeight } = els.stream;
+    const { scrollTop, scrollHeight, clientHeight } = els.classroomScroll;
     return scrollHeight - (scrollTop + clientHeight) < 80;
   }
-  function scrollIfPinned(force) {
-    if (force || isNearBottom()) {
+  function scrollToLatest() {
+    const reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    els.classroomScroll.scrollTo({
+      top: els.classroomScroll.scrollHeight,
+      behavior: reducedMotion ? "auto" : "smooth",
+    });
+    els.sceneLatest.hidden = true;
+  }
+  function scrollIfPinned(force, pinnedBefore) {
+    if (force || pinnedBefore === true || isNearBottom()) {
       requestAnimationFrame(() => {
-        els.stream.scrollTop = els.stream.scrollHeight;
+        els.classroomScroll.scrollTop = els.classroomScroll.scrollHeight;
+        els.sceneLatest.hidden = true;
       });
+    } else {
+      els.sceneLatest.hidden = false;
     }
+  }
+
+  function updateDialogueLogState() {
+    const count = els.dialogueLogBody ? els.dialogueLogBody.children.length : 0;
+    els.dialogueLogHost.hidden = count === 0;
+    els.dialogueLogCount.textContent = count ? String(count) : "";
+  }
+  function archiveLiveDialogue(keepCount) {
+    const keep = Math.max(0, Number(keepCount || 0));
+    while (els.stream.children.length > keep) {
+      const node = els.stream.firstElementChild;
+      if (!node) break;
+      if (node.classList.contains("empty-state")) node.remove();
+      else {
+        const signature = dialogueNodeSignature(node);
+        if (signature) archivedSceneDialogueSignatures.add(signature);
+        els.dialogueLogBody.appendChild(node);
+      }
+    }
+    updateDialogueLogState();
+  }
+  function dialogueNodeSignature(node) {
+    if (!node) return "";
+    const body = node.querySelector && node.querySelector(".body");
+    const name = node.querySelector && node.querySelector(".head .name");
+    const visible = String((body && (body.dataset.markdownRaw || body.textContent)) || node.textContent || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!visible) return "";
+    return node.className + "|" + String(name && name.textContent || "").trim() + "|" + visible;
+  }
+  function mountLiveDialogue(node, options) {
+    const opts = options || {};
+    if (rebuildingHistory) {
+      const signature = dialogueNodeSignature(node);
+      const previous = els.stream.lastElementChild || els.dialogueLogBody.lastElementChild;
+      if (dialogueNodeSignature(previous) === signature) return previous;
+      if (signature && archivedSceneDialogueSignatures.has(signature)) {
+        els.dialogueLogBody.appendChild(node);
+        updateDialogueLogState();
+        return node;
+      }
+    }
+    const pinnedBefore = isNearBottom();
+    if (opts.startScene) archiveLiveDialogue(0);
+    else archiveLiveDialogue(1);
+    els.stream.appendChild(node);
+    scrollIfPinned(!!opts.force, pinnedBefore);
+    return node;
+  }
+  function setDialogueCompaction(summary) {
+    const existing = els.dialogueLogBody.querySelector("[data-dialogue-compaction]");
+    if (!summary) {
+      if (existing) existing.remove();
+      updateDialogueLogState();
+      return;
+    }
+    const node = existing || document.createElement("div");
+    node.dataset.dialogueCompaction = "true";
+    node.className = "dialogue-compaction";
+    node.textContent = "Earlier · " + summary;
+    if (!existing) els.dialogueLogBody.prepend(node);
+    updateDialogueLogState();
   }
 
   function clearStream() {
     chatViewSeq++;
     els.stream.innerHTML = "";
+    els.dialogueLogBody.innerHTML = "";
+    archivedSceneDialogueSignatures.clear();
+    els.dialogueLog.open = false;
+    els.sceneSummary.open = false;
+    els.sceneSummaryBody.innerHTML = "";
+    els.sceneSummaryHost.hidden = true;
+    els.sceneLatest.hidden = true;
+    updateDialogueLogState();
     renderedHistorySig = null;
     lastSocialSummaryId = null;
+    lastSceneSummarySig = null;
   }
   function showClassSurface(force) {
     // Session polling repaints the blackboard every few seconds. Honor Roll
@@ -1348,9 +1449,7 @@ export function runViewerClient(bootstrap) {
     if (leaderboardViewOpen && !force) return;
     leaderboardViewOpen = false;
     els.leaderboardPanel.hidden = true;
-    els.blackboardPanel.hidden = false;
-    els.loungeStage.hidden = false;
-    els.stream.hidden = false;
+    els.classroomScroll.hidden = false;
     els.composerZone.hidden = false;
   }
   function resetBlackboard() {
@@ -1853,27 +1952,24 @@ export function runViewerClient(bootstrap) {
     const rendered = chatMessageRenderer.buildMessage({ kind, name, body, color, avatarUrl: avatarImgSrc });
     const wrap = rendered.wrap;
     const bodyEl = rendered.body;
-    els.stream.appendChild(wrap);
-    // The player should always see their own words land — force the scroll
-    // even if they were peeking up the log when they hit Send. Other roles
-    // only scroll if the user is already pinned.
-    scrollIfPinned(kind === "you");
-    return bodyEl;
+    const mounted = mountLiveDialogue(wrap, {
+      startScene: kind === "you" || kind === "player",
+      force: kind === "you",
+    });
+    return mounted.querySelector(".body") || bodyEl;
   }
   function appendSystem(text) {
     const wrap = chatMessageRenderer.buildSystem(text);
-    els.stream.appendChild(wrap);
-    scrollIfPinned();
+    mountLiveDialogue(wrap);
   }
   function appendTool(text) {
     const wrap = chatMessageRenderer.buildTool(text);
-    els.stream.appendChild(wrap);
-    scrollIfPinned();
+    mountLiveDialogue(wrap);
   }
   function appendEmptyState({ title, body, ctaLabel, ctaAction, facultyId }) {
     const heroSrc = (facultyId && teacherAssetUrl(facultyId, "full")) || teacherAssetUrl("ruby", "full");
     const wrap = chatMessageRenderer.buildEmptyState({ title, body, ctaLabel, ctaAction, heroSrc });
-    els.stream.appendChild(wrap);
+    mountLiveDialogue(wrap, { startScene: true });
   }
   // escape, escapeHtml, safeMarkdownHref, sanitizeVisibleChatText,
   // markdownInlineHtml, appendMarkdownInline, renderMarkdownInto are
@@ -4303,6 +4399,95 @@ export function runViewerClient(bootstrap) {
       || (reveal && reveal.classProgress && reveal.classProgress.cardRole)
       || "";
   }
+  function compactSceneText(value, fallback) {
+    const clean = String(value || "").replace(/\s+/g, " ").trim();
+    if (!clean) return fallback || "—";
+    return clean.length > 72 ? clean.slice(0, 69).trimEnd() + "…" : clean;
+  }
+  function sceneSummaryRows(t) {
+    const reveal = t && t.lastReveal;
+    if (!reveal) return [];
+    const type = reveal.questionType || (t.current && t.current.type) || "multiple-choice";
+    const option = reveal.questionOptions && reveal.questionOptions[reveal.picked];
+    const choice = reveal.forfeit
+      ? "No answer"
+      : type === "multiple-choice"
+        ? compactSceneText(option || reveal.picked, "Answer chosen")
+        : "Response built";
+    const playerGrade = t.active_round && Array.isArray(t.active_round.opinionGrades)
+      ? t.active_round.opinionGrades.find((grade) => grade.responder === "player")
+      : null;
+    const result = playerGrade && Number.isFinite(Number(playerGrade.score))
+      ? Number(playerGrade.score).toFixed(1) + "/10"
+      : reveal.wasCorrect ? "Correct" : "Review";
+    const rows = [
+      { icon: "◆", label: "Choice", value: choice },
+      { icon: reveal.wasCorrect ? "✓" : "↺", label: "Result", value: result },
+    ];
+    if (reveal.caseActionResult) {
+      rows.push({
+        icon: "⌕",
+        label: "Action",
+        value: compactSceneText(reveal.caseActionResult.actionLabel || reveal.caseActionResult.reportLabel, "Investigation updated"),
+      });
+    } else if (reveal.caseConsequence) {
+      rows.push({
+        icon: "↗",
+        label: "Impact",
+        value: compactSceneText(reveal.caseConsequence.detail, "Story changed"),
+      });
+    }
+    const relationship = relationshipEventsForQuestion(reveal.questionId).slice(-1)[0];
+    if (relationship) {
+      const delta = Number(relationship.delta || 0);
+      rows.push({
+        icon: delta < 0 ? "−" : "+",
+        label: "Bond",
+        value: studentNameById(relationship.studentId) + (delta < 0 ? " · tension" : delta > 0 ? " · closer" : " · steady"),
+      });
+    }
+    const progress = reveal.classProgress;
+    if (rows.length < 4 && progress && Number(progress.totalQuestions) > 0) {
+      rows.push({
+        icon: "▦",
+        label: "Class",
+        value: Math.min(Number(progress.questionCount || 0), Number(progress.totalQuestions)) + " of " + Number(progress.totalQuestions),
+      });
+    }
+    return rows.slice(0, 4);
+  }
+  function renderSceneSummary(t) {
+    const rows = sceneSummaryRows(t);
+    if (!rows.length) {
+      els.sceneSummaryHost.hidden = true;
+      lastSceneSummarySig = null;
+      return;
+    }
+    const reveal = t.lastReveal;
+    const sig = [reveal.questionId, reveal.picked, ...rows.map((row) => row.label + ":" + row.value)].join("|");
+    if (sig === lastSceneSummarySig) return;
+    lastSceneSummarySig = sig;
+    els.sceneSummaryBody.innerHTML = "";
+    rows.forEach((row) => {
+      const beat = document.createElement("div");
+      beat.className = "scene-summary-beat";
+      const icon = document.createElement("span");
+      icon.className = "scene-summary-beat-icon";
+      icon.setAttribute("aria-hidden", "true");
+      icon.textContent = row.icon;
+      const label = document.createElement("span");
+      label.className = "scene-summary-beat-label";
+      label.textContent = row.label;
+      const value = document.createElement("span");
+      value.className = "scene-summary-beat-value";
+      value.title = row.value;
+      value.textContent = row.value;
+      beat.append(icon, label, value);
+      els.sceneSummaryBody.appendChild(beat);
+    });
+    els.sceneSummaryCount.textContent = rows.length + (rows.length === 1 ? " beat" : " beats");
+    els.sceneSummaryHost.hidden = false;
+  }
   function appendSocialSummary(reveal, t) {
     if (!reveal || revealCardRole(t || lastTelemetry, reveal) !== "social") return;
     const events = relationshipEventsForQuestion(reveal.questionId);
@@ -4312,18 +4497,16 @@ export function runViewerClient(bootstrap) {
 
     const wrap = revealFeedbackRenderer.buildSocialSummary(events);
     if (!wrap) return;
-    els.stream.appendChild(wrap);
+    mountLiveDialogue(wrap);
     postViewerMetricEvent("room_reaction_viewed", {
       questionId: reveal.questionId,
       faculty: t && t.faculty,
     });
-    scrollIfPinned();
   }
 
   function appendResultChip(reveal) {
     const wrap = revealFeedbackRenderer.buildResult(reveal, questionCounter, relationshipEventsForQuestion(reveal && reveal.questionId));
-    els.stream.appendChild(wrap);
-    scrollIfPinned();
+    mountLiveDialogue(wrap);
   }
 
   // ── server rail (just the brand button now — no grade picker) ───────────
@@ -4845,8 +5028,6 @@ export function runViewerClient(bootstrap) {
     closeRails();
     leaderboardViewOpen = true;
     hideBlackboard();
-    els.loungeStage.hidden = true;
-    els.stream.hidden = true;
     els.leaderboardPanel.hidden = false;
     els.leaderboardBody.innerHTML = '<div class="leaderboard-loading">Loading…</div>';
     focusWithoutScroll(els.leaderboardBack);
@@ -4861,7 +5042,7 @@ export function runViewerClient(bootstrap) {
   }
 
   function hideBlackboard() {
-    els.blackboardPanel.hidden = true;
+    els.classroomScroll.hidden = true;
     els.composerZone.hidden = true;
   }
 
@@ -5220,8 +5401,7 @@ export function runViewerClient(bootstrap) {
     els.blackboardPanel.dataset.mode = mode;
     els.shell.dataset.mode = mode;
     if (!leaderboardViewOpen) {
-      els.blackboardPanel.hidden = false;
-      els.stream.hidden = false;
+      els.classroomScroll.hidden = false;
       els.composerZone.hidden = false;
       els.leaderboardPanel.hidden = true;
     }
@@ -5474,6 +5654,7 @@ export function runViewerClient(bootstrap) {
     // Render blackboard panel (single, in-place updates).
     renderDailyClassProgress(t);
     renderBlackboard(t.current || null, fac || null, t.current_grade);
+    renderSceneSummary(t);
     renderRaceStrip(t);
     renderAdvantageBar(t);
     if (t.is_opinion && t.active_round) {
@@ -5481,7 +5662,8 @@ export function runViewerClient(bootstrap) {
       maybeAutoTriggerGrading(t);
     }
 
-    // Reveal — apply to blackboard + log a result chip in the chat once.
+    // Reveal — apply to the board. Structured outcome beats live in the
+    // scene summary, so the dialogue stage stays focused on speakers.
     // ALSO fire the teacher's reaction here (not in pickAnswer) so they
     // react to the full round outcome, not the bare click.
     if (t.lastReveal) {
@@ -5491,10 +5673,15 @@ export function runViewerClient(bootstrap) {
         lastRevealId = revealId;
         if (t.is_opinion) {
           applyOpinionRevealToBlackboard(t.active_round);
-          appendSocialSummary(t.lastReveal, t);
+          if (revealCardRole(t, t.lastReveal) === "social" && lastSocialSummaryId !== t.lastReveal.questionId) {
+            lastSocialSummaryId = t.lastReveal.questionId;
+            postViewerMetricEvent("room_reaction_viewed", {
+              questionId: t.lastReveal.questionId,
+              faculty: t.faculty,
+            });
+          }
         } else {
           applyRevealToBlackboard(t.lastReveal);
-          appendResultChip(t.lastReveal);
         }
         showCongrats(t.lastReveal.encouragement, t.lastReveal.wasCorrect);
         // Teacher reacts + queues next question. Fire immediately so the
@@ -5524,7 +5711,7 @@ export function runViewerClient(bootstrap) {
     // Empty-stream welcome (only if no chat yet). New sessions are born
     // with a grade set, so the !current_grade branch only fires for legacy
     // state files mid-migration.
-    if (els.stream.children.length === 0) {
+    if (els.stream.children.length === 0 && els.dialogueLogBody.children.length === 0) {
       if (!t.current_grade) {
         appendEmptyState({
           title: "Welcome to Ruby High",
@@ -10244,30 +10431,38 @@ export function runViewerClient(bootstrap) {
       renderedHistorySig = sig;
       const rememberedRoomHumans = rememberChatHistoryHumanStudents(facultyId, msgs);
       els.stream.innerHTML = "";
+      els.dialogueLogBody.innerHTML = "";
+      els.dialogueLog.open = false;
+      updateDialogueLogState();
       const fac = (lastTelemetry && lastTelemetry.faculty_roster || []).find((f) => f.id === facultyId);
       const teacherName = fac ? fac.displayName : facultyId;
       const teacherAccent = fac ? fac.accent : "#d22a2a";
-      if (summary) appendSystem("Earlier room summary · " + summary);
-      msgs.forEach((m) => {
-        if (m.role === "user") {
-          const isSelf = !!m.isSelf;
-          appendMsg({
-            kind: isSelf ? "you" : "player",
-            name: isSelf ? playerDisplayName() : (m.authorName || "Student"),
-            body: m.content,
-            color: isSelf ? "var(--accent)" : "#3aa3e0",
-            avatarUrl: m.avatarUrl || null,
-          });
-        }
-        else if (m.role === "assistant" && m.content) {
-          const info = teacherInfo(m.faculty || facultyId);
-          appendMsg({ kind: "teacher", name: info.name || teacherName, body: m.content, color: info.accent || teacherAccent, facultyId: info.facultyId || facultyId });
-        }
-        else if (m.role === "tool") {
-          const info = teacherInfo(m.faculty || facultyId);
-          appendTool(toolSummary(m, info.name));
-        }
-      });
+      setDialogueCompaction(summary);
+      rebuildingHistory = true;
+      try {
+        msgs.forEach((m) => {
+          if (m.role === "user") {
+            const isSelf = !!m.isSelf;
+            appendMsg({
+              kind: isSelf ? "you" : "player",
+              name: isSelf ? playerDisplayName() : (m.authorName || "Student"),
+              body: m.content,
+              color: isSelf ? "var(--accent)" : "#3aa3e0",
+              avatarUrl: m.avatarUrl || null,
+            });
+          }
+          else if (m.role === "assistant" && m.content) {
+            const info = teacherInfo(m.faculty || facultyId);
+            appendMsg({ kind: "teacher", name: info.name || teacherName, body: m.content, color: info.accent || teacherAccent, facultyId: info.facultyId || facultyId });
+          }
+          else if (m.role === "tool") {
+            const info = teacherInfo(m.faculty || facultyId);
+            appendTool(toolSummary(m, info.name));
+          }
+        });
+      } finally {
+        rebuildingHistory = false;
+      }
       syncPlayerMessageHeaders();
       scrollIfPinned(true);
       applyAuthUI();
@@ -10619,7 +10814,7 @@ export function runViewerClient(bootstrap) {
   function stampGradeOnLatestMessage(grade, isBest) {
     // Walk the chat log backwards and stamp the most recent body that came
     // from this responder. Cheap heuristic — acceptable for v1.
-    const nodes = Array.from(els.stream.querySelectorAll(".msg"));
+    const nodes = dialogueNodes(".msg");
     // Player messages render under playerDisplayName() (character first name,
     // or "You" when no character exists yet). Match either so the player's
     // grade-tag actually lands on their nametag.
@@ -10706,7 +10901,33 @@ export function runViewerClient(bootstrap) {
     });
   });
   els.generateMcBtn.addEventListener("click", generateMultipleChoice);
-  els.nextBtn.addEventListener("click", pickNext);
+  els.nextBtn.addEventListener("click", () => {
+    archiveLiveDialogue(0);
+    postViewerMetricEvent("scene_advanced", {
+      questionId: lastTelemetry && lastTelemetry.lastReveal && lastTelemetry.lastReveal.questionId,
+    });
+    void pickNext();
+  });
+  els.classroomScroll.addEventListener("scroll", () => {
+    if (isNearBottom()) els.sceneLatest.hidden = true;
+  }, { passive: true });
+  els.sceneLatest.addEventListener("click", () => {
+    scrollToLatest();
+    postViewerMetricEvent("scene_latest_used", {
+      questionId: lastTelemetry && lastTelemetry.lastReveal && lastTelemetry.lastReveal.questionId,
+    });
+  });
+  els.sceneSummary.addEventListener("toggle", () => {
+    if (els.sceneSummary.open) postViewerMetricEvent("scene_summary_opened", {
+      questionId: lastTelemetry && lastTelemetry.lastReveal && lastTelemetry.lastReveal.questionId,
+      beats: els.sceneSummaryBody.children.length,
+    });
+  });
+  els.dialogueLog.addEventListener("toggle", () => {
+    if (els.dialogueLog.open) postViewerMetricEvent("dialogue_log_opened", {
+      items: els.dialogueLogBody.children.length,
+    });
+  });
   els.hamburger.addEventListener("click", toggleRails);
   if (els.leaderboardBack) els.leaderboardBack.addEventListener("click", () => {
     showClassSurface(true);

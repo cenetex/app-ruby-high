@@ -95,6 +95,36 @@ test("keeps creator editing and the start-class action reachable on a small phon
   expect(errors).toEqual([]);
 });
 
+test("uses one classroom scroll with a compact scene summary", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  const { errors } = await openViewer(page);
+  await dismissAnnouncements(page);
+  await createCharacter(page);
+
+  await page.locator(".answer:not([disabled])").first().click();
+  await expect(page.locator(".first-bell-overlay")).toBeVisible();
+  await closeFirstBellReportIfVisible(page);
+  await expect(page.locator("#board-reveal")).toBeVisible();
+  await expect(page.locator("#scene-summary-host")).toBeVisible();
+  await expect(page.locator("#scene-summary")).not.toHaveAttribute("open", "");
+  await page.locator("#scene-summary summary").click();
+  await expect(page.locator(".scene-summary-beat")).toHaveCount(3);
+
+  const layout = await page.evaluate(() => ({
+    classroomOverflow: getComputedStyle(document.getElementById("classroom-scroll")!).overflowY,
+    boardOverflow: getComputedStyle(document.getElementById("board")!).overflowY,
+    streamOverflow: getComputedStyle(document.getElementById("stream")!).overflowY,
+    liveItems: document.querySelectorAll("#stream > *").length,
+  }));
+  expect(layout).toEqual({
+    classroomOverflow: "auto",
+    boardOverflow: "visible",
+    streamOverflow: "visible",
+    liveItems: 1,
+  });
+  expect(errors).toEqual([]);
+});
+
 test("keeps a specific Class Result after refresh with one truthful next step", async ({ page }) => {
   test.setTimeout(60_000);
   const { errors } = await openViewer(page);

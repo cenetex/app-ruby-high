@@ -53,6 +53,8 @@ type MetricsEventBody = {
   step?: unknown;
   failureKind?: unknown;
   statusCode?: unknown;
+  beats?: unknown;
+  items?: unknown;
 };
 
 const VIEWER_ONBOARDING_STEPS = new Set([
@@ -213,6 +215,29 @@ export async function handleMetricsEventRoute(
         metadata: {
           ...(requestString(body.questionId) ? { questionId: requestString(body.questionId) } : {}),
           ...(requestString(body.faculty) ? { faculty: requestString(body.faculty) } : {}),
+        },
+      });
+    });
+  }
+  if (
+    type === "scene_summary_opened" ||
+    type === "dialogue_log_opened" ||
+    type === "scene_latest_used" ||
+    type === "scene_advanced"
+  ) {
+    return await respondAfterMetricPersist(ctx, async () => {
+      const count = type === "scene_summary_opened" ? Number(body.beats) : Number(body.items);
+      await deps.ruby.recordMetricEventDurably(type, {
+        sessionId: deps.sessionId,
+        ...(visitorHash ? { visitorHash } : {}),
+        ...(clientSurface ? { clientSurface } : {}),
+        source: "viewer",
+        feature: "scene_flow",
+        step: type,
+        status: "success",
+        metadata: {
+          ...(requestString(body.questionId) ? { questionId: requestString(body.questionId) } : {}),
+          ...(Number.isInteger(count) && count >= 0 && count <= 100 ? { count } : {}),
         },
       });
     });

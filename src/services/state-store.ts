@@ -181,6 +181,10 @@ export type StoredMetricEventName =
   | "take_card_submitted"
   | "teacher_response_viewed"
   | "room_reaction_viewed"
+  | "scene_summary_opened"
+  | "dialogue_log_opened"
+  | "scene_latest_used"
+  | "scene_advanced"
   | "class_result_completed"
   | "class_result_viewed"
   | "class_record_saved"
@@ -911,6 +915,10 @@ export function isStoredMetricEventName(value: unknown): value is StoredMetricEv
     value === "take_card_submitted" ||
     value === "teacher_response_viewed" ||
     value === "room_reaction_viewed" ||
+    value === "scene_summary_opened" ||
+    value === "dialogue_log_opened" ||
+    value === "scene_latest_used" ||
+    value === "scene_advanced" ||
     value === "class_result_completed" ||
     value === "class_result_viewed" ||
     value === "class_record_saved" ||
