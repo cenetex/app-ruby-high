@@ -5,7 +5,7 @@ import { errorText, getService, getSessionId } from "./_helpers.js";
 export const gradeAnswerAction: Action = {
   name: "GRADE_ANSWER",
   description:
-    "Submit the student's pick (A/B/C/D). Quiz cards reveal correctness; story cards only lock the branch for a later result.",
+    "Submit the student's pick (A/B/C/D). Quiz cards reveal correctness; story cards commit a move whose event opens another assignment.",
   similes: ["REVEAL_ANSWER", "CHECK_ANSWER", "MARK_RESPONSE"],
   validate: async () => true,
   handler: async (
@@ -22,7 +22,7 @@ export const gradeAnswerAction: Action = {
       return {
         success: true,
         text: reveal.questionType === "story-choice"
-          ? `Choice locked: ${reveal.caseChoice?.choiceLabel ?? reveal.picked}. Its result comes later.`
+          ? `Choice locked: ${reveal.caseChoice?.choiceLabel ?? reveal.picked}. Follow the event it causes.`
           : reveal.wasCorrect
           ? `Correct! (${reveal.picked}) Record now ${state.score.correct}/${state.score.total}.`
           : `That was ${reveal.picked}. The answer was ${reveal.correct}. Record ${state.score.correct}/${state.score.total}.`,

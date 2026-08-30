@@ -260,7 +260,7 @@ export async function handleCommandRoute(args: {
       return await persist(
         state,
         state.lastReveal?.questionType === "story-choice"
-          ? "Choice locked; the story will reveal its result later."
+          ? "Choice locked; its event will open the next assignment."
           : state.lastReveal?.wasCorrect ? "Correct" : "Marked",
       );
     },

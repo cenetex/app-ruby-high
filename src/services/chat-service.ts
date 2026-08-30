@@ -1749,7 +1749,7 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
       const opts = reveal.questionOptions;
       const storyChoice = reveal.questionType === "story-choice";
       const answerLines = storyChoice
-        ? [reveal.caseChoice?.lockedText ?? "The choice is locked; its later effect is not known yet."]
+        ? [reveal.caseChoice?.lockedText ?? "The choice is locked; follow the event it causes."]
         : opts
         ? [
             `  A) ${opts.A ?? ""}`,
@@ -1766,7 +1766,7 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
         "BOARD STATUS: RECENTLY_RESOLVED.",
         "No live question is on the board now, but the last resolved card is still relevant for this turn.",
         storyChoice
-          ? `The player chose ${reveal.caseChoice?.choiceLabel ?? reveal.picked}. This scene has no correct answer; later evidence determines what the choice changed.`
+          ? `The player chose ${reveal.caseChoice?.choiceLabel ?? reveal.picked}. This scene has no correct answer; its authored event determines which assignment opens.`
         : reveal.forfeit
           ? "The player did not answer before the timer expired."
           : `The player answered ${reveal.answerText ?? reveal.picked} and was ${reveal.wasCorrect ? "correct" : "wrong"}.`,
@@ -1810,7 +1810,7 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
     ? q.type === "story-choice"
       ? [
         "BOARD STATUS: STORY_CHOICE_LOCKED.",
-        `The player chose ${state.lastReveal.caseChoice?.choiceLabel ?? state.lastReveal.picked}. Do not call it right or wrong; the later scene will reveal its effects.`,
+        `The player chose ${state.lastReveal.caseChoice?.choiceLabel ?? state.lastReveal.picked}. Do not call it right or wrong; follow the event and the assignment it opens.`,
         state.lastReveal.caseChoice?.lockedText ?? "",
         "The question scheduler will post the next story scene when the board clears.",
       ]
@@ -1845,7 +1845,7 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
         `  B) ${opts.B}`,
         `  C) ${opts.C}`,
         `  D) ${opts.D}`,
-        "No correct choice is defined. Consequences are delayed.",
+        "No correct choice is defined. Progression is gated by authored world events, not elapsed time.",
       ]
     : [
         `  A) ${opts.A}`,

@@ -581,7 +581,7 @@ function buildResolvedAnswerBriefing(args: {
     const eventText = [
       prompt ? `Story scene resolved for "${clipped(prompt, 180)}".` : "Story scene resolved.",
       pickedLine,
-      "Its consequences will be revealed on a later card.",
+      "Its authored event will open the next assignment.",
     ].join(" ");
     const contextLines = [
       "RESOLVED STORY CHOICE for this reaction.",

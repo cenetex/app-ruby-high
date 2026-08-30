@@ -3762,17 +3762,17 @@ export function runViewerClient(bootstrap) {
   }
 
   function buildCasePathResult(choice) {
-    if (!choice || !choice.delayedConsequence) return null;
+    if (!choice || !choice.eventConsequence) return null;
     const wrap = document.createElement("article");
     wrap.className = "case-path-result";
     const label = document.createElement("strong");
-    label.textContent = choice.delayedLabel || "What happened later";
+    label.textContent = choice.eventLabel || "The situation changes";
     const move = document.createElement("p");
     move.className = "case-path-move";
     move.textContent = "You chose: " + choice.choiceLabel;
     const result = document.createElement("p");
     result.className = "case-path-consequence";
-    result.textContent = choice.delayedConsequence;
+    result.textContent = choice.eventConsequence;
     wrap.append(label, move, result);
     (choice.revealedEvidence || []).forEach((item) => {
       const evidence = document.createElement("div");
@@ -3805,16 +3805,33 @@ export function runViewerClient(bootstrap) {
       top.className = "case-study-topline";
       const stage = document.createElement("span");
       stage.className = "case-study-stage";
-      stage.textContent = view.caseStudy.stage === "investigate"
-        ? "1 · Choose"
-        : view.caseStudy.stage === "decide"
-          ? "2 · Reconsider"
-          : "3 · Update";
+      stage.textContent = view.caseStudy.storyFunction
+        ? view.caseStudy.storyFunction + (view.caseStudy.nodeTitle ? " · " + view.caseStudy.nodeTitle : "")
+        : view.caseStudy.stage === "investigate"
+          ? "Sign"
+          : view.caseStudy.stage === "decide"
+            ? "Challenge"
+            : view.caseStudy.stage === "navigate"
+              ? "Discover"
+              : "Return";
       const title = document.createElement("strong");
       title.className = "case-study-title";
       title.textContent = view.caseStudy.title;
       top.append(stage, title);
       caseWrap.appendChild(top);
+      if (view.caseStudy.assignmentLabel || (view.caseStudy.route && view.caseStudy.route.length > 0)) {
+        const route = document.createElement("div");
+        route.className = "case-study-route";
+        const routeLabel = document.createElement("strong");
+        routeLabel.textContent = view.caseStudy.assignmentLabel || "Assignment route";
+        route.appendChild(routeLabel);
+        (view.caseStudy.route || []).forEach((step, index) => {
+          const node = document.createElement("span");
+          node.textContent = (index > 0 ? "→ " : "") + step.label;
+          route.appendChild(node);
+        });
+        caseWrap.appendChild(route);
+      }
       if (view.caseStudy.hook) {
         const hook = document.createElement("p");
         hook.className = "case-study-hook";

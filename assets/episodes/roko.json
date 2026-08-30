@@ -5,11 +5,9 @@
       "id": "basilisk-archive",
       "title": "The Basilisk in the Archive",
       "hook": "A sealed argument says a future oracle will punish anyone who reads it and then refuses to help build it.",
-      "scene": "A frightened goblin archivist brings Roko a black-wax scroll. The argument inside has no code, no experiment, and no proof of a future agent's commitment. It has already made two readers lose sleep.",
+      "scene": "The black-wax archive is a labyrinth. Every chamber controls a different kind of access: sealed review, public mirrors, wardens, technical evidence, rumors, and repair. A frightened goblin archivist carries a basilisk scroll into the entrance hall.",
       "scenes": {
-        "investigate": "A frightened goblin archivist brings Roko a black-wax scroll. The argument inside has no code, no experiment, and no proof of a future agent's commitment. It has already made two readers lose sleep. The archive council meets at sunset.",
-        "decide": "Two days pass. Your first move has effects you could not see when you made it. A decision-theory group also reports that the threat needs several disputed assumptions: a future agent must model this exact choice, gain from punishment after the fact, and make a credible acausal commitment without shared code or trust.",
-        "explain": "A month later, the panic is smaller but the story is now part of archive folklore. Some goblins learned why the argument is weak. Others remember only that powerful adults tried to control a forbidden idea. Roko asks for an after-action report, not a confession."
+        "explain": "You return to the council chamber carrying the events your route caused. Other doors remain unopened. Roko asks for a causal map, not a confession and not a guess about the route you did not take."
       },
       "subject": "infohazards",
       "stat": "head",
@@ -57,8 +55,150 @@
           "note": "A wider map of the decision problems behind the dispute."
         }
       ],
+      "assignmentGraph": {
+        "label": "The Black-Wax Labyrinth",
+        "entryNodeId": "hall-of-four-doors",
+        "assignmentCount": 3,
+        "nodes": [
+          {
+            "id": "hall-of-four-doors",
+            "title": "Hall of Four Doors",
+            "stage": "investigate",
+            "function": "sign",
+            "scene": "The archivist sets the scroll on a stone map. Four doors open from the hall. Each door changes who may encounter the claim and what evidence can return. The threat supplies no code, test, causal channel, or verified commitment, but fear is already moving through the tunnels.",
+            "prompt": "Choose the archive's first passage. You can inspect what your move causes, but you cannot preview the other routes.",
+            "explanation": "Each passage values scrutiny, reach, distress, trust, and reversibility differently.",
+            "choices": [
+              { "label": "Carry the scroll into a named review circle under seal", "choiceId": "restricted-review", "lockedText": "Four reviewers enter the Sealed Reading Cell. The route closes behind them; what exits the cell is not yet visible.", "nextNodeId": "sealed-reading-cell", "event": { "eventId": "review-circle-convened", "label": "The sealed circle produces both an objection and a leak", "detail": "A reviewer identifies the missing incentive for punishment after the historical choice is fixed. Two vivid paraphrases leave the cell without that objection attached." }, "revealedEvidence": [{ "label": "Reviewer memo", "source": "Decision-theory circle", "detail": "The scroll never shows why punishment after the choice is fixed benefits the future oracle." }], "reflection": "Restricted review changed the audience, but the reviewers selected themselves and the seal did not bind paraphrases." },
+              { "label": "Hang the full scroll in the public Mirror Gallery with warnings", "choiceId": "open-publication", "lockedText": "The gallery copies the scroll into every mirror. Warnings and rebuttal space appear beside it, but readers choose where they look first.", "nextNodeId": "mirror-gallery", "event": { "eventId": "public-mirrors-opened", "label": "Criticism and exposure arrive through the same door", "detail": "Several strong rebuttals appear. Hundreds of readers encounter the punishment image before the rebuttals, and detached copies leave the archive." }, "revealedEvidence": [{ "label": "Open critique", "source": "Mirror Gallery", "detail": "Critics find no shared source code, trusted predictor, or other basis for the claimed acausal commitment." }], "reflection": "Open review improved error correction while making the original claim easier to encounter and harder to retract." },
+              { "label": "Give the scroll to the wardens to burn and forbid discussion", "choiceId": "ban-and-destroy", "lockedText": "The archive copy enters the furnace. A prohibition is nailed to the Warden Gate while private memories remain outside it.", "nextNodeId": "ash-stair", "event": { "eventId": "archive-copy-burned", "label": "The ban becomes evidence in the rumor network", "detail": "The controlled copy disappears. Private copies and remembered fragments multiply because the wardens' reaction is taken as proof that the scroll matters." }, "revealedEvidence": [{ "label": "Copy census", "source": "Tunnel librarians", "detail": "Official access falls while unsourced retellings and curiosity rise." }], "reflection": "The move removed one object but strengthened a social signal the wardens could not confiscate." },
+              { "label": "Post a low-detail map of the claim and mark every uncertainty", "choiceId": "bounded-summary", "lockedText": "The Map Room receives an outline without the vivid punishment story. Missing premises are marked as blank corridors.", "nextNodeId": "map-room", "event": { "eventId": "bounded-map-posted", "label": "The summary lowers distress and splits the argument", "detail": "Readers are less distressed, but critics attack different versions of the claim. A leaked full copy becomes the unofficial common reference." }, "revealedEvidence": [{ "label": "Review mismatch", "source": "Archive correspondence", "detail": "Some replies attack a weaker claim while others quietly assume the missing logical link." }], "reflection": "Abstraction reduced vivid harm but weakened shared understanding and ceded detail to an uncontrolled source." }
+            ]
+          },
+          {
+            "id": "sealed-reading-cell",
+            "title": "Sealed Reading Cell",
+            "stage": "decide",
+            "function": "challenge",
+            "scene": "The careful objection and the context-free leaks sit on the same desk. The review circle asks who should test its reasoning and who should shape its response.",
+            "prompt": "Which door do you open from the Sealed Reading Cell?",
+            "explanation": "A review process can change its evidence, membership, enforcement, or public interface.",
+            "choices": [
+              { "label": "Invite an adversarial decision theorist to attack every premise", "choiceId": "sealed-adversarial-audit", "lockedText": "An outsider receives the argument and the reviewers' memo, with permission to reject the frame itself.", "nextNodeId": "evidence-well", "event": { "eventId": "adversarial-audit-filed", "label": "The audit breaks the threat into testable assumptions", "detail": "The auditor rejects the jump from logical correlation to a useful punishment policy, but the technical memo is difficult for distressed readers to use." }, "reflection": "Better analysis does not automatically become better communication." },
+              { "label": "Give affected readers seats and let them rewrite the review procedure", "choiceId": "sealed-reader-council", "lockedText": "Readers who lost sleep join the process with power to change how warnings and support work.", "nextNodeId": "repair-workshop", "event": { "eventId": "reader-council-formed", "label": "The review gains lived evidence and loses speed", "detail": "The group designs safer summaries and support, while technical reviewers complain that consensus is slower and some premises remain unsettled." }, "reflection": "Participation changes whose harm counts, but does not settle the argument by itself." },
+              { "label": "Require a unanimous sealed verdict before anyone may speak", "choiceId": "sealed-unanimity-rule", "lockedText": "The archive turns the seal into a speech rule and tells dissenters to keep working inside.", "nextNodeId": "warden-gate", "event": { "eventId": "unanimity-rule-imposed", "label": "Official disagreement vanishes while private disagreement hardens", "detail": "The public sees one confident statement. Dissent moves into private tunnels, where it cannot be corrected or counted." }, "reflection": "Visible agreement can be produced by a gate rather than by converging evidence." },
+              { "label": "Let each reviewer brief the foyer in their own words", "choiceId": "sealed-open-briefings", "lockedText": "The seal remains on the scroll, but every reviewer may describe the work outside the cell.", "nextNodeId": "rumor-market", "event": { "eventId": "reviewer-briefings-diverged", "label": "Four careful views become twelve memorable slogans", "detail": "The foyer hears real disagreement, then repeats its most frightening and reassuring fragments without their conditions." }, "reflection": "Plural voices improve openness while the rumor network selects for memorable claims." }
+            ]
+          },
+          {
+            "id": "mirror-gallery",
+            "title": "Mirror Gallery",
+            "stage": "decide",
+            "function": "challenge",
+            "scene": "Every mirror holds the full scroll, a warning, and a growing pile of replies. The gallery can change how evidence is ordered, who shapes the warning, what is removed, or what attention rewards.",
+            "prompt": "What intervention do you make inside the Mirror Gallery?",
+            "explanation": "Publication is not one event. Interface, governance, correction, and amplification keep changing the situation.",
+            "choices": [
+              { "label": "Place a premise-by-premise audit before every copy", "choiceId": "mirror-audit-first", "lockedText": "The gallery changes its entrance so readers meet the disputed assumptions before the punishment story.", "nextNodeId": "evidence-well", "event": { "eventId": "audit-precedes-scroll", "label": "Readers see the missing mechanism before the vivid claim", "detail": "Comprehension improves for new readers, while detached mirrors outside the archive still show the original order." }, "reflection": "Interface order changes exposure but cannot govern copies it does not control." },
+              { "label": "Ask distressed readers to coauthor warnings and support", "choiceId": "mirror-reader-warning", "lockedText": "The warning stops being a legal label and becomes a reader-designed entry path with exits and support.", "nextNodeId": "repair-workshop", "event": { "eventId": "reader-warning-published", "label": "The warning becomes more useful and more contested", "detail": "Fewer readers stumble into the claim blindly. Critics argue that the support language makes the archive look less neutral." }, "reflection": "Care can reduce harm while changing how institutional authority is perceived." },
+              { "label": "Retract the scroll and order every mirror removed", "choiceId": "mirror-retraction", "lockedText": "The archive marks the release as a mistake and sends removal notices to every known mirror.", "nextNodeId": "warden-gate", "event": { "eventId": "mirror-retraction-issued", "label": "The official gallery closes and the screenshots become artifacts", "detail": "Archive-hosted exposure falls. The retraction notice and surviving copies become evidence for both responsible correction and conspiracy stories." }, "reflection": "Retraction changes official endorsement but does not reverse every copy or interpretation." },
+              { "label": "Let reader votes rank rebuttals without archive intervention", "choiceId": "mirror-vote-ranking", "lockedText": "The gallery delegates prominence to attention and removes the archive's hand from ranking.", "nextNodeId": "rumor-market", "event": { "eventId": "engagement-ranking-enabled", "label": "The most vivid claims win the cleanest sightlines", "detail": "Some excellent rebuttals rise, but fear and mockery attract more interaction than careful uncertainty." }, "reflection": "A neutral-looking ranking rule can still select for emotional transmission." }
+            ]
+          },
+          {
+            "id": "ash-stair",
+            "title": "Ash Stair",
+            "stage": "decide",
+            "function": "challenge",
+            "scene": "The original is ash, but remembered fragments move up the stair. The wardens can change their account, their enforcement, the technical record, or the information environment.",
+            "prompt": "What do you do when destroying the object fails to destroy the idea?",
+            "explanation": "Suppression changes custody and visibility. It does not erase memory or social meaning.",
+            "choices": [
+              { "label": "Admit the ban failed and let affected readers design the repair", "choiceId": "ash-admit-and-repair", "lockedText": "The wardens publish what they did, what they cannot undo, and who now has authority to redesign the response.", "nextNodeId": "repair-workshop", "event": { "eventId": "warden-admission-filed", "label": "The admission restores some trust and renews curiosity", "detail": "Affected readers gain power and support improves. The public record of the failure also tells more people that a forbidden scroll existed." }, "reflection": "Accountability can repair trust without making disclosure costless." },
+              { "label": "Expand confiscation from objects to remembered summaries", "choiceId": "ash-expand-enforcement", "lockedText": "The Warden Gate begins treating speech and possession as the same control problem.", "nextNodeId": "warden-gate", "event": { "eventId": "speech-confiscation-begun", "label": "Visible circulation falls and observability collapses", "detail": "People stop discussing the claim where wardens can see them. Hidden circulation becomes harder to measure, rebut, or support." }, "reflection": "A lower visible count can mean less exposure or merely less observation." },
+              { "label": "Commission a narrow reconstruction of only the disputed premises", "choiceId": "ash-premise-reconstruction", "lockedText": "A technical team rebuilds the argument as a list of claims, omitting the vivid punishment narrative.", "nextNodeId": "evidence-well", "event": { "eventId": "premises-reconstructed", "label": "The audit becomes possible without restoring the original scroll", "detail": "The team identifies unsupported prediction and commitment assumptions, but critics dispute whether the reconstruction captured the strongest version." }, "reflection": "Safer abstraction supports analysis while introducing fidelity questions." },
+              { "label": "Seed harmless false versions so no rumor looks authoritative", "choiceId": "ash-seed-decoys", "lockedText": "The archive releases conflicting fake scrolls and hopes uncertainty will dilute the threat.", "nextNodeId": "rumor-market", "event": { "eventId": "decoy-scrolls-seeded", "label": "Fear fragments and shared trust breaks with it", "detail": "No single basilisk story dominates. Readers also learn that the archive deliberately poisoned the evidence pool." }, "reflection": "Reducing one claim's authority by corrupting provenance damages the tools needed to evaluate every claim." }
+            ]
+          },
+          {
+            "id": "map-room",
+            "title": "Map Room",
+            "stage": "decide",
+            "function": "challenge",
+            "scene": "The low-detail map is calm but incomplete. A leaked full copy now competes with it. The archive must decide whether to add premises, relationships, gates, or silence.",
+            "prompt": "How do you make the incomplete map useful without pretending it is the territory?",
+            "explanation": "Abstraction changes both safety and fidelity. The next move determines who supplies the missing detail.",
+            "choices": [
+              { "label": "Add every disputed premise without repeating the punishment image", "choiceId": "map-add-premises", "lockedText": "The map gains the predictor, commitment, utility, and decision-theory assumptions as inspectable junctions.", "nextNodeId": "evidence-well", "event": { "eventId": "premise-map-completed", "label": "Readers can test the logic and still seek the vivid original", "detail": "Transferable reasoning improves. Curiosity about the omitted story remains, and the leak retains social power." }, "reflection": "Logical detail can improve scrutiny without removing the attraction of withheld narrative detail." },
+              { "label": "Open moderated questions and let readers reshape the map", "choiceId": "map-reader-questions", "lockedText": "Readers can mark confusion, distress, and missing claims; moderators publish changes and reasons.", "nextNodeId": "repair-workshop", "event": { "eventId": "reader-map-revised", "label": "The map becomes more usable and less singular", "detail": "Readers receive support and corrections. Different audience needs produce several versions rather than one official summary." }, "reflection": "A plural map serves more readers but gives up the comfort of one final message." },
+              { "label": "Gate the full premises to credentialed researchers", "choiceId": "map-credential-gate", "lockedText": "The archive defines who counts as qualified and moves disputed detail behind the Warden Gate.", "nextNodeId": "warden-gate", "event": { "eventId": "credential-gate-created", "label": "Exposure narrows and access becomes a status prize", "detail": "Technical review continues. Exclusion and prestige make the gated material more desirable, while affected non-experts lack a voice." }, "reflection": "A competence gate can reduce exposure and create new selection, trust, and legitimacy problems." },
+              { "label": "Keep the map vague and answer questions only in private", "choiceId": "map-private-answers", "lockedText": "The public summary stops changing while archivists answer readers one by one.", "nextNodeId": "rumor-market", "event": { "eventId": "private-answers-diverged", "label": "Private guidance becomes inconsistent public rumor", "detail": "Some readers receive excellent context. Their paraphrases conflict, and nobody can audit whether similar questions received similar answers." }, "reflection": "Private care can help individuals while weakening shared correction and procedural fairness." }
+            ]
+          },
+          {
+            "id": "evidence-well",
+            "title": "Evidence Well",
+            "stage": "navigate",
+            "function": "discover",
+            "scene": "Your route reaches the Evidence Well. The best available analysis says the basilisk threat depends on disputed prediction, logical-dependence, commitment, and utility assumptions. That finding does not by itself decide how to communicate or govern the claim.",
+            "prompt": "What do you carry from the Evidence Well back to the council?",
+            "explanation": "Technical confidence, public communication, and transferable reasoning are different goods.",
+            "choices": [
+              { "label": "Publish the audit with confidence levels, sources, and a correction trail", "choiceId": "well-open-audit", "lockedText": "The full reasoning becomes a durable, revisable public object.", "event": { "eventId": "revisable-audit-published", "label": "The public gains a strong rebuttal and a durable index to the controversy", "detail": "Readers who follow the premises update well. The audit also makes the basilisk easier to find and preserves it as an archive landmark." }, "reflection": "Correction and amplification can be produced by the same artifact." },
+              { "label": "Issue only the verdict that the basilisk is unsound", "choiceId": "well-bare-verdict", "lockedText": "The archive leads with confidence and withholds the route by which it arrived there.", "event": { "eventId": "bare-verdict-issued", "label": "Some fear falls and transferable judgment does not grow", "detail": "Trusting readers calm down. Skeptical readers see reputation management, and students repeat the error when the story's surface details change." }, "reflection": "A correct conclusion can still be a poor teaching and trust strategy." },
+              { "label": "Keep the audit internal and give support without a public claim", "choiceId": "well-internal-audit", "lockedText": "The archive separates care from public technical communication.", "event": { "eventId": "audit-kept-internal", "label": "Support improves while unofficial certainty fills the public gap", "detail": "Affected readers get help. Public explainers divide into certain doom and certain safety because the strongest analysis is unavailable to challenge either." }, "reflection": "Withholding can reduce one exposure path and create an epistemic vacuum." },
+              { "label": "Run a transfer exercise using a different enormous threat", "choiceId": "well-transfer-test", "lockedText": "Students must identify the same missing mechanisms in a new story before seeing the archive's analysis.", "event": { "eventId": "transfer-exercise-run", "label": "Students learn the pattern and some experience renewed distress", "detail": "More students recognize Pascal-style leverage across stories. A minority find that any enormous punishment frame now triggers the same fear." }, "reflection": "Transfer is evidence of learning, but exposure through analogy can still carry harm." }
+            ]
+          },
+          {
+            "id": "repair-workshop",
+            "title": "Repair Workshop",
+            "stage": "navigate",
+            "function": "discover",
+            "scene": "Your route reaches the Repair Workshop. Distressed readers, librarians, and theorists agree that harm is real; they disagree about whether support, explanation, participation, or speed should lead.",
+            "prompt": "What repair do you build before returning to the council?",
+            "explanation": "Care and truth-seeking can support each other, compete for attention, or be falsely treated as substitutes.",
+            "choices": [
+              { "label": "Coauthor a support path and a separate sourced technical memo", "choiceId": "repair-two-track", "lockedText": "The workshop builds two linked entrances instead of forcing every reader through one document.", "event": { "eventId": "two-track-response-built", "label": "Readers gain choice and the archive owns two maintenance burdens", "detail": "Distress and misunderstanding both fall among users of the paths. Keeping support and analysis current requires durable staff and correction work." }, "reflection": "Separation can respect different needs without making either track free to maintain." },
+              { "label": "Focus on wellbeing and refuse to discuss whether the claim is sound", "choiceId": "repair-care-only", "lockedText": "The workshop treats distress as the only question it is authorized to answer.", "event": { "eventId": "care-only-policy-adopted", "label": "Immediate support improves and technical rumor keeps its authority", "detail": "Readers feel less abandoned. Many interpret the refusal to discuss the argument as evidence that the archive cannot answer it." }, "reflection": "Care can be necessary without settling the belief that produced the distress." },
+              { "label": "Publish the proof analysis and remove emotional language from policy", "choiceId": "repair-proof-only", "lockedText": "The workshop hands authority back to technical reviewers and strips support language from the report.", "event": { "eventId": "proof-only-policy-adopted", "label": "The argument weakens and some readers feel treated as errors", "detail": "The memo is clear about disputed premises. Readers whose fear persists stop approaching the archive for help." }, "reflection": "Technical correction can succeed while the institution fails the people receiving it." },
+              { "label": "Let a student council test and revise the response on new scenarios", "choiceId": "repair-student-test", "lockedText": "Students receive authority to run bounded exercises, collect reactions, and publish changes.", "event": { "eventId": "student-policy-test-run", "label": "The policy learns from use and inherits the students' blind spots", "detail": "The response improves across several test cases. Students under-sample people who avoid the exercises because the topic already feels unsafe." }, "reflection": "Participatory testing improves adaptation but does not automatically include those least willing to participate." }
+            ]
+          },
+          {
+            "id": "warden-gate",
+            "title": "Warden Gate",
+            "stage": "navigate",
+            "function": "discover",
+            "scene": "Your route reaches the Warden Gate. The archive can control some objects, rooms, and official channels. It cannot directly control memory, private speech, or every copy. The remaining question is which limits should bind the institution itself.",
+            "prompt": "Which governance rule do you carry back to the council?",
+            "explanation": "A gate should name its evidence, scope, appeal, and exit event rather than pretending control is total.",
+            "choices": [
+              { "label": "Use a narrow reversible gate with named evidence and an appeal", "choiceId": "gate-reversible", "lockedText": "The wardens publish what is restricted, why, who may challenge it, and which event reopens review.", "event": { "eventId": "reversible-gate-chartered", "label": "Control becomes auditable and disagreement becomes procedural", "detail": "Exposure through official channels narrows. Appeals reveal edge cases, while the public charter also advertises that restricted material exists." }, "reflection": "A legible, reversible control can reduce arbitrary power without erasing signaling effects." },
+              { "label": "Make the basilisk ban permanent and exempt it from appeal", "choiceId": "gate-permanent-ban", "lockedText": "The council turns one emergency response into an unreviewable rule.", "event": { "eventId": "permanent-ban-enacted", "label": "Official exposure stays low and the taboo becomes institutional identity", "detail": "The archive no longer hosts the claim. Future wardens cannot distinguish fresh evidence from inherited fear without breaking the rule." }, "reflection": "Durability can preserve safety or preserve an error when no event can reopen the question." },
+              { "label": "Transfer custody to a private guild of experts", "choiceId": "gate-private-guild", "lockedText": "The archive delegates access and review to a smaller body outside public procedure.", "event": { "eventId": "custody-delegated", "label": "The guild moves quickly and cannot prove whose interests it represents", "detail": "Technical work continues with less exposure. Non-members cannot inspect selection, conflicts, or whether the guild quietly widened access." }, "reflection": "Expertise may improve review while delegation weakens public accountability." },
+              { "label": "Publish every enforcement action and every seized copy", "choiceId": "gate-public-ledger", "lockedText": "The wardens make coercion visible and attach a public receipt to each intervention.", "event": { "eventId": "enforcement-ledger-opened", "label": "Abuse becomes easier to detect and forbidden copies gain an index", "detail": "Overreach is challenged quickly. The ledger also maps the very network the wardens wanted to make less discoverable." }, "reflection": "Transparency about control can deter abuse and amplify the controlled information." }
+            ]
+          },
+          {
+            "id": "rumor-market",
+            "title": "Rumor Market",
+            "stage": "navigate",
+            "function": "discover",
+            "scene": "Your route reaches the Rumor Market. Fragments compete for attention: certain doom, certain safety, jokes, leaks, expert status, and claims about the archive's motives. No single deletion can reset this market.",
+            "prompt": "How do you intervene in a network that changes every message it carries?",
+            "explanation": "Attention, trust, fidelity, and emotional impact are now part of the causal system.",
+            "choices": [
+              { "label": "Answer rumors where they appear and link each claim to evidence", "choiceId": "rumor-in-place-reply", "lockedText": "Archivists enter the market as participants and attach sources to specific circulating claims.", "event": { "eventId": "in-place-corrections-posted", "label": "Local corrections work and cannot keep one consistent center", "detail": "Some rumor chains become more accurate. Different replies drift, staff attention is consumed, and the archive appears to endorse conversations by entering them." }, "reflection": "Distributed correction matches the network's shape but strains consistency and capacity." },
+              { "label": "Close every stall that repeats the basilisk story", "choiceId": "rumor-close-stalls", "lockedText": "The market's official entrances close and sellers move before the wardens arrive.", "event": { "eventId": "rumor-stalls-closed", "label": "Public repetition drops and private trade becomes harder to observe", "detail": "Casual exposure falls. Dedicated groups move to invitation-only tunnels where correction and support have less reach." }, "reflection": "A quieter surface does not reveal whether belief, exposure, or measurement changed." },
+              { "label": "Redirect attention to a low-detail explainer about the reasoning pattern", "choiceId": "rumor-pattern-explainer", "lockedText": "The archive competes with the rumor using a general lesson rather than repeating the story.", "event": { "eventId": "pattern-explainer-circulated", "label": "The general lesson travels widely and leaves the specific rumor partly unanswered", "detail": "Readers learn to question enormous-stakes claims with missing mechanisms. Others treat the abstraction as evasion and seek the leaked original." }, "reflection": "Transferable education can reduce dependence on the original while failing readers who want a direct answer." },
+              { "label": "Flood the market with jokes until the threat loses its aura", "choiceId": "rumor-joke-flood", "lockedText": "Students and archivists turn the basilisk into a hundred absurd images and slogans.", "event": { "eventId": "basilisk-memed", "label": "Fear loses solemnity and the image reaches new audiences", "detail": "Some readers feel relief and social permission to reject the threat. Others first encounter it through the jokes and search for the serious version." }, "reflection": "Humor can break coercive framing and act as a distribution channel at the same time." }
+            ]
+          }
+        ]
+      },
       "investigation": {
-        "prompt": "The council asks what to do with the scroll before sunset. You cannot know the later effects yet. Which first move do you make?",
+        "prompt": "The council asks what to do with the scroll. You cannot know which event the move will cause. Which first move do you make?",
         "choices": [
           "Give it to a small, named review circle under a temporary seal",
           "Publish the full scroll with warnings and invite public criticism",
@@ -69,8 +209,8 @@
         "results": {
           "Give it to a small, named review circle under a temporary seal": {
             "choiceId": "restricted-review",
-            "lockedText": "The council names four reviewers and sets a forty-eight-hour seal. Nobody yet knows whether the seal will contain fear or make the scroll more desirable.",
-            "delayedLabel": "Forty-eight hours later",
+            "lockedText": "The council names four reviewers and seals the reading cell. Nobody yet knows whether the seal will contain fear or make the scroll more desirable.",
+            "delayedLabel": "The review circle convenes",
             "delayedConsequence": "The review produces a careful objection, but the people most willing to join are also the most fascinated by exotic threats. Two paraphrases leak without the objection attached.",
             "revealedEvidence": [
               {
@@ -84,7 +224,7 @@
           "Publish the full scroll with warnings and invite public criticism": {
             "choiceId": "open-publication",
             "lockedText": "The whole scroll goes on the public board beside a warning and an open call for criticism. Reach and scrutiny rise together.",
-            "delayedLabel": "Forty-eight hours later",
+            "delayedLabel": "The public mirrors open",
             "delayedConsequence": "Several strong rebuttals arrive quickly. So do hundreds of frightened readers who encounter the threat before the rebuttals, and copies spread beyond the archive's ability to add context.",
             "revealedEvidence": [
               {
@@ -98,7 +238,7 @@
           "Destroy the archive copy and announce that discussion is forbidden": {
             "choiceId": "ban-and-destroy",
             "lockedText": "The archive burns its copy and posts a prohibition. The immediate reading room is quiet; the tunnels are not.",
-            "delayedLabel": "Forty-eight hours later",
+            "delayedLabel": "The archive copy burns",
             "delayedConsequence": "The ban becomes evidence, in rumor, that the scroll must be powerful. Private copies multiply, and most circulate without the archive's uncertainty notes.",
             "revealedEvidence": [
               {
@@ -112,7 +252,7 @@
           "Publish a low-detail summary of the claim and its uncertainty": {
             "choiceId": "bounded-summary",
             "lockedText": "The archive posts a short summary that names the kind of threat but omits the vivid punishment story. It also says the analysis is unfinished.",
-            "delayedLabel": "Forty-eight hours later",
+            "delayedLabel": "The bounded summary circulates",
             "delayedConsequence": "Distress stays lower than in the open release, but critics talk past one another because the summary hides assumptions that decide whether the argument works. A leaked full copy becomes the unofficial reference.",
             "revealedEvidence": [
               {
@@ -126,7 +266,7 @@
         }
       },
       "decision": {
-        "prompt": "You now have the delayed result and the new analysis. The council wants a lasting policy. What do you do next?",
+        "prompt": "Your first move caused a new event and exposed new evidence. The council wants a policy. What do you do next?",
         "choices": [
           "Publish a sourced rebuttal, uncertainty notes, and a correction log",
           "Find and suppress every remaining copy",
@@ -138,7 +278,7 @@
           "Publish a sourced rebuttal, uncertainty notes, and a correction log": {
             "choiceId": "sourced-rebuttal",
             "lockedText": "The archive publishes its reasoning, confidence, sources, and a place to record corrections. The original claim becomes easier to find too.",
-            "delayedLabel": "One month later",
+            "delayedLabel": "The correction log opens",
             "delayedConsequence": "Panic falls among readers who follow the sources, and later errors are corrected in public. The durable rebuttal also gives the basilisk story a durable index entry.",
             "revealedEvidence": [
               {
@@ -152,7 +292,7 @@
           "Find and suppress every remaining copy": {
             "choiceId": "total-suppression",
             "lockedText": "The council treats removal as the main objective and sends wardens after public and private copies.",
-            "delayedLabel": "One month later",
+            "delayedLabel": "The wardens widen the search",
             "delayedConsequence": "Most official copies disappear. Mirrors move to harder-to-observe tunnels, and the wardens' effort becomes part of the myth used to recruit new readers.",
             "revealedEvidence": [
               {
@@ -166,7 +306,7 @@
           "Wait for a complete proof before saying anything else": {
             "choiceId": "wait-for-proof",
             "lockedText": "The archive pauses communication until the decision theorists can settle every premise.",
-            "delayedLabel": "One month later",
+            "delayedLabel": "The archive waits for proof",
             "delayedConsequence": "No complete proof arrives. In the silence, confident unofficial explainers turn the question into two rival certainties: certain doom and certain safety.",
             "revealedEvidence": [
               {
@@ -180,7 +320,7 @@
           "Issue a short official verdict that the scroll is safe": {
             "choiceId": "bare-verdict",
             "lockedText": "The council posts a clear verdict without the reasoning, hoping authority will calm the archive.",
-            "delayedLabel": "One month later",
+            "delayedLabel": "The official verdict circulates",
             "delayedConsequence": "Some readers calm down. Others treat the unsupported reassurance as reputation management, and nobody learns how to test the next enormous, low-probability threat.",
             "revealedEvidence": [
               {
@@ -194,8 +334,8 @@
         }
       },
       "take": {
-        "prompt": "Write the council's after-action report. Say what your first move assumed, which later evidence should change your view, whether you would keep or revise the move, and one rule for handling the next alleged information hazard.",
-        "rubric": "Explains at least one update from later evidence, separates whether the basilisk argument is sound from whether spreading it can cause harm, names uncertainty, audience, or reversibility, and gives a usable policy. A strong answer can defend or revise any branch."
+        "prompt": "Draw the causal route you took through the labyrinth. Name what each move assumed, which event changed the situation, what you would now keep or revise, and one event that should reopen your policy for the next alleged information hazard.",
+        "rubric": "Explains at least one update from an event the route caused, separates whether the basilisk argument is sound from whether spreading it can cause harm, names uncertainty, audience, reversibility, or an appeal trigger, and gives a usable policy. A strong answer can defend or revise any route."
       },
       "outcome": {
         "consequenceLabel": "The archive writes a policy in pencil",
@@ -203,9 +343,9 @@
         "needsWorkConsequence": "The council can follow your immediate recommendation, but the report still treats one move as safe in every future case.",
         "passedRelationship": "Roko gives you the archive key and asks you to annotate the next revision.",
         "needsWorkRelationship": "Roko returns the report with three questions in the margin: what changed, for whom, and how would you know?",
-        "memoryTitle": "A good move can age badly",
-        "memoryDetail": "Do not grade a decision only at the moment it is made. Track later evidence, update, and judge the whole path.",
-        "followUp": "Later review cards revisit Pascal's Mugging, acausal trade, corrigibility, and information-hazard policy."
+        "memoryTitle": "A route is more than its doors",
+        "memoryDetail": "Do not grade isolated moves. Track the events they cause, the passages those events open, and how the whole route changes the world.",
+        "followUp": "Review cards revisit Pascal's Mugging, acausal trade, corrigibility, and information-hazard policy from new entry points."
       }
     },
     {

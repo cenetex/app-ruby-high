@@ -3052,6 +3052,20 @@ export const VIEWER_CSS = `
     font-size: 14px;
     line-height: 1.2;
   }
+  .board .case-study-route {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    padding: 6px 7px;
+    border: 1px solid rgba(202,165,255,0.28);
+    border-radius: 6px;
+    background: rgba(125,78,181,0.10);
+    font-size: 9px;
+    line-height: 1.25;
+  }
+  .board .case-study-route strong { color: #e3c8ff; }
+  .board .case-study-route span { color: var(--ink); }
   .board .case-study-hook,
   .board .case-study-scene {
     margin: 0;

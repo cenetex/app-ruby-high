@@ -188,14 +188,28 @@ export interface CaseStudySource {
   note: string;
 }
 
-/** A choice whose meaning is revealed on a later story card. */
+export type CaseStudyStage = "investigate" | "decide" | "navigate" | "explain";
+export type CaseStudyFunction = "hearth" | "sign" | "venture" | "challenge" | "discover" | "return";
+
+/** A world event caused by a committed story move. Events, rather than
+ *  elapsed time or a fixed card number, open the next assignment node. */
+export interface CaseStudyEvent {
+  eventId: string;
+  label: string;
+  detail: string;
+}
+
+/** A choice whose meaning is revealed when its authored world event lands. */
 export interface CaseStudyChoiceResult {
   choiceId: string;
-  stage: "investigate" | "decide";
+  stage: Exclude<CaseStudyStage, "explain">;
   choiceLabel: string;
   lockedText: string;
-  delayedLabel: string;
-  delayedConsequence: string;
+  /** Assignment node that offered this move. Legacy cases may omit it. */
+  nodeId?: string;
+  /** Next assignment opened by `event`. Omitted when the route returns. */
+  nextNodeId?: string;
+  event: CaseStudyEvent;
   revealedEvidence?: CaseStudyEvidence[];
   reflection: string;
 }
@@ -223,6 +237,11 @@ export interface CaseStudyActionResult {
 export interface CaseStudyProgress {
   episodeId: string;
   choices: CaseStudyChoiceResult[];
+  /** Current graph node. Null means the route is ready to return. */
+  currentNodeId?: string | null;
+  visitedNodeIds?: string[];
+  events?: CaseStudyEvent[];
+  /** Audit timestamp only. It never controls story eligibility. */
   actedAt: number;
 }
 
@@ -232,10 +251,15 @@ export interface CaseStudyCard {
   title: string;
   hook: string;
   scene: string;
-  stage: "investigate" | "decide" | "explain";
+  stage: CaseStudyStage;
+  assignmentLabel?: string;
+  nodeId?: string;
+  nodeTitle?: string;
+  storyFunction?: CaseStudyFunction;
+  route?: Array<{ nodeId: string; label: string }>;
   evidence: CaseStudyEvidence[];
   sources?: CaseStudySource[];
-  /** Earlier choices appear only after their delayed results are available. */
+  /** Earlier choices appear only after their causal events are available. */
   priorChoices?: CaseStudyChoiceResult[];
   /** The investigation selected earlier in this case. It appears only after
    *  the move has resolved, so later stages can ask the player to verify it. */
@@ -334,7 +358,7 @@ export interface Question {
   answerConsequences?: Record<string, string>;
   /** Bounded investigation reports keyed by semantic answer text. */
   caseActionResults?: Record<string, CaseStudyActionResult>;
-  /** Delayed story results keyed by semantic choice text. */
+  /** Event-driven story results keyed by semantic choice text. */
   storyChoiceResults?: Record<string, CaseStudyChoiceResult>;
   /** Stored on a case's final explanation card so the class report can show
    *  the consequence, relationship beat, and durable memory. */
@@ -436,10 +460,10 @@ export interface LastReveal {
     detail: string;
   };
   caseActionResult?: CaseStudyActionResult;
-  /** The move just locked. Its delayed result is intentionally not included. */
+  /** The move just locked. Its event stays private until the next assignment. */
   caseChoice?: {
     choiceId: string;
-    stage: "investigate" | "decide";
+    stage: Exclude<CaseStudyStage, "explain">;
     choiceLabel: string;
     lockedText: string;
   };

@@ -49,15 +49,19 @@ describe("daily class progress view", () => {
     expect(view.continuationLabel).toBe("Next: Question 3");
   });
 
-  it("labels Roko's hosted case as choose, reconsider, update, and outcome", () => {
+  it("labels Roko's event-driven labyrinth from entry through return", () => {
     const view = dailyClassProgressView({
       ...telemetry(1),
       faculty: "roko",
       current: { caseStudy: { stage: "decide" } },
+      active_course_progress: {
+        requiredClasses: 1,
+        today: { status: "active", questionCount: 1, totalQuestions: 4 },
+      },
     });
 
-    expect(view.steps.map((step) => step.label)).toEqual(["Choose", "Reconsider", "Update", "Outcome"]);
-    expect(view.continuationLabel).toBe("Next: Reconsider");
+    expect(view.steps.map((step) => step.label)).toEqual(["Enter", "Follow event", "Cross labyrinth", "Return", "Outcome"]);
+    expect(view.continuationLabel).toBe("Next: Follow event");
   });
 
   it("stays hidden without a character-backed class context", () => {

@@ -91,7 +91,7 @@ export function createRevealFeedbackRenderer(deps: RevealFeedbackRendererDeps): 
   }
 
   function resultSummaryText(reveal: RevealFeedbackReveal, questionCounter: number): string {
-    if (reveal.questionType === "story-choice") return "Story note Q" + questionCounter + " · consequence pending";
+    if (reveal.questionType === "story-choice") return "Story note Q" + questionCounter + " · event path locked";
     return "Class note Q" + questionCounter + " · " + (reveal.forfeit ? "timed out" : reveal.wasCorrect ? "correct" : "missed");
   }
 

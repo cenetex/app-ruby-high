@@ -148,7 +148,7 @@ describe("reveal feedback renderer", () => {
 
     expect(textTree(node)).toEqual([
       "◆ choice",
-      "Story note Q2 · consequence pending",
+      "Story note Q2 · event path locked",
     ]);
     expect(node.children[0]!.children[0]!.children[0]!.className).toBe("badge-mini neutral");
   });

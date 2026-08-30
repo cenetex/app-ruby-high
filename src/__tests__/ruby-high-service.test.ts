@@ -5436,7 +5436,7 @@ describe("RubyHighService Phase 1", () => {
     expect(restored.courseProgress(sid, "ruby").today.result).toEqual(record.result);
   });
 
-  it("runs Roko's basilisk class as delayed branches followed by one graded update", async () => {
+  it("runs Roko's basilisk class as an event-driven labyrinth followed by one graded return", async () => {
     const { ruby } = await makeServices();
     const sid = "test:roko-case-class";
     ruby.selectGrade(sid, "10");
@@ -5468,7 +5468,9 @@ describe("RubyHighService Phase 1", () => {
     });
     expect(investigationReveal.caseStudyProgress).toMatchObject({
       episodeId,
-      choices: [{ choiceLabel: firstChoice, stage: "investigate" }],
+      choices: [{ choiceLabel: firstChoice, stage: "investigate", event: { eventId: expect.any(String) } }],
+      currentNodeId: "sealed-reading-cell",
+      visitedNodeIds: ["hall-of-four-doors"],
     });
     expect(investigationReveal.score.total).toBe(0);
     ruby.clearBoard(sid);
@@ -5479,7 +5481,8 @@ describe("RubyHighService Phase 1", () => {
       caseStudy: {
         episodeId,
         stage: "decide",
-        priorChoices: [{ choiceLabel: firstChoice, delayedConsequence: expect.any(String) }],
+        nodeId: "sealed-reading-cell",
+        priorChoices: [{ choiceLabel: firstChoice, event: { detail: expect.any(String) } }],
       },
     });
     const secondChoice = decide.current!.options!.B;
@@ -5489,7 +5492,40 @@ describe("RubyHighService Phase 1", () => {
       caseChoice: { choiceLabel: secondChoice, stage: "decide" },
     });
     expect(decisionReveal.lastReveal?.caseConsequence).toBeUndefined();
-    expect(decisionReveal.caseStudyProgress?.choices).toHaveLength(2);
+    expect(decisionReveal.caseStudyProgress).toMatchObject({
+      currentNodeId: "repair-workshop",
+      visitedNodeIds: ["hall-of-four-doors", "sealed-reading-cell"],
+    });
+    expect(decisionReveal.caseStudyProgress?.choices[1]).toMatchObject({
+      choiceLabel: secondChoice,
+      event: { eventId: "reader-council-formed" },
+    });
+    ruby.clearBoard(sid);
+
+    const navigate = ruby.pickAndPose(sid, { faculty: "roko" });
+    expect(navigate.current).toMatchObject({
+      type: "story-choice",
+      caseStudy: {
+        episodeId,
+        stage: "navigate",
+        nodeId: "repair-workshop",
+        storyFunction: "discover",
+        priorChoices: [
+          { choiceLabel: firstChoice, event: { detail: expect.any(String) } },
+          { choiceLabel: secondChoice, event: { detail: expect.any(String) } },
+        ],
+      },
+    });
+    const thirdChoice = navigate.current!.options!.C;
+    ruby.submitAnswer(sid, "C");
+    expect(ruby.getOrCreate(sid).caseStudyProgress).toMatchObject({
+      currentNodeId: null,
+      choices: [
+        { choiceLabel: firstChoice },
+        { choiceLabel: secondChoice },
+        { choiceLabel: thirdChoice, stage: "navigate", event: { eventId: expect.any(String) } },
+      ],
+    });
     ruby.clearBoard(sid);
 
     const explain = ruby.pickAndPose(sid, { faculty: "roko" });
@@ -5500,9 +5536,11 @@ describe("RubyHighService Phase 1", () => {
       caseStudy: {
         episodeId,
         stage: "explain",
+        storyFunction: "return",
         priorChoices: [
-          { choiceLabel: firstChoice, delayedConsequence: expect.any(String) },
-          { choiceLabel: secondChoice, delayedConsequence: expect.any(String) },
+          { choiceLabel: firstChoice, event: { detail: expect.any(String) } },
+          { choiceLabel: secondChoice, event: { detail: expect.any(String) } },
+          { choiceLabel: thirdChoice, event: { detail: expect.any(String) } },
         ],
       },
       caseOutcome: { episodeId, choices: expect.any(Array) },
@@ -5513,7 +5551,7 @@ describe("RubyHighService Phase 1", () => {
     const record = ruby.getOrCreate(sid).character!.dailyClasses![`10:roko:${dailyKey()}`]!;
     expect(record).toMatchObject({
       status: "complete",
-      questionCount: 3,
+      questionCount: 4,
       result: {
         episodeId,
         relationshipLabel: "Roko remembers",
