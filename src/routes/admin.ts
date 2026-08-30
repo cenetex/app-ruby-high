@@ -25,8 +25,8 @@ export const ADMIN_METRICS_SCHEMA_PATH = `${APP_ROUTE_PREFIX}/admin/metrics/sche
 export const ADMIN_OVERVIEW_PATH = `${APP_ROUTE_PREFIX}/admin/overview`;
 export const ADMIN_CURRICULUM_REPLENISHMENT_PATH = `${APP_ROUTE_PREFIX}/admin/curriculum/replenishment`;
 export const ADMIN_WORLD_MODERATION_PATH = `${APP_ROUTE_PREFIX}/admin/world/moderation`;
-export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v10";
-const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-08-21";
+export const ADMIN_METRICS_SCHEMA_VERSION = "ruby-high-admin-metrics.v11";
+const ADMIN_METRICS_SCHEMA_PUBLISHED_AT = "2026-08-30";
 const ADMIN_METRICS_DEFAULT_TRUST_START = "2026-07-26";
 const BUILT_IN_GENERATOR_FACULTY_IDS = new Set(["ruby", "sally-science", "professor-edward", "roko"]);
 const BUILT_IN_QUESTION_FILES: Record<string, string> = {
@@ -276,9 +276,13 @@ interface AdminMetricFieldSchema {
 }
 
 function buildAdminMetricsSnapshot(deps: AdminDeps): AdminMetricsSnapshot {
-  const ruby = deps.ruby.analyticsSnapshot();
-  const auth = deps.auth.analyticsSnapshot(Date.now(), deps.ruby.syntheticAuthUserIds());
+  const now = Date.now();
   const logs = logMetricsSnapshot();
+  const processStartedAt = Date.parse(logs.startedAt);
+  const ruby = deps.ruby.analyticsSnapshot(now, {
+    ...(Number.isFinite(processStartedAt) ? { sinceDeployAt: processStartedAt } : {}),
+  });
+  const auth = deps.auth.analyticsSnapshot(now, deps.ruby.syntheticAuthUserIds());
   const ops = deps.ops ?? {
     publicReadLimiter: {
       trackedKeys: 0,
@@ -1684,10 +1688,18 @@ function buildAdminMetricsSchema(): {
         caveat: "Begins at instrumentationStart in schema v8; earlier visits are intentionally excluded because the intermediate client events did not exist.",
       },
       {
+        path: "ruby.events.onboardingFailures",
+        label: "First-visit enrollment failures",
+        source: "StoredMetricEventRecord error events for first_run_onboarding",
+        semantics: "Durable failed enrollment attempts grouped by bounded timeout, network, HTTP, or missing-response reason.",
+        reliability: "authoritative",
+        caveat: "A failed attempt can later succeed, so this is a failure-attempt count rather than a failed-user count.",
+      },
+      {
         path: "ruby.events.acquisition",
         label: "Privacy-bounded acquisition funnels",
         source: "First visitor-backed viewer app_open plus downstream session and visitor metric events",
-        semantics: "First-touch, visitor-deduped activation and D1-return cohorts segmented by fixed source and landing vocabularies and server-owned release markers. Includes the canonical issue-174 cohort export.",
+        semantics: "First-touch, visitor-deduped activation and D1-return cohorts segmented by fixed source and landing vocabularies and server-owned release markers. Keeps the paused issue-174 cohort as a historical export.",
         reliability: "authoritative",
         caveat: "Begins at instrumentationStart in schema v9. Raw referrers, query strings, user agents, and free-form campaign labels are neither accepted nor stored in the acquisition payload.",
       },
@@ -1749,17 +1761,17 @@ function buildAdminMetricsSchema(): {
         path: "ruby.events.llm",
         label: "LLM usage",
         source: "StoredMetricEventRecord llm_usage plus LLM client wrappers",
-        semantics: "Durable provider/model/status/latency events for server-side text, stream, and image-generation calls.",
+        semantics: "Durable provider/model/status/latency events for server-side text, stream, and image-generation calls. Includes lifetime, rolling 24-hour, rolling 7-day, and since-deploy summaries.",
         reliability: "authoritative",
-        caveat: "Browser-owned direct client calls are visible only when they route through the Ruby High server.",
+        caveat: "Browser-owned direct client calls are visible only when they route through the Ruby High server. The since-deploy window begins at the current process start and therefore restarts if the machine restarts.",
       },
       {
         path: "ruby.events.errors",
         label: "Durable errors",
         source: "StoredMetricEventRecord error plus structured logger sink",
-        semantics: "Durable operational error events grouped by feature.",
+        semantics: "Durable operational error events grouped by feature. Includes lifetime, rolling 24-hour, rolling 7-day, and since-deploy summaries.",
         reliability: "authoritative",
-        caveat: "Stores clipped messages and feature names, not full stack traces.",
+        caveat: "Stores clipped messages and feature names, not full stack traces. The since-deploy window begins at the current process start and therefore restarts if the machine restarts.",
       },
       {
         path: "ruby.world",
@@ -2905,6 +2917,7 @@ async function postTelegramSnapshot() {
       const onboardingSteps = Array.isArray(onboarding.steps) ? onboarding.steps : [];
       const creatorOpenedStep = onboardingSteps.find(function(step) { return step && step.key === "creation_opened"; }) || {};
       const enrollmentStep = onboardingSteps.find(function(step) { return step && step.key === "enrollment_started"; }) || {};
+      const onboardingFailures = events.onboardingFailures || {};
       const ops = data.ops || {};
       const logs = data.logs || {};
       status("Updated " + time(data.generatedAt) + " - build " + (logs.build || "unknown") + " - " + (data.schemaVersion || "legacy schema"), "");
@@ -2923,8 +2936,8 @@ async function postTelegramSnapshot() {
         metric("Student D1 / D7", pct(ruby.characterD1Retention && ruby.characterD1Retention.rate) + " / " + pct(ruby.retention && ruby.retention.characterD7 && ruby.retention.characterD7.rate), n(ruby.characterD1Retention && ruby.characterD1Retention.returnedSessions) + " / " + n(ruby.characterD1Retention && ruby.characterD1Retention.eligibleSessions)),
         metric("App opens", n(events.appOpen && events.appOpen.total), n(events.sessionResume && events.sessionResume.total) + " resumes"),
         metric("Human activation", n(humanActivation.eligibleSessions) + " opens", pct(humanCharacterStep.rateFromOpen) + " student · " + pct(humanResultStep.rateFromOpen) + " result viewed"),
-        metric("First-visit journey", n(onboarding.eligibleSessions) + " opens", pct(creatorOpenedStep.rateFromOpen) + " creator · " + pct(enrollmentStep.rateFromOpen) + " enroll click"),
-        metric("Issue #174 cohort", n(experiment174Funnel.sampleSize) + " visitors", n(experiment174Result.numerator) + " results · " + pct(experiment174Result.rateFromOpen) + " activation"),
+        metric("First-visit journey", n(onboarding.eligibleSessions) + " opens", pct(creatorOpenedStep.rateFromOpen) + " creator · " + pct(enrollmentStep.rateFromOpen) + " enroll click · " + n(onboardingFailures.total) + " save failures"),
+        metric("Issue #174 (paused)", n(experiment174Funnel.sampleSize) + " visitors", n(experiment174Result.numerator) + " results · " + pct(experiment174Result.rateFromOpen) + " activation"),
         metric("Students", n(ruby.characters), n(ruby.graduatedCharacters) + " graduated - " + n(ruby.completedGrades) + " years completed"),
         metric("Questions", n(ruby.questions && ruby.questions.total), n(ruby.questions && ruby.questions.correct) + " correct - " + pct(ruby.questions && ruby.questions.accuracy) + " accuracy"),
         metric("Curriculum", n(ruby.curriculum && ruby.curriculum.lowPools && ruby.curriculum.lowPools.length), n(ruby.curriculum && ruby.curriculum.rows && ruby.curriculum.rows.length) + " grade/teacher pools"),
@@ -2936,6 +2949,11 @@ async function postTelegramSnapshot() {
       const funnel = events.conversionFunnel || {};
       const wallet = ruby.wallet || {};
       const llm = events.llm || {};
+      const llm24h = llm.recent && llm.recent.last24h || llm;
+      const llmSinceDeploy = llm.recent && llm.recent.sinceDeploy || {};
+      const durableErrors = events.errors || {};
+      const errors24h = durableErrors.recent && durableErrors.recent.last24h || durableErrors;
+      const errors7d = durableErrors.recent && durableErrors.recent.last7d || {};
       const revenueStr = commerce.amountCents != null ? "\$" + (commerce.amountCents / 100).toFixed(2) : "n/a";
       economyGrid.innerHTML = [
         metric("Merit Stars", n(wallet.meritStars), signedNumber(commerce.meritStarsDelta) + " net Merit Stars · chat spends"),
@@ -2948,8 +2966,8 @@ async function postTelegramSnapshot() {
         metric("School activity", schoolActivityMetricValue(ruby.world), schoolActivityMetricSub(ruby.world), "is-wide"),
         metric("Activity reads", publicReadMetricValue(ops.publicReadLimiter), publicReadMetricSub(ops.publicReadLimiter)),
         metric("Activity streams", worldStreamMetricValue(ops.worldLiveStreams), worldStreamMetricSub(ops.worldLiveStreams)),
-        metric("Sponsored LLM", n(llm.calls), n(llm.successes) + " ok · " + n(llm.errors) + " errors · text sponsored, images metered"),
-        metric("Durable errors", n(events.errors && events.errors.total), n((logs.counters || []).length) + " process counters"),
+        metric("Sponsored LLM · 24h", n(llm24h.calls), n(llm24h.successes) + " ok · " + n(llm24h.errors) + " errors · " + n(llmSinceDeploy.calls) + " calls since deploy"),
+        metric("Durable errors · 24h", n(errors24h.total), n(errors7d.total) + " in 7d · " + n(durableErrors.total) + " lifetime"),
       ].join("");
       const commerceTbl = events.commerce || {};
       const revenueBySource = commerceTbl.revenueBySource || {};

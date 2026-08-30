@@ -1790,7 +1790,7 @@ describe("admin metrics route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       ok: true,
-      schemaVersion: "ruby-high-admin-metrics.v10",
+      schemaVersion: "ruby-high-admin-metrics.v11",
       schemaPath: "/api/apps/ruby-high/admin/metrics/schema",
       auth: {
         users: 1,
@@ -2851,7 +2851,7 @@ describe("admin metrics route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       ok: true,
-      schemaVersion: "ruby-high-admin-metrics.v10",
+      schemaVersion: "ruby-high-admin-metrics.v11",
       endpoint: "/api/apps/ruby-high/admin/metrics",
       bucketTimezone: "UTC",
       trustStart: "2026-07-26",
@@ -3323,6 +3323,10 @@ describe("admin metrics route", () => {
     });
     expect(failure?.metadata).not.toHaveProperty("errorMessage");
     expect(ruby.analyticsSnapshot().events.errors.byFeature.first_run_onboarding).toBe(1);
+    expect(ruby.analyticsSnapshot().events.onboardingFailures).toEqual({
+      total: 1,
+      byKind: { timeout: 1 },
+    });
   });
 
   it("computes event-backed visitor and character D1 retention", async () => {
@@ -3496,6 +3500,22 @@ describe("admin metrics route", () => {
       successes: 1,
       errors: 0,
       byProvider: { OpenRouter: 2 },
+      recent: {
+        last24h: {
+          calls: 2,
+          successes: 1,
+          errors: 0,
+          errorRate: 0,
+          byProvider: { OpenRouter: 2 },
+        },
+        last7d: { calls: 2 },
+        sinceDeploy: { calls: 2, successes: 1, errors: 0 },
+      },
+    });
+    expect(response.body.ruby.events.errors.recent).toMatchObject({
+      last24h: { total: 1, byFeature: { "test-error": 1 } },
+      last7d: { total: 1 },
+      sinceDeploy: { total: 1, byFeature: { "test-error": 1 } },
     });
     expect(playYesterday).toMatchObject({
       date: yesterday,
@@ -3584,7 +3604,7 @@ describe("admin metrics route", () => {
     expect(headers.Authorization).toBe("Bearer or-test-key");
     const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body));
     const prompt = body.messages[1].content as string;
-    expect(prompt).toContain("ruby-high-admin-metrics.v10");
+    expect(prompt).toContain("ruby-high-admin-metrics.v11");
     expect(prompt).toContain("identityRecords");
     expect(prompt).toContain("not deduped people");
     expect(prompt).toContain("characterD1Retention");

@@ -1454,6 +1454,25 @@ describe("RubyHighService Phase 1", () => {
     });
   });
 
+  it("excludes synthetic sessions from curriculum coverage", async () => {
+    const { ruby } = await makeServices();
+    const humanSid = "test:curriculum-human";
+    const syntheticSid = "test:curriculum-synthetic";
+
+    attachTestCharacter(ruby, humanSid);
+    ruby.selectGrade(humanSid, "9");
+
+    attachTestCharacter(ruby, syntheticSid);
+    ruby.selectGrade(syntheticSid, "9");
+    ruby.markSyntheticSession(syntheticSid);
+
+    const coverage = ruby.curriculumCoverageSnapshot();
+
+    expect(coverage.activeCharacterSessions).toBe(1);
+    expect(coverage.rows.length).toBeGreaterThan(0);
+    expect(coverage.rows.every((row) => row.sessions === 1)).toBe(true);
+  });
+
   it("uses Seraph's research corpus when Project 89 occupies the Guest Faculty course", async () => {
     const { ruby } = await makeServices();
     const sid = "test:project89-guest-research-corpus";
