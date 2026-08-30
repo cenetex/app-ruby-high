@@ -23,6 +23,15 @@ export type QuestionPromptCaseActionView = {
   revealedEvidence?: { label: string; source: string; detail: string };
   verificationPrompt: string;
 };
+export type QuestionPromptCaseChoiceView = {
+  choiceId: string;
+  stage: "investigate" | "decide";
+  choiceLabel: string;
+  delayedLabel: string;
+  delayedConsequence: string;
+  revealedEvidence: Array<{ label: string; source: string; detail: string }>;
+  reflection: string;
+};
 export type QuestionPromptCaseView = {
   episodeId: string;
   title: string;
@@ -30,6 +39,8 @@ export type QuestionPromptCaseView = {
   scene: string;
   stage: "investigate" | "decide" | "explain";
   evidence: Array<{ label: string; source: string; detail: string }>;
+  sources?: Array<{ label: string; url: string; note: string }>;
+  priorChoices?: QuestionPromptCaseChoiceView[];
   investigation?: QuestionPromptCaseActionView;
 };
 export type LeaderboardGradeChipView = { className: string; text: string };
@@ -126,9 +137,9 @@ export function dailyClassProgressView(telemetry: NullableRecord): DailyClassPro
   const currentIndex = complete ? 3 : Math.min(2, count);
   const definitions: Array<{ key: DailyClassProgressStepView["key"]; label: string }> = isRokoCase
     ? [
-        { key: "evidence-1", label: "Investigate" },
-        { key: "evidence-2", label: "Decide" },
-        { key: "take", label: "Explain" },
+        { key: "evidence-1", label: "Choose" },
+        { key: "evidence-2", label: "Reconsider" },
+        { key: "take", label: "Update" },
         { key: "result", label: "Outcome" },
       ]
       : [
@@ -146,12 +157,12 @@ export function dailyClassProgressView(telemetry: NullableRecord): DailyClassPro
     steps,
     continuationLabel: isRokoCase
       ? currentIndex === 1
-        ? "Next: Decide"
+        ? "Next: Reconsider"
         : currentIndex === 2
-          ? "Next: Explain"
+          ? "Next: Update"
           : currentIndex === 3
             ? "View Outcome"
-            : "Start Investigation"
+            : "Start the story"
       : currentIndex === 1
         ? "Next: Question 2"
         : currentIndex === 2
@@ -1768,6 +1779,7 @@ export function raceStripView(t: unknown, students: unknown, visibleStudentIds: 
   const current = telemetry.current && typeof telemetry.current === "object" ? telemetry.current as LooseRecord : null;
   if (!round || !current || round.questionId !== current.id) return null;
   const resolved = !!round.resolved;
+  const isStoryChoice = round.type === "story-choice";
   const remainingMs = Math.max(0, Number(round.remainingMs ?? 0));
   const remainingS = Math.ceil(remainingMs / 1000);
   const softExpired = !resolved && (!!round.idleTriggered || remainingMs <= 0);
@@ -1788,8 +1800,8 @@ export function raceStripView(t: unknown, students: unknown, visibleStudentIds: 
     color: "var(--accent)",
     isLocked: !!player.isLocked,
     isTimedOut: !!player.timedOut,
-    isCorrect: resolved && player.picked ? String(player.picked) === correct : null,
-    isFirstCorrect: resolved && round.firstCorrect === "player",
+    isCorrect: !isStoryChoice && resolved && player.picked ? String(player.picked) === correct : null,
+    isFirstCorrect: !isStoryChoice && resolved && round.firstCorrect === "player",
     pickText: raceStripPickText(player.picked, !!player.isLocked, !!player.timedOut, resolved),
     showThinking: !player.isLocked,
   }];
@@ -1810,7 +1822,7 @@ export function raceStripView(t: unknown, students: unknown, visibleStudentIds: 
         isLocked: !!record.isLocked,
         isTimedOut: false,
         isCorrect: resolved ? (record.isCorrect === true ? true : record.isCorrect === false ? false : null) : null,
-        isFirstCorrect: resolved && round.firstCorrect === id,
+        isFirstCorrect: !isStoryChoice && resolved && round.firstCorrect === id,
         pickText: raceStripPickText(record.pick, !!record.isLocked, false, resolved),
         showThinking: !record.isLocked,
       });
@@ -1908,6 +1920,55 @@ export function questionPromptView(question: unknown): {
         verificationPrompt: String(rawInvestigation.verificationPrompt),
       }
     : null;
+  const priorChoices = rawCase && Array.isArray(rawCase.priorChoices)
+    ? rawCase.priorChoices
+        .filter((choice) => choice && typeof choice === "object")
+        .slice(0, 2)
+        .map((choice) => {
+          const item = choice as LooseRecord;
+          const choiceStage = ["investigate", "decide"].includes(String(item.stage))
+            ? String(item.stage) as QuestionPromptCaseChoiceView["stage"]
+            : "investigate";
+          const choiceEvidence = Array.isArray(item.revealedEvidence)
+            ? item.revealedEvidence
+                .filter((entry) => entry && typeof entry === "object")
+                .slice(0, 3)
+                .map((entry) => {
+                  const evidenceItem = entry as LooseRecord;
+                  return {
+                    label: String(evidenceItem.label || "New evidence"),
+                    source: String(evidenceItem.source || "Later report"),
+                    detail: String(evidenceItem.detail || ""),
+                  };
+                })
+                .filter((entry) => entry.detail.length > 0)
+            : [];
+          return {
+            choiceId: String(item.choiceId || "story-choice"),
+            stage: choiceStage,
+            choiceLabel: String(item.choiceLabel || "Earlier choice"),
+            delayedLabel: String(item.delayedLabel || "What happened later"),
+            delayedConsequence: String(item.delayedConsequence || ""),
+            revealedEvidence: choiceEvidence,
+            reflection: String(item.reflection || ""),
+          };
+        })
+        .filter((choice) => choice.delayedConsequence.length > 0)
+    : [];
+  const sources = rawCase && Array.isArray(rawCase.sources)
+    ? rawCase.sources
+        .filter((source) => source && typeof source === "object")
+        .slice(0, 6)
+        .map((source) => {
+          const item = source as LooseRecord;
+          return {
+            label: String(item.label || "Source"),
+            url: String(item.url || ""),
+            note: String(item.note || ""),
+          };
+        })
+        .filter((source) => source.url.startsWith("https://"))
+    : [];
   const caseStudy = rawCase && stage && String(rawCase.title || "").trim() && String(rawCase.scene || "").trim()
     ? {
         episodeId: String(rawCase.episodeId || ""),
@@ -1916,6 +1977,8 @@ export function questionPromptView(question: unknown): {
         scene: String(rawCase.scene),
         stage,
         evidence,
+        ...(sources.length > 0 ? { sources } : {}),
+        ...(priorChoices.length > 0 ? { priorChoices } : {}),
         ...(investigation ? { investigation } : {}),
       }
     : null;

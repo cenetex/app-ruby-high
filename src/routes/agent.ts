@@ -380,7 +380,9 @@ function applyAgentAction(args: {
       state,
       result: {
         answered: true,
-        wasCorrect: state.lastReveal?.wasCorrect ?? null,
+        wasCorrect: state.lastReveal?.questionType === "story-choice"
+          ? null
+          : state.lastReveal?.wasCorrect ?? null,
       },
     };
   }

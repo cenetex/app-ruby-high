@@ -136,4 +136,20 @@ describe("reveal feedback renderer", () => {
       "Class note Q2 · timed out",
     ]);
   });
+
+  it("renders a story choice without a correctness signal", () => {
+    const node = renderer().buildResult({
+      questionType: "story-choice",
+      wasCorrect: true,
+      picked: "B",
+      correct: "B",
+      caseChoice: { choiceLabel: "Publish a bounded summary" },
+    }, 2, []) as unknown as FakeElement;
+
+    expect(textTree(node)).toEqual([
+      "◆ choice",
+      "Story note Q2 · consequence pending",
+    ]);
+    expect(node.children[0]!.children[0]!.children[0]!.className).toBe("badge-mini neutral");
+  });
 });

@@ -48,6 +48,7 @@ import {
   correctAnswerForQuestion,
   correctChoiceForQuestion,
   materializeMultipleChoice,
+  materializeStoryChoices,
   multipleChoiceDefinition,
 } from "../question-choices.js";
 import { teacherById, type TeacherCharacter } from "../characters/teachers.js";
@@ -96,7 +97,6 @@ import {
   type CardReviewRating,
   type CaseStudyCard,
   type CaseStudyOutcome,
-  type CaseStudyProgress,
   type CharacterSlotEntitlements,
   type CharacterStats,
   type ClassPhotoArchive,
@@ -7185,6 +7185,11 @@ export class RubyHighService extends Service {
           investigationDetail: `${caseOutcome.investigation.report} Verify it: ${caseOutcome.investigation.verificationPrompt}`,
           investigationConfidence: caseOutcome.investigation.confidence,
         } : {}),
+        ...(caseOutcome.choices?.length ? {
+          pathSummary: caseOutcome.choices
+            .map((choice, index) => `${index + 1}. ${choice.choiceLabel} → ${choice.delayedConsequence}`)
+            .join(" "),
+        } : {}),
       } : {}),
       completedClasses: standing.completed,
       requiredClasses: standing.required,
@@ -7197,6 +7202,7 @@ export class RubyHighService extends Service {
     reveal: LastReveal,
     now = Date.now(),
   ): FirstBellReport | null {
+    if (question.type === "story-choice") return null;
     const ch = state.character;
     if (!ch || ch.firstBellReport) return null;
     const facultyId = question.faculty ?? state.faculty;
@@ -7703,6 +7709,10 @@ export class RubyHighService extends Service {
       round.resolvedAt = Date.now();
       return;
     }
+    if (q.type === "story-choice") {
+      this.resolveStoryChoiceRound(state, q, forfeit);
+      return;
+    }
     const isTypedQuestion = q.type === "typed-answer" || q.type === "image-occlusion";
     const answerText = round.player.answerText?.trim() ?? "";
     const acceptedAnswers = q.acceptedAnswers ?? (q.expectedAnswer ? [q.expectedAnswer] : []);
@@ -7908,22 +7918,6 @@ export class RubyHighService extends Service {
     const selectedAnswer = picked == null ? undefined : q.options?.[picked];
     const caseConsequence = selectedAnswer ? q.answerConsequences?.[selectedAnswer] : undefined;
     const caseActionResult = selectedAnswer ? q.caseActionResults?.[selectedAnswer] : undefined;
-    if (caseActionResult && q.caseStudy) {
-      const progress: CaseStudyProgress = {
-        episodeId: q.caseStudy.episodeId,
-        action: { ...caseActionResult },
-        actedAt: reviewAt,
-      };
-      state.caseStudyProgress = progress;
-      log.event("case.action-resolved", {
-        sessionId: state.sessionId,
-        episodeId: progress.episodeId,
-        actionId: progress.action.actionId,
-        actorId: progress.action.actorId,
-        kind: progress.action.kind,
-        confidence: progress.action.confidence,
-      });
-    }
     state.lastReveal = {
       questionId: q.id,
       ...questionSnapshot,
@@ -7966,6 +7960,103 @@ export class RubyHighService extends Service {
     this.transition(state, { kind: "resolve-round" });
     // resolveRound is a private helper that operates on `state` directly;
     // there's no sessionId param, so pull it off the state.
+    void this.persistSession(state.sessionId);
+  }
+
+  /** Resolve a branch without pretending it was right or wrong. The class
+   *  records participation now; the delayed result appears on the next card,
+   *  and only the final written update is graded. */
+  private resolveStoryChoiceRound(state: QuizState, q: Question, forfeit: boolean): void {
+    const round = state.activeRound;
+    if (!round || round.resolved) return;
+    const reviewAt = round.player.answeredAt ?? Date.now();
+    for (const entry of round.npcs) {
+      if (entry.answeredAt == null) {
+        entry.answeredAt = Math.min(round.startedAt + entry.delayMs, round.expiresAt);
+      }
+    }
+    const picked = round.player.picked;
+    const selectedAnswer = !forfeit && picked ? q.options?.[picked] : undefined;
+    const branch = selectedAnswer ? q.storyChoiceResults?.[selectedAnswer] : undefined;
+    if (branch && q.caseStudy) {
+      const previous = state.caseStudyProgress?.episodeId === q.caseStudy.episodeId
+        ? state.caseStudyProgress.choices
+        : [];
+      state.caseStudyProgress = {
+        episodeId: q.caseStudy.episodeId,
+        choices: [
+          ...previous.filter((choice) => choice.stage !== branch.stage),
+          structuredClone(branch),
+        ],
+        actedAt: reviewAt,
+      };
+      log.event("case.choice-locked", {
+        sessionId: state.sessionId,
+        episodeId: q.caseStudy.episodeId,
+        choiceId: branch.choiceId,
+        stage: branch.stage,
+      });
+    }
+    const completedChoice = Boolean(selectedAnswer && branch && !forfeit);
+    const classProgress = this.recordDailyClassQuestion(
+      state,
+      completedChoice,
+      completedChoice ? 100 : 0,
+      reviewAt,
+      null,
+      {
+        questionId: q.id,
+        prompt: q.prompt,
+        ...(q.subject ? { subject: q.subject } : {}),
+        answerText: selectedAnswer ?? "No choice",
+        wasCorrect: completedChoice,
+        forfeit: !completedChoice,
+      },
+    );
+    if (
+      classProgress.mode === "class"
+      && round.cardRole === "class"
+      && CORE_DAILY_CLASS_FACULTY.has(classProgress.facultyId)
+    ) {
+      this.recordClassFlowMetric("evidence_card_completed", state, {
+        faculty: classProgress.facultyId,
+        grade: classProgress.grade,
+        date: classProgress.date,
+        step: `evidence_${classProgress.questionCount ?? 0}`,
+        status: completedChoice ? "success" : "error",
+        metadata: { questionId: q.id, choiceId: branch?.choiceId ?? null },
+      });
+    }
+    round.firstCorrect = null;
+    state.lastReveal = {
+      questionId: q.id,
+      questionPrompt: q.prompt,
+      questionType: "story-choice",
+      ...(q.options ? { questionOptions: { ...q.options } } : {}),
+      ...(q.subject ? { questionSubject: q.subject } : {}),
+      ...(q.difficulty ? { questionDifficulty: q.difficulty } : {}),
+      picked: picked ?? "A",
+      correct: picked ?? "A",
+      wasCorrect: completedChoice,
+      forfeit: !completedChoice,
+      explanation: q.explanation ?? null,
+      encouragement: completedChoice
+        ? "Choice locked. Its meaning is not settled yet."
+        : "The story moved on without a choice.",
+      ...(branch ? {
+        caseChoice: {
+          choiceId: branch.choiceId,
+          stage: branch.stage,
+          choiceLabel: branch.choiceLabel,
+          lockedText: branch.lockedText,
+        },
+      } : {}),
+      classProgress,
+    };
+    round.resolved = true;
+    round.resolvedAt = reviewAt;
+    this.transition(state, { kind: "resolve-round" });
+    state.updatedAt = reviewAt;
     void this.persistSession(state.sessionId);
   }
 
@@ -8630,6 +8721,17 @@ export class RubyHighService extends Service {
    * slot in `correctChoice`. Grading reads only that posed mapping.
    */
   private materializeQuestionChoices(question: Question): void {
+    if (question.type === "story-choice") {
+      const materialized = materializeStoryChoices(question.storyChoices, {
+        shuffle: process.env.RUBY_HIGH_SHUFFLE_CHOICES !== "0",
+      });
+      question.storyChoices = materialized.storyChoices;
+      question.options = materialized.options;
+      delete question.correct;
+      delete question.correctChoice;
+      delete question.decoys;
+      return;
+    }
     if ((question.type ?? "multiple-choice") !== "multiple-choice") return;
     const materialized = materializeMultipleChoice(question, {
       shuffle: process.env.RUBY_HIGH_SHUFFLE_CHOICES !== "0",
@@ -8707,7 +8809,7 @@ export class RubyHighService extends Service {
       ...(q.decoys ? { decoys: [...q.decoys] } : {}),
       ...(q.options ? { options: { ...q.options } } : {}),
     };
-    if (type === "multiple-choice") {
+    if (type === "multiple-choice" || type === "story-choice") {
       this.materializeQuestionChoices(question);
     } else if (type === "typed-answer" || type === "image-occlusion") {
       const answers = question.acceptedAnswers?.filter((answer) => answer.trim().length > 0) ?? [];
@@ -8788,6 +8890,7 @@ export class RubyHighService extends Service {
   private openRound(state: QuizState, question: Question): ActiveRound {
     const startedAt = Date.now();
     const isOpinion = question.type === "opinion";
+    const isStoryChoice = question.type === "story-choice";
     const isTypedAnswer = question.type === "typed-answer" || question.type === "image-occlusion";
     const durationMs = isOpinion ? OPINION_ROUND_DURATION_MS : DEFAULT_ROUND_DURATION_MS;
     const room = roomForFacultyForSession(state, state.faculty);
@@ -8801,14 +8904,15 @@ export class RubyHighService extends Service {
       let pepTalkUsed = false;
       const isHeart = state.character?.playbookId === "heart";
       entries = inRoom.map((npc) => {
-        if (isOpinion) {
-          // Opinion round — accuracy doesn't apply, only commit timing matters.
+        if (isOpinion || isStoryChoice) {
+          // Opinions and story branches have no correct slot. NPCs still
+          // commit so the room feels live, but their choices are not graded.
           // The actual response text is generated externally and stored via
-          // recordOpinion(); the dice fields are placeholders.
+          // recordOpinion() for opinion cards; story cards use a random move.
           return {
             studentId: npc.id,
-            delayMs: rollOpinionDelay(npc.stats),
-            plannedPick: "A" as Choice,
+            delayMs: isOpinion ? rollOpinionDelay(npc.stats) : Math.round(2200 + Math.random() * 7600),
+            plannedPick: isOpinion ? "A" as Choice : CHOICES[Math.floor(Math.random() * CHOICES.length)]!,
             rolledTotal: 0,
             rolledDice: [0, 0] as [number, number],
             outcome: "hit" as const,
@@ -9419,7 +9523,7 @@ export class RubyHighService extends Service {
     const state = this.getOrCreate(sessionId);
     const q = state.current;
     if (!q) throw new Error("No question is currently on the board.");
-    if ((q.type ?? "multiple-choice") !== "multiple-choice") {
+    if (!["multiple-choice", "story-choice"].includes(q.type ?? "multiple-choice")) {
       throw new Error("This question needs a typed answer.");
     }
     if (!CHOICES.includes(picked)) throw new Error(`Pick must be one of ${CHOICES.join(", ")}`);
@@ -9444,14 +9548,14 @@ export class RubyHighService extends Service {
     log.event("answer.picked", {
       sessionId, faculty: state.faculty, questionId: q.id,
       picked,
-      correct: correctChoiceForQuestion(q),
-      wasCorrect: picked === correctChoiceForQuestion(q),
+      correct: q.type === "story-choice" ? null : correctChoiceForQuestion(q),
+      wasCorrect: q.type === "story-choice" ? null : picked === correctChoiceForQuestion(q),
       rarity: q.rarity,
     });
     this.recordFunnelStep(state, "first_question_answered", {
       faculty: state.faculty,
       questionId: q.id,
-      type: "multiple-choice",
+      type: q.type ?? "multiple-choice",
     });
     this.contributeLiveRoomGoal(sessionId);
     // Tick first so any NPCs whose delay HAS already elapsed lock in honestly.
@@ -13545,7 +13649,7 @@ function normalizeLoaded(s: QuizState): QuizState {
     characterSlots: normalizeCharacterSlots((s as { characterSlots?: unknown }).characterSlots),
     comicCollection: normalizeComicCollection((s as { comicCollection?: unknown }).comicCollection),
     schoolEvents: normalizeSchoolEvents((s as { schoolEvents?: unknown }).schoolEvents),
-    caseStudyProgress: s.caseStudyProgress?.episodeId && s.caseStudyProgress.action
+    caseStudyProgress: s.caseStudyProgress?.episodeId && Array.isArray(s.caseStudyProgress.choices)
       ? s.caseStudyProgress
       : null,
     publicWorldHiddenEventIds: normalizePublicWorldHiddenEventIds((s as { publicWorldHiddenEventIds?: unknown }).publicWorldHiddenEventIds),

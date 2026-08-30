@@ -128,6 +128,32 @@ describe("viewer race strip pure helpers", () => {
     ]);
   });
 
+  it("shows story branches without winner or correctness styling", () => {
+    const view = raceStripView({
+      current: { id: "q-story" },
+      active_round: {
+        type: "story-choice",
+        questionId: "q-story",
+        remainingMs: 0,
+        resolved: true,
+        firstCorrect: null,
+        player: { isLocked: true, picked: "B", timedOut: false },
+        npcs: [{ studentId: "lyra", isLocked: true, pick: "C", isCorrect: null }],
+      },
+      lastReveal: { correct: "B", questionType: "story-choice" },
+    }, students, ["lyra"], "Mina");
+
+    expect(view?.cards.map((card) => ({
+      id: card.id,
+      pickText: card.pickText,
+      isCorrect: card.isCorrect,
+      isFirstCorrect: card.isFirstCorrect,
+    }))).toEqual([
+      { id: "player", pickText: "B", isCorrect: null, isFirstCorrect: false },
+      { id: "lyra", pickText: "C", isCorrect: null, isFirstCorrect: false },
+    ]);
+  });
+
   it("formats race pick badges from lock and reveal state", () => {
     expect(raceStripPickText("A", false, false, false)).toBe("");
     expect(raceStripPickText("A", true, false, false)).toBe("✓");

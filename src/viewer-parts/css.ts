@@ -3161,6 +3161,41 @@ export const VIEWER_CSS = `
     color: #fff0a6;
     font-weight: 800;
   }
+  .board .case-path-result {
+    display: grid;
+    gap: 6px;
+    padding: 9px;
+    border: 1px solid rgba(202,165,255,0.38);
+    border-radius: 7px;
+    background: rgba(125,78,181,0.12);
+  }
+  .board .case-path-result > strong { color: #e3c8ff; font-size: 11px; }
+  .board .case-path-move,
+  .board .case-path-consequence,
+  .board .case-path-reflection,
+  .board .case-path-evidence p { margin: 0; font-size: 10px; line-height: 1.35; }
+  .board .case-path-move { color: var(--ink-soft); font-weight: 800; }
+  .board .case-path-consequence { color: var(--ink); }
+  .board .case-path-reflection { color: #fff0a6; }
+  .board .case-path-evidence {
+    padding: 7px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.07);
+  }
+  .board .case-path-evidence strong,
+  .board .case-path-evidence span { display: block; font-size: 9px; }
+  .board .case-path-evidence strong { color: #fff0a6; }
+  .board .case-path-evidence span { margin: 1px 0 4px; color: var(--ink-soft); }
+  .board .case-study-sources {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px 9px;
+    padding-top: 4px;
+    font-size: 9px;
+  }
+  .board .case-study-sources span { color: var(--ink-soft); font-weight: 800; }
+  .board .case-study-sources a { color: #b9e9ff; text-decoration: underline; }
   .anki-media-grid {
     display: flex;
     flex-wrap: wrap;
@@ -3197,6 +3232,7 @@ export const VIEWER_CSS = `
   }
   .board .reveal.correct { color: #b6f5b9; border-left-color: #4cb555; }
   .board .reveal.wrong { color: #ffb1b1; border-left-color: #d22a2a; }
+  .board .reveal.neutral { color: #e3c8ff; border-left-color: #a873df; }
   .board .reveal .reveal-result { font-weight: 700; }
   .board .reveal .reveal-explanation {
     margin-top: 6px;
@@ -3305,6 +3341,7 @@ export const VIEWER_CSS = `
   .answer.D .badge { color: #1a2238; }
   .answer.is-correct { outline: 3px solid #1f7c2a; outline-offset: -1px; opacity: 1; }
   .answer.is-wrong { outline: 3px solid #a01818; outline-offset: -1px; opacity: 0.72; }
+  .answer.is-selected { outline: 3px solid #8a52bf; outline-offset: -1px; opacity: 1; }
   /* Advantage roll crossed this choice off the board. */
   .answer.is-eliminated {
     opacity: 0.35;
@@ -7183,6 +7220,7 @@ export const VIEWER_CSS = `
   }
   .msg.result .body .badge-mini.ok { background: rgba(76,181,85,0.22); color: #b6f5b9; }
   .msg.result .body .badge-mini.bad { background: rgba(210,42,42,0.22); color: #ffb1b1; }
+  .msg.result .body .badge-mini.neutral { background: rgba(125,78,181,0.22); color: #e3c8ff; }
   .msg.result.class-note-result .body {
     display: grid;
     justify-self: end;
@@ -8972,6 +9010,12 @@ export const VIEWER_CSS = `
   .answer.is-wrong {
     border-color: rgba(214,59,63,0.7);
     background: rgba(214,59,63,0.13);
+    outline: 0;
+    color: var(--text);
+  }
+  .answer.is-selected {
+    border-color: rgba(168,115,223,0.8);
+    background: rgba(125,78,181,0.18);
     outline: 0;
     color: var(--text);
   }

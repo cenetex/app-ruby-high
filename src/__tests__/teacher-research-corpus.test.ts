@@ -40,11 +40,15 @@ describe("built-in teacher research corpora", () => {
     ]));
     expect(corpora.find((corpus) => corpus.facultyId === "roko")).toMatchObject({
       corpusPath: "assets/corpora/roko.md",
-      researchInterests: expect.arrayContaining(["AI alignment", "information hazards", "Crownless dragon ecology"]),
+      researchInterests: expect.arrayContaining(["AI alignment", "information hazards", "decision theory"]),
       sourcePackets: expect.arrayContaining([
         expect.objectContaining({
-          id: "roko-source-crownless-ecology",
+          id: "roko-source-dragon-fables",
           subjects: expect.arrayContaining(["multi-agent coordination", "AI alignment"]),
+        }),
+        expect.objectContaining({
+          id: "roko-source-lesswrong-decision-theory",
+          subjects: expect.arrayContaining(["AI alignment", "information hazards"]),
         }),
         expect.objectContaining({
           id: "roko-source-openai-hugging-face-incident",

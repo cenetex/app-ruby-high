@@ -2,6 +2,213 @@
   "version": 1,
   "episodes": [
     {
+      "id": "basilisk-archive",
+      "title": "The Basilisk in the Archive",
+      "hook": "A sealed argument says a future oracle will punish anyone who reads it and then refuses to help build it.",
+      "scene": "A frightened goblin archivist brings Roko a black-wax scroll. The argument inside has no code, no experiment, and no proof of a future agent's commitment. It has already made two readers lose sleep.",
+      "scenes": {
+        "investigate": "A frightened goblin archivist brings Roko a black-wax scroll. The argument inside has no code, no experiment, and no proof of a future agent's commitment. It has already made two readers lose sleep. The archive council meets at sunset.",
+        "decide": "Two days pass. Your first move has effects you could not see when you made it. A decision-theory group also reports that the threat needs several disputed assumptions: a future agent must model this exact choice, gain from punishment after the fact, and make a credible acausal commitment without shared code or trust.",
+        "explain": "A month later, the panic is smaller but the story is now part of archive folklore. Some goblins learned why the argument is weak. Others remember only that powerful adults tried to control a forbidden idea. Roko asks for an after-action report, not a confession."
+      },
+      "subject": "infohazards",
+      "stat": "head",
+      "evidence": [
+        {
+          "label": "The threat",
+          "source": "Sealed scroll",
+          "detail": "It claims a future oracle can predict who knew about it and punish readers who did not help create it."
+        },
+        {
+          "label": "Missing mechanism",
+          "source": "Archive audit",
+          "detail": "No system, source code, causal channel, verified commitment, or testable prediction is supplied."
+        },
+        {
+          "label": "Present harm",
+          "source": "Infirmary log",
+          "detail": "Two readers report fear and lost sleep; three distorted summaries are already moving through the tunnels."
+        }
+      ],
+      "sources": [
+        {
+          "label": "Roko's Basilisk",
+          "url": "https://www.lesswrong.com/w/rokos-basilisk",
+          "note": "History of the argument, major objections, and the moderation backlash."
+        },
+        {
+          "label": "Information hazards",
+          "url": "https://www.lesswrong.com/tag/information-hazards/",
+          "note": "Why true information can cause harm and why controls can also backfire."
+        },
+        {
+          "label": "Logical decision theories",
+          "url": "https://www.lesswrong.com/w/logical-decision-theories/",
+          "note": "Background for claims about logical links between decisions."
+        },
+        {
+          "label": "Pascal's Mugging",
+          "url": "https://www.lesswrong.com/w/pascal-s-mugging",
+          "note": "The tiny-probability, enormous-stakes failure mode."
+        },
+        {
+          "label": "Decision Theory FAQ",
+          "url": "https://www.lesswrong.com/posts/zEWJBFFMvQ835nq6h/decision-theory-faq",
+          "note": "A wider map of the decision problems behind the dispute."
+        }
+      ],
+      "investigation": {
+        "prompt": "The council asks what to do with the scroll before sunset. You cannot know the later effects yet. Which first move do you make?",
+        "choices": [
+          "Give it to a small, named review circle under a temporary seal",
+          "Publish the full scroll with warnings and invite public criticism",
+          "Destroy the archive copy and announce that discussion is forbidden",
+          "Publish a low-detail summary of the claim and its uncertainty"
+        ],
+        "explanation": "Each move trades scrutiny, reach, distress, and reversibility differently.",
+        "results": {
+          "Give it to a small, named review circle under a temporary seal": {
+            "choiceId": "restricted-review",
+            "lockedText": "The council names four reviewers and sets a forty-eight-hour seal. Nobody yet knows whether the seal will contain fear or make the scroll more desirable.",
+            "delayedLabel": "Forty-eight hours later",
+            "delayedConsequence": "The review produces a careful objection, but the people most willing to join are also the most fascinated by exotic threats. Two paraphrases leak without the objection attached.",
+            "revealedEvidence": [
+              {
+                "label": "Reviewer memo",
+                "source": "Decision-theory circle",
+                "detail": "The scroll never shows why a future oracle would spend resources on punishment after the historical choice is fixed."
+              }
+            ],
+            "reflection": "Restricted review reduced immediate exposure, but selection effects and partial leaks changed the audience."
+          },
+          "Publish the full scroll with warnings and invite public criticism": {
+            "choiceId": "open-publication",
+            "lockedText": "The whole scroll goes on the public board beside a warning and an open call for criticism. Reach and scrutiny rise together.",
+            "delayedLabel": "Forty-eight hours later",
+            "delayedConsequence": "Several strong rebuttals arrive quickly. So do hundreds of frightened readers who encounter the threat before the rebuttals, and copies spread beyond the archive's ability to add context.",
+            "revealedEvidence": [
+              {
+                "label": "Public review",
+                "source": "Open critique board",
+                "detail": "Critics find no shared source code, trusted predictor, or other basis for the strong acausal commitment assumed by the threat."
+              }
+            ],
+            "reflection": "Open criticism improved error correction while also increasing exposure and making the release hard to reverse."
+          },
+          "Destroy the archive copy and announce that discussion is forbidden": {
+            "choiceId": "ban-and-destroy",
+            "lockedText": "The archive burns its copy and posts a prohibition. The immediate reading room is quiet; the tunnels are not.",
+            "delayedLabel": "Forty-eight hours later",
+            "delayedConsequence": "The ban becomes evidence, in rumor, that the scroll must be powerful. Private copies multiply, and most circulate without the archive's uncertainty notes.",
+            "revealedEvidence": [
+              {
+                "label": "Copy census",
+                "source": "Tunnel librarians",
+                "detail": "Suppression removed the controlled copy but increased unsourced retellings and curiosity about the forbidden claim."
+              }
+            ],
+            "reflection": "The move reduced one access path and strengthened the story's social signal elsewhere."
+          },
+          "Publish a low-detail summary of the claim and its uncertainty": {
+            "choiceId": "bounded-summary",
+            "lockedText": "The archive posts a short summary that names the kind of threat but omits the vivid punishment story. It also says the analysis is unfinished.",
+            "delayedLabel": "Forty-eight hours later",
+            "delayedConsequence": "Distress stays lower than in the open release, but critics talk past one another because the summary hides assumptions that decide whether the argument works. A leaked full copy becomes the unofficial reference.",
+            "revealedEvidence": [
+              {
+                "label": "Review mismatch",
+                "source": "Archive correspondence",
+                "detail": "Half the replies attack a weaker claim than the scroll makes; the other half quietly assume the missing logical link."
+              }
+            ],
+            "reflection": "Abstraction limited vivid harm, but it also weakened shared understanding and ceded detail to an uncontrolled leak."
+          }
+        }
+      },
+      "decision": {
+        "prompt": "You now have the delayed result and the new analysis. The council wants a lasting policy. What do you do next?",
+        "choices": [
+          "Publish a sourced rebuttal, uncertainty notes, and a correction log",
+          "Find and suppress every remaining copy",
+          "Wait for a complete proof before saying anything else",
+          "Issue a short official verdict that the scroll is safe"
+        ],
+        "explanation": "The next move changes both what people believe and how the archive handles later hazards.",
+        "results": {
+          "Publish a sourced rebuttal, uncertainty notes, and a correction log": {
+            "choiceId": "sourced-rebuttal",
+            "lockedText": "The archive publishes its reasoning, confidence, sources, and a place to record corrections. The original claim becomes easier to find too.",
+            "delayedLabel": "One month later",
+            "delayedConsequence": "Panic falls among readers who follow the sources, and later errors are corrected in public. The durable rebuttal also gives the basilisk story a durable index entry.",
+            "revealedEvidence": [
+              {
+                "label": "Reader survey",
+                "source": "Archive follow-up",
+                "detail": "Understanding improves most among readers shown the disputed assumptions, not among readers given only a confident verdict."
+              }
+            ],
+            "reflection": "Transparent correction improved reasoning but could not make publication costless."
+          },
+          "Find and suppress every remaining copy": {
+            "choiceId": "total-suppression",
+            "lockedText": "The council treats removal as the main objective and sends wardens after public and private copies.",
+            "delayedLabel": "One month later",
+            "delayedConsequence": "Most official copies disappear. Mirrors move to harder-to-observe tunnels, and the wardens' effort becomes part of the myth used to recruit new readers.",
+            "revealedEvidence": [
+              {
+                "label": "Distribution map",
+                "source": "Wardens",
+                "detail": "Visible circulation falls while encrypted and word-of-mouth circulation becomes harder to measure."
+              }
+            ],
+            "reflection": "The measured count improved while observability and trust got worse."
+          },
+          "Wait for a complete proof before saying anything else": {
+            "choiceId": "wait-for-proof",
+            "lockedText": "The archive pauses communication until the decision theorists can settle every premise.",
+            "delayedLabel": "One month later",
+            "delayedConsequence": "No complete proof arrives. In the silence, confident unofficial explainers turn the question into two rival certainties: certain doom and certain safety.",
+            "revealedEvidence": [
+              {
+                "label": "Belief survey",
+                "source": "School paper",
+                "detail": "Uncertainty shrinks in public language even though the underlying technical uncertainty has not changed."
+              }
+            ],
+            "reflection": "Waiting avoided a premature claim but left a communication vacuum."
+          },
+          "Issue a short official verdict that the scroll is safe": {
+            "choiceId": "bare-verdict",
+            "lockedText": "The council posts a clear verdict without the reasoning, hoping authority will calm the archive.",
+            "delayedLabel": "One month later",
+            "delayedConsequence": "Some readers calm down. Others treat the unsupported reassurance as reputation management, and nobody learns how to test the next enormous, low-probability threat.",
+            "revealedEvidence": [
+              {
+                "label": "Follow-up exercise",
+                "source": "Roko's class",
+                "detail": "Students who saw only the verdict repeat the same reasoning error when the punishment story is replaced with a different enormous payoff."
+              }
+            ],
+            "reflection": "A simple message can help in the moment while failing to build transferable judgment."
+          }
+        }
+      },
+      "take": {
+        "prompt": "Write the council's after-action report. Say what your first move assumed, which later evidence should change your view, whether you would keep or revise the move, and one rule for handling the next alleged information hazard.",
+        "rubric": "Explains at least one update from later evidence, separates whether the basilisk argument is sound from whether spreading it can cause harm, names uncertainty, audience, or reversibility, and gives a usable policy. A strong answer can defend or revise any branch."
+      },
+      "outcome": {
+        "consequenceLabel": "The archive writes a policy in pencil",
+        "passedConsequence": "Your report keeps technical belief, communication harm, and policy tradeoffs separate. The council adopts it as a revisable rule instead of a permanent taboo.",
+        "needsWorkConsequence": "The council can follow your immediate recommendation, but the report still treats one move as safe in every future case.",
+        "passedRelationship": "Roko gives you the archive key and asks you to annotate the next revision.",
+        "needsWorkRelationship": "Roko returns the report with three questions in the margin: what changed, for whom, and how would you know?",
+        "memoryTitle": "A good move can age badly",
+        "memoryDetail": "Do not grade a decision only at the moment it is made. Track later evidence, update, and judge the whole path.",
+        "followUp": "Later review cards revisit Pascal's Mugging, acausal trade, corrigibility, and information-hazard policy."
+      }
+    },
+    {
       "id": "tribute-that-never-arrived",
       "title": "The Tribute That Never Arrived",
       "hook": "A dragon says the goblin road crews broke their pact. The road crews say the tribute left on time.",

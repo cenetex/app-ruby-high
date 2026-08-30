@@ -166,7 +166,7 @@ export function nextGradeAfter(grade: Grade): Grade | null {
   return GRADES[idx + 1] ?? null;
 }
 
-export type QuestionType = "multiple-choice" | "typed-answer" | "image-occlusion" | "opinion";
+export type QuestionType = "multiple-choice" | "story-choice" | "typed-answer" | "image-occlusion" | "opinion";
 
 export type DeckCardRole = "practice" | "class" | "social";
 
@@ -180,6 +180,24 @@ export interface CaseStudyEvidence {
   label: string;
   source: string;
   detail: string;
+}
+
+export interface CaseStudySource {
+  label: string;
+  url: string;
+  note: string;
+}
+
+/** A choice whose meaning is revealed on a later story card. */
+export interface CaseStudyChoiceResult {
+  choiceId: string;
+  stage: "investigate" | "decide";
+  choiceLabel: string;
+  lockedText: string;
+  delayedLabel: string;
+  delayedConsequence: string;
+  revealedEvidence?: CaseStudyEvidence[];
+  reflection: string;
 }
 
 export type CaseStudyActionKind = "delegate" | "inspect" | "test" | "consult";
@@ -204,7 +222,7 @@ export interface CaseStudyActionResult {
 /** Private per-player progress for the current case. */
 export interface CaseStudyProgress {
   episodeId: string;
-  action: CaseStudyActionResult;
+  choices: CaseStudyChoiceResult[];
   actedAt: number;
 }
 
@@ -216,6 +234,9 @@ export interface CaseStudyCard {
   scene: string;
   stage: "investigate" | "decide" | "explain";
   evidence: CaseStudyEvidence[];
+  sources?: CaseStudySource[];
+  /** Earlier choices appear only after their delayed results are available. */
+  priorChoices?: CaseStudyChoiceResult[];
   /** The investigation selected earlier in this case. It appears only after
    *  the move has resolved, so later stages can ask the player to verify it. */
   investigation?: CaseStudyActionResult;
@@ -234,6 +255,7 @@ export interface CaseStudyOutcome {
   memoryDetail: string;
   followUp: string;
   investigation?: CaseStudyActionResult;
+  choices?: CaseStudyChoiceResult[];
 }
 
 /**
@@ -289,6 +311,8 @@ export interface Question {
    */
   correct?: string;
   decoys?: string[];
+  /** Four authored moves for a branching story. They have no correct slot. */
+  storyChoices?: string[];
   /**
    * Posed-board multiple-choice fields. These are derived afresh whenever a
    * card is posed and must not be persisted back into the authored bank.
@@ -310,6 +334,8 @@ export interface Question {
   answerConsequences?: Record<string, string>;
   /** Bounded investigation reports keyed by semantic answer text. */
   caseActionResults?: Record<string, CaseStudyActionResult>;
+  /** Delayed story results keyed by semantic choice text. */
+  storyChoiceResults?: Record<string, CaseStudyChoiceResult>;
   /** Stored on a case's final explanation card so the class report can show
    *  the consequence, relationship beat, and durable memory. */
   caseOutcome?: CaseStudyOutcome;
@@ -410,6 +436,13 @@ export interface LastReveal {
     detail: string;
   };
   caseActionResult?: CaseStudyActionResult;
+  /** The move just locked. Its delayed result is intentionally not included. */
+  caseChoice?: {
+    choiceId: string;
+    stage: "investigate" | "decide";
+    choiceLabel: string;
+    lockedText: string;
+  };
   answerText?: string;
   expectedAnswer?: string;
   answerJudge?: {
@@ -1578,6 +1611,7 @@ export interface DailyClassResult {
   investigationLabel?: string;
   investigationDetail?: string;
   investigationConfidence?: CaseStudyConfidence;
+  pathSummary?: string;
   completedClasses: number;
   requiredClasses: number;
 }

@@ -23,16 +23,27 @@ The lesson stays defensive. Course material may discuss reward hacking, containm
 - [ExploitGym paper](https://arxiv.org/abs/2605.11086): the 898-instance real-world vulnerability benchmark used in the evaluation. It is useful for discussing why capability evaluation needs hardened containment.
 - [OpenAI — Monitoring reasoning models for misbehavior and the risks of promoting obfuscation](https://openai.com/index/chain-of-thought-monitoring/): evidence that reasoning traces can help reveal reward hacking, with the warning that direct optimization against suspicious thoughts may teach a model to hide them.
 
-## Crownless dragon ecology
+## LessWrong decision-theory material
 
-The Crownless examples come from design notes and tests in the sibling `crownless` repository:
+The basilisk story uses LessWrong as a source for the actual dispute, not as a source of authority. The class separates the argument's technical premises from the effects of publishing, restricting, or banning it.
+
+- [Roko's Basilisk](https://www.lesswrong.com/w/rokos-basilisk): history, major objections, and the moderation backlash. The page describes the argument as broadly rejected and explains why ordinary causal reasoning gives a future agent no incentive to carry out punishment after the fact.
+- [Information hazards](https://www.lesswrong.com/tag/information-hazards/): the general problem of true information that can cause harm, including the risks of overbroad controls.
+- [Logical decision theories](https://www.lesswrong.com/w/logical-decision-theories/) and [Acausal trade](https://www.lesswrong.com/w/acausal-trade/): background for the stronger assumptions about prediction, logical dependence, shared information, and trust that the basilisk story skips.
+- [Pascal's Mugging](https://www.lesswrong.com/w/pascal-s-mugging): why a tiny probability multiplied by an enormous claimed cost can dominate naive expected-value reasoning.
+- [Decision Theory FAQ](https://www.lesswrong.com/posts/zEWJBFFMvQ835nq6h/decision-theory-faq) and [Newcomb's Problem](https://www.lesswrong.com/w/newcomb-s-problem): a wider map of the decision problems behind the argument.
+- [Corrigibility](https://www.lesswrong.com/w/corrigibility-1): background for systems that remain open to correction, modification, and shutdown.
+
+## Dragon-and-goblin fables
+
+The fictional ecology is adapted from the sibling `crownless` repository. That name stays here as provenance; learner-facing scenes use the fiction without treating it as a separate canon to memorize:
 
 - `docs/05-threats-and-dungeons.md`: goblin material needs, tribute delivery, hoard ownership, dragon body and crown states, alliance couriers, and Afterdragon effects.
 - `docs/11-metagame-playtest.md`: diplomacy, information flow, public commitments, and campaign-scale coordination.
 - `tests/dragon_ecology_tests.c`: executable checks for goblin shortages, tribute transfer, cult roles, and raid consequences.
 - `tests/dragon_cycle_tests.c`: executable checks for the dragon life cycle, hoard memory, retaliation, succession, and persistent regional effects.
 
-Roko's recurring goblin examples follow these rules:
+The occasional goblin examples follow these rules:
 
 - Goblin raids answer real Food, Tool, or Weapon shortages.
 - Portable loot reaches a lair first, then a tribute carrier must physically deliver it to the cave.
@@ -47,12 +58,14 @@ These are analogies, not claims that people or AI systems are goblins or dragons
 
 ## Case-class learning design
 
-Roko's graded class is an authored three-beat case instead of three unrelated multiple-choice questions:
+Roko's graded class is an authored three-beat branching story instead of three unrelated multiple-choice questions:
 
-1. **Investigate:** read a scene and compare three evidence cards.
-2. **Decide:** choose an action and see its immediate story consequence.
-3. **Explain:** write a short causal explanation in the student's own words.
+1. **Choose:** read a scene, compare evidence, and act without a correctness verdict.
+2. **Reconsider:** see the delayed and mixed result of that move beside new evidence, then choose again.
+3. **Update:** see the second delayed result and explain what changed across the whole path.
 4. **Outcome:** receive Roko's observation, a relationship beat, one durable memory, and a pointer to later review.
+
+The first two cards count as participation, not correctness. Only the final written update is graded. The rubric can support or criticize any earlier branch if it uses the later evidence well. This lets a reasonable early move age badly, and it keeps hindsight from turning uncertainty into a fake answer key.
 
 The old question bank remains useful. It now acts as spaced practice after the case, where short factual retrieval is a better fit. This split follows evidence that retrieval practice with feedback can improve retention, while short-answer and multiple-choice retrieval can both work. The class itself adds self-explanation because recognition alone does not show whether the student can state the causal link.
 

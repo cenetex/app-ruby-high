@@ -5436,7 +5436,7 @@ describe("RubyHighService Phase 1", () => {
     expect(restored.courseProgress(sid, "ruby").today.result).toEqual(record.result);
   });
 
-  it("runs Roko's graded class as one investigate-decide-explain case", async () => {
+  it("runs Roko's basilisk class as delayed branches followed by one graded update", async () => {
     const { ruby } = await makeServices();
     const sid = "test:roko-case-class";
     ruby.selectGrade(sid, "10");
@@ -5453,51 +5453,62 @@ describe("RubyHighService Phase 1", () => {
 
     const investigate = ruby.pickAndPose(sid, { faculty: "roko" });
     expect(investigate.current).toMatchObject({
-      type: "multiple-choice",
+      type: "story-choice",
       faculty: "roko",
-      caseStudy: { episodeId: "exact-treasure", stage: "investigate" },
+      caseStudy: { episodeId: "basilisk-archive", stage: "investigate" },
     });
+    expect(investigate.current?.correctChoice).toBeUndefined();
     const episodeId = investigate.current!.caseStudy!.episodeId;
-    const investigationReveal = ruby.submitAnswer(sid, investigate.current!.correctChoice!);
-    expect(investigationReveal.lastReveal?.caseActionResult).toMatchObject({
-      actionId: "lyra-measurement-audit",
-      actorId: "lyra",
-      confidence: "high",
+    const firstChoice = investigate.current!.options!.A;
+    const investigationReveal = ruby.submitAnswer(sid, "A");
+    expect(investigationReveal.lastReveal).toMatchObject({
+      questionType: "story-choice",
+      picked: "A",
+      caseChoice: { choiceLabel: firstChoice },
     });
     expect(investigationReveal.caseStudyProgress).toMatchObject({
       episodeId,
-      action: { actionId: "lyra-measurement-audit" },
+      choices: [{ choiceLabel: firstChoice, stage: "investigate" }],
     });
+    expect(investigationReveal.score.total).toBe(0);
     ruby.clearBoard(sid);
 
     const decide = ruby.pickAndPose(sid, { faculty: "roko" });
     expect(decide.current).toMatchObject({
-      type: "multiple-choice",
+      type: "story-choice",
       caseStudy: {
         episodeId,
         stage: "decide",
-        investigation: { actionId: "lyra-measurement-audit" },
+        priorChoices: [{ choiceLabel: firstChoice, delayedConsequence: expect.any(String) }],
       },
     });
-    expect(decide.current!.answerConsequences?.[decide.current!.correct!]).toBeTruthy();
-    const decisionReveal = ruby.submitAnswer(sid, decide.current!.correctChoice!);
-    expect(decisionReveal.lastReveal?.caseConsequence?.detail).toBeTruthy();
+    const secondChoice = decide.current!.options!.B;
+    const decisionReveal = ruby.submitAnswer(sid, "B");
+    expect(decisionReveal.lastReveal).toMatchObject({
+      questionType: "story-choice",
+      caseChoice: { choiceLabel: secondChoice, stage: "decide" },
+    });
+    expect(decisionReveal.lastReveal?.caseConsequence).toBeUndefined();
+    expect(decisionReveal.caseStudyProgress?.choices).toHaveLength(2);
     ruby.clearBoard(sid);
 
     const explain = ruby.pickAndPose(sid, { faculty: "roko" });
     expect(explain.current).toMatchObject({
       type: "opinion",
       opinionPurpose: "daily-take",
-      prompt: expect.stringContaining("verify Lyra's report"),
+      prompt: expect.stringContaining(firstChoice),
       caseStudy: {
         episodeId,
         stage: "explain",
-        investigation: { actionId: "lyra-measurement-audit" },
+        priorChoices: [
+          { choiceLabel: firstChoice, delayedConsequence: expect.any(String) },
+          { choiceLabel: secondChoice, delayedConsequence: expect.any(String) },
+        ],
       },
-      caseOutcome: { episodeId, investigation: { actionId: "lyra-measurement-audit" } },
+      caseOutcome: { episodeId, choices: expect.any(Array) },
     });
-    ruby.recordOpinion(sid, "player", "I would create one shared record because it gives both sides evidence and delays retaliation.");
-    ruby.recordGrades(sid, [{ responder: "player", score: 8, comment: "You named the evidence and the delayed action." }], "player");
+    ruby.recordOpinion(sid, "player", "My first move assumed limited review would contain the story. The leak and missing causal incentive should update me: I would publish a sourced, revisable rebuttal for affected readers, while keeping vivid details out of broad alerts.");
+    ruby.recordGrades(sid, [{ responder: "player", score: 8, comment: "You separated the argument from the communication effect and updated from later evidence." }], "player");
 
     const record = ruby.getOrCreate(sid).character!.dailyClasses![`10:roko:${dailyKey()}`]!;
     expect(record).toMatchObject({
@@ -5510,9 +5521,7 @@ describe("RubyHighService Phase 1", () => {
         memoryTitle: expect.any(String),
         memoryDetail: expect.any(String),
         followUp: expect.any(String),
-        investigationLabel: "Lyra's measurement audit",
-        investigationDetail: expect.stringContaining("Verify it:"),
-        investigationConfidence: "high",
+        pathSummary: expect.stringContaining(firstChoice),
       },
     });
 

@@ -1,7 +1,7 @@
 {
   "faculty": "roko",
   "displayName": "Roko",
-  "description": "Roko's classroom: AI alignment, information hazards, coordination, threat modeling, and Crownless dragon ecology.",
+  "description": "Roko's classroom: AI alignment, information hazards, coordination, threat modeling.",
   "questions": [
     {
       "id": "roko-001",
@@ -2688,7 +2688,7 @@
       "difficulty": "easy",
       "subject": "coordination",
       "minGrade": "10",
-      "prompt": "In Crownless, why do goblins raid Food when the lair is hungry?",
+      "prompt": "In Roko's dragon fable, why do goblins raid Food when the lair is hungry?",
       "correct": "The lair has a material shortage that the raid can supply",
       "decoys": [
         "The dragon orders every raid against rich towns",
@@ -2725,7 +2725,7 @@
         "A hunt is caused by goblin devotion, while retaliation is random",
         "A hunt takes treasure, while retaliation only takes livestock"
       ],
-      "explanation": "Crownless keeps body condition and hoard wounds as separate causal states.",
+      "explanation": "The fable keeps body condition and hoard wounds as separate causal states.",
       "stat": "hustle"
     },
     {
@@ -2733,7 +2733,7 @@
       "difficulty": "easy",
       "subject": "coordination",
       "minGrade": "10",
-      "prompt": "Which goblin role tends eggs and cave heat in the Crownless dragon cult?",
+      "prompt": "Which goblin role tends eggs and cave heat in Roko's dragon fable?",
       "correct": "Ashkeepers",
       "decoys": [
         "Hoardkeepers",
@@ -2763,7 +2763,7 @@
       "difficulty": "easy",
       "subject": "infohazards",
       "minGrade": "10",
-      "prompt": "What do Crownless couriers create by carrying sealed alliance messages over real roads?",
+      "prompt": "What do goblin couriers create by carrying sealed alliance messages over real roads?",
       "correct": "Delay, loss, and possible distortion between intention and shared knowledge",
       "decoys": [
         "Instant common knowledge in every kingdom",
@@ -2838,7 +2838,7 @@
       "difficulty": "medium",
       "subject": "threat-modeling",
       "minGrade": "11",
-      "prompt": "A town is rich but no hoard theft occurred. What does Crownless predict?",
+      "prompt": "A town is rich but no hoard theft occurred. What does the causal model predict?",
       "correct": "The dragon has no retaliation cause merely because the town is rich",
       "decoys": [
         "The dragon burns it immediately",
@@ -2898,7 +2898,7 @@
       "difficulty": "hard",
       "subject": "ai-alignment",
       "minGrade": "12",
-      "prompt": "Roko compares a powerful AI's objective to the Crownless dragon's causal rules. What is the key lesson?",
+      "prompt": "Roko compares a powerful AI's objective to a fabled dragon's causal rules. What is the key lesson?",
       "correct": "High impact should still be traced through explicit state, incentives, and causal preconditions",
       "decoys": [
         "A powerful actor makes causal records unnecessary",
@@ -3213,7 +3213,7 @@
       "difficulty": "hard",
       "subject": "coordination",
       "minGrade": "12",
-      "prompt": "What is the Crownless goblin analogy for the incident's unauthorized message board?",
+      "prompt": "What is the goblin-courier analogy for the incident's unauthorized message board?",
       "correct": "A courier network can turn many local shortages and partial plans into one coordinated campaign",
       "decoys": [
         "Every courier makes the dragon own the cargo immediately",

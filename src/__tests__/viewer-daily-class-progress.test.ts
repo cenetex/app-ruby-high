@@ -49,15 +49,15 @@ describe("daily class progress view", () => {
     expect(view.continuationLabel).toBe("Next: Question 3");
   });
 
-  it("labels Roko's hosted case as investigate, decide, explain, and outcome", () => {
+  it("labels Roko's hosted case as choose, reconsider, update, and outcome", () => {
     const view = dailyClassProgressView({
       ...telemetry(1),
       faculty: "roko",
       current: { caseStudy: { stage: "decide" } },
     });
 
-    expect(view.steps.map((step) => step.label)).toEqual(["Investigate", "Decide", "Explain", "Outcome"]);
-    expect(view.continuationLabel).toBe("Next: Decide");
+    expect(view.steps.map((step) => step.label)).toEqual(["Choose", "Reconsider", "Update", "Outcome"]);
+    expect(view.continuationLabel).toBe("Next: Reconsider");
   });
 
   it("stays hidden without a character-backed class context", () => {

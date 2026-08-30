@@ -98,7 +98,7 @@ interface SessionTelemetry extends Record<string, unknown> {
   current: {
     id: string;
     prompt: string;
-    type: "multiple-choice" | "typed-answer" | "image-occlusion" | "opinion";
+    type: "multiple-choice" | "story-choice" | "typed-answer" | "image-occlusion" | "opinion";
     options: Record<Choice, string>;
     subject: string | null;
     stat: keyof CharacterStats | null;
@@ -199,6 +199,7 @@ function deriveActiveRound(state: QuizState) {
   const remainingMs = Math.max(0, round.expiresAt - now);
   const reveal = round.resolved;
   const isOpinion = round.type === "opinion";
+  const isStoryChoice = round.type === "story-choice";
   return {
     type: round.type,
     questionId: round.questionId,
@@ -220,7 +221,7 @@ function deriveActiveRound(state: QuizState) {
         answeredAt: n.answeredAt,
         isLocked,
         pick: !isOpinion && reveal && isLocked ? n.plannedPick : null,
-        isCorrect: !isOpinion && reveal && isLocked && state.current
+        isCorrect: !isOpinion && !isStoryChoice && reveal && isLocked && state.current
           ? n.plannedPick === correctChoiceForQuestion(state.current)
           : null,
       };
@@ -234,7 +235,7 @@ function deriveActiveRound(state: QuizState) {
     },
     resolved: round.resolved,
     idleTriggered: !!round.idleTriggered,
-    firstCorrect: !isOpinion && reveal ? round.firstCorrect : null,
+    firstCorrect: !isOpinion && !isStoryChoice && reveal ? round.firstCorrect : null,
     opinionResponses: round.opinionResponses,
     opinionGrades: round.opinionGrades,
     bestResponder: round.bestResponder,
