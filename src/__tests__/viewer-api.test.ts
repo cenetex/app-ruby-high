@@ -195,6 +195,25 @@ describe("viewer API client", () => {
     expect(onSessionData).not.toHaveBeenCalled();
   });
 
+  it("reuses session ETags and skips unchanged session payloads", async () => {
+    const onSessionData = vi.fn();
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce({
+        ...jsonResponse(200, { id: "fresh-session" }),
+        headers: new Headers({ etag: '"session-v1"' }),
+      })
+      .mockResolvedValueOnce(jsonResponse(304, null));
+    const client = createViewerApiClient(baseDeps({ fetchImpl, onSessionData }));
+
+    await client.fetchSession();
+    await client.fetchSession();
+
+    expect(onSessionData).toHaveBeenCalledTimes(1);
+    expect(onSessionData).toHaveBeenCalledWith({ id: "fresh-session" });
+    const secondHeaders = fetchImpl.mock.calls[1]?.[1]?.headers as Headers;
+    expect(secondHeaders.get("If-None-Match")).toBe('"session-v1"');
+  });
+
   it("bounds request lifetimes and cleans up timeout timers", () => {
     vi.useFakeTimers();
     const clearedOpts: RequestInit = {};

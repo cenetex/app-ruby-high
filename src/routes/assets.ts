@@ -3,8 +3,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
-import { loadGeneratedPortraitAsset } from "../services/generated-portrait-assets.js";
-import { VIEWER_FRAME_ANCESTORS_DIRECTIVE } from "../viewer.js";
+import { VIEWER_FRAME_ANCESTORS_DIRECTIVE } from "../viewer-shell.js";
 import {
   APP_ROUTE_PREFIX,
   ASSETS_PREFIX,
@@ -12,7 +11,7 @@ import {
   VIEWER_PATH,
 } from "./constants.js";
 
-const SERVICE_WORKER_CACHE = "ruby-high-pwa-v5";
+const SERVICE_WORKER_CACHE = `ruby-high-pwa-${process.env.RUBY_HIGH_BUILD ?? "dev"}`;
 const VIEWER_SECURITY_CSP_DIRECTIVES = [
   "default-src 'self'",
   "base-uri 'none'",
@@ -97,9 +96,39 @@ const NFT_MARKET_CARD_IMAGE_FILES = Object.fromEntries(
 
 const DEFAULT_ASSET_CACHE_CONTROL = "public, max-age=86400, stale-while-revalidate=604800";
 const VERSIONED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
+const ASSET_CACHE_MAX_BYTES = 32 * 1024 * 1024;
+const ASSET_CACHE_MAX_ENTRY_BYTES = 2 * 1024 * 1024;
 
-const ASSET_FILES: Record<string, { file: string; mime: string; source?: "assets" | "dist"; cacheControl?: string; versionedCacheControl?: string }> = {
-  "privy-client.global.js": { file: "viewer-privy-client.global.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-cache", versionedCacheControl: VERSIONED_ASSET_CACHE_CONTROL },
+const OPTIMIZED_TEACHER_IDS = ["ruby", "sally-science", "professor-edward", "roko", "eliza", "seraph"] as const;
+const OPTIMIZED_STUDENT_IDS = ["lyra", "sami", "ravi", "indra", "mika", "noor"] as const;
+const OPTIMIZED_TEACHER_FILES = Object.fromEntries(
+  OPTIMIZED_TEACHER_IDS.map((id) => [
+    `optimized/teachers/${id}-face.webp`,
+    { file: `optimized/teachers/${id}-face.webp`, mime: "image/webp" },
+  ]),
+);
+const OPTIMIZED_STUDENT_FILES = Object.fromEntries(
+  OPTIMIZED_STUDENT_IDS.flatMap((id) => [
+    [
+      `optimized/students/${id}-face.webp`,
+      { file: `optimized/students/${id}-face.webp`, mime: "image/webp" },
+    ],
+    [
+      `optimized/students/${id}-full.webp`,
+      { file: `optimized/students/${id}-full.webp`, mime: "image/webp" },
+    ],
+  ]),
+);
+
+const ASSET_FILES: Record<string, { file: string; mime: string; source?: "assets" | "dist"; cacheControl?: string; versionedCacheControl?: string; precompressed?: boolean }> = {
+  "viewer-client.js": { file: "viewer-client.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-cache", versionedCacheControl: VERSIONED_ASSET_CACHE_CONTROL, precompressed: true },
+  "viewer.css": { file: "viewer.css", mime: "text/css; charset=utf-8", source: "dist", cacheControl: "no-cache", versionedCacheControl: VERSIONED_ASSET_CACHE_CONTROL, precompressed: true },
+  "privy-client.global.js": { file: "viewer-privy-client.global.js", mime: "text/javascript; charset=utf-8", source: "dist", cacheControl: "no-cache", versionedCacheControl: VERSIONED_ASSET_CACHE_CONTROL, precompressed: true },
+  "optimized/ruby-high-logo.webp": { file: "optimized/ruby-high-logo.webp", mime: "image/webp" },
+  "optimized/ruby-high-app-icon.webp": { file: "optimized/ruby-high-app-icon.webp", mime: "image/webp" },
+  "optimized/ruby-classroom.webp": { file: "optimized/ruby-classroom.webp", mime: "image/webp" },
+  ...OPTIMIZED_TEACHER_FILES,
+  ...OPTIMIZED_STUDENT_FILES,
   "logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
   "ruby-high-logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
   "brand/ruby-high-app-icon.png": { file: "brand/ruby-high-app-icon.png", mime: "image/png" },
@@ -177,13 +206,10 @@ const ASSET_FILES: Record<string, { file: string; mime: string; source?: "assets
 };
 
 const PWA_CORE_ASSET_NAMES = [
-  "logo.png",
-  "brand/ruby-high-app-icon.png",
-  "ruby.png",
-  "fonts/caveat-regular.ttf",
-  "fonts/crafty-girls-regular.ttf",
-  "fonts/give-you-glory-regular.ttf",
-  "fonts/schoolbell-regular.ttf",
+  "viewer.css",
+  "viewer-client.js",
+  "optimized/ruby-high-logo.webp",
+  "optimized/ruby-high-app-icon.webp",
 ] as const;
 
 function headerIncludes(value: string | string[] | null | undefined, token: string): boolean {
@@ -268,15 +294,39 @@ function inlineScriptHashes(html: string): string[] {
 
 interface CachedAsset {
   body: Buffer;
+  brotliBody?: Buffer;
+  gzipBody?: Buffer;
   mime: string;
   etag: string;
 }
 const ASSET_CACHE = new Map<string, CachedAsset>();
 const ASSET_LOAD_INFLIGHT = new Map<string, Promise<CachedAsset | null>>();
+let assetCacheBytes = 0;
+
+function cachedAssetSize(asset: CachedAsset): number {
+  return asset.body.length + (asset.gzipBody?.length ?? 0) + (asset.brotliBody?.length ?? 0);
+}
+
+function rememberAsset(name: string, asset: CachedAsset): void {
+  const size = cachedAssetSize(asset);
+  if (size > ASSET_CACHE_MAX_ENTRY_BYTES) return;
+  while (assetCacheBytes + size > ASSET_CACHE_MAX_BYTES && ASSET_CACHE.size > 0) {
+    const oldest = ASSET_CACHE.entries().next().value as [string, CachedAsset] | undefined;
+    if (!oldest) break;
+    ASSET_CACHE.delete(oldest[0]);
+    assetCacheBytes -= cachedAssetSize(oldest[1]);
+  }
+  ASSET_CACHE.set(name, asset);
+  assetCacheBytes += size;
+}
 
 async function loadAsset(name: string): Promise<CachedAsset | null> {
   const cached = ASSET_CACHE.get(name);
-  if (cached) return cached;
+  if (cached) {
+    ASSET_CACHE.delete(name);
+    ASSET_CACHE.set(name, cached);
+    return cached;
+  }
   const inflight = ASSET_LOAD_INFLIGHT.get(name);
   if (inflight) return inflight;
   const entry = ASSET_FILES[name];
@@ -297,8 +347,14 @@ async function loadAsset(name: string): Promise<CachedAsset | null> {
       try {
         const body = await readFile(path);
         const etag = `"${createHash("sha1").update(body).digest("base64url").slice(0, 22)}"`;
-        const record: CachedAsset = { body, mime: entry.mime, etag };
-        ASSET_CACHE.set(name, record);
+        const [gzipBody, brotliBody] = entry.precompressed
+          ? await Promise.all([
+              readFile(`${path}.gz`).catch(() => undefined),
+              readFile(`${path}.br`).catch(() => undefined),
+            ])
+          : [undefined, undefined];
+        const record: CachedAsset = { body, gzipBody, brotliBody, mime: entry.mime, etag };
+        rememberAsset(name, record);
         return record;
       } catch {}
     }
@@ -316,6 +372,7 @@ export async function sendAsset(
   ifNoneMatch?: string | null,
   includeBody = true,
   versioned = false,
+  acceptEncoding?: string | string[] | null,
 ): Promise<boolean> {
   if (name.startsWith("generated/")) {
     return sendGeneratedPortraitAsset(res, name.slice("generated/".length), ifNoneMatch, includeBody);
@@ -337,7 +394,17 @@ export async function sendAsset(
     return true;
   }
   response.statusCode = 200;
-  response.end(includeBody ? asset.body : undefined);
+  let body = asset.body;
+  if (asset.brotliBody && headerIncludes(acceptEncoding, "br")) {
+    response.setHeader("Content-Encoding", "br");
+    response.setHeader("Vary", "Accept-Encoding");
+    body = asset.brotliBody;
+  } else if (asset.gzipBody && headerIncludes(acceptEncoding, "gzip")) {
+    response.setHeader("Content-Encoding", "gzip");
+    response.setHeader("Vary", "Accept-Encoding");
+    body = asset.gzipBody;
+  }
+  response.end(includeBody ? body : undefined);
   return true;
 }
 
@@ -347,6 +414,7 @@ async function sendGeneratedPortraitAsset(
   ifNoneMatch?: string | null,
   includeBody = true,
 ): Promise<boolean> {
+  const { loadGeneratedPortraitAsset } = await import("../services/generated-portrait-assets.js");
   const asset = await loadGeneratedPortraitAsset(name);
   if (!asset) return false;
   const response = res as {

@@ -13830,6 +13830,7 @@ function buildMetricEventsSnapshot(
   const byName: Record<StoredMetricEventName, number> = {
     visitor_seen: 0,
     app_open: 0,
+    performance_sample: 0,
     session_resume: 0,
     funnel_step: 0,
     yearbook_open: 0,

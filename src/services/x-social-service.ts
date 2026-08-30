@@ -3,13 +3,6 @@ import { fetchSafeImageBuffer } from "./safe-url.js";
 import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve, dirname } from "node:path";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import {
-  DeleteCommand,
-  DynamoDBDocumentClient,
-  PutCommand,
-  ScanCommand,
-} from "@aws-sdk/lib-dynamodb";
 import type { IAgentRuntime } from "../runtime.js";
 import { Service } from "../runtime.js";
 import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
@@ -129,7 +122,7 @@ interface ScheduledSchoolUpdatePublishResult {
   text: string;
 }
 
-interface XTokenStore {
+export interface XTokenStore {
   loadAll(): Promise<XTokenRecord[]>;
   save(record: XTokenRecord): Promise<void>;
   delete(teacherId: string): Promise<void>;
@@ -280,10 +273,6 @@ function isDynamoBackend(): boolean {
   return process.env.RUBY_HIGH_STORE_BACKEND === "dynamodb";
 }
 
-function xTokenPk(teacherId: string): string {
-  return `x:token:${teacherId}`;
-}
-
 class JsonXTokenStore implements XTokenStore {
   private filePath: string;
 
@@ -332,58 +321,32 @@ class JsonXTokenStore implements XTokenStore {
   }
 }
 
-class DynamoXTokenStore implements XTokenStore {
-  private client: DynamoDBDocumentClient;
-  private tableName: string;
+function createTokenStore(): XTokenStore {
+  return isDynamoBackend() ? new LazyDynamoXTokenStore() : new JsonXTokenStore();
+}
 
-  constructor() {
-    const region = process.env.AWS_REGION ?? "us-east-1";
-    this.tableName = process.env.RUBY_HIGH_DYNAMO_TABLE ?? "ruby-high-state";
-    this.client = DynamoDBDocumentClient.from(new DynamoDBClient({ region }));
+class LazyDynamoXTokenStore implements XTokenStore {
+  private delegatePromise: Promise<XTokenStore> | null = null;
+
+  private delegate(): Promise<XTokenStore> {
+    if (!this.delegatePromise) {
+      this.delegatePromise = import("./x-social-dynamo-token-store.js")
+        .then(({ createDynamoXTokenStore }) => createDynamoXTokenStore());
+    }
+    return this.delegatePromise;
   }
 
   async loadAll(): Promise<XTokenRecord[]> {
-    const records: XTokenRecord[] = [];
-    let lastKey: Record<string, unknown> | undefined;
-    do {
-      const result = await this.client.send(new ScanCommand({
-        TableName: this.tableName,
-        FilterExpression: "begins_with(pk, :prefix)",
-        ExpressionAttributeValues: { ":prefix": "x:token:" },
-        ...(lastKey ? { ExclusiveStartKey: lastKey } : {}),
-      }));
-      const items = (result.Items ?? []) as Array<Record<string, unknown>>;
-      for (const item of items) {
-        if (item.token && typeof item.token === "object") {
-          records.push(item.token as unknown as XTokenRecord);
-        }
-      }
-      lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
-    } while (lastKey);
-    return records;
+    return (await this.delegate()).loadAll();
   }
 
   async save(record: XTokenRecord): Promise<void> {
-    await this.client.send(new PutCommand({
-      TableName: this.tableName,
-      Item: {
-        pk: xTokenPk(record.teacherId),
-        token: record,
-        updatedAt: Date.now(),
-      },
-    }));
+    return (await this.delegate()).save(record);
   }
 
   async delete(teacherId: string): Promise<void> {
-    await this.client.send(new DeleteCommand({
-      TableName: this.tableName,
-      Key: { pk: xTokenPk(teacherId) },
-    }));
+    return (await this.delegate()).delete(teacherId);
   }
-}
-
-function createTokenStore(): XTokenStore {
-  return isDynamoBackend() ? new DynamoXTokenStore() : new JsonXTokenStore();
 }
 
 // ── PKCE helpers ────────────────────────────────────────────────────────────

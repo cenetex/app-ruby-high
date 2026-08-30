@@ -9,10 +9,8 @@ import { createHash } from "node:crypto";
 import { RubyHighService } from "./services/ruby-high-service.js";
 import { ChatService } from "./services/chat-service.js";
 import { FacultyService } from "./services/faculty-service.js";
-import { renderViewerHtml } from "./viewer.js";
+import { renderViewerHtml } from "./viewer-shell.js";
 import { handleChatRoutes } from "./chat-routes.js";
-import { handlePackRoutes } from "./pack-routes.js";
-import { handlePackLibraryRoutes } from "./pack-library-routes.js";
 import { AuthService, clientSurfaceFromUserAgent } from "./services/auth-service.js";
 import { getRuntime, getSessionId, tryGetService } from "./services/session-identity.js";
 import {
@@ -31,21 +29,6 @@ import {
 } from "./routes/assets.js";
 import { handleCommandRoute } from "./routes/commands.js";
 import { handleBugReportRoute } from "./routes/bug-report.js";
-import { BILLING_PREFIX, handleBillingRoutes } from "./routes/billing.js";
-import {
-  ADMIN_METRICS_PATH,
-  ADMIN_METRICS_SCHEMA_PATH,
-  ADMIN_OVERVIEW_PATH,
-  ADMIN_CURRICULUM_REPLENISHMENT_PATH,
-  ADMIN_WORLD_MODERATION_PATH,
-  ADMIN_PATH,
-  handleAdminCurriculumReplenishmentRoute,
-  handleAdminMetricsSchemaRoute,
-  handleAdminOverviewRoute,
-  handleAdminMetricsRoute,
-  handleAdminWorldModerationRoute,
-  renderAdminDashboardHtml,
-} from "./routes/admin.js";
 import type { AdminOpsSnapshot } from "./routes/admin.js";
 import { handleYearbookRoutes } from "./routes/yearbook.js";
 import { handleFirstBellRoutes, FIRST_BELL_PREFIX } from "./routes/first-bell.js";
@@ -53,7 +36,6 @@ import { buildSessionState, getCharacterName } from "./routes/session-state.js";
 import { handleMetricsEventRoute, METRICS_EVENT_PATH } from "./routes/metrics-events.js";
 import { AGENT_API_PREFIX, handleAgentRoutes } from "./routes/agent.js";
 import { AgentAccessService } from "./services/agent-access-service.js";
-import { handleNftRoutes } from "./routes/nft.js";
 import { XSocialService } from "./services/x-social-service.js";
 import { handleXSocialRoutes } from "./routes/x-social.js";
 import { X_SOCIAL_PREFIX } from "./routes/constants.js";
@@ -84,6 +66,13 @@ import { GRADES, type Grade } from "./types.js";
 export type { RouteContext } from "./routes/context.js";
 
 const PUBLIC_READ_LIMITER = new TokenBucket(120, 2);
+const ADMIN_PATH = `${APP_ROUTE_PREFIX}/admin`;
+const ADMIN_METRICS_PATH = `${ADMIN_PATH}/metrics`;
+const ADMIN_METRICS_SCHEMA_PATH = `${ADMIN_METRICS_PATH}/schema`;
+const ADMIN_OVERVIEW_PATH = `${ADMIN_PATH}/overview`;
+const ADMIN_CURRICULUM_REPLENISHMENT_PATH = `${ADMIN_PATH}/curriculum/replenishment`;
+const ADMIN_WORLD_MODERATION_PATH = `${ADMIN_PATH}/world/moderation`;
+const BILLING_PREFIX = `${APP_ROUTE_PREFIX}/billing`;
 const PUBLIC_READ_LIMITER_GC_INTERVAL_MS = 60_000;
 const WORLD_LIVE_STREAM_LIMIT = 6;
 const WORLD_LIVE_STREAM_POOL = new LiveStreamPool(WORLD_LIVE_STREAM_LIMIT);
@@ -188,6 +177,35 @@ function adminOpsSnapshot(): AdminOpsSnapshot {
 function setNoStoreJsonHeaders(res: unknown): void {
   const r = res as { setHeader?: (name: string, value: string) => void };
   r.setHeader?.("Cache-Control", "no-store");
+}
+
+function sendConditionalSessionJson(
+  res: unknown,
+  data: unknown,
+  ifNoneMatch: string | null | undefined,
+  fallbackJson: (response: unknown, body: unknown, status?: number) => void,
+): void {
+  const body = JSON.stringify(data);
+  const etag = `"${createHash("sha256").update(body).digest("base64url")}"`;
+  const response = res as {
+    statusCode?: number;
+    setHeader?: (name: string, value: string) => void;
+    end?: (body?: string) => void;
+  };
+  if (typeof response.end !== "function") {
+    fallbackJson(res, data);
+    return;
+  }
+  response.setHeader?.("Cache-Control", "private, no-cache");
+  response.setHeader?.("ETag", etag);
+  response.setHeader?.("Content-Type", "application/json; charset=utf-8");
+  if (ifNoneMatch === etag) {
+    response.statusCode = 304;
+    response.end?.();
+    return;
+  }
+  response.statusCode = 200;
+  response.end?.(body);
 }
 
 function sessionCommandOriginAllowed(ctx: RouteContext): boolean {
@@ -621,6 +639,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     return true;
   }
   if (ctx.pathname === ADMIN_METRICS_PATH) {
+    const { handleAdminMetricsRoute } = await import("./routes/admin.js");
     const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
     const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
     if (!auth || !ruby) {
@@ -631,10 +650,12 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   }
 
   if (ctx.pathname === ADMIN_METRICS_SCHEMA_PATH) {
+    const { handleAdminMetricsSchemaRoute } = await import("./routes/admin.js");
     return handleAdminMetricsSchemaRoute(ctx);
   }
 
   if (ctx.pathname === ADMIN_OVERVIEW_PATH) {
+    const { handleAdminOverviewRoute } = await import("./routes/admin.js");
     const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
     const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
     if (!auth || !ruby) {
@@ -645,6 +666,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   }
 
   if (ctx.pathname === ADMIN_CURRICULUM_REPLENISHMENT_PATH) {
+    const { handleAdminCurriculumReplenishmentRoute } = await import("./routes/admin.js");
     const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
     const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
     if (!auth || !ruby) {
@@ -655,6 +677,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   }
 
   if (ctx.pathname === ADMIN_WORLD_MODERATION_PATH) {
+    const { handleAdminWorldModerationRoute } = await import("./routes/admin.js");
     const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
     const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
     if (!auth || !ruby) {
@@ -677,6 +700,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   }
 
   if (ctx.method === "GET" && ctx.pathname === ADMIN_PATH) {
+    const { renderAdminDashboardHtml } = await import("./routes/admin.js");
     sendHtmlResponse(
       ctx.res,
       renderAdminDashboardHtml(),
@@ -687,6 +711,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   }
 
   if (ctx.pathname.startsWith(BILLING_PREFIX)) {
+    const { handleBillingRoutes } = await import("./routes/billing.js");
     const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
     const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
     if (!auth || !ruby) {
@@ -697,6 +722,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   }
 
   if (ctx.pathname.startsWith("/api/apps/ruby-high/nft")) {
+    const { handleNftRoutes } = await import("./routes/nft.js");
     const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
     const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
     if (!auth || !ruby) {
@@ -736,6 +762,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     ctx.pathname.startsWith("/api/apps/ruby-high/pack/") ||
     ctx.pathname.startsWith("/api/apps/ruby-high/pack-drafts")
   ) {
+    const { handlePackLibraryRoutes } = await import("./pack-library-routes.js");
     const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
     const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
     if (!auth || !ruby) {
@@ -779,6 +806,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
 
   // Pack endpoints: per-session ownership, auth required.
   if (ctx.pathname.startsWith("/api/apps/ruby-high/packs")) {
+    const { handlePackRoutes } = await import("./pack-routes.js");
     const auth = tryGetService<AuthService>(runtime, AuthService.serviceType);
     const ruby = tryGetService<RubyHighService>(runtime, RubyHighService.serviceType);
     if (!auth || !ruby) {
@@ -826,7 +854,14 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
 
   if ((ctx.method === "GET" || ctx.method === "HEAD") && ctx.pathname.startsWith(ASSETS_PREFIX)) {
     const name = ctx.pathname.slice(ASSETS_PREFIX.length);
-    const sent = await sendAsset(ctx.res, name, ctx.ifNoneMatch ?? null, ctx.method === "GET", ctx.url?.searchParams.has("v") ?? false);
+    const sent = await sendAsset(
+      ctx.res,
+      name,
+      ctx.ifNoneMatch ?? null,
+      ctx.method === "GET",
+      ctx.url?.searchParams.has("v") ?? false,
+      ctx.acceptEncoding,
+    );
     if (sent) return true;
     ctx.error(ctx.res, `Asset not found: ${name}`, 404);
     return true;
@@ -847,7 +882,12 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   if (ctx.method === "GET" && !subroute) {
     await ruby.refreshPublicWorldSessions(Date.now());
     const state = ruby.getOrCreate(stateKey);
-    ctx.json(ctx.res, buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }));
+    sendConditionalSessionJson(
+      ctx.res,
+      buildSessionState({ runtime, state, faculty, cookieHeader: ctx.cookieHeader }),
+      ctx.ifNoneMatch,
+      ctx.json,
+    );
     return true;
   }
 

@@ -1,9 +1,4 @@
-import {
-  PrivyClient,
-  verifyAccessToken,
-  verifyIdentityToken,
-  type User,
-} from "@privy-io/node";
+import type { PrivyClient, User } from "@privy-io/node";
 
 export interface PrivyPublicConfig {
   appId: string;
@@ -115,7 +110,8 @@ export async function verifyPrivyAuth(input: VerifyPrivyAuthInput): Promise<Veri
     throw new Error("Privy server config needs RUBY_HIGH_PRIVY_APP_SECRET or RUBY_HIGH_PRIVY_VERIFICATION_KEY.");
   }
 
-  const client = config.appSecret ? getPrivyClient(config) : null;
+  const privy = await import("@privy-io/node");
+  const client = config.appSecret ? getPrivyClient(config, privy.PrivyClient) : null;
   let privyUserId = "";
   let privySessionId: string | undefined;
   let user: User | null = null;
@@ -123,7 +119,7 @@ export async function verifyPrivyAuth(input: VerifyPrivyAuthInput): Promise<Veri
   if (accessToken) {
     const claims = client
       ? await client.utils().auth().verifyAccessToken(accessToken)
-      : await verifyAccessToken({
+      : await privy.verifyAccessToken({
           access_token: accessToken,
           app_id: config.appId,
           verification_key: config.verificationKey!,
@@ -135,7 +131,7 @@ export async function verifyPrivyAuth(input: VerifyPrivyAuthInput): Promise<Veri
   if (identityToken) {
     user = client
       ? await client.users().get({ id_token: identityToken })
-      : await verifyIdentityToken({
+      : await privy.verifyIdentityToken({
           identity_token: identityToken,
           app_id: config.appId,
           verification_key: config.verificationKey!,
@@ -195,11 +191,11 @@ function normalizePrivyLoginMethod(value: string): PrivyPublicLoginMethod | null
     : null;
 }
 
-function getPrivyClient(config: PrivyServerConfig): PrivyClient {
+function getPrivyClient(config: PrivyServerConfig, PrivyClientConstructor: typeof PrivyClient): PrivyClient {
   const key = `${config.appId}:${config.appSecret ?? ""}:${config.verificationKey ?? ""}`;
   if (cachedClient && cachedClientKey === key) return cachedClient;
   cachedClientKey = key;
-  cachedClient = new PrivyClient({
+  cachedClient = new PrivyClientConstructor({
     appId: config.appId,
     appSecret: config.appSecret!,
     ...(config.verificationKey ? { jwtVerificationKey: config.verificationKey } : {}),

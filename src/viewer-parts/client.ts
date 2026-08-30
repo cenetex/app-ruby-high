@@ -292,7 +292,7 @@ export function runViewerClient(bootstrap) {
   const WELCOME_HALL_PASS_GRANT_ID = "system:welcome-hall-passes:v1";
   const WELCOME_HALL_PASS_POPUP_KEY_PREFIX = "rh_welcome_hall_passes_seen:";
   const ANNOUNCEMENTS_LAST_KEY = "ruby-high:announcements-last-date";
-  const ANNOUNCEMENTS_LOGO_URL = apiBase + "/assets/brand/ruby-high-app-icon.png?v=brand-face-20260815";
+  const ANNOUNCEMENTS_LOGO_URL = apiBase + "/assets/optimized/ruby-high-app-icon.webp?v=thumbs-20260830";
   let announcementsOverlay = null;
   let announcementsPreviousFocus = null;
   let announcementsBackgroundLocked = false;
@@ -1421,6 +1421,7 @@ export function runViewerClient(bootstrap) {
       fetchSession();
     },
     onSessionData(session) {
+      if (viewerSessionReadyMs == null) viewerSessionReadyMs = performance.now();
       render(session);
     },
     onSessionUnavailable() {
@@ -1453,9 +1454,50 @@ export function runViewerClient(bootstrap) {
     }).catch(() => {});
   }
 
+  let viewerSessionReadyMs = null;
+  let viewerLargestContentfulPaintMs = 0;
+  let viewerInteractionToNextPaintMs = 0;
+  let viewerCumulativeLayoutShift = 0;
+  let viewerPerformanceReported = false;
+  try {
+    new PerformanceObserver((list) => {
+      list.getEntries().forEach((entry) => {
+        viewerLargestContentfulPaintMs = Math.max(viewerLargestContentfulPaintMs, entry.startTime || 0);
+      });
+    }).observe({ type: "largest-contentful-paint", buffered: true });
+    new PerformanceObserver((list) => {
+      list.getEntries().forEach((entry) => {
+        if (!entry.hadRecentInput) viewerCumulativeLayoutShift += entry.value || 0;
+      });
+    }).observe({ type: "layout-shift", buffered: true });
+    new PerformanceObserver((list) => {
+      list.getEntries().forEach((entry) => {
+        viewerInteractionToNextPaintMs = Math.max(viewerInteractionToNextPaintMs, entry.duration || 0);
+      });
+    }).observe({ type: "event", buffered: true, durationThreshold: 40 });
+  } catch (_err) { /* older browsers can omit individual performance entry types */ }
+
+  function reportViewerPerformance() {
+    if (viewerPerformanceReported) return;
+    viewerPerformanceReported = true;
+    const navigation = performance.getEntriesByType("navigation")[0];
+    const firstContentfulPaint = performance.getEntriesByName("first-contentful-paint")[0];
+    postViewerMetricEvent("performance_sample", {
+      ttfbMs: navigation ? navigation.responseStart : 0,
+      fcpMs: firstContentfulPaint ? firstContentfulPaint.startTime : 0,
+      lcpMs: viewerLargestContentfulPaintMs,
+      inpMs: viewerInteractionToNextPaintMs,
+      cls: viewerCumulativeLayoutShift,
+      sessionReadyMs: viewerSessionReadyMs || 0,
+    });
+  }
+  window.addEventListener("load", () => setTimeout(reportViewerPerformance, 3000), { once: true });
+  window.addEventListener("pagehide", reportViewerPerformance, { once: true });
+
   const SESSION_RESUME_INACTIVE_MS = 5 * 60 * 1000;
   let viewerMetricsBooted = false;
   let viewerInactiveSince = document.visibilityState === "hidden" ? Date.now() : null;
+  let sessionPollHandle = null;
 
   function markViewerInactive() {
     if (viewerInactiveSince == null) viewerInactiveSince = Date.now();
@@ -1470,8 +1512,13 @@ export function runViewerClient(bootstrap) {
   }
 
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") markViewerInactive();
-    else postViewerSessionResume("visibility");
+    if (document.visibilityState === "hidden") {
+      markViewerInactive();
+      pauseSessionPolling();
+    } else {
+      postViewerSessionResume("visibility");
+      resumeSessionPolling();
+    }
   });
   window.addEventListener("blur", markViewerInactive);
   window.addEventListener("focus", () => postViewerSessionResume("focus"));
@@ -1810,6 +1857,7 @@ export function runViewerClient(bootstrap) {
     return "";
   }
   const BUILTIN_TEACHER_ASSET_IDS = new Set(["ruby", "sally-science", "professor-edward", "roko"]);
+  const OPTIMIZED_TEACHER_FACE_IDS = new Set(["ruby", "sally-science", "professor-edward", "roko", "eliza", "seraph"]);
   function teacherInitial(facultyOrName) {
     if (!facultyOrName) return "?";
     if (typeof facultyOrName === "string") return facultyOrName.charAt(0).toUpperCase();
@@ -1851,6 +1899,9 @@ export function runViewerClient(bootstrap) {
   function teacherAssetUrl(facultyOrId, variant) {
     const assetId = facultyAssetId(facultyOrId);
     if (!assetId) return null;
+    if (variant === "face" && OPTIMIZED_TEACHER_FACE_IDS.has(assetId)) {
+      return apiBase + "/assets/optimized/teachers/" + encodeURIComponent(assetId) + "-face.webp?v=thumbs-20260830";
+    }
     const suffix = variant ? "-" + variant : "";
     return apiBase + "/assets/teachers/" + encodeURIComponent(assetId) + suffix + ".png";
   }
@@ -1862,7 +1913,7 @@ export function runViewerClient(bootstrap) {
   }
   function studentStickerUrl(studentId) {
     if (!studentId) return null;
-    return apiBase + "/assets/students/" + encodeURIComponent(studentId) + "-face.png";
+    return studentFaceUrl(studentId);
   }
   function appendMsg({ kind, name, body, color, facultyId, studentId, avatarUrl }) {
     let avatarImgSrc = avatarUrl || null;
@@ -4636,7 +4687,7 @@ export function runViewerClient(bootstrap) {
     return roomCompletionProgressLabel(fac, progress);
   }
   function studentFaceUrl(studentId) {
-    return apiBase + "/assets/students/" + encodeURIComponent(studentId) + "-face.png";
+    return apiBase + "/assets/optimized/students/" + encodeURIComponent(studentId) + "-face.webp?v=thumbs-20260830";
   }
   function applyRoomStudentChipPortraitClass(chip, img) {
     if (!chip || !img) return;
@@ -6953,7 +7004,7 @@ export function runViewerClient(bootstrap) {
     return PLAYBOOK_DEFAULT_PORTRAIT[playbookId] || "indra";
   }
   function studentFullPortraitUrl(studentId) {
-    return apiBase + "/assets/students/" + encodeURIComponent(studentId) + "-full.png";
+    return apiBase + "/assets/optimized/students/" + encodeURIComponent(studentId) + "-full.webp?v=thumbs-20260830";
   }
   function defaultPortraitFor(playbookId) {
     return studentFullPortraitUrl(defaultPortraitStudentIdFor(playbookId));
@@ -6964,7 +7015,8 @@ export function runViewerClient(bootstrap) {
     const defaultId = defaultPortraitStudentIdFor(c.playbookId);
     return !portrait
       || portrait === defaultPortraitFor(c.playbookId)
-      || portrait.endsWith("/assets/students/" + defaultId + "-full.png");
+      || portrait.endsWith("/assets/students/" + defaultId + "-full.png")
+      || portrait.indexOf("/assets/optimized/students/" + defaultId + "-full.webp") !== -1;
   }
   function hiddenNpcStudentIdFor(c) {
     return isUsingDefaultStudentPortrait(c) ? defaultPortraitStudentIdFor(c.playbookId) : null;
@@ -11089,18 +11141,30 @@ export function runViewerClient(bootstrap) {
     await applySharedPackFromUrl(sharedPackId);
   }
   void bootInitialSession();
-  initializePrivyFromStoredSession();
-  // Adaptive poll: tick every second during an active race so NPC picks
-  // land in real time; back off to 4s when idle to save bandwidth.
-  let sessionPollHandle = null;
-  function adaptiveSchedule() {
+  // Privy's React/wallet bundle is intentionally loaded only when the account
+  // surface opens. /auth/me already returns the server-known account snapshot,
+  // so downloading the full wallet stack during every anonymous page load is
+  // unnecessary.
+  // Adaptive poll: tick quickly during an active race so NPC picks land in
+  // real time; back off when idle and stop completely in hidden tabs.
+  function pauseSessionPolling() {
     clearTimeout(sessionPollHandle);
+    sessionPollHandle = null;
+  }
+  function resumeSessionPolling() {
+    if (document.visibilityState === "hidden") return;
+    pauseSessionPolling();
+    void fetchSession({ timeoutMs: SESSION_REFRESH_TIMEOUT_MS }).finally(adaptiveSchedule);
+  }
+  function adaptiveSchedule() {
+    pauseSessionPolling();
+    if (document.visibilityState === "hidden") return;
     const round = lastTelemetry && lastTelemetry.active_round;
     const fast = round && !round.resolved;
     sessionPollHandle = setTimeout(async () => {
       await fetchSession();
       adaptiveSchedule();
-    }, fast ? 750 : 4000);
+    }, fast ? 750 : 15000);
   }
   adaptiveSchedule();
 }

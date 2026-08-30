@@ -1,4 +1,4 @@
-// Post-build guard for the inline viewer client.
+// Post-build guard for the cacheable viewer client.
 //
 // The viewer ships as an inline <script> that viewer-parts/script.ts builds by
 // stringifying bundled functions (runViewerClient, the pure helpers, …) with
@@ -11,7 +11,7 @@
 // transpiled checks all pass. This guard runs against the real bundle and fails
 // the build when the IIFE references an identifier it never declares.
 import { parse } from "acorn";
-import { renderViewerHtml } from "../dist/index.js";
+import { readFile } from "node:fs/promises";
 
 // Identifiers the browser provides at runtime. Anything referenced but not
 // declared in the IIFE and not on this list is a real undeclared reference.
@@ -28,6 +28,7 @@ const BROWSER_GLOBALS = new Set([
   "TextEncoder", "TextDecoder", "atob", "btoa", "crypto", "performance",
   "requestAnimationFrame", "cancelAnimationFrame", "CustomEvent", "Event",
   "EventTarget", "MutationObserver", "IntersectionObserver", "ResizeObserver",
+  "PerformanceObserver",
   "HTMLElement", "Element", "SVGElement", "Node", "NodeList", "DocumentFragment",
   "Image", "Audio", "globalThis", "self", "undefined", "NaN", "Infinity",
   "arguments", "Function", "Proxy", "Reflect", "BigInt", "structuredClone",
@@ -203,17 +204,8 @@ function walk(node, scope, undeclared) {
   }
 }
 
-const html = renderViewerHtml({
-  agentName: "Ruby",
-  sessionId: "rh:viewer-bundle-check",
-  apiBase: "/api/apps/ruby-high",
-  role: "human",
-  privy: { appId: "privy-app-check", clientId: "privy-client-check", loginMethods: ["wallet"] },
-});
-const match = html.match(/<script>([\s\S]*?)<\/script>/);
-if (!match) throw new Error("viewer HTML has no inline script");
-
-const ast = parse(match[1], { ecmaVersion: 2022, sourceType: "script" });
+const clientScript = await readFile(new URL("../dist/viewer-client.js", import.meta.url), "utf8");
+const ast = parse(clientScript, { ecmaVersion: 2022, sourceType: "script" });
 const undeclared = new Map();
 walk(ast, makeScope(null), undeclared);
 
@@ -223,7 +215,7 @@ if (undeclared.size > 0) {
     .map(([name, count]) => `  ${name} (×${count})`)
     .join("\n");
   throw new Error(
-    "viewer bundle references identifiers it never declares — the inline client "
+    "viewer bundle references identifiers it never declares — the browser client "
     + "will throw a ReferenceError at boot:\n" + detail
     + "\n\nThis usually means esbuild renamed a serialized helper (see "
     + "viewer-parts/script.ts). If a name above is a new browser global, add it "

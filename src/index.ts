@@ -102,7 +102,7 @@ export {
   type StateStoreLike,
   type StoredTeacherRecord,
 } from "./services/state-store.js";
-export { DynamoStateStore, type DynamoStateStoreOptions } from "./services/dynamo-state-store.js";
+export type { DynamoStateStoreOptions } from "./services/dynamo-state-store.js";
 export { createStateStore, type CreateStateStoreOptions } from "./services/state-store-factory.js";
 export { AuthService } from "./services/auth-service.js";
 export { ChatService } from "./services/chat-service.js";
@@ -143,5 +143,8 @@ export {
   resolveLaunchSession,
 } from "./routes.js";
 export { handleChatRoutes, noteGradedAnswer } from "./chat-routes.js";
-export { renderViewerHtml, VIEWER_FRAME_ANCESTORS_DIRECTIVE } from "./viewer.js";
+export {
+  renderViewerHtml,
+  VIEWER_FRAME_ANCESTORS_DIRECTIVE,
+} from "./viewer-shell.js";
 export * from "./types.js";

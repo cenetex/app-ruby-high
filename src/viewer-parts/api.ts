@@ -5,6 +5,7 @@ export interface ViewerApiFetchInit extends RequestInit {
 export interface ViewerApiResponse {
   ok: boolean;
   status: number;
+  headers?: { get(name: string): string | null };
   json(): Promise<unknown>;
 }
 
@@ -57,6 +58,7 @@ export function createViewerApiClient(deps: ViewerApiClientDeps): ViewerApiClien
   let commandSeq = 0;
   let lastSettledCommandSeq = 0;
   let commandError: ViewerCommandError | null = null;
+  let sessionEtag: string | null = null;
   const fetchImpl = deps.fetchImpl || ((url: string, init?: RequestInit) => fetch(url, init));
 
   function isRecord(value: unknown): value is Record<string, unknown> {
@@ -143,6 +145,7 @@ export function createViewerApiClient(deps: ViewerApiClientDeps): ViewerApiClien
     const seqAtStart = commandSeq;
     const settledAtStart = lastSettledCommandSeq;
     const headers = new Headers();
+    if (sessionEtag) headers.set("If-None-Match", sessionEtag);
     const visitorId = deps.getVisitorId?.();
     if (visitorId) headers.set("X-Ruby-High-Visitor", visitorId);
     const fetchOpts: RequestInit = { credentials: "same-origin", headers };
@@ -152,7 +155,9 @@ export function createViewerApiClient(deps: ViewerApiClientDeps): ViewerApiClien
     );
     try {
       const response = await fetchImpl(deps.sessionUrl, fetchOpts);
+      if (response.status === 304) return;
       if (!response.ok) throw new Error("session " + response.status);
+      sessionEtag = response.headers?.get("etag") || sessionEtag;
       const data = await response.json();
       if (commandSeq !== seqAtStart || lastSettledCommandSeq !== settledAtStart) return;
       deps.onSessionData(data);

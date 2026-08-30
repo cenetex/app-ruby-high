@@ -2,11 +2,11 @@ import { defineConfig } from "tsup";
 
 export default defineConfig([
   {
-    entry: ["src/index.ts", "src/routes.ts", "src/services/core-pack-nfts.ts", "src/services/hall-pass-nfts.ts"],
+    entry: ["src/index.ts", "src/routes.ts", "src/viewer-assets.ts", "src/services/dynamo-state-store.ts", "src/services/core-pack-nfts.ts", "src/services/hall-pass-nfts.ts"],
     format: ["esm"],
     dts: true,
     clean: true,
-    splitting: false,
+    splitting: true,
     target: "es2022",
   },
   {

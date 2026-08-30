@@ -1,4 +1,5 @@
-import type { ViewerRenderOptions } from "../viewer.js";
+import type { ViewerRenderOptions } from "../viewer-shell.js";
+import { viewerBootstrapScript } from "./bootstrap.js";
 import { createAccountCardReaderRenderer } from "./account-card-reader.js";
 import { createAccountCharacterPanelRenderer } from "./account-character-panel.js";
 import { createAccountComicPanelRenderer } from "./account-comic-panel.js";
@@ -49,9 +50,9 @@ import { createProfileCardView } from "./profile-card-view.js";
 import { runViewerClient } from "./client.js";
 import * as Pure from "./client-pure.js";
 
-// Returns the SPA viewer's inline JS as a string. The heavy browser client
-// lives in client.ts as real JavaScript, then gets serialized here so Ruby
-// High can keep the current no-extra-asset viewer delivery path.
+// Returns the SPA viewer's browser JS as a string. The heavy browser client
+// lives in client.ts as real JavaScript, then gets serialized here so the
+// build can minify it into a cacheable static asset.
 //
 // Pure helpers + constants live in client-pure.ts; they're stringified
 // alongside runViewerClient so all of them end up as siblings at the IIFE
@@ -217,21 +218,13 @@ function serializeConstants(): string {
   ].join("\n  ");
 }
 
-export function viewerScript(opts: ViewerRenderOptions): string {
-  const role = opts.role === "agent" ? "agent" : "human";
-  const bootstrap = scriptJson({
-    apiBase: opts.apiBase,
-    sessionId: opts.sessionId,
-    role,
-    build: opts.build ?? "dev",
-    privyConfig: opts.privy
-      ? { appId: opts.privy.appId, clientId: opts.privy.clientId, loginMethods: opts.privy.loginMethods }
-      : null,
-  });
+export function viewerClientScript(): string {
 
   return `
 (() => {
-  const bootstrap = ${bootstrap};
+  const bootstrap = window.__RUBY_HIGH_BOOTSTRAP__;
+  if (!bootstrap) throw new Error("Ruby High viewer bootstrap is missing.");
+  try { delete window.__RUBY_HIGH_BOOTSTRAP__; } catch (_err) {}
   ${serializeConstants()}
   ${serializePureHelpers()}
   const withViewerTimeoutSignal = ${withViewerTimeoutSignal.toString()};
@@ -286,6 +279,13 @@ export function viewerScript(opts: ViewerRenderOptions): string {
   const runViewerClient = ${runViewerClient.toString()};
   runViewerClient(bootstrap);
 })();`;
+}
+
+// Kept for source-level tests and embedders that need a single script string.
+// Production HTML uses viewerBootstrapScript + the static viewerClientScript
+// asset so the browser can cache almost all of the code across page loads.
+export function viewerScript(opts: ViewerRenderOptions): string {
+  return `${viewerBootstrapScript(opts)}\n${viewerClientScript()}`;
 }
 
 function scriptJson(value: unknown): string {
