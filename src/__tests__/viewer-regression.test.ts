@@ -194,6 +194,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function mountLiveDialogue");
     expectScriptToContain(script, "archiveLiveDialogue(0)");
     expectScriptToContain(script, "archiveLiveDialogue(1)");
+    expectScriptToContain(script, "function dialogueNodeSignature");
+    expectScriptToContain(script, "rebuildingHistory = true");
     expectScriptToContain(script, "function renderSceneSummary");
     expectScriptToContain(script, 'postViewerMetricEvent("dialogue_log_opened"');
   });

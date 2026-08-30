@@ -881,6 +881,8 @@ export function runViewerClient(bootstrap) {
   let packSyncWalletAddress = "";
   let packSyncAt = 0;
   let chatViewSeq = 0;         // bumps on room/lounges switches; invalidates stale history/SSE work
+  let rebuildingHistory = false;
+  const archivedSceneDialogueSignatures = new Set();
   function setNextButtonDisabled(disabled) {
     if (els.nextBtn) els.nextBtn.disabled = !!disabled;
   }
@@ -1373,12 +1375,36 @@ export function runViewerClient(bootstrap) {
       const node = els.stream.firstElementChild;
       if (!node) break;
       if (node.classList.contains("empty-state")) node.remove();
-      else els.dialogueLogBody.appendChild(node);
+      else {
+        const signature = dialogueNodeSignature(node);
+        if (signature) archivedSceneDialogueSignatures.add(signature);
+        els.dialogueLogBody.appendChild(node);
+      }
     }
     updateDialogueLogState();
   }
+  function dialogueNodeSignature(node) {
+    if (!node) return "";
+    const body = node.querySelector && node.querySelector(".body");
+    const name = node.querySelector && node.querySelector(".head .name");
+    const visible = String((body && (body.dataset.markdownRaw || body.textContent)) || node.textContent || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!visible) return "";
+    return node.className + "|" + String(name && name.textContent || "").trim() + "|" + visible;
+  }
   function mountLiveDialogue(node, options) {
     const opts = options || {};
+    if (rebuildingHistory) {
+      const signature = dialogueNodeSignature(node);
+      const previous = els.stream.lastElementChild || els.dialogueLogBody.lastElementChild;
+      if (dialogueNodeSignature(previous) === signature) return previous;
+      if (signature && archivedSceneDialogueSignatures.has(signature)) {
+        els.dialogueLogBody.appendChild(node);
+        updateDialogueLogState();
+        return node;
+      }
+    }
     const pinnedBefore = isNearBottom();
     if (opts.startScene) archiveLiveDialogue(0);
     else archiveLiveDialogue(1);
@@ -1405,6 +1431,7 @@ export function runViewerClient(bootstrap) {
     chatViewSeq++;
     els.stream.innerHTML = "";
     els.dialogueLogBody.innerHTML = "";
+    archivedSceneDialogueSignatures.clear();
     els.dialogueLog.open = false;
     els.sceneSummary.open = false;
     els.sceneSummaryBody.innerHTML = "";
@@ -1925,11 +1952,11 @@ export function runViewerClient(bootstrap) {
     const rendered = chatMessageRenderer.buildMessage({ kind, name, body, color, avatarUrl: avatarImgSrc });
     const wrap = rendered.wrap;
     const bodyEl = rendered.body;
-    mountLiveDialogue(wrap, {
+    const mounted = mountLiveDialogue(wrap, {
       startScene: kind === "you" || kind === "player",
       force: kind === "you",
     });
-    return bodyEl;
+    return mounted.querySelector(".body") || bodyEl;
   }
   function appendSystem(text) {
     const wrap = chatMessageRenderer.buildSystem(text);
@@ -5684,7 +5711,7 @@ export function runViewerClient(bootstrap) {
     // Empty-stream welcome (only if no chat yet). New sessions are born
     // with a grade set, so the !current_grade branch only fires for legacy
     // state files mid-migration.
-    if (els.stream.children.length === 0) {
+    if (els.stream.children.length === 0 && els.dialogueLogBody.children.length === 0) {
       if (!t.current_grade) {
         appendEmptyState({
           title: "Welcome to Ruby High",
@@ -10411,26 +10438,31 @@ export function runViewerClient(bootstrap) {
       const teacherName = fac ? fac.displayName : facultyId;
       const teacherAccent = fac ? fac.accent : "#d22a2a";
       setDialogueCompaction(summary);
-      msgs.forEach((m) => {
-        if (m.role === "user") {
-          const isSelf = !!m.isSelf;
-          appendMsg({
-            kind: isSelf ? "you" : "player",
-            name: isSelf ? playerDisplayName() : (m.authorName || "Student"),
-            body: m.content,
-            color: isSelf ? "var(--accent)" : "#3aa3e0",
-            avatarUrl: m.avatarUrl || null,
-          });
-        }
-        else if (m.role === "assistant" && m.content) {
-          const info = teacherInfo(m.faculty || facultyId);
-          appendMsg({ kind: "teacher", name: info.name || teacherName, body: m.content, color: info.accent || teacherAccent, facultyId: info.facultyId || facultyId });
-        }
-        else if (m.role === "tool") {
-          const info = teacherInfo(m.faculty || facultyId);
-          appendTool(toolSummary(m, info.name));
-        }
-      });
+      rebuildingHistory = true;
+      try {
+        msgs.forEach((m) => {
+          if (m.role === "user") {
+            const isSelf = !!m.isSelf;
+            appendMsg({
+              kind: isSelf ? "you" : "player",
+              name: isSelf ? playerDisplayName() : (m.authorName || "Student"),
+              body: m.content,
+              color: isSelf ? "var(--accent)" : "#3aa3e0",
+              avatarUrl: m.avatarUrl || null,
+            });
+          }
+          else if (m.role === "assistant" && m.content) {
+            const info = teacherInfo(m.faculty || facultyId);
+            appendMsg({ kind: "teacher", name: info.name || teacherName, body: m.content, color: info.accent || teacherAccent, facultyId: info.facultyId || facultyId });
+          }
+          else if (m.role === "tool") {
+            const info = teacherInfo(m.faculty || facultyId);
+            appendTool(toolSummary(m, info.name));
+          }
+        });
+      } finally {
+        rebuildingHistory = false;
+      }
       syncPlayerMessageHeaders();
       scrollIfPinned(true);
       applyAuthUI();
