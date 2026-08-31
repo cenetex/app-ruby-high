@@ -828,6 +828,7 @@ export const VIEWER_CSS = `
   .arc-indicator .arc-essay { color: #f0b441; }
   .arc-indicator .arc-essay.is-met { color: var(--accent); }
   .arc-indicator.is-graduated .arc-year { color: #f0b441; }
+  .mobile-view-toggle { display: none; }
   /* Mobile: hide the daily/subject detail, keep just the year tag. The full
    * progress is one tap away on the character sheet. */
   @media (max-width: 540px) {
@@ -8242,6 +8243,48 @@ export const VIEWER_CSS = `
     }
     .shell[data-mode="round-live"] main.workspace {
       grid-template-rows: auto minmax(0, auto) minmax(56px, 1fr) auto;
+    }
+    .shell[data-mobile-pane] main.workspace {
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+    }
+    .mobile-view-toggle:not([hidden]) {
+      grid-row: 2;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      padding: 6px calc(var(--safe-right) + 8px) 6px calc(var(--safe-left) + 8px);
+      border-bottom: 1px solid var(--line);
+      background: var(--bg-deep);
+    }
+    .mobile-view-toggle button {
+      appearance: none;
+      min-height: 34px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--text-mute);
+      font-size: 13px;
+      font-weight: 850;
+    }
+    .mobile-view-toggle button[aria-selected="true"] {
+      border-color: color-mix(in srgb, var(--accent) 52%, rgba(255,255,255,0.16));
+      background: color-mix(in srgb, var(--accent) 22%, var(--bg-elev));
+      color: #fff;
+    }
+    .shell[data-mobile-pane] .blackboard-panel,
+    .shell[data-mobile-pane] .stream {
+      grid-row: 3;
+      min-height: 0;
+    }
+    .shell[data-mobile-pane] .blackboard-panel {
+      max-height: none;
+    }
+    .shell[data-mobile-pane="challenge"] .stream,
+    .shell[data-mobile-pane="chat"] .blackboard-panel {
+      display: none;
+    }
+    .shell[data-mobile-pane="chat"] .stream {
+      display: flex;
     }
     .top-bar {
       gap: 6px;

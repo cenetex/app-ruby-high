@@ -182,10 +182,21 @@ describe("viewer regression guardrails", () => {
     expect(clientSource).not.toContain("worldController.attach();");
   });
 
-  it("keeps the board and conversation as separate mobile panes", () => {
+  it("lets phones toggle between a full challenge and a full chat pane", () => {
+    const html = renderedViewer();
+    const script = inlineScript(html);
+
+    expect(html).toContain('id="mobile-view-toggle"');
+    expect(html).toContain('data-mobile-view="challenge"');
+    expect(html).toContain('data-mobile-view="chat"');
     expect(VIEWER_CSS).toContain("@media (max-width: 600px)");
     expect(VIEWER_CSS).toContain("--composer-min: 50px");
     expect(cssRule("main.workspace")).toContain("grid-template-rows: auto auto 1fr auto");
+    expect(VIEWER_CSS).toContain('.shell[data-mobile-pane="challenge"] .stream');
+    expect(VIEWER_CSS).toContain('.shell[data-mobile-pane="chat"] .blackboard-panel');
+    expectScriptToContain(script, "function syncMobileViewToggle(mode)");
+    expectScriptToContain(script, 'const available = mode === "round-live" || mode === "round-revealed"');
+    expectScriptToContain(script, 'setMobilePane("chat", false)');
     expect(cssRule(".blackboard-panel")).toContain("overflow: hidden");
     expect(cssRule(".answers-host")).toContain("overflow-y: auto");
     expect(cssRule(".stream")).toContain("overflow-y: auto");
