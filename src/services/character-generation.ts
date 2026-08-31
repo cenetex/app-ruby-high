@@ -897,7 +897,8 @@ export async function rollRandomCharacter(args: {
   const schemaLine = `{${schemaFields}}`;
 
   const userPrompt = [
-    "Roll a random AI student attending Ruby High (a high school RPG). The player inhabits this character. Aim for a real teenager with small specific concerns — the register of group-chat texts, lunch-line gossip, a half-finished homework excuse.",
+    "Roll a student attending Ruby High, a high-school RPG. The player inhabits this character. Make them feel like a specific teenager, not a type: give them one immediate want, one visible classroom habit, one social connection, and one contradiction that can cause choices.",
+    "Keep the stakes close enough to touch: a borrowed pen, a seat someone saved, a score they keep checking, a club promise, a rumor about a locked room. Do not use trauma as instant depth. Avoid stereotypes, diagnosis-as-personality, generic chosen-one backstories, and forced teen slang.",
     "",
     `Playbook (locked): ${playbook.name} — ${playbook.blurb}`,
     `Hook question (locked): "${playbook.hookQuestion}"`,
@@ -909,11 +910,11 @@ export async function rollRandomCharacter(args: {
     "",
     "Field guidance:",
     "- name: ONE first name. Anything goes — common, uncommon, a chosen name, a nickname, a strange spelling. The kind of name a teenager actually has. Examples of the spread: Kit, Theo, Saoirse, Mei, Pip, Yusuf, Birta, Lior, Niamh, Tomás, Arlo, Vic, Ren, Esi, Soren. Skip the AI-default picks: " + FORBIDDEN_NAMES_HINT.join(", ") + ".",
-    "- arcAnswer: 1-2 sentences answering the hook in voice. Specific, dorky, small. Examples of the register:",
-    `    Overachiever / "Why is Cs not enough?": "honestly if i get an A- i replay it for like a week. last quiz i missed one and didn't sleep. my mom thinks im fine."`,
-    `    Slacker / "Who do you not want to disappoint?": "my older brother. he was good at this stuff. its embarrassing how much i think about it."`,
-    `    Class Clown / "What can't you say without a joke?": "anytime someone cries i panic and do a bit. did one at my uncle's funeral. my mom is still annoyed."`,
-    `    Lifer / "What's the best gossip you've picked up?": "the science wing has a closet with 40 trophies from 1987 and nobody knows why. also Mr. Kelner is on his third divorce."`,
+    "- arcAnswer: 1-2 sentences answering the hook in voice. Specific, a little awkward, and small enough to show up during class. Examples of the register:",
+    `    Overachiever / "Who taught you that one missed point matters?": "jo leaves a gold star on every perfect quiz. i said it was corny and then kept all four."`,
+    `    Slacker / "Who knows how hard you are pretending not to try?": "sami saw my color-coded notes once. we have both agreed that never happened."`,
+    `    Class Clown / "What truth keeps coming out as a joke?": "i keep calling the debate club my emotional support argument. this is unfortunately accurate."`,
+    `    Lifer / "Which school secret are you almost ready to trade?": "the key marked STORAGE opens a stairwell. i need a better secret before i give that away."`,
     "    Pull from the same register as the playbook above.",
     "- flavorQuote: ONE short line, 6-18 words. Magic: the Gathering flavor text — captures attitude in a moment, not backstory. Examples of the right shape:",
     `    "I'd rather you be wrong with reasons than right by accident." (Sally Science)`,
@@ -921,10 +922,10 @@ export async function rollRandomCharacter(args: {
     `    "i'm just here to drink chocolate milk and lose, and im out of chocolate milk."`,
     `    "if mr. patek calls on me one more time im transferring to the moon."`,
     "  No surrounding quote marks — the renderer adds them.",
-    "- personality: 2-3 sentences. How they SHOW UP in class — fixations, doodles, what they whisper, who they sit by, their thing. Tie one trait to a high stat (HEAD=sharp / HEART=warm / HUSTLE=quick / HONOR=principled) and one to the low stat. Examples of the register:",
-    `    "Always has gum, never offers it. Sits by the broken radiator on purpose because the noise helps her think. Doodles snakes through every verbal lesson and forgets her name is being called."`,
-    `    "Knows the lyrics to one (1) song and references it constantly. Visibly stressed when the teacher reorders the day. Will eat anyone's leftover fries without asking."`,
-    "    Third person. Same scale as those — kid stuff, not life themes.",
+    "- personality: 2-3 third-person sentences. Show an immediate want, a physical classroom habit, a social link, and a contradiction. Tie one useful tendency to a high stat (HEAD=sharp / HEART=warm / HUSTLE=quick / HONOR=principled) and one blind spot to the low stat. Examples of the scale:",
+    `    "Keeps the group's spare batteries in a labeled mint tin, then forgets to charge their own tablet. Saves the window seat for Jo but claims it is only because the light is better there."`,
+    `    "Can spot the shortcut through any worksheet and slides it to Mika without making a big deal of it. Refuses to plan farther ahead than lunch, even when tomorrow's map is already on the board."`,
+    "    Make the contradiction playable. Do not summarize their whole life or assign a single gimmick they must repeat.",
   ].join("\n");
 
   const r = await fetchLlmChatCompletions({

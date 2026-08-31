@@ -1,4 +1,5 @@
 import type { Difficulty, Grade } from "../../types.js";
+import { YOUTH_QUESTION_AUTHORING_RULES } from "../../content/youth-writing.js";
 import type { RubyHighTeacherResearchCorpus, RubyHighTeacherSourcePacket } from "./teacher-research-corpus.js";
 
 export interface RubyHighCurriculumCoverageSnapshot {
@@ -141,6 +142,7 @@ export function buildCurriculumReplenishmentPlan(args: {
     sourcePackets.length ? `Primary source packets: ${sourcePackets.map((packet) => `${packet.id} (${packet.anchor})`).join(" | ")}.` : "",
     canonicalMisconceptions.length ? `Test one misconception without copying it verbatim: ${canonicalMisconceptions.slice(0, 3).join(" | ")}.` : "",
     repetitionPressure > 0 ? `Repetition pressure: ${Math.round(repetitionPressure * 100)}%; prefer new angles over near-duplicates.` : "",
+    YOUTH_QUESTION_AUTHORING_RULES,
     "Avoid repeating existing prompts; write like the teacher is actively researching this class, not filling a spreadsheet.",
   ].filter(Boolean).join(" ");
   return {

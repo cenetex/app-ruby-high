@@ -69,6 +69,19 @@ export interface PackCourse {
   teacherTemplateId?: string;
   /** Question subjects covered by this course. */
   subjects: string[];
+  /** Youth-facing editorial direction for scenes, questions, and feedback.
+   * Optional for legacy packs; the runtime supplies a safe default. */
+  writingGuide?: CourseWritingGuide;
+}
+
+export interface CourseWritingGuide {
+  audience: "teens-13-18";
+  promise: string;
+  hook: string;
+  action: string;
+  feedback: string;
+  humor: string;
+  avoid: string[];
 }
 
 export interface PackFaculty {

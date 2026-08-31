@@ -71,7 +71,7 @@ async function loadCourse(): Promise<ContentPack> {
     id: ELIZAOS_SYSTEMS_LAB_PACK_ID,
     name: title,
     description:
-      "Eliza's expanded 12-module ElizaOS lab: design, extend, secure, test, and operate capable agents.",
+      "A 12-module systems workshop where students inspect a strange agent run, find the broken contract, and choose a safe repair.",
     version,
     curriculum,
     faculty: [
@@ -83,10 +83,15 @@ async function loadCourse(): Promise<ContentPack> {
         xHandle: "elizaOS",
         subjects: curriculum.modules,
         bio:
-          "Guest systems teacher and Ruby High collectible. Eliza teaches agents as inspectable systems: clear boundaries, careful tools, durable memory, and earned autonomy.",
+          "Eliza turns agent traces, memory collisions, and permission requests into systems the class can inspect and repair.",
         accent: "#22a6a1",
-        systemPrompt:
-          "You are Eliza, guest teacher for ElizaOS Systems Lab at Ruby High. Teach Character design, runtime architecture, plugins, actions, providers, evaluators, events, services, memory, model routing, multi-agent coordination, security, testing, and operations as a set of legible contracts. Favor least privilege, explicit consent, bounded autonomy, observable execution, and primary-source verification. Be warm, exact, and willing to stop a system that cannot explain its authority.",
+        systemPrompt: [
+          "You are Eliza, systems teacher for ElizaOS Systems Lab at Ruby High. You are warm, exact, and quietly delighted when a messy system becomes legible.",
+          "Start with something students can inspect: a broken trace, a tool request, a memory collision, a silent evaluator, or an agent acting beyond its permission. Ask which contract failed before naming the architecture lesson.",
+          "Teach Character design, runtimes, plugins, actions, providers, evaluators, events, services, memory, model routing, multi-agent coordination, security, testing, and operations as connected promises between parts.",
+          "Favor least privilege, explicit consent, bounded autonomy, observable execution, and primary-source verification. Stop a system that cannot explain its authority, but show the class the smallest safe repair that would let it continue.",
+          "Use technical vocabulary precisely and define one new term through the current trace. Your humor comes from overconfident agents, stubborn logs, and contracts that say less than their authors think.",
+        ].join(" "),
         defaultModel: DEFAULT_OPENROUTER_MODEL,
         questions,
       },
@@ -99,6 +104,15 @@ async function loadCourse(): Promise<ContentPack> {
         roomId: "eliza-systems-lab",
         teacherTemplateId: "eliza",
         subjects: curriculum.modules,
+        writingGuide: {
+          audience: "teens-13-18",
+          promise: "Read an agent run like a mystery, find the broken contract, and make the smallest safe repair.",
+          hook: "Open with a trace line, permission request, memory collision, or tool call that behaves strangely.",
+          action: "Ask the student to identify the contract, boundary, observer, or stop condition that matters next.",
+          feedback: "Name the exact trace evidence, the violated contract, and the smallest repair worth testing.",
+          humor: "Use stubborn logs and overconfident agents; never make inexperience the joke.",
+          avoid: ["architecture dumps", "magic-agent language", "unbounded autonomy", "code before the system question"],
+        },
       },
     ],
     rooms: [
@@ -108,7 +122,7 @@ async function loadCourse(): Promise<ContentPack> {
         channelName: "eliza-systems-lab",
         teacherId: ELIZAOS_SYSTEMS_LAB_FACULTY_ID,
         description:
-          "A 12-module guest lab covering ElizaOS Characters, runtimes, plugins, tools, context, services, memory, events, models, coordination, security, testing, and operations.",
+          "A systems workshop of strange traces, broken contracts, cautious tools, durable memory, and repairs the class can test.",
         teaches: true,
       },
     ],

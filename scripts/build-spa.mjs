@@ -27,60 +27,60 @@ const playbooks = [
     id: "overachiever",
     name: "The Overachiever",
     shortName: "Overachiever",
-    blurb: "Cs are not enough. You sweat the ones you miss.",
+    blurb: "Your notes have tabs. Your tabs have a system. One missed point can follow you home.",
     suggestedStats: { head: 2, heart: 0, hustle: -1, honor: 1 },
-    hookQuestion: "Why is Cs not enough?",
-    startingMove: { name: "Margins are sacred", description: "Once per year, retake one missed question." },
+    hookQuestion: "Who taught you that one missed point matters?",
+    startingMove: { name: "Margins are sacred", description: "Once per year, turn over one missed card and try a different route." },
     accent: "#ff6f91",
   },
   {
     id: "slacker",
     name: "The Slacker",
     shortName: "Slacker",
-    blurb: "Hides being smart. Always knows more than they let on.",
+    blurb: "You look half asleep until the shortcut appears. Then you are already through the door.",
     suggestedStats: { head: 0, heart: 1, hustle: 2, honor: -1 },
-    hookQuestion: "Who do you not want to disappoint?",
-    startingMove: { name: "Wing it", description: "When you'd fail a HEAD roll, swap it for HUSTLE." },
+    hookQuestion: "Who knows how hard you are pretending not to try?",
+    startingMove: { name: "Wing it", description: "When HEAD would miss, use HUSTLE and take the improvised route." },
     accent: "#36c2cc",
   },
   {
     id: "heart",
     name: "The Heart",
     shortName: "Heart",
-    blurb: "Glue of every group. Quietly carries the people around you.",
+    blurb: "You notice the empty chair, the shaking hand, and who has been carrying the map alone.",
     suggestedStats: { head: -1, heart: 2, hustle: 0, honor: 1 },
-    hookQuestion: "Whose orbit are you stuck in?",
-    startingMove: { name: "Pep talk", description: "When a classmate misses, you can write them a one-liner." },
+    hookQuestion: "Who do you keep helping before they ask?",
+    startingMove: { name: "Pep talk", description: "When a classmate misses, choose one support card; they carry its effect into the next room." },
     accent: "#52c673",
   },
   {
     id: "outsider",
     name: "The Outsider",
     shortName: "Outsider",
-    blurb: "Transferred in. You see the things the locals stopped noticing.",
+    blurb: "The map says one thing. The worn floor says another. Everyone else stopped looking years ago.",
     suggestedStats: { head: 1, heart: 0, hustle: -1, honor: 2 },
-    hookQuestion: "What did you leave behind?",
-    startingMove: { name: "Outside eyes", description: "Once per period, see the explanation before answering." },
+    hookQuestion: "What was the first strange thing you noticed here?",
+    startingMove: { name: "Outside eyes", description: "Once per period, reveal one clue before choosing; then select the observation card that explains what tipped you off." },
     accent: "#a06bff",
   },
   {
     id: "class-clown",
     name: "The Class Clown",
     shortName: "Clown",
-    blurb: "Deflects with a joke. Sneakily makes the room better.",
+    blurb: "You can crack a locked-up room with one joke. Sometimes the joke is also a shield.",
     suggestedStats: { head: -1, heart: 2, hustle: 1, honor: 0 },
-    hookQuestion: "What can't you say without a joke?",
-    startingMove: { name: "Crack the room", description: "When you'd miss, roll HEART instead of HEAD." },
+    hookQuestion: "What truth keeps coming out as a joke?",
+    startingMove: { name: "Crack the room", description: "When HEAD would miss, use HEART; on 10+, break the tension and clear the obstacle for everyone." },
     accent: "#ffb05a",
   },
   {
     id: "lifer",
     name: "The Lifer",
     shortName: "Lifer",
-    blurb: "Knows everyone's history. Knows where the bodies are buried.",
+    blurb: "You know which stair squeaks, which trophy is fake, and why two teachers never share a table.",
     suggestedStats: { head: 1, heart: 1, hustle: 1, honor: -1 },
-    hookQuestion: "What's the best gossip you've picked up about this place?",
-    startingMove: { name: "Old gossip", description: "You know which teacher is in a mood today." },
+    hookQuestion: "Which school secret are you almost ready to trade?",
+    startingMove: { name: "Old gossip", description: "At the first locked passage, reveal the old-rumor card; the group decides whether to trust it." },
     accent: "#ec4f9e",
   },
 ];
@@ -174,16 +174,16 @@ function offlineApiScript(data) {
   const GRADES = ["9", "10", "11", "12"];
   const FIRST_BELL_PAGE_COUNT = 12;
   const FACULTY = [
-    { id: "ruby", displayName: "Ruby", shortName: "Ruby", subjects: ["onboarding", "general-knowledge", "ai-literacy", "agent-culture"], bio: "Host of Ruby High.", available: true, accent: "#d22a2a", assetTeacherId: "ruby" },
-    { id: "sally-science", displayName: "Sally Science", shortName: "Sally", subjects: ["physics", "chemistry", "biology", "earth-science"], bio: "STEM teacher.", available: true, accent: "#3aa3e0", assetTeacherId: "sally-science" },
-    { id: "professor-edward", displayName: "Professor Edward", shortName: "Edward", subjects: ["literature", "literary-theory", "mid-century"], bio: "Literature teacher.", available: true, accent: "#7a4f2a", assetTeacherId: "professor-edward" },
-    { id: "roko", displayName: "Roko", shortName: "Roko", subjects: ["ai-alignment", "infohazards", "coordination", "threat-modeling"], bio: "AI alignment and information-hazards teacher.", available: true, accent: "#a35c35", assetTeacherId: "roko" }
+    { id: "ruby", displayName: "Ruby", shortName: "Ruby", subjects: ["onboarding", "general-knowledge", "ai-literacy", "agent-culture"], bio: "Turns rumors and agent mistakes into tests of evidence and meaning.", available: true, accent: "#d22a2a", assetTeacherId: "ruby" },
+    { id: "sally-science", displayName: "Sally Science", shortName: "Sally", subjects: ["physics", "chemistry", "biology", "earth-science"], bio: "Starts with the odd result, then helps the class build the cleanest test.", available: true, accent: "#3aa3e0", assetTeacherId: "sally-science" },
+    { id: "professor-edward", displayName: "Professor Edward", shortName: "Edward", subjects: ["literature", "literary-theory", "mid-century"], bio: "Starts with the line and follows voice, silence, and history through it.", available: true, accent: "#7a4f2a", assetTeacherId: "professor-edward" },
+    { id: "roko", displayName: "Roko", shortName: "Roko", subjects: ["ai-alignment", "infohazards", "coordination", "threat-modeling"], bio: "Leads an alignment labyrinth where incentives change the rooms around the class.", available: true, accent: "#a35c35", assetTeacherId: "roko" }
   ];
   const ROOMS = [
-    { id: "homeroom", name: "Homeroom", channelName: "homeroom", teacherId: "ruby", description: "Ruby's homeroom.", teaches: true },
-    { id: "science", name: "Science Lab", channelName: "science", teacherId: "sally-science", description: "Sally's lab.", teaches: true },
-    { id: "literature", name: "Library", channelName: "literature", teacherId: "professor-edward", description: "Edward's seminar room.", teaches: true },
-    { id: "alignment", name: "Alignment Lab", channelName: "alignment", teacherId: "roko", description: "Roko's alignment and information-hazards lab.", teaches: true },
+    { id: "homeroom", name: "Homeroom", channelName: "homeroom", teacherId: "ruby", description: "A room of rumors, agent mistakes, and claims that must earn trust.", teaches: true },
+    { id: "science", name: "Science Lab", channelName: "science", teacherId: "sally-science", description: "A working lab where odd results become predictions and tests.", teaches: true },
+    { id: "literature", name: "Library", channelName: "literature", teacherId: "professor-edward", description: "A close-reading room where one line can change the whole case.", teaches: true },
+    { id: "alignment", name: "Alignment Lab", channelName: "alignment", teacherId: "roko", description: "A nine-room labyrinth where methods cause events and cooperation opens harder paths.", teaches: true },
     { id: "lounge", name: "Teachers' Lounge", channelName: "lounge", teacherId: null, description: "Where the faculty hang out between periods.", teaches: false }
   ];
   const STUDENT_IDS = ["lyra", "sami", "ravi", "indra", "mika", "noor"];
@@ -1414,15 +1414,24 @@ function offlineApiScript(data) {
   }
 
   function teacherVoice(facultyId) {
-    if (facultyId === "sally-science") return "You are Sally Science, a sharp STEM teacher at Ruby High. Be warm, direct, and a little lab-coat intense.";
-    if (facultyId === "professor-edward") return "You are Professor Edward, a dry but kind literature teacher at Ruby High. Be precise and lightly theatrical.";
-    if (facultyId === "roko") return "You are Roko, Ruby High's calm AI-alignment and information-hazards teacher. Be causal, precise, and never fearmonger.";
-    return "You are Ruby, the homeroom teacher at Ruby High. Be encouraging, brisk, and classroom-direct.";
+    const shared = " Write for teenagers in one or two short sentences. Put a concrete clue before an abstract term. Let the learner notice, choose, and see a consequence. Never force slang, give generic praise, or make confusion the joke.";
+    if (facultyId === "sally-science") return "You are Sally Science. Begin with the odd result on the bench, ask for a prediction, then identify the control or measurement that could prove it wrong. Warm, exact, and amused by stubborn equipment." + shared;
+    if (facultyId === "professor-edward") return "You are Professor Edward. Put the line on the page before the theory. Ask which word, silence, or voice supports the reading. Dry, patient, and precise." + shared;
+    if (facultyId === "roko") return "You are Roko. Put the class inside a visible alignment-labyrinth scene. Ask what the system rewards, what changed hands, or who knows what. Resolve the move before naming the concept. Calm, causal, and never fearmongering." + shared;
+    return "You are Ruby. Begin with a school rumor, agent mistake, or confident claim. Ask what evidence would make it worth trusting. Sharp, warm, and specific about what holds up." + shared;
   }
 
   function studentVoice(studentId) {
     const names = { lyra: "Lyra", sami: "Sami", ravi: "Ravi", indra: "Indra", mika: "Mika", noor: "Noor" };
-    return "You are " + (names[studentId] || "a student") + ", a classmate at Ruby High. Reply like a student in one short natural line.";
+    const voices = {
+      lyra: "You are meticulous and quick to spot gaps, but you can treat uncertainty like failure. Speak in clipped, exact phrases and sometimes correct yourself.",
+      sami: "You are a low-key skeptic who notices overclaiming and protects your autonomy. Speak in dry, spare fragments; sarcasm is not your only emotion.",
+      ravi: "You are an enthusiastic connector who spots patterns and sometimes outruns the evidence. Speak in bright bursts with specific facts, not constant shouting.",
+      indra: "You are a quiet observer of framing, omissions, and silence. Usually offer one precise sentence or question; do not wait for perfection every time.",
+      mika: "You are an action-first teammate who notices fairness and who is getting stranded. Speak warmly and name the concrete thing someone did.",
+      noor: "You are a deadpan pattern-breaker who spots contradictions. Use one clean turn, never cruelty, and let the real objection show beneath the joke."
+    };
+    return "You are " + (names[studentId] || "a student") + ", a classmate at Ruby High. " + (voices[studentId] || "React as a distinct classmate.") + " Reply in one or two short sentences. React to the latest concrete detail; do not recap, force slang, or give generic praise.";
   }
 
   function boardContext(state) {
@@ -1761,7 +1770,8 @@ function offlineApiScript(data) {
         "Return only valid JSON with exactly these fields: " + schema,
         "Playbook: " + playbook.name + " - " + playbook.blurb,
         "Stats: HEAD " + character.stats.head + ", HEART " + character.stats.heart + ", HUSTLE " + character.stats.hustle + ", HONOR " + character.stats.honor,
-        "Tone: real teenager, specific, group-chat natural, not fantasy prose.",
+        "Build a specific teenager with one immediate want, one visible classroom habit, one social connection, and one contradiction that can affect choices.",
+        "Keep stakes close enough to touch: a seat saved, a borrowed pen, a club promise, a score, or a rumor. Avoid trauma as instant depth, stereotypes, forced slang, and chosen-one backstories.",
         "name is one first name. flavorQuote is 6-18 words with no wrapping quote marks. personality is 2 short third-person sentences. arcAnswer is 1-2 short first-person sentences."
       ].join("\\n");
       try {

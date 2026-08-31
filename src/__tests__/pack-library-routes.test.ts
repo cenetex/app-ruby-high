@@ -1014,12 +1014,16 @@ describe("/pack-library", () => {
     ]);
     const metadataPrompt = fetchRequestJson(fetchMock).messages[1].content as string;
     expect(metadataPrompt).toContain("Do not generate questions in this response.");
+    expect(metadataPrompt).toContain("audience is ages 13-18");
+    expect(metadataPrompt).toContain("distinct classroom want");
     const metadataRequest = fetchRequestJson(fetchMock);
     expect(metadataRequest.model).toBe(DEFAULT_COURSE_MODEL);
     const questionRequest = fetchRequestJson(fetchMock, 1);
     expect(questionRequest.model).toBe(DEFAULT_COURSE_MODEL);
     const questionPrompt = questionRequest.messages[1].content as string;
     expect(questionPrompt).toContain("Write exactly 6 multiple-choice study questions");
+    expect(questionPrompt).toContain("YOUTH QUESTION STANDARD");
+    expect(questionPrompt).toContain("concrete situation, object, result, quotation, or decision");
     expect(questionPrompt).toContain("Balance requirements");
     expect(questionPrompt).toContain("difficulty=easy, stat=head");
     expect(questionPrompt).toContain("difficulty=medium, stat=heart");

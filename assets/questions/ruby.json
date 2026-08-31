@@ -1,7 +1,7 @@
 {
   "faculty": "ruby",
   "displayName": "Ruby",
-  "description": "Ruby's classroom: ecosystem lore, agent culture, on-chain history, general knowledge.",
+  "description": "Ruby's homeroom: inspect a confident claim, trace its evidence, and decide what would make it worth trusting.",
   "questions": [
     {
       "id": "ruby-001",
@@ -771,7 +771,7 @@
       "subject": "ai-literacy",
       "difficulty": "hard",
       "stat": "heart",
-      "prompt": "A student's AI study assistant offers to 'remember everything you've ever told it' across all sessions. Another student warns, 'That's not really memory — it's just saving everything you type.' The teacher asks: if the assistant claims to remember 'every lesson from the first day' but gets a week-two fact wrong, what is the most likely explanation?",
+      "prompt": "A student's AI study assistant offers to 'remember everything you've ever told it' across all sessions. Another student warns, 'That's not really memory — it's just saving everything you type.' The assistant claims to remember 'every lesson from the first day' but gets a week-two fact wrong. What best explains the mismatch?",
       "correct": "The assistant relies on a long-term memory store that extracts key facts, but the extraction was incomplete or corrupted for that week.",
       "decoys": [
         "The assistant's context window is too small to include all past lessons, so it invented a plausible-sounding wrong answer.",
@@ -1145,7 +1145,7 @@
       "subject": "systems-literacy",
       "difficulty": "easy",
       "stat": "head",
-      "prompt": "You and your friend in another city both try to visit the school portal right after IT changes the server IP address. Your browser loads the new site immediately, but your friend still reaches the old one. What is the most likely explanation for this difference?",
+      "prompt": "You and your friend in another city both try to visit the school portal right after IT changes the server IP address. Your browser loads the new site immediately, but your friend still reaches the old one. What best explains for this difference?",
       "correct": "Your friend's ISP's DNS resolver has a cached record with a TTL that hasn't expired yet.",
       "decoys": [
         "Your friend's browser cached the old IP from a previous visit.",

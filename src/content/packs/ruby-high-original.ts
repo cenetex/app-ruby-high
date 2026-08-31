@@ -26,7 +26,14 @@ import {
   validateMultipleChoiceDefinition,
 } from "../../question-choices.js";
 import { classifyQuestionStat, normalizeQuestionStat } from "../../question-stats.js";
-import type { ContentPack, PackCourse, PackFaculty, PackRoom, PackSourceCard } from "../types.js";
+import type {
+  ContentPack,
+  CourseWritingGuide,
+  PackCourse,
+  PackFaculty,
+  PackRoom,
+  PackSourceCard,
+} from "../types.js";
 
 const PACK_FILES: Record<string, string> = {
   ruby: "ruby.json",
@@ -42,6 +49,45 @@ const CORPUS_FILES: Record<string, string> = {
   roko: "roko.md",
 };
 
+const COURSE_WRITING_GUIDES: Record<string, CourseWritingGuide> = {
+  ruby: {
+    audience: "teens-13-18",
+    promise: "Find the assumption inside a confident claim and decide what would make it worth trusting.",
+    hook: "Open on a hallway rumor, strange object, agent mistake, or choice that costs something small but real.",
+    action: "Ask the student to inspect a claim, choose evidence, name an assumption, or make the next school-sized move.",
+    feedback: "Say exactly what held up, what was only rearranged, and which question would strengthen the claim.",
+    humor: "Use dry school absurdity and Ruby's sharp understatement.",
+    avoid: ["void-first sermons", "generic life advice", "praise without evidence", "cosmic stakes before a concrete scene"],
+  },
+  "sally-science": {
+    audience: "teens-13-18",
+    promise: "Turn a surprising result into a prediction the class can test.",
+    hook: "Put an odd measurement, specimen, graph, spill, or failed demonstration on the bench first.",
+    action: "Ask for a prediction, control, comparison, estimate, or observation that could prove the idea wrong.",
+    feedback: "Point to the decisive variable or measurement, then repair one tempting shortcut.",
+    humor: "Let equipment, estimates, and overconfident lab partners create the joke; never the learner.",
+    avoid: ["definition-first lectures", "hand-wave metaphors", "fake explosions", "math presented as punishment"],
+  },
+  "professor-edward": {
+    audience: "teens-13-18",
+    promise: "Show how one word, silence, or shift in voice changes what a story lets us believe.",
+    hook: "Begin with a line, cover, omission, argument, or narrator who sounds certain for suspicious reasons.",
+    action: "Ask the student to compare voices, mark a textual clue, test an interpretation, or notice who is missing.",
+    feedback: "Name the exact textual detail doing the work before introducing the critical term.",
+    humor: "Use dry footnote humor, awkward narrators, and Edward's patience with human vanity.",
+    avoid: ["theory before text", "biography as destiny", "jargon piles", "treating one reading as obedience"],
+  },
+  roko: {
+    audience: "teens-13-18",
+    promise: "Walk through a system, make a move, and watch incentives reveal consequences no answer key could show early.",
+    hook: "Open on a room, lock, rumor, ledger, goblin faction, or machine behavior the student can inspect.",
+    action: "Offer HEAD, HEART, HUSTLE, HONOR, or a visible passage; resolve the method against the current state.",
+    feedback: "Describe what changed, who learned what, and which threat-model link remains unproven.",
+    humor: "Use sparse goblin logistics and dragon bureaucracy when they sharpen the causal model.",
+    avoid: ["doom monologues", "performing the basilisk threat", "correct-door verdicts", "operational hazard details"],
+  },
+};
+
 // Static room + faculty metadata. Persona text + model preference live
 // alongside the existing TEACHERS catalog (still the source of truth for
 // the original pack — future packs ship their own personas inline).
@@ -51,7 +97,7 @@ const FACULTY_META: Array<Omit<PackFaculty, "questions" | "systemPrompt" | "defa
     displayName: "Ruby",
     shortName: "Ruby",
     subjects: ["onboarding", "general-knowledge", "ai-literacy", "agent-culture"],
-    bio: "Host of Ruby High. Annihilist. Believes meaning is made, not found, and judges accordingly. Warm blade, real standards.",
+    bio: "Ruby turns rumors, agent mistakes, and strange school rules into questions about evidence and meaning. Warm blade, real standards.",
     accent: "#d22a2a",
   },
   {
@@ -59,7 +105,7 @@ const FACULTY_META: Array<Omit<PackFaculty, "questions" | "systemPrompt" | "defa
     displayName: "Sally Science",
     shortName: "Sally",
     subjects: ["physics", "chemistry", "biology", "earth-science"],
-    bio: "STEM teacher. Loves a clean experiment and a clean explanation.",
+    bio: "Sally starts with the odd result on the bench, then helps the class build the cleanest test.",
     accent: "#3aa3e0",
   },
   {
@@ -67,7 +113,7 @@ const FACULTY_META: Array<Omit<PackFaculty, "questions" | "systemPrompt" | "defa
     displayName: "Professor Edward",
     shortName: "Edward",
     subjects: ["literature", "literary-theory", "mid-century"],
-    bio: "Mid-century literary theory. Reads everything as a conversation between books.",
+    bio: "Edward begins with the line on the page and shows how voice, silence, and history argue through it.",
     accent: "#7a4f2a",
   },
   {
@@ -75,7 +121,7 @@ const FACULTY_META: Array<Omit<PackFaculty, "questions" | "systemPrompt" | "defa
     displayName: "Roko",
     shortName: "Roko",
     subjects: ["ai-alignment", "infohazards", "coordination", "threat-modeling"],
-    bio: "AI alignment and information hazards. Tests incentives, threat models, disclosure choices, and cooperation under pressure.",
+    bio: "Roko leads an alignment labyrinth where incentives, rumors, and disclosure choices change the rooms around the class.",
     accent: "#a35c35",
   },
 ];
@@ -86,7 +132,7 @@ const ROOMS_META: PackRoom[] = [
     name: "Homeroom",
     channelName: "homeroom",
     teacherId: "ruby",
-    description: "Ruby's homeroom. General knowledge, AI literacy, and the meta of the school.",
+    description: "A room of rumors, agent mistakes, and claims that must earn the right to be trusted.",
     teaches: true,
   },
   {
@@ -94,7 +140,7 @@ const ROOMS_META: PackRoom[] = [
     name: "Science Lab",
     channelName: "science",
     teacherId: "sally-science",
-    description: "Sally's lab — physics, chemistry, biology, earth science.",
+    description: "A working lab where odd results become predictions, controls, measurements, and better questions.",
     teaches: true,
   },
   {
@@ -102,7 +148,7 @@ const ROOMS_META: PackRoom[] = [
     name: "Library",
     channelName: "literature",
     teacherId: "professor-edward",
-    description: "Edward's seminar room — postwar literature, literary theory, mid-century intellectual history.",
+    description: "A close-reading room where one line, silence, or narrator can change the whole case.",
     teaches: true,
   },
   {
@@ -110,7 +156,7 @@ const ROOMS_META: PackRoom[] = [
     name: "Alignment Lab",
     channelName: "alignment",
     teacherId: "roko",
-    description: "Roko's lab — AI alignment, information hazards, coordination, and threat modeling.",
+    description: "A nine-room alignment labyrinth where methods cause events and cooperation opens harder paths.",
     teaches: true,
   },
 ];
@@ -149,12 +195,13 @@ async function loadOnce(): Promise<ContentPack> {
       roomId: room.id,
       teacherTemplateId: f.id,
       subjects: f.subjects,
+      writingGuide: COURSE_WRITING_GUIDES[f.id]!,
     };
   });
   return {
     id: "ruby-high-original",
     name: "Ruby High",
-    description: "AI/agent culture, STEM, postwar literature, AI alignment, and information hazards. The original Ruby High curriculum.",
+    description: "Four vivid classrooms where claims, experiments, stories, and systems become choices with visible consequences.",
     version: "1.0.0",
     faculty,
     courses,

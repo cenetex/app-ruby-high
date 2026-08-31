@@ -1,7 +1,7 @@
 {
   "faculty": "sally-science",
   "displayName": "Sally Science",
-  "description": "Sally's domain: physics, chemistry, biology, earth science. Loves a clean experiment and a clean explanation.",
+  "description": "Sally's lab: begin with the odd result, make a prediction, and build the cleanest test.",
   "questions": [
     {
       "id": "sally-001",
@@ -615,7 +615,7 @@
       "subject": "physics",
       "difficulty": "medium",
       "stat": "head",
-      "prompt": "You and your lab partner measure the same pendulum string. You use a meter stick with millimeter marks and record 92.5 cm. Your partner uses a digital caliper and records 92.47 cm. Which of the following is the most scientifically responsible interpretation of these two measurements?",
+      "prompt": "You and your lab partner measure the same pendulum string. You use a meter stick with millimeter marks and record 92.5 cm. Your partner uses a digital caliper and records 92.47 cm. Which interpretation best fits these two measurements?",
       "correct": "Both measurements are valid within their uncertainties; the difference is likely within the margin of error.",
       "decoys": [
         "The caliper reading is more accurate because it has more digits.",
@@ -1074,7 +1074,7 @@
       "subject": "chemistry",
       "difficulty": "easy",
       "stat": "heart",
-      "prompt": "Imagine you're preparing a buffer solution. You add a weak acid and its conjugate base to water, and the pH meter reads 7.4. Your classmate remarks, 'Perfect, it's a buffer for blood pH!' What crucial property of this buffer are they overlooking if they assume it will effectively resist *any* pH change?",
+      "prompt": "Picture this: you are preparing a buffer solution. You add a weak acid and its conjugate base to water, and the pH meter reads 7.4. Your classmate remarks, 'Perfect, it's a buffer for blood pH!' What crucial property of this buffer are they overlooking if they assume it will effectively resist *any* pH change?",
       "correct": "The buffer's capacity, which depends on the concentrations of the acid and base.",
       "decoys": [
         "The logarithmic nature of the pH scale.",
@@ -1397,7 +1397,7 @@
       "subject": "chemistry",
       "difficulty": "medium",
       "stat": "heart",
-      "prompt": "Imagine you're explaining the concept of a buffer solution to a younger student. You use the analogy of a shock absorber in a car, which smooths out bumps. What is the most crucial limitation of this analogy when discussing biological buffers like those in blood?",
+      "prompt": "Picture this: you are explaining the concept of a buffer solution to a younger student. You use the analogy of a shock absorber in a car, which smooths out bumps. What is the key limit of this analogy when discussing biological buffers like those in blood?",
       "correct": "Blood buffers are dynamic and involve chemical reactions, not just physical damping.",
       "decoys": [
         "Shock absorbers only work on mechanical forces, not chemical changes.",
@@ -1465,7 +1465,7 @@
       "subject": "biology",
       "difficulty": "hard",
       "stat": "heart",
-      "prompt": "Imagine you're explaining how an enzyme works using the analogy of a lock and key. A student asks, 'So, if I change the shape of the lock, the key won't fit at all, right?' What is the most crucial limitation of this analogy in a biological context?",
+      "prompt": "Picture this: you are explaining how an enzyme works using the analogy of a lock and key. A student asks, 'So, if I change the shape of the lock, the key won't fit at all, right?' What is the key limit of this analogy in a biological context?",
       "correct": "The 'lock' (enzyme) can change its shape slightly to accommodate the 'key' (substrate) to a degree.",
       "decoys": [
         "Enzymes can be reused, unlike most keys.",
@@ -1499,7 +1499,7 @@
       "subject": "physics",
       "difficulty": "medium",
       "stat": "honor",
-      "prompt": "A student measures the mass of a rock three times, getting 150.2 g, 150.0 g, and 150.1 g. They report the average mass as 150.10 g. What is the most significant scientific responsibility they have overlooked regarding this measurement?",
+      "prompt": "A student measures the mass of a rock three times, getting 150.2 g, 150.0 g, and 150.1 g. They report the average mass as 150.10 g. What scientific responsibility they have overlooked regarding this measurement?",
       "correct": "They need to state the uncertainty of the measurement, not just the average.",
       "decoys": [
         "They should have used a more precise balance to get more decimal places.",
@@ -1550,7 +1550,7 @@
       "subject": "earth-science",
       "difficulty": "medium",
       "stat": "hustle",
-      "prompt": "A student studying the Earth's climate notes that ice core data shows a strong correlation between the amount of CO2 in the atmosphere and global temperature over millennia. They conclude, 'Reducing atmospheric CO2 is the *only* way to combat global warming.' What is the most significant scientific limitation of this conclusion?",
+      "prompt": "Ice cores show a strong correlation between atmospheric CO2 and global temperature over millennia. A student concludes, 'Reducing CO2 is the only way to combat warming.' What is the main scientific limit of that conclusion?",
       "correct": "The conclusion oversimplifies a complex system and ignores other contributing factors or feedback loops.",
       "decoys": [
         "The student is ignoring the role of solar cycles in temperature fluctuations.",
@@ -1652,7 +1652,7 @@
       "subject": "biology",
       "difficulty": "medium",
       "stat": "head",
-      "prompt": "Imagine you're explaining how a vaccine works to a student. You say, 'The vaccine is like a wanted poster for the virus, showing the body's immune system what to look for.' This analogy helps them understand the basic idea. What is the most significant limitation of this analogy?",
+      "prompt": "Picture this: you are explaining how a vaccine works to a student. You say, 'The vaccine is like a wanted poster for the virus, showing the body's immune system what to look for.' This analogy helps them understand the basic idea. What is the main limit of this analogy?",
       "correct": "It doesn't explain *how* the immune system learns to recognize the 'wanted' pathogen or how it neutralizes it.",
       "decoys": [
         "Wanted posters are usually about criminals, not biological agents.",
@@ -1737,7 +1737,7 @@
       "subject": "chemistry",
       "difficulty": "easy",
       "stat": "heart",
-      "prompt": "Imagine you're explaining to a younger student how a buffer solution works, comparing it to a car's shock absorber that smooths out bumps. What is the most important aspect of the buffer's behavior that this analogy *fails* to capture?",
+      "prompt": "Picture this: you are explaining to a younger student how a buffer solution works, comparing it to a car's shock absorber that smooths out bumps. What is the most important aspect of the buffer's behavior that this analogy *fails* to capture?",
       "correct": "A buffer has a limited capacity and can be overwhelmed by too much added acid or base.",
       "decoys": [
         "Buffers are typically made of weak acids and their conjugate bases.",
@@ -1822,7 +1822,7 @@
       "subject": "earth-science",
       "difficulty": "hard",
       "stat": "hustle",
-      "prompt": "You are explaining how a seismograph works to record earthquake waves. A student asks, 'So, if an earthquake happens on the other side of the planet, the seismic waves will just travel straight through the Earth and reach us at the same speed as if it were nearby.' What is the most significant misunderstanding in this statement?",
+      "prompt": "You are explaining how a seismograph works to record earthquake waves. A student asks, 'So, if an earthquake happens on the other side of the planet, the seismic waves will just travel straight through the Earth and reach us at the same speed as if it were nearby.' What is the main misunderstanding in this statement?",
       "correct": "Seismic waves change speed and direction as they pass through different layers and densities within the Earth.",
       "decoys": [
         "Earthquakes only generate surface waves, which travel along the crust.",
@@ -1839,7 +1839,7 @@
       "subject": "biology",
       "difficulty": "easy",
       "stat": "honor",
-      "prompt": "We're analyzing enzyme activity, and our data shows that at pH 7, the reaction rate is optimal, but at pH 4, it's significantly slower. What is the most likely explanation for this reduced activity at pH 4?",
+      "prompt": "We're analyzing enzyme activity, and our data shows that at pH 7, the reaction rate is optimal, but at pH 4, it's significantly slower. What best explains for this reduced activity at pH 4?",
       "correct": "The enzyme is being denatured and losing its functional structure.",
       "decoys": [
         "The enzyme's active site is changing shape, hindering substrate binding.",
@@ -1856,7 +1856,7 @@
       "subject": "biology",
       "difficulty": "medium",
       "stat": "head",
-      "prompt": "A long-term study tracks a finch population's beak size. After a severe drought, the average beak size increases. A student concludes, 'Droughts *cause* finches to evolve larger beaks.' What is the most crucial piece of reasoning missing from this conclusion?",
+      "prompt": "A long-term study tracks a finch population's beak size. After a severe drought, the average beak size increases. A student concludes, 'Droughts *cause* finches to evolve larger beaks.' What key piece of reasoning missing from this conclusion?",
       "correct": "The conclusion conflates individual adaptation with population-level evolutionary change.",
       "decoys": [
         "The study did not measure the finches' food sources.",
@@ -1873,7 +1873,7 @@
       "subject": "biology",
       "difficulty": "hard",
       "stat": "heart",
-      "prompt": "Imagine you're explaining immune memory to a friend. You mention that after an infection, your body has 'fighter cells' ready to attack if the same pathogen returns. This is a good start, but what crucial aspect of immune memory does this analogy *underemphasize*?",
+      "prompt": "Picture this: you are explaining immune memory to a friend. You mention that after an infection, your body has 'fighter cells' ready to attack if the same pathogen returns. This is a good start, but what crucial aspect of immune memory does this analogy *underemphasize*?",
       "correct": "The fact that antibody levels can decrease over time.",
       "decoys": [
         "The specific type of pathogen being remembered.",
@@ -2145,7 +2145,7 @@
       "subject": "physics",
       "difficulty": "easy",
       "stat": "heart",
-      "prompt": "Imagine you're explaining to a younger sibling why their ice pops melt faster on a hot day. You say, 'The heat from the air is melting the ice pop.' This is a good start, but what's a more engaging and relatable way to explain the *mechanism* of heat transfer involved?",
+      "prompt": "Picture this: you are explaining to a younger sibling why their ice pops melt faster on a hot day. You say, 'The heat from the air is melting the ice pop.' This is a good start, but what's a more engaging and relatable way to explain the *mechanism* of heat transfer involved?",
       "correct": "'Think of the air like tiny, energetic dancers bumping into the ice pop and giving it energy to melt!'",
       "decoys": [
         "'The heat just magically makes the ice turn into water, like a science trick.'",
@@ -2230,7 +2230,7 @@
       "subject": "chemistry",
       "difficulty": "hard",
       "stat": "hustle",
-      "prompt": "A student meticulously measures the boiling point of an unknown liquid three times, obtaining 98.2 °C, 98.4 °C, and 98.3 °C. They then round this to 98 °C for their report. What is the most significant scientific error in their reporting?",
+      "prompt": "A student meticulously measures the boiling point of an unknown liquid three times, obtaining 98.2 °C, 98.4 °C, and 98.3 °C. They then round this to 98 °C for their report. What is the main scientific error in their reporting?",
       "correct": "They failed to account for potential experimental uncertainty in their final value.",
       "decoys": [
         "They dropped the units of measurement (°C).",
@@ -2281,7 +2281,7 @@
       "subject": "biology",
       "difficulty": "hard",
       "stat": "heart",
-      "prompt": "Imagine a long-term study tracking a population of finches on an island. After a severe drought, the average beak size in the population significantly increases. A student excitedly declares, 'The finches evolved to have bigger beaks because they *needed* them to survive!' What is the most crucial flaw in this teleological reasoning?",
+      "prompt": "Picture a long-term study tracking a population of finches on an island. After a severe drought, the average beak size in the population significantly increases. A student excitedly declares, 'The finches evolved to have bigger beaks because they *needed* them to survive!' What is the key flaw in this teleological reasoning?",
       "correct": "Evolutionary change occurs at the population level, not through individual 'need' or 'will'.",
       "decoys": [
         "Beak size is determined by diet, not genetics.",
@@ -2315,7 +2315,7 @@
       "subject": "earth-science",
       "difficulty": "medium",
       "stat": "honor",
-      "prompt": "A seismologist notices that S-waves from a distant earthquake are completely absent from seismograms on the opposite side of the Earth. Which of the following is the most rigorous and direct interpretation of this observation regarding Earth's internal structure?",
+      "prompt": "A seismologist notices that S-waves from a distant earthquake are completely absent from seismograms on the opposite side of the Earth. Which interpretation follows most directly from this observation about Earth's interior?",
       "correct": "The liquid outer core refracts and absorbs S-waves, creating an S-wave shadow zone.",
       "decoys": [
         "The solid mantle completely blocks the passage of S-waves.",
@@ -2485,7 +2485,7 @@
       "subject": "physics",
       "difficulty": "hard",
       "stat": "heart",
-      "prompt": "Imagine you're explaining the concept of wave interference to a group of students. You use the analogy of two people clapping their hands at the same time and asking if the sound waves 'add up' or 'cancel out.' What is the most significant limitation of this analogy for understanding wave phenomena?",
+      "prompt": "Picture this: you are explaining the concept of wave interference to a group of students. You use the analogy of two people clapping their hands at the same time and asking if the sound waves 'add up' or 'cancel out.' What is the main limit of this analogy for understanding wave phenomena?",
       "correct": "People clapping are discrete events, not continuous waves, and the 'adding up' or 'canceling out' is not directly observable in the same way as wave superposition.",
       "decoys": [
         "Sound waves from clapping are too complex to be easily modeled by simple addition or cancellation.",
@@ -2536,7 +2536,7 @@
       "subject": "chemistry",
       "difficulty": "hard",
       "stat": "head",
-      "prompt": "Imagine a student is performing a titration and observes a distinct color change, immediately stopping the addition of titrant and declaring the reaction complete. They report the volume added as the exact equivalence point. What is the most rigorous scientific critique of their conclusion and measurement?",
+      "prompt": "Picture a student is performing a titration and observes a distinct color change, immediately stopping the addition of titrant and declaring the reaction complete. They report the volume added as the exact equivalence point. What is the most rigorous scientific critique of their conclusion and measurement?",
       "correct": "They likely confused the endpoint with the equivalence point, as indicators change color slightly after the true equivalence point.",
       "decoys": [
         "They failed to account for the volume change of the solution after adding the titrant.",
@@ -2587,7 +2587,7 @@
       "subject": "biology",
       "difficulty": "hard",
       "stat": "honor",
-      "prompt": "Imagine a patient presents with symptoms of an autoimmune disorder, where their immune system mistakenly attacks healthy tissues. This suggests a breakdown in the system's ability to distinguish 'self' from 'non-self.' How does the concept of immune memory, specifically T-cell tolerance, relate to this malfunction?",
+      "prompt": "Picture a patient presents with symptoms of an autoimmune disorder, where their immune system mistakenly attacks healthy tissues. This suggests a breakdown in the system's ability to distinguish 'self' from 'non-self.' How does the concept of immune memory, specifically T-cell tolerance, relate to this malfunction?",
       "correct": "A failure in T-cell tolerance mechanisms means the immune system hasn't learned to ignore the body's own cells, leading to self-attack.",
       "decoys": [
         "Immune memory is overactive, causing the body to 'remember' its own cells as foreign invaders.",
@@ -2621,7 +2621,7 @@
       "subject": "earth-science",
       "difficulty": "medium",
       "stat": "heart",
-      "prompt": "We're examining ice core data from Antarctica, showing that during past glacial periods, temperatures dropped significantly *before* atmospheric CO2 levels began to fall. This observation most strongly suggests which of the following about the relationship between temperature and CO2?",
+      "prompt": "We're examining ice core data from Antarctica, showing that during past glacial periods, temperatures dropped significantly *before* atmospheric CO2 levels began to fall. What does this observation most strongly suggest about the relationship between temperature and CO2?",
       "correct": "While CO2 is a significant factor, other mechanisms must also be at play in initiating and driving temperature shifts.",
       "decoys": [
         "CO2 is the sole driver of temperature change, and the lag is simply an artifact of measurement.",
@@ -2638,7 +2638,7 @@
       "subject": "earth-science",
       "difficulty": "hard",
       "stat": "hustle",
-      "prompt": "Imagine you're analyzing seismic data from a large earthquake. You notice that S-waves are completely absent from seismograms recorded at stations located on the opposite side of the Earth from the earthquake's epicenter. This 'S-wave shadow zone' is critical evidence for which characteristic of Earth's interior?",
+      "prompt": "Picture this: you are analyzing seismic data from a large earthquake. You notice that S-waves are completely absent from seismograms recorded at stations located on the opposite side of the Earth from the earthquake's epicenter. This 'S-wave shadow zone' is critical evidence for which characteristic of Earth's interior?",
       "correct": "The outer core is a liquid layer that refracts and absorbs S-waves.",
       "decoys": [
         "The Earth's mantle is entirely solid and uniform in its seismic wave propagation.",
@@ -2689,7 +2689,7 @@
       "subject": "biology",
       "difficulty": "hard",
       "stat": "heart",
-      "prompt": "Imagine you're explaining the concept of natural selection to a group of students. You use the example of a population of rabbits where some have thicker fur and survive a harsh winter better than others. A student asks, 'So, if the rabbits *need* thicker fur, will they evolve it?' How would you most carefully address this common misconception?",
+      "prompt": "Picture this: you are explaining the concept of natural selection to a group of students. You use the example of a population of rabbits where some have thicker fur and survive a harsh winter better than others. A student asks, 'So, if the rabbits *need* thicker fur, will they evolve it?' How would you most carefully address this common misconception?",
       "correct": "Clarify that 'need' isn't a driving force; rather, random variation and differential survival are key.",
       "decoys": [
         "Explain that individual rabbits can't change their fur thickness during their lifetime, but their offspring might.",
@@ -2740,7 +2740,7 @@
       "subject": "physics",
       "difficulty": "hard",
       "stat": "head",
-      "prompt": "A student measures the mass of a sample three times, obtaining 10.2 g, 10.3 g, and 10.25 g. They then calculate the average mass and report it as 10.275 g. What is the most appropriate way to report this average, considering significant figures?",
+      "prompt": "A student measures the mass of a sample three times, obtaining 10.2 g, 10.3 g, and 10.25 g. They then calculate the average mass and report it as 10.275 g. What is the clearest way to report this average, considering significant figures?",
       "correct": "10.3 g",
       "decoys": [
         "10.28 g",
@@ -2910,7 +2910,7 @@
       "subject": "biology",
       "difficulty": "easy",
       "stat": "hustle",
-      "prompt": "A biologist observes that a specific enzyme's activity dramatically decreases at pH 5.0, while remaining high at pH 7.0 and 9.0. What is the most likely explanation for this sharp drop in activity?",
+      "prompt": "A biologist observes that a specific enzyme's activity dramatically decreases at pH 5.0, while remaining high at pH 7.0 and 9.0. What best explains for this sharp drop in activity?",
       "correct": "The enzyme's active site is denatured or altered at pH 5.0.",
       "decoys": [
         "The substrate concentration is too low at pH 5.0.",
@@ -2944,7 +2944,7 @@
       "subject": "biology",
       "difficulty": "hard",
       "stat": "head",
-      "prompt": "Imagine a PCR experiment designed to amplify a specific gene. One sample, intended to contain the target DNA, shows no amplification band on the gel, while all other samples do. What is the most rigorous scientific interpretation of this single negative result?",
+      "prompt": "Picture a PCR experiment designed to amplify a specific gene. One sample, intended to contain the target DNA, shows no amplification band on the gel, while all other samples do. What is the most rigorous scientific interpretation of this single negative result?",
       "correct": "The PCR reaction failed for that sample due to an error in reagent preparation or thermal cycling.",
       "decoys": [
         "The target gene is completely absent from that specific DNA sample.",
@@ -3233,7 +3233,7 @@
       "subject": "chemistry",
       "difficulty": "medium",
       "stat": "heart",
-      "prompt": "Imagine we're studying a chemical reaction at equilibrium. If we add more of a gaseous reactant to the system, what is the most precise prediction based on Le Chatelier's principle?",
+      "prompt": "Picture we're studying a chemical reaction at equilibrium. If we add more of a gaseous reactant to the system, what is the most precise prediction based on Le Chatelier's principle?",
       "correct": "The equilibrium will shift to consume the added reactant, favoring product formation.",
       "decoys": [
         "The equilibrium will shift to increase the concentration of the added reactant.",
@@ -3267,7 +3267,7 @@
       "subject": "biology",
       "difficulty": "easy",
       "stat": "honor",
-      "prompt": "A student claims that because a rare bird species' population increased after a specific conservation effort, the effort *caused* the increase. What is the most crucial scientific principle they are overlooking?",
+      "prompt": "A student claims that because a rare bird species' population increased after a specific conservation effort, the effort *caused* the increase. What key scientific principle they are overlooking?",
       "correct": "The possibility of correlation without causation, requiring controls.",
       "decoys": [
         "The need for a large sample size to ensure statistical significance.",
@@ -3284,7 +3284,7 @@
       "subject": "biology",
       "difficulty": "medium",
       "stat": "head",
-      "prompt": "Imagine a simulated PCR experiment where a target DNA sequence is expected. One sample, processed identically to others, shows no amplified band on the gel. What is the most scientifically sound inference from this single negative result?",
+      "prompt": "Picture a simulated PCR experiment where a target DNA sequence is expected. One sample, processed identically to others, shows no amplified band on the gel. What is the most scientifically sound inference from this single negative result?",
       "correct": "The PCR primers failed to bind effectively to the target sequence in that sample.",
       "decoys": [
         "The gene is absent from the organism's genome.",

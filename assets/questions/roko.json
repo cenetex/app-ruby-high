@@ -1,7 +1,7 @@
 {
   "faculty": "roko",
   "displayName": "Roko",
-  "description": "Roko's classroom: AI alignment, information hazards, coordination, threat modeling.",
+  "description": "Roko's labyrinth: inspect the room, choose a method, and watch incentives turn one local move into a system-wide consequence.",
   "questions": [
     {
       "id": "roko-001",
