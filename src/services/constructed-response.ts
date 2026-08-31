@@ -55,6 +55,34 @@ export function constructedResponseClaimsForState(state: QuizState): Constructed
   const session = state.activeRound?.classSession;
   const facultyId = session?.facultyId ?? state.faculty;
   const classDate = session?.date;
+  const seen = new Set<string>();
+  const claims: ConstructedResponseClaim[] = [];
+
+  // Roko's case route uses bounded story actions instead of normal choice
+  // answers. Prefer the authored cause-and-effect events shown on the Return
+  // card, even when the student also has older alignment quiz history.
+  const caseStudy = state.current?.caseStudy;
+  if (caseStudy) {
+    const choices = caseStudy.priorChoices ?? [];
+    for (let index = choices.length - 1; index >= 0 && claims.length < 2; index -= 1) {
+      const choice = choices[index]!;
+      if (choice.roomCompleted === false) continue;
+      const choiceLabel = choice.choiceLabel?.trim();
+      const eventLabel = choice.event?.label?.trim();
+      const eventDetail = choice.event?.detail?.trim();
+      if (!choiceLabel || !eventLabel || !eventDetail) continue;
+      const id = `case:${caseStudy.episodeId}:${choice.choiceId}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      claims.push({
+        id,
+        prompt: `${choiceLabel} — ${eventDetail}`.slice(0, 360),
+        answer: eventLabel.slice(0, 220),
+      });
+    }
+  }
+  if (claims.length > 0) return claims.reverse();
+
   const eligible = state.history.filter((record) =>
     record.answerKind === "choice"
     && !!record.answerText?.trim()
@@ -65,8 +93,6 @@ export function constructedResponseClaimsForState(state: QuizState): Constructed
     ? eligible.filter((record) => record.classMode === "class" && record.classDate === classDate)
     : [];
   const records = today.length >= 2 ? today : eligible;
-  const seen = new Set<string>();
-  const claims: ConstructedResponseClaim[] = [];
   for (let index = records.length - 1; index >= 0 && claims.length < 2; index -= 1) {
     const record = records[index]!;
     const id = `${record.questionId}:${record.at}`;

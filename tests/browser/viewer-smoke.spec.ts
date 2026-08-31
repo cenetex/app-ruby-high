@@ -213,6 +213,97 @@ test("keeps a specific Class Result after refresh with one truthful next step", 
   expect(errors).toEqual([]);
 });
 
+test("keeps Roko's Return response builder actionable on a phone", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { errors } = await openViewer(page);
+  await dismissAnnouncements(page);
+
+  const launchUrl = await page.evaluate(async () => {
+    const post = async (path: string, body: Record<string, unknown>, authorization?: string) => {
+      const response = await fetch(path, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authorization ? { Authorization: `Bearer ${authorization}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(`${path} failed: ${JSON.stringify(result)}`);
+      return result;
+    };
+    const device = await post("/api/apps/ruby-high/agent/v1/device/code", {
+      agentName: "Roko Return Browser Test",
+      scopes: ["school:read", "student:play"],
+    });
+    await post("/api/apps/ruby-high/agent/v1/device/approve", { userCode: device.userCode });
+    const token = await post("/api/apps/ruby-high/agent/v1/device/token", { deviceCode: device.deviceCode });
+    const launch = await post("/api/apps/ruby-high/agent/v1/launch", {}, token.accessToken);
+    return String(launch.launchUrl);
+  });
+
+  await page.goto(launchUrl);
+  const agentCookie = (await page.context().cookies()).find((cookie) => cookie.name === "rh_agent_session");
+  expect(agentCookie).toBeDefined();
+  await page.context().clearCookies();
+  await page.context().addCookies([agentCookie!]);
+
+  const finalTelemetry = await page.evaluate(async () => {
+    const command = async (payload: Record<string, unknown>) => {
+      const response = await fetch("/api/apps/ruby-high/session/browser-smoke/command", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(`command ${String(payload.type)} failed: ${JSON.stringify(result)}`);
+      return result;
+    };
+    await command({
+      type: "create-character",
+      name: "Route Tester",
+      playbookId: "overachiever",
+      stats: { head: 2, heart: 0, hustle: -1, honor: 1 },
+      arcAnswer: "I update when the route changes.",
+      personality: "Careful and curious.",
+    });
+    await command({ type: "select-grade", grade: "10" });
+    await command({ type: "set-faculty", faculty: "roko" });
+    let result = await command({ type: "pick", faculty: "roko" });
+    for (let room = 0; room < 3; room += 1) {
+      if (result?.session?.telemetry?.current?.type !== "story-action") {
+        throw new Error(`expected Roko story action: ${JSON.stringify(result)}`);
+      }
+      await command({ type: "answer-text", answerText: "head" });
+      await command({ type: "clear" });
+      result = await command({ type: "pick", faculty: "roko" });
+    }
+    return result?.session?.telemetry;
+  });
+
+  expect(finalTelemetry?.current?.type).toBe("opinion");
+  expect(finalTelemetry?.response_claims).toHaveLength(2);
+  await page.goto("/api/apps/ruby-high/viewer");
+  await dismissAnnouncements(page);
+  const activeAgentCookie = (await page.context().cookies()).find((cookie) => cookie.name === "rh_agent_session");
+  expect(activeAgentCookie).toBeDefined();
+  await page.context().clearCookies();
+  await page.context().addCookies([activeAgentCookie!]);
+
+  const claimCards = page.locator('[data-response-group="claim"] [data-response-card]:not([hidden])');
+  await expect(page.locator("#response-builder")).toBeVisible();
+  await expect(claimCards).toHaveCount(2);
+  await expect(claimCards.first()).toContainText("Readers can test the logic");
+  await claimCards.first().click();
+  await page.locator('[data-response-group="stance"] [data-response-card][data-value="conditional"]').click();
+  await page.locator('[data-response-group="evidence"] [data-response-card][data-value="source"]').click();
+  await page.locator('[data-response-group="impact"] [data-response-card][data-value="systems"]').click();
+  await expect(page.locator("#typed-submit-btn")).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
 test("keeps the generated student as a preview until the player takes their seat", async ({ page }) => {
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);

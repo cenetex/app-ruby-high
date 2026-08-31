@@ -26,6 +26,7 @@ import {
   HALL_PASS_PACK_REVEAL_LEGACY_VERSION,
   hallPassCatalogHash,
 } from "../services/hall-pass-reveal-provenance.js";
+import { constructedResponseClaimsForState } from "../services/constructed-response.js";
 import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 import { cardMemoryKey, defaultCardMemory } from "../services/ruby-high/helpers.js";
 import { applyTick as applyMashTick, emptyMashCard } from "../characters/mash.js";
@@ -5562,6 +5563,7 @@ describe("RubyHighService Phase 1", () => {
       },
       caseOutcome: { episodeId, choices: expect.any(Array) },
     });
+    expect(constructedResponseClaimsForState(explain)).toHaveLength(2);
     ruby.recordOpinion(sid, "player", "My first move assumed limited review would contain the story. The leak and missing causal incentive should update me: I would publish a sourced, revisable rebuttal for affected readers, while keeping vivid details out of broad alerts.");
     ruby.recordGrades(sid, [{ responder: "player", score: 8, comment: "You separated the argument from the communication effect and updated from later evidence." }], "player");
 
