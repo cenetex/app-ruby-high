@@ -53,11 +53,13 @@ import {
 } from "../question-choices.js";
 import { teacherById, type TeacherCharacter } from "../characters/teachers.js";
 import {
+  ROKO_EPISODES,
   rokoAssignmentCount,
   rokoOnboardingEpisode,
   rokoEpisodeAssignment,
   rokoEpisodeForClass,
   rokoEpisodeTake,
+  resolveRokoLabyrinthAction,
 } from "../content/roko-episodes.js";
 import { Service, type IAgentRuntime } from "../runtime.js";
 import {
@@ -7257,7 +7259,7 @@ export class RubyHighService extends Service {
     reveal: LastReveal,
     now = Date.now(),
   ): FirstBellReport | null {
-    if (question.type === "story-choice") return null;
+    if (question.type === "story-choice" || question.type === "story-action") return null;
     const ch = state.character;
     if (!ch || ch.firstBellReport) return null;
     const facultyId = question.faculty ?? state.faculty;
@@ -7768,6 +7770,10 @@ export class RubyHighService extends Service {
       this.resolveStoryChoiceRound(state, q, forfeit);
       return;
     }
+    if (q.type === "story-action") {
+      this.resolveStoryActionRound(state, q, forfeit);
+      return;
+    }
     const isTypedQuestion = q.type === "typed-answer" || q.type === "image-occlusion";
     const answerText = round.player.answerText?.trim() ?? "";
     const acceptedAnswers = q.acceptedAnswers ?? (q.expectedAnswer ? [q.expectedAnswer] : []);
@@ -8027,7 +8033,7 @@ export class RubyHighService extends Service {
 
   /** Resolve a branch without pretending it was right or wrong. The class
    *  records participation now; its causal event opens the next assignment,
-   *  and only the final written update is graded. */
+   *  and only the final response-board update is graded. */
   private resolveStoryChoiceRound(state: QuizState, q: Question, forfeit: boolean): void {
     const round = state.activeRound;
     if (!round || round.resolved) return;
@@ -8128,6 +8134,126 @@ export class RubyHighService extends Service {
       } : {}),
       classProgress,
     };
+    round.resolved = true;
+    round.resolvedAt = reviewAt;
+    this.transition(state, { kind: "resolve-round" });
+    state.updatedAt = reviewAt;
+    void this.persistSession(state.sessionId);
+  }
+
+  /** Resolve an attribute or passage move against bounded room rules. Room
+   *  completion advances class progress; looking, moving, retreating, and
+   *  leaving a co-op handprint change state without consuming one of the
+   *  three required rooms. */
+  private resolveStoryActionRound(state: QuizState, q: Question, forfeit: boolean): void {
+    const round = state.activeRound;
+    if (!round || round.resolved) return;
+    const reviewAt = round.player.answeredAt ?? Date.now();
+    const actionText = round.player.answerText?.trim() ?? "";
+    const episodeId = q.caseStudy?.episodeId;
+    const episode = episodeId ? ROKO_EPISODES.find((candidate) => candidate.id === episodeId) : null;
+    if (!episode || !actionText || forfeit) throw new Error("The labyrinth needs a described action.");
+    const resolution = resolveRokoLabyrinthAction(
+      episode,
+      state.caseStudyProgress,
+      actionText,
+      this.rokoLabyrinthContext(state, q.caseStudy?.nodeId),
+    );
+    const previous = state.caseStudyProgress?.episodeId === episode.id
+      ? state.caseStudyProgress
+      : null;
+    state.caseStudyProgress = {
+      episodeId: episode.id,
+      choices: [...(previous?.choices ?? []), structuredClone(resolution.result)],
+      currentNodeId: resolution.currentNodeId,
+      visitedNodeIds: Array.from(new Set([
+        ...(previous?.visitedNodeIds ?? []),
+        ...(resolution.result.nodeId ? [resolution.result.nodeId] : []),
+        ...(resolution.currentNodeId ? [resolution.currentNodeId] : []),
+      ])),
+      events: [...(previous?.events ?? []), structuredClone(resolution.result.event)],
+      labyrinth: structuredClone(resolution.labyrinth),
+      actedAt: reviewAt,
+    };
+    const classProgress: DailyClassUpdate = resolution.roomCompleted
+      ? this.recordDailyClassQuestion(
+          state,
+          true,
+          100,
+          reviewAt,
+          null,
+          {
+            questionId: q.id,
+            prompt: q.prompt,
+            ...(q.subject ? { subject: q.subject } : {}),
+            answerText: actionText,
+            wasCorrect: true,
+            forfeit: false,
+          },
+        )
+      : {
+          mode: round.classSession?.mode ?? "practice",
+          cardRole: round.cardRole,
+          facultyId: round.classSession?.facultyId ?? state.faculty,
+          grade: round.classSession?.grade,
+          date: round.classSession?.date,
+          questionCount: this.dailyClassRecord(
+            state,
+            round.classSession?.facultyId ?? state.faculty,
+            round.classSession?.date,
+          )?.questionCount ?? 0,
+          totalQuestions: round.classSession?.total,
+        };
+    if (resolution.roomCompleted && classProgress.mode === "class" && round.cardRole === "class") {
+      this.recordClassFlowMetric("evidence_card_completed", state, {
+        faculty: classProgress.facultyId,
+        grade: classProgress.grade,
+        date: classProgress.date,
+        step: `room_${classProgress.questionCount ?? 0}`,
+        status: "success",
+        metadata: {
+          questionId: q.id,
+          nodeId: resolution.result.nodeId ?? null,
+          actionCount: resolution.labyrinth.actionCount,
+        },
+      });
+    }
+    round.firstCorrect = null;
+    state.lastReveal = {
+      questionId: q.id,
+      questionPrompt: q.prompt,
+      questionType: "story-action",
+      ...(q.subject ? { questionSubject: q.subject } : {}),
+      ...(q.difficulty ? { questionDifficulty: q.difficulty } : {}),
+      picked: "A",
+      correct: "A",
+      wasCorrect: true,
+      explanation: q.explanation ?? null,
+      encouragement: resolution.roomCompleted
+        ? "The room changed. The result is evidence, not a grade."
+        : "The labyrinth changed without spending one of your three rooms.",
+      caseConsequence: {
+        label: resolution.result.event.label,
+        detail: resolution.result.event.detail,
+      },
+      caseChoice: {
+        choiceId: resolution.result.choiceId,
+        stage: resolution.result.stage,
+        choiceLabel: resolution.result.choiceLabel,
+        lockedText: resolution.result.lockedText,
+      },
+      answerText: actionText,
+      classProgress,
+    };
+    log.event("case.action-resolved", {
+      sessionId: state.sessionId,
+      episodeId: episode.id,
+      nodeId: resolution.result.nodeId ?? null,
+      eventId: resolution.result.event.eventId,
+      roomCompleted: resolution.roomCompleted,
+      completedRooms: resolution.labyrinth.completedNodeIds.length,
+      nextNodeId: resolution.currentNodeId,
+    });
     round.resolved = true;
     round.resolvedAt = reviewAt;
     this.transition(state, { kind: "resolve-round" });
@@ -8966,7 +9092,7 @@ export class RubyHighService extends Service {
     const startedAt = Date.now();
     const isOpinion = question.type === "opinion";
     const isStoryChoice = question.type === "story-choice";
-    const isTypedAnswer = question.type === "typed-answer" || question.type === "image-occlusion";
+    const isTypedAnswer = question.type === "typed-answer" || question.type === "image-occlusion" || question.type === "story-action";
     const durationMs = isOpinion ? OPINION_ROUND_DURATION_MS : DEFAULT_ROUND_DURATION_MS;
     const room = roomForFacultyForSession(state, state.faculty);
     let entries: NpcRoundEntry[] = [];
@@ -9345,6 +9471,24 @@ export class RubyHighService extends Service {
       : rokoOnboardingEpisode();
   }
 
+  private rokoLabyrinthContext(state: QuizState, nodeId?: string | null): {
+    presentHumans: number;
+    collaboratorRoles: string[];
+  } {
+    if (!nodeId) return { presentHumans: 1, collaboratorRoles: [] };
+    const roles: string[] = [];
+    let collaborators = 0;
+    for (const other of this.sessions.values()) {
+      if (other.sessionId === state.sessionId) continue;
+      const contribution = other.caseStudyProgress?.labyrinth?.contributions
+        .find((entry) => entry.nodeId === nodeId);
+      if (!contribution) continue;
+      collaborators += 1;
+      roles.push(contribution.role);
+    }
+    return { presentHumans: 1 + collaborators, collaboratorRoles: roles };
+  }
+
   private poseDailyClassTake(sessionId: string, state: QuizState, facultyId: string): QuizState {
     const date = dailyKey();
     const grade = state.currentGrade ?? DEFAULT_GRADE;
@@ -9431,7 +9575,12 @@ export class RubyHighService extends Service {
       : null;
     if (rokoEpisode && (classRecord?.questionCount ?? 0) === 0) state.caseStudyProgress = null;
     const rokoAssignment = rokoEpisode
-      ? rokoEpisodeAssignment(rokoEpisode, grade, state.caseStudyProgress)
+      ? rokoEpisodeAssignment(
+          rokoEpisode,
+          grade,
+          state.caseStudyProgress,
+          this.rokoLabyrinthContext(state, state.caseStudyProgress?.currentNodeId ?? rokoEpisode.assignmentGraph?.entryNodeId),
+        )
       : null;
     const question = cardRole === "social"
       ? undefined
@@ -9665,12 +9814,15 @@ export class RubyHighService extends Service {
     const state = this.getOrCreate(sessionId);
     const q = state.current;
     if (!q) throw new Error("No question is currently on the board.");
-    if (q.type !== "typed-answer" && q.type !== "image-occlusion") {
+    if (q.type !== "typed-answer" && q.type !== "image-occlusion" && q.type !== "story-action") {
       throw new Error("This question needs a multiple-choice pick.");
     }
     const trimmed = answerText.trim();
     if (!trimmed) throw new Error("Type an answer before submitting.");
     const bounded = trimmed.length > 4096 ? `${trimmed.slice(0, 4096)}...` : trimmed;
+    if (q.type === "story-action" && !/^(head|heart|hustle|honor|go [a-z0-9-]+)$/i.test(bounded)) {
+      throw new Error("Choose HEAD, HEART, HUSTLE, HONOR, or one of the visible passages.");
+    }
 
     if (!state.activeRound || state.activeRound.questionId !== q.id) {
       state.activeRound = this.openRound(state, q);
@@ -9681,7 +9833,9 @@ export class RubyHighService extends Service {
       this.tickRound(state);
       return state;
     }
-    const judge = judgeTypedAnswer(bounded, q.acceptedAnswers ?? (q.expectedAnswer ? [q.expectedAnswer] : []));
+    const judge = q.type === "story-action"
+      ? { correct: true, mode: "exact" as const, score: 1 }
+      : judgeTypedAnswer(bounded, q.acceptedAnswers ?? (q.expectedAnswer ? [q.expectedAnswer] : []));
     round.player.answerText = bounded;
     round.player.picked = judge.correct ? "A" : "B";
     round.player.answeredAt = Date.now();
@@ -9689,7 +9843,7 @@ export class RubyHighService extends Service {
       sessionId,
       faculty: state.faculty,
       questionId: q.id,
-      wasCorrect: judge.correct,
+      wasCorrect: q.type === "story-action" ? null : judge.correct,
       judgeMode: judge.mode,
       judgeScore: judge.score,
     });
@@ -13731,11 +13885,38 @@ function normalizeCaseStudyProgress(value: unknown): CaseStudyProgress | null {
       event,
       ...(Array.isArray(choice.revealedEvidence) ? { revealedEvidence: structuredClone(choice.revealedEvidence) } : {}),
       reflection: typeof choice.reflection === "string" ? choice.reflection : "What did this event change?",
+      ...(typeof choice.actionText === "string" ? { actionText: choice.actionText } : {}),
+      ...(typeof choice.roomCompleted === "boolean" ? { roomCompleted: choice.roomCompleted } : {}),
     }];
   });
   const events = Array.isArray(raw.events)
     ? raw.events.filter((event) => event && typeof event.eventId === "string").map((event) => structuredClone(event))
     : choices.map((choice) => structuredClone(choice.event));
+  const rawLabyrinth = raw.labyrinth && typeof raw.labyrinth === "object" ? raw.labyrinth : null;
+  const labyrinth = rawLabyrinth
+    ? {
+        discoveredNodeIds: Array.isArray(rawLabyrinth.discoveredNodeIds)
+          ? rawLabyrinth.discoveredNodeIds.filter((nodeId): nodeId is string => typeof nodeId === "string")
+          : [],
+        completedNodeIds: Array.isArray(rawLabyrinth.completedNodeIds)
+          ? rawLabyrinth.completedNodeIds.filter((nodeId): nodeId is string => typeof nodeId === "string")
+          : [],
+        inventory: Array.isArray(rawLabyrinth.inventory)
+          ? rawLabyrinth.inventory.filter((item): item is string => typeof item === "string")
+          : [],
+        rumor: Number.isFinite(Number(rawLabyrinth.rumor)) ? Number(rawLabyrinth.rumor) : 0,
+        trust: Number.isFinite(Number(rawLabyrinth.trust)) ? Number(rawLabyrinth.trust) : 0,
+        distress: Number.isFinite(Number(rawLabyrinth.distress)) ? Number(rawLabyrinth.distress) : 0,
+        actionCount: Math.max(0, Math.floor(Number(rawLabyrinth.actionCount) || 0)),
+        contributions: Array.isArray(rawLabyrinth.contributions)
+          ? rawLabyrinth.contributions.flatMap((entry) => (
+              entry && typeof entry.nodeId === "string" && typeof entry.role === "string"
+                ? [{ nodeId: entry.nodeId, role: entry.role, at: Number(entry.at) || 0 }]
+                : []
+            ))
+          : [],
+      }
+    : undefined;
   return {
     episodeId: raw.episodeId,
     choices,
@@ -13744,6 +13925,7 @@ function normalizeCaseStudyProgress(value: unknown): CaseStudyProgress | null {
       ? raw.visitedNodeIds.filter((nodeId): nodeId is string => typeof nodeId === "string")
       : choices.flatMap((choice) => choice.nodeId ? [choice.nodeId] : []),
     events,
+    ...(labyrinth ? { labyrinth } : {}),
     actedAt: typeof raw.actedAt === "number" ? raw.actedAt : 0,
   };
 }

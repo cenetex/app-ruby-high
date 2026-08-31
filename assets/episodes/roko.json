@@ -59,6 +59,7 @@
         "label": "The Black-Wax Labyrinth",
         "entryNodeId": "hall-of-four-doors",
         "assignmentCount": 3,
+        "interactionMode": "osr",
         "nodes": [
           {
             "id": "hall-of-four-doors",

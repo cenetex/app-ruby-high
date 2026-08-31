@@ -609,6 +609,32 @@ function buildResolvedAnswerBriefing(args: {
     };
   }
 
+  if (type === "story-action") {
+    const action = cleanText(c?.answerText) ?? reveal?.answerText ?? reveal?.caseChoice?.choiceLabel ?? "an action";
+    const consequence = reveal?.caseConsequence?.detail ?? reveal?.caseChoice?.lockedText;
+    const pickedLine = `${playerName} tried: ${action}. No correctness verdict exists for this action.`;
+    const eventText = [
+      prompt ? `Labyrinth action resolved for "${clipped(prompt, 180)}".` : "Labyrinth action resolved.",
+      pickedLine,
+      consequence ? `The world changed: ${clipped(consequence, 220)}` : "The room state changed.",
+    ].join(" ");
+    const contextLines = [
+      "RESOLVED LABYRINTH ACTION for this reaction.",
+      "This was not a quiz. Do not call the action correct, wrong, safe, optimal, or a mistake.",
+      "React as Roko to what the room did in response. Do not replace the player's action with an A/B/C/D choice.",
+      `Question ID: ${questionId}`,
+      prompt ? `Room prompt: ${prompt}` : "",
+      `Player action: ${action}`,
+      consequence ? `World event: ${consequence}` : "",
+    ].filter(Boolean);
+    return {
+      correctChoice: "A",
+      pickedLine,
+      eventText,
+      extraSystemContext: contextLines.join("\n"),
+    };
+  }
+
   // Opinion rounds carry no picked letter / correct letter — the teacher's
   // briefing has to come from activeRound.opinionResponses + opinionGrades
   // instead. Without this branch the teacher reacts to a bogus "picked A —
@@ -3146,8 +3172,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         for (const n of round.npcs) {
           const nm = STUDENTS[n.studentId]?.name ?? n.studentId;
           const pick = n.plannedPick ?? "?";
-          parts.push(round.type === "story-choice"
-            ? `${nm} chose ${pick}; that branch has no correctness verdict.`
+          parts.push(round.type === "story-choice" || round.type === "story-action"
+            ? `${nm} participated; this scene has no correctness verdict.`
             : `${nm} picked ${pick} — ${pick === correctAns ? "right" : "wrong"}.`);
         }
       }

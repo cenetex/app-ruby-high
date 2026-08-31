@@ -265,7 +265,13 @@ export async function handleCommandRoute(args: {
       );
     },
     "answer-text": async () => {
-      throw new Error("Free-form answers are disabled. Use answer choices or response cards.");
+      const state = ruby.getOrCreate(stateKey);
+      if (state.current?.type !== "story-action") {
+        throw new Error("Free-form answers are disabled. Use one of the actions shown in the room.");
+      }
+      const answerText = typeof body?.answerText === "string" ? body.answerText : "";
+      const next = ruby.submitTextAnswer(stateKey, answerText);
+      return await persist(next, "The labyrinth resolved your action.");
     },
     "generate-mc": async () => {
       const credential = resolveTextLlmCredential({

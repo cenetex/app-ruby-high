@@ -128,7 +128,7 @@ export function runViewerClient(bootstrap) {
     const ceremonyReady = !!(t && t.graduation_ready && !cur);
     const inFreeformRound = !!(
       live
-      && (t.is_opinion || cur.type === "typed-answer" || cur.type === "image-occlusion")
+      && (t.is_opinion || cur.type === "typed-answer" || cur.type === "image-occlusion" || cur.type === "story-action")
     );
     // Offline multiple-choice rounds already have one clear action: answer
     // the board. A second full-width "Continue" button only opens an AI hint
@@ -506,6 +506,9 @@ export function runViewerClient(bootstrap) {
     answers: Array.from(document.querySelectorAll(".answer")),
     typedAnswerHost: $("typed-answer-host"),
     typedAnswerForm: $("typed-answer-form"),
+    labyrinthActionForm: $("labyrinth-action-form"),
+    labyrinthAttributeGrid: $("labyrinth-attribute-grid"),
+    labyrinthExitGrid: $("labyrinth-exit-grid"),
     typedSubmitBtn: $("typed-submit-btn"),
     generateMcBtn: $("generate-mc-btn"),
     responseBuilder: $("response-builder"),
@@ -1140,6 +1143,41 @@ export function runViewerClient(bootstrap) {
       els.responseBuildStatus.textContent = complete ? "Ready" : RESPONSE_CARD_GROUP_LABELS[responseBuilderActiveGroup];
     }
   }
+  function syncLabyrinthAction(question, disabled) {
+    const active = !!(question && question.type === "story-action");
+    els.labyrinthActionForm.hidden = !active;
+    els.typedAnswerForm.hidden = active;
+    if (!active) return;
+    const moves = [
+      { id: "head", label: "HEAD", detail: "Study the mechanism" },
+      { id: "heart", label: "HEART", detail: "Work through people" },
+      { id: "hustle", label: "HUSTLE", detail: "Change the situation" },
+      { id: "honor", label: "HONOR", detail: "Make or defend a rule" },
+    ];
+    els.labyrinthAttributeGrid.replaceChildren();
+    for (const move of moves) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.disabled = !!disabled || typedSubmitting;
+      const label = document.createElement("strong");
+      label.textContent = move.label;
+      const detail = document.createElement("span");
+      detail.textContent = move.detail;
+      button.append(label, detail);
+      button.addEventListener("click", () => { void performLabyrinthAction(move.id); });
+      els.labyrinthAttributeGrid.appendChild(button);
+    }
+    els.labyrinthExitGrid.replaceChildren();
+    const labyrinth = questionPromptView(question).caseStudy?.labyrinth;
+    for (const exit of labyrinth?.availableExits || []) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.disabled = !!disabled || typedSubmitting;
+      button.textContent = "Go to " + exit.label;
+      button.addEventListener("click", () => { void performLabyrinthAction("go " + exit.nodeId); });
+      els.labyrinthExitGrid.appendChild(button);
+    }
+  }
   function playerMessageIdentitySig() {
     const ch = lastTelemetry && lastTelemetry.character;
     return playerDisplayName() + ":" + (ch && ch.portraitDataUrl ? ch.portraitDataUrl.length : 0);
@@ -1200,7 +1238,10 @@ export function runViewerClient(bootstrap) {
       if (reveal) {
         const prompt = clipPlayerContext(reveal.questionPrompt || (current && current.prompt) || "", 110);
         const isStoryChoice = reveal.questionType === "story-choice";
-        const result = isStoryChoice
+        const isStoryAction = reveal.questionType === "story-action";
+        const result = isStoryAction
+          ? "I acted in the labyrinth"
+          : isStoryChoice
           ? "I locked in a story choice"
           : reveal.forfeit
           ? "I timed out"
@@ -1214,7 +1255,7 @@ export function runViewerClient(bootstrap) {
           ? clipPlayerContext(reveal.expectedAnswer, 70)
           : revealAnswerText(reveal, reveal.correct);
         const answerLine = answer && !reveal.forfeit ? " My answer was " + answer + "." : "";
-        const correctLine = !isStoryChoice && correct ? " The correct answer was " + correct + "." : "";
+        const correctLine = !isStoryChoice && !isStoryAction && correct ? " The correct answer was " + correct + "." : "";
         return result + (prompt ? " on " + prompt : "") + "." + answerLine + correctLine + " What should I take from that?";
       }
       const progress = t.active_course_progress && t.active_course_progress.today;
@@ -3907,6 +3948,26 @@ export function runViewerClient(bootstrap) {
         });
         caseWrap.appendChild(route);
       }
+      if (view.caseStudy.labyrinth) {
+        const state = view.caseStudy.labyrinth;
+        const status = document.createElement("div");
+        status.className = "case-labyrinth-state";
+        const progress = document.createElement("strong");
+        progress.textContent = "Rooms " + state.completedRooms + "/" + state.requiredRooms;
+        const pressure = document.createElement("span");
+        pressure.textContent = "Rumor " + state.rumor + " · Trust " + (state.trust >= 0 ? "+" : "") + state.trust + " · Distress " + state.distress;
+        const humans = document.createElement("span");
+        humans.textContent = state.requiredHumans > 1
+          ? "Hands " + state.presentHumans + "/" + state.requiredHumans
+          : "Solo passage";
+        status.append(progress, pressure, humans);
+        if (state.inventory.length > 0) {
+          const inventory = document.createElement("span");
+          inventory.textContent = "Carrying: " + state.inventory.join(", ");
+          status.appendChild(inventory);
+        }
+        caseWrap.appendChild(status);
+      }
       if (view.caseStudy.hook) {
         const hook = document.createElement("p");
         hook.className = "case-study-hook";
@@ -4093,7 +4154,8 @@ export function runViewerClient(bootstrap) {
 
     const isOpinion = (lastTelemetry && lastTelemetry.is_opinion) || question.type === "opinion";
     const isTypedAnswer = question.type === "typed-answer" || question.type === "image-occlusion";
-    const isFreeformAnswer = isTypedAnswer || isOpinion;
+    const isStoryAction = question.type === "story-action";
+    const isFreeformAnswer = isTypedAnswer || isOpinion || isStoryAction;
     if (isNewQuestion) {
       clearOpinionSubmitted();
       opinionGradeFired = false;
@@ -4177,6 +4239,7 @@ export function runViewerClient(bootstrap) {
       || !!(round && round.resolved)
       || (isOpinion ? (serverPlayerOpinionRecorded || localOpinionSubmitted) : playerLocked);
     syncResponseBuilder(isOpinion, typedDisabled);
+    syncLabyrinthAction(question, typedDisabled);
     els.generateMcBtn.hidden = !(isTypedAnswer && question.canGenerateMc);
     els.generateMcBtn.disabled = role === "agent" || playerLocked || !!(round && round.resolved) || generatingMc || !aiEnabled;
     els.generateMcBtn.title = aiEnabled
@@ -4245,10 +4308,12 @@ export function runViewerClient(bootstrap) {
   function applyRevealToBlackboard(reveal) {
     if (!reveal) return;
     const isStoryChoice = reveal.questionType === "story-choice";
-    const isTypedReveal = reveal.answerText != null || reveal.expectedAnswer != null || reveal.answerJudge != null;
+    const isStoryAction = reveal.questionType === "story-action";
+    const isOpenStory = isStoryChoice || isStoryAction;
+    const isTypedReveal = !isStoryAction && (reveal.answerText != null || reveal.expectedAnswer != null || reveal.answerJudge != null);
     els.answers.forEach((btn) => {
       btn.disabled = true;
-      if (isStoryChoice) {
+      if (isOpenStory) {
         if (!reveal.forfeit && btn.dataset.pick === reveal.picked) btn.classList.add("is-selected");
       } else {
         if (btn.dataset.pick === reveal.correct) btn.classList.add("is-correct");
@@ -4258,20 +4323,22 @@ export function runViewerClient(bootstrap) {
     els.responseCardButtons.forEach((button) => { button.disabled = true; });
     els.responseStepButtons.forEach((button) => { button.disabled = true; });
     els.typedSubmitBtn.disabled = true;
+    els.labyrinthAttributeGrid.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+    els.labyrinthExitGrid.querySelectorAll("button").forEach((button) => { button.disabled = true; });
     els.generateMcBtn.disabled = true;
     // The wrong-answer "hide A/B/C/D for chat space" rule lives in
     // showBlackboardLoaded so it survives re-renders driven by the
     // telemetry poll. Don't duplicate it here.
     els.boardReveal.hidden = false;
-    els.boardReveal.classList.toggle("neutral", isStoryChoice);
-    els.boardReveal.classList.toggle("correct", !isStoryChoice && !!reveal.wasCorrect);
-    els.boardReveal.classList.toggle("wrong", !isStoryChoice && !reveal.wasCorrect);
+    els.boardReveal.classList.toggle("neutral", isOpenStory);
+    els.boardReveal.classList.toggle("correct", !isOpenStory && !!reveal.wasCorrect);
+    els.boardReveal.classList.toggle("wrong", !isOpenStory && !reveal.wasCorrect);
     // Build the reveal block by parts so the dice render alongside the result.
     els.boardReveal.replaceChildren();
     const result = document.createElement("span");
     result.className = "reveal-result";
-    result.textContent = isStoryChoice
-      ? reveal.forfeit ? "The scene moved on" : "Choice locked — no verdict yet"
+    result.textContent = isOpenStory
+      ? reveal.forfeit ? "The scene moved on" : isStoryAction ? "Action resolved — no verdict" : "Choice locked — no verdict yet"
       : reveal.forfeit
       ? "⏱ Time's up — answer was " + (isTypedReveal ? (reveal.expectedAnswer || reveal.correct) : reveal.correct)
       : isTypedReveal
@@ -4282,7 +4349,7 @@ export function runViewerClient(bootstrap) {
       ? "✓ Correct (" + reveal.picked + ")"
       : "✗ You picked " + reveal.picked + " — answer was " + reveal.correct;
     els.boardReveal.appendChild(result);
-    if (isStoryChoice && reveal.caseChoice && reveal.caseChoice.lockedText) {
+    if (isOpenStory && reveal.caseChoice && reveal.caseChoice.lockedText) {
       const choiceNote = document.createElement("div");
       choiceNote.className = "reveal-case-consequence";
       const label = document.createElement("strong");
@@ -4389,7 +4456,7 @@ export function runViewerClient(bootstrap) {
         picked: reveal.forfeit ? null : reveal.picked,
         correct: reveal.correct,
         pickedAnswer: reveal.forfeit ? null : (reveal.answerText || optionAnswer(reveal.picked)),
-        correctAnswer: type === "story-choice" ? null : (reveal.expectedAnswer || optionAnswer(reveal.correct)),
+        correctAnswer: type === "story-choice" || type === "story-action" ? null : (reveal.expectedAnswer || optionAnswer(reveal.correct)),
         answerText: reveal.forfeit ? null : (reveal.answerText || null),
         expectedAnswer: reveal.expectedAnswer || null,
         answerJudge: reveal.answerJudge || null,
@@ -5279,6 +5346,26 @@ export function runViewerClient(bootstrap) {
     }
   }
 
+  async function performLabyrinthAction(answerText) {
+    if (typedSubmitting) return;
+    typedSubmitting = true;
+    els.labyrinthAttributeGrid.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+    els.labyrinthExitGrid.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+    try {
+      const data = await command({ type: "answer-text", answerText, role });
+      if (data && data.session && data.session.telemetry) {
+        maybeRunAnswerGraded(data.session.telemetry, 0);
+      }
+    } catch (err) {
+      appendSystem("The labyrinth could not resolve that move · " + (err && err.message ? err.message : "error"));
+    } finally {
+      typedSubmitting = false;
+      const question = lastTelemetry && lastTelemetry.current;
+      const round = lastTelemetry && lastTelemetry.active_round;
+      syncLabyrinthAction(question, role === "agent" || !!(round && (round.resolved || round.player && round.player.isLocked)));
+    }
+  }
+
   async function generateMultipleChoice() {
     if (generatingMc || !els.generateMcBtn || els.generateMcBtn.disabled) return;
     generatingMc = true;
@@ -5655,7 +5742,7 @@ export function runViewerClient(bootstrap) {
           applyRevealToBlackboard(t.lastReveal);
           appendResultChip(t.lastReveal);
         }
-        if (t.lastReveal.questionType !== "story-choice") {
+        if (t.lastReveal.questionType !== "story-choice" && t.lastReveal.questionType !== "story-action") {
           showCongrats(t.lastReveal.encouragement, t.lastReveal.wasCorrect);
         }
         // Teacher reacts + queues next question. Fire immediately so the
@@ -5672,7 +5759,7 @@ export function runViewerClient(bootstrap) {
         // room doesn't feel like the students are doing all the talking
         // before the teacher catches up. Long delay; the cooldown still
         // suppresses pile-ons.
-        if (t.lastReveal.questionType !== "story-choice") {
+        if (t.lastReveal.questionType !== "story-choice" && t.lastReveal.questionType !== "story-action") {
           scheduleStudentChime(t.lastReveal.wasCorrect, t.current_grade, 4500);
         }
       }

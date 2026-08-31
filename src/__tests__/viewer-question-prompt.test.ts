@@ -97,6 +97,17 @@ describe("viewer question prompt pure helpers", () => {
           { nodeId: "hall-of-four-doors", label: "Hall of Four Doors" },
           { nodeId: "sealed-reading-cell", label: "Sealed Reading Cell" },
         ],
+        labyrinth: {
+          completedRooms: 1,
+          requiredRooms: 3,
+          inventory: ["chalk", "twine"],
+          rumor: 2,
+          trust: -1,
+          distress: 3,
+          availableExits: [{ nodeId: "hall-of-four-doors", label: "Hall of Four Doors" }],
+          requiredHumans: 2,
+          presentHumans: 1,
+        },
         evidence: [],
         priorChoices: [{
           choiceId: "restricted-review",
@@ -127,6 +138,17 @@ describe("viewer question prompt pure helpers", () => {
       assignmentLabel: "The Black-Wax Labyrinth",
       storyFunction: "challenge",
       route: [{ label: "Hall of Four Doors" }, { label: "Sealed Reading Cell" }],
+      labyrinth: {
+        completedRooms: 1,
+        requiredRooms: 3,
+        inventory: ["chalk", "twine"],
+        rumor: 2,
+        trust: -1,
+        distress: 3,
+        availableExits: [{ nodeId: "hall-of-four-doors", label: "Hall of Four Doors" }],
+        requiredHumans: 2,
+        presentHumans: 1,
+      },
       sources: [{ label: "Roko's Basilisk", url: "https://www.lesswrong.com/w/rokos-basilisk" }],
     });
   });

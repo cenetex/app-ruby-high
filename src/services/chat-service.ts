@@ -1876,7 +1876,10 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
     if (reveal?.questionPrompt) {
       const opts = reveal.questionOptions;
       const storyChoice = reveal.questionType === "story-choice";
-      const answerLines = storyChoice
+      const storyAction = reveal.questionType === "story-action";
+      const answerLines = storyAction
+        ? [reveal.answerText ? `Player action: ${reveal.answerText}` : "The player acted in the labyrinth."]
+        : storyChoice
         ? [reveal.caseChoice?.lockedText ?? "The choice is locked; follow the event it causes."]
         : opts
         ? [
@@ -1893,7 +1896,9 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
         ...header,
         "BOARD STATUS: RECENTLY_RESOLVED.",
         "No live question is on the board now, but the last resolved card is still relevant for this turn.",
-        storyChoice
+        storyAction
+          ? `The player acted: ${reveal.answerText ?? reveal.caseChoice?.choiceLabel ?? "an action"}. This has no correctness verdict; react to the resulting world event.`
+        : storyChoice
           ? `The player chose ${reveal.caseChoice?.choiceLabel ?? reveal.picked}. This scene has no correct answer; its authored event determines which assignment opens.`
         : reveal.forfeit
           ? "The player did not answer before the timer expired."
@@ -1942,6 +1947,13 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
         state.lastReveal.caseChoice?.lockedText ?? "",
         "The question scheduler will post the next story scene when the board clears.",
       ]
+      : q.type === "story-action"
+      ? [
+        "BOARD STATUS: LABYRINTH_ACTION_RESOLVED.",
+        `The player tried: ${state.lastReveal.answerText ?? state.lastReveal.caseChoice?.choiceLabel ?? "an action"}. Do not call it right or wrong.`,
+        state.lastReveal.caseConsequence?.detail ?? state.lastReveal.caseChoice?.lockedText ?? "",
+        "React to the changed world state. The scheduler will repost the current room or the room this action opened.",
+      ]
       : [
         "BOARD STATUS: RESOLVED.",
         state.lastReveal.forfeit
@@ -1958,6 +1970,8 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
         "BOARD STATUS: WAITING_FOR_STUDENT_ANSWER.",
         q.type === "story-choice"
           ? "The player has not chosen a branch yet. The choices have no known correctness verdict."
+          : q.type === "story-action"
+            ? "The player has not acted yet. Ask what they do with the room, objects, exits, or inhabitants; do not reduce the scene to A/B/C/D."
           : "The player has not answered this board yet. Do not reveal the correct answer. Wait for the answer-graded event before calling another tool.",
       ];
   const answerLines = q.type === "typed-answer" || q.type === "image-occlusion"
@@ -1967,6 +1981,11 @@ function describeBoardForModel(state: QuizState, bankStatus?: QuestionBankStatus
           state.lastReveal.expectedAnswer ? `Expected answer: ${state.lastReveal.expectedAnswer}` : "",
         ].filter(Boolean)
       : ["Expected answer: hidden until reveal."]
+    : q.type === "story-action"
+      ? [
+        ...(resolvedThisQ && state.lastReveal?.answerText ? [`Player action: ${state.lastReveal.answerText}`] : []),
+        "There is no correct answer or fixed option list. The server resolves bounded actions against the labyrinth state.",
+      ]
     : q.type === "story-choice"
       ? [
         `  A) ${opts.A}`,

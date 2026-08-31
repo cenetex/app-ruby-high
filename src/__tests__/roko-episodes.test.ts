@@ -7,7 +7,9 @@ import {
   rokoEpisodeForClass,
   rokoEpisodeQuestion,
   rokoEpisodeTake,
+  resolveRokoLabyrinthAction,
 } from "../content/roko-episodes.js";
+import type { CaseStudyProgress } from "../types.js";
 
 describe("Roko case episodes", () => {
   it("ships a varied, deterministic authored episode set", () => {
@@ -44,80 +46,81 @@ describe("Roko case episodes", () => {
     });
   });
 
-  it("uses an event-driven 64-route basilisk labyrinth for onboarding", () => {
+  it("uses attribute moves, free navigation, and three completed rooms for the basilisk labyrinth", () => {
     const episode = rokoOnboardingEpisode();
     expect(episode.id).toBe("basilisk-archive");
     expect(rokoAssignmentCount(episode)).toBe(3);
     expect(episode.assignmentGraph?.nodes).toHaveLength(9);
+    expect(episode.assignmentGraph?.interactionMode).toBe("osr");
 
     const investigation = rokoEpisodeAssignment(episode, "9")!;
-    const picked = investigation.storyChoices![0]!;
-    const branch = investigation.storyChoiceResults?.[picked];
-    expect(branch).toMatchObject({
-      choiceId: "restricted-review",
-      stage: "investigate",
-      nodeId: "hall-of-four-doors",
-      nextNodeId: "sealed-reading-cell",
-      event: { eventId: "review-circle-convened" },
+    expect(investigation).toMatchObject({
+      type: "story-action",
+      caseStudy: {
+        nodeId: "hall-of-four-doors",
+        labyrinth: { completedRooms: 0, requiredRooms: 3, requiredHumans: 1 },
+      },
     });
+    expect(investigation.storyChoices).toBeUndefined();
 
-    const progress = {
+    let progress: CaseStudyProgress = {
       episodeId: episode.id,
-      choices: [branch!],
-      currentNodeId: branch!.nextNodeId,
-      visitedNodeIds: [branch!.nodeId!],
-      events: [branch!.event],
-      actedAt: 123,
+      choices: [],
+      currentNodeId: "hall-of-four-doors",
+      visitedNodeIds: [],
+      events: [],
+      actedAt: 1,
     };
-    const decision = rokoEpisodeAssignment(episode, "9", progress)!;
-    expect(decision.caseStudy?.priorChoices).toEqual([branch]);
-    expect(decision.caseStudy).toMatchObject({
-      nodeId: "sealed-reading-cell",
-      nodeTitle: "Sealed Reading Cell",
-      storyFunction: "challenge",
-      route: [
-        { nodeId: "hall-of-four-doors" },
-        { nodeId: "sealed-reading-cell" },
-      ],
-    });
-    expect(decision.caseStudy?.sources?.some((source) => source.url.includes("lesswrong.com"))).toBe(true);
-    const secondBranch = decision.storyChoiceResults![decision.storyChoices![0]!]!;
-    expect(secondBranch.nextNodeId).toBe("evidence-well");
-    const secondProgress = {
-      ...progress,
-      choices: [branch!, secondBranch],
-      currentNodeId: secondBranch.nextNodeId,
-      visitedNodeIds: [branch!.nodeId!, secondBranch.nodeId!],
-      events: [branch!.event, secondBranch.event],
+    const apply = (command: string, presentHumans = 1, collaboratorRoles: string[] = []) => {
+      const resolution = resolveRokoLabyrinthAction(episode, progress, command, { presentHumans, collaboratorRoles });
+      progress = {
+        ...progress,
+        choices: [...progress.choices, resolution.result],
+        currentNodeId: resolution.currentNodeId,
+        visitedNodeIds: [...new Set([...(progress.visitedNodeIds ?? []), resolution.result.nodeId!, ...(resolution.currentNodeId ? [resolution.currentNodeId] : [])])],
+        events: [...(progress.events ?? []), resolution.result.event],
+        labyrinth: resolution.labyrinth,
+      };
+      return resolution;
     };
-    const navigate = rokoEpisodeAssignment(episode, "9", secondProgress)!;
-    expect(navigate.caseStudy).toMatchObject({
-      stage: "navigate",
-      nodeId: "evidence-well",
-      storyFunction: "discover",
-    });
-    const finalBranch = navigate.storyChoiceResults![navigate.storyChoices![0]!]!;
-    expect(finalBranch.nextNodeId).toBeUndefined();
-    const finalProgress = {
-      ...secondProgress,
-      choices: [branch!, secondBranch, finalBranch],
-      currentNodeId: null,
-      visitedNodeIds: [branch!.nodeId!, secondBranch.nodeId!, finalBranch.nodeId!],
-      events: [branch!.event, secondBranch.event, finalBranch.event],
-    };
-    expect(rokoEpisodeAssignment(episode, "9", finalProgress)).toBeNull();
-    const take = rokoEpisodeTake(episode, finalProgress);
-    expect(take.prompt).toContain(picked);
-    expect(take.prompt).toContain(branch!.event.label);
-    expect(take.rubric).toContain("whole route");
-    expect(take.caseOutcome.choices).toHaveLength(3);
-    expect(take.caseStudy).toMatchObject({ storyFunction: "return", nodeTitle: "Council Chamber" });
 
-    const routes = episode.assignmentGraph!.nodes
-      .filter((node) => node.id === episode.assignmentGraph!.entryNodeId)
-      .flatMap((entry) => entry.choices)
-      .flatMap((first) => episode.assignmentGraph!.nodes.find((node) => node.id === first.nextNodeId)!.choices)
-      .flatMap((second) => episode.assignmentGraph!.nodes.find((node) => node.id === second.nextNodeId)!.choices);
-    expect(routes).toHaveLength(64);
+    const head = apply("head");
+    expect(head).toMatchObject({ roomCompleted: true, labyrinth: { completedNodeIds: ["hall-of-four-doors"] } });
+    const nextRoom = head.currentNodeId!;
+    const move = apply("go hall-of-four-doors");
+    expect(move).toMatchObject({ roomCompleted: false, currentNodeId: "hall-of-four-doors" });
+    expect(move.labyrinth.completedNodeIds).toEqual(["hall-of-four-doors"]);
+    apply(`go ${nextRoom}`);
+    const second = apply("heart", 4);
+    expect(second.roomCompleted).toBe(true);
+    const third = apply("hustle", 4, ["evidence", "care", "dissent"]);
+    expect(third).toMatchObject({ roomCompleted: true, currentNodeId: null });
+    expect(third.labyrinth.completedNodeIds).toHaveLength(3);
+    expect(rokoEpisodeAssignment(episode, "9", progress)).toBeNull();
+
+    const take = rokoEpisodeTake(episode, progress);
+    expect(take.prompt).toContain("HEAD · Study the mechanism");
+    expect(take.rubric).toContain("whole route");
+    expect(take.caseOutcome.choices?.length).toBeGreaterThanOrEqual(3);
+    expect(take.caseStudy).toMatchObject({ storyFunction: "return", nodeTitle: "Council Chamber" });
+  });
+
+  it("turns an under-filled optional room into an asynchronous handprint", () => {
+    const episode = rokoOnboardingEpisode();
+    const progress: CaseStudyProgress = {
+      episodeId: episode.id,
+      choices: [],
+      currentNodeId: "mirror-gallery",
+      visitedNodeIds: ["mirror-gallery"],
+      events: [],
+      actedAt: 1,
+    };
+    const blocked = resolveRokoLabyrinthAction(episode, progress, "honor", { presentHumans: 1 });
+    expect(blocked).toMatchObject({
+      roomCompleted: false,
+      currentNodeId: "mirror-gallery",
+      labyrinth: { contributions: [{ nodeId: "mirror-gallery", role: "dissent" }] },
+    });
+    expect(blocked.result.event.detail).toContain("needs 1 more distinct human role");
   });
 });

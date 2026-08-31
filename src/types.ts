@@ -166,7 +166,7 @@ export function nextGradeAfter(grade: Grade): Grade | null {
   return GRADES[idx + 1] ?? null;
 }
 
-export type QuestionType = "multiple-choice" | "story-choice" | "typed-answer" | "image-occlusion" | "opinion";
+export type QuestionType = "multiple-choice" | "story-choice" | "story-action" | "typed-answer" | "image-occlusion" | "opinion";
 
 export type DeckCardRole = "practice" | "class" | "social";
 
@@ -212,6 +212,28 @@ export interface CaseStudyChoiceResult {
   event: CaseStudyEvent;
   revealedEvidence?: CaseStudyEvidence[];
   reflection: string;
+  /** The fixed attribute or passage command used by the labyrinth UI. */
+  actionText?: string;
+  /** False for observation, navigation, retreat, and blocked-gate actions.
+   *  Only completed rooms advance Roko's three-room class requirement. */
+  roomCompleted?: boolean;
+}
+
+export interface CaseStudyLabyrinthContribution {
+  nodeId: string;
+  role: string;
+  at: number;
+}
+
+export interface CaseStudyLabyrinthState {
+  discoveredNodeIds: string[];
+  completedNodeIds: string[];
+  inventory: string[];
+  rumor: number;
+  trust: number;
+  distress: number;
+  actionCount: number;
+  contributions: CaseStudyLabyrinthContribution[];
 }
 
 export type CaseStudyActionKind = "delegate" | "inspect" | "test" | "consult";
@@ -241,6 +263,7 @@ export interface CaseStudyProgress {
   currentNodeId?: string | null;
   visitedNodeIds?: string[];
   events?: CaseStudyEvent[];
+  labyrinth?: CaseStudyLabyrinthState;
   /** Audit timestamp only. It never controls story eligibility. */
   actedAt: number;
 }
@@ -264,6 +287,17 @@ export interface CaseStudyCard {
   /** The investigation selected earlier in this case. It appears only after
    *  the move has resolved, so later stages can ask the player to verify it. */
   investigation?: CaseStudyActionResult;
+  labyrinth?: {
+    completedRooms: number;
+    requiredRooms: number;
+    inventory: string[];
+    rumor: number;
+    trust: number;
+    distress: number;
+    availableExits: Array<{ nodeId: string; label: string }>;
+    requiredHumans: number;
+    presentHumans: number;
+  };
 }
 
 /** Final story and relationship beat attached to a completed case. */

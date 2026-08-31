@@ -143,6 +143,12 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         </div>
       </div>
       <div class="typed-answer-host" id="typed-answer-host" hidden>
+        <div class="labyrinth-action-form" id="labyrinth-action-form" hidden>
+          <strong>What would you do?</strong>
+          <div class="labyrinth-attribute-grid" id="labyrinth-attribute-grid" aria-label="Choose an approach"></div>
+          <div class="labyrinth-exit-grid" id="labyrinth-exit-grid" aria-label="Visible passages"></div>
+          <p>Attributes are approaches, not answers. Passages change your position without completing a room.</p>
+        </div>
         <form class="typed-answer-form" id="typed-answer-form">
           <div class="response-builder" id="response-builder" data-active-group="claim">
             <nav class="response-stepper" aria-label="Response steps">

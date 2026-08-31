@@ -2263,6 +2263,99 @@ export const VIEWER_CSS = `
     gap: 10px;
     align-items: stretch;
   }
+  .labyrinth-action-form {
+    display: grid;
+    gap: 9px;
+    padding: 14px;
+    border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--bg-elev) 92%, var(--accent-soft));
+  }
+  .labyrinth-action-form[hidden] {
+    display: none;
+  }
+  .labyrinth-action-form > strong {
+    color: var(--text);
+    font: 800 12px/1.2 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .labyrinth-attribute-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .labyrinth-attribute-grid button {
+    appearance: none;
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    min-height: 64px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 9px;
+    background: var(--bg-elev-2);
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+  }
+  .labyrinth-attribute-grid button strong {
+    color: var(--accent);
+    font: 900 12px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+  }
+  .labyrinth-attribute-grid button span {
+    color: var(--text-soft);
+    font: 600 10px/1.25 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+  }
+  .labyrinth-attribute-grid button:hover:not(:disabled),
+  .labyrinth-attribute-grid button:focus-visible {
+    border-color: var(--accent);
+    outline: 2px solid color-mix(in srgb, var(--accent) 32%, transparent);
+    outline-offset: 1px;
+  }
+  .labyrinth-attribute-grid button:disabled,
+  .labyrinth-exit-grid button:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+  }
+  .labyrinth-exit-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .labyrinth-exit-grid::before {
+    align-self: center;
+    color: var(--text-mute);
+    content: "Passages";
+    font: 800 9px/1 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .labyrinth-exit-grid button {
+    appearance: none;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 6px 9px;
+    background: var(--bg-elev-2);
+    color: var(--text-soft);
+    font: 650 10px/1.2 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+    cursor: pointer;
+  }
+  .labyrinth-exit-grid button:hover,
+  .labyrinth-exit-grid button:focus-visible {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  @media (max-width: 620px) {
+    .labyrinth-attribute-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  .labyrinth-action-form > p {
+    margin: 0;
+    color: var(--text-mute);
+    font-size: 10px;
+  }
   .response-builder {
     flex: 1 0 100%;
     display: grid;
@@ -3038,6 +3131,21 @@ export const VIEWER_CSS = `
   }
   .board .case-study-route strong { color: #e3c8ff; }
   .board .case-study-route span { color: var(--ink); }
+  .board .case-labyrinth-state {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 10px;
+    padding: 7px;
+    border: 1px solid rgba(126,214,255,0.26);
+    border-radius: 6px;
+    background: rgba(55,151,199,0.08);
+    color: var(--ink-soft);
+    font-size: 9px;
+    line-height: 1.25;
+  }
+  .board .case-labyrinth-state strong {
+    color: #b9e9ff;
+  }
   .board .case-study-hook,
   .board .case-study-scene {
     margin: 0;

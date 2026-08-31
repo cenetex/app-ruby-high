@@ -48,6 +48,17 @@ export type QuestionPromptCaseView = {
   sources?: Array<{ label: string; url: string; note: string }>;
   priorChoices?: QuestionPromptCaseChoiceView[];
   investigation?: QuestionPromptCaseActionView;
+  labyrinth?: {
+    completedRooms: number;
+    requiredRooms: number;
+    inventory: string[];
+    rumor: number;
+    trust: number;
+    distress: number;
+    availableExits: Array<{ nodeId: string; label: string }>;
+    requiredHumans: number;
+    presentHumans: number;
+  };
 };
 export type LeaderboardGradeChipView = { className: string; text: string };
 export type LeaderboardRowView = {
@@ -1793,6 +1804,8 @@ export function raceStripView(t: unknown, students: unknown, visibleStudentIds: 
   if (!round || !current || round.questionId !== current.id) return null;
   const resolved = !!round.resolved;
   const isStoryChoice = round.type === "story-choice";
+  const isStoryAction = round.type === "story-action";
+  const isOpenStory = isStoryChoice || isStoryAction;
   const remainingMs = Math.max(0, Number(round.remainingMs ?? 0));
   const remainingS = Math.ceil(remainingMs / 1000);
   const softExpired = !resolved && (!!round.idleTriggered || remainingMs <= 0);
@@ -1813,8 +1826,8 @@ export function raceStripView(t: unknown, students: unknown, visibleStudentIds: 
     color: "var(--accent)",
     isLocked: !!player.isLocked,
     isTimedOut: !!player.timedOut,
-    isCorrect: !isStoryChoice && resolved && player.picked ? String(player.picked) === correct : null,
-    isFirstCorrect: !isStoryChoice && resolved && round.firstCorrect === "player",
+    isCorrect: !isOpenStory && resolved && player.picked ? String(player.picked) === correct : null,
+    isFirstCorrect: !isOpenStory && resolved && round.firstCorrect === "player",
     pickText: raceStripPickText(player.picked, !!player.isLocked, !!player.timedOut, resolved),
     showThinking: !player.isLocked,
   }];
@@ -1835,7 +1848,7 @@ export function raceStripView(t: unknown, students: unknown, visibleStudentIds: 
         isLocked: !!record.isLocked,
         isTimedOut: false,
         isCorrect: resolved ? (record.isCorrect === true ? true : record.isCorrect === false ? false : null) : null,
-        isFirstCorrect: !isStoryChoice && resolved && round.firstCorrect === id,
+        isFirstCorrect: !isOpenStory && resolved && round.firstCorrect === id,
         pickText: raceStripPickText(record.pick, !!record.isLocked, false, resolved),
         showThinking: !record.isLocked,
       });
@@ -1987,6 +2000,29 @@ export function questionPromptView(question: unknown): {
   const storyFunction = rawCase && ["hearth", "sign", "venture", "challenge", "discover", "return"].includes(String(rawCase.storyFunction))
     ? String(rawCase.storyFunction) as NonNullable<QuestionPromptCaseView["storyFunction"]>
     : null;
+  const rawLabyrinth = rawCase?.labyrinth && typeof rawCase.labyrinth === "object"
+    ? rawCase.labyrinth as LooseRecord
+    : null;
+  const labyrinth = rawLabyrinth
+    ? {
+        completedRooms: Math.max(0, Number(rawLabyrinth.completedRooms || 0)),
+        requiredRooms: Math.max(1, Number(rawLabyrinth.requiredRooms || 3)),
+        inventory: (Array.isArray(rawLabyrinth.inventory) ? rawLabyrinth.inventory : []).map(String).slice(0, 8),
+        rumor: Number(rawLabyrinth.rumor || 0),
+        trust: Number(rawLabyrinth.trust || 0),
+        distress: Number(rawLabyrinth.distress || 0),
+        availableExits: (Array.isArray(rawLabyrinth.availableExits) ? rawLabyrinth.availableExits : [])
+          .filter((exit) => exit && typeof exit === "object")
+          .map((exit) => ({
+            nodeId: String((exit as LooseRecord).nodeId || ""),
+            label: String((exit as LooseRecord).label || "Unknown passage"),
+          }))
+          .filter((exit) => exit.nodeId)
+          .slice(0, 6),
+        requiredHumans: Math.max(1, Number(rawLabyrinth.requiredHumans || 1)),
+        presentHumans: Math.max(1, Number(rawLabyrinth.presentHumans || 1)),
+      }
+    : null;
   const route = rawCase && Array.isArray(rawCase.route)
     ? rawCase.route
         .filter((step) => step && typeof step === "object")
@@ -2012,6 +2048,7 @@ export function questionPromptView(question: unknown): {
         ...(sources.length > 0 ? { sources } : {}),
         ...(priorChoices.length > 0 ? { priorChoices } : {}),
         ...(investigation ? { investigation } : {}),
+        ...(labyrinth ? { labyrinth } : {}),
       }
     : null;
   return {
