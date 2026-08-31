@@ -78,23 +78,23 @@ The yearbook is the social object the product produces. Every other AI product p
 
 | Teacher | Voice | Range |
 |---|---|---|
-| **Ruby** | warm, quick, faintly mischievous | onboarding, general knowledge, the meta of the school |
-| **Sally Science** | sharp graduate-TA energy | physics, chemistry, biology, earth science |
-| **Professor Edward** | mid-century literary, dry | postwar literature, literary theory |
-| **Roko** | calm, causal, dry | AI alignment, information hazards, coordination, threat modeling |
+| **Ruby** | sharp, warm, evidence-first | claims, assumptions, AI literacy, the meta of the school |
+| **Sally Science** | bright, exact, prediction-first | physics, chemistry, biology, earth science |
+| **Professor Edward** | measured, dry, text-first | postwar literature, literary theory |
+| **Roko** | calm, causal, consequence-first | AI alignment, information hazards, coordination, threat modeling |
 
 ### Classmates
 
 | Classmate | Vibe |
 |---|---|
-| **Lyra** | anxious overachiever |
-| **Sami** | dry, sarcastic, deeply chill |
-| **Ravi** | loud, drops obscure facts |
-| **Indra** | quiet sniper, drops one perfect line |
-| **Mika** | bright, supportive, jock energy |
-| **Noor** | deadpan one-liner master |
+| **Lyra** | meticulous gap-spotter who is learning to show uncertainty |
+| **Sami** | low-key skeptic who protects their autonomy |
+| **Ravi** | enthusiastic connector who sometimes outruns the evidence |
+| **Indra** | quiet observer of framing, omissions, and silence |
+| **Mika** | action-first teammate who notices who is getting stranded |
+| **Noor** | deadpan pattern-breaker who punctures fake importance |
 
-Each classmate has stable stats, a real voice prompt, and a seat in the room beside you. Every NPC writes their own essay on every essay day, in their own register, without seeing the answer key.
+Each classmate has stable stats, a classroom want, an attention pattern, a blind spot, a voice, and relationships in the room. NPCs make their own preset-card choices without seeing the answer key.
 
 ## 1.5 Why no other AI product does this
 

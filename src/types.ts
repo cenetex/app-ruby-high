@@ -1479,10 +1479,10 @@ export function facultyForDay(key: string): string {
 /** Personality-tied stat distributions for the six AI students. Each sums
  *  to +2. Driven by their character system prompts in characters/students.ts. */
 export const NPC_STAT_DEFAULTS: Record<string, CharacterStats> = {
-  lyra:  { head: 2, heart: 0, hustle: -1, honor: 1 },  // anxious overachiever
+  lyra:  { head: 2, heart: 0, hustle: -1, honor: 1 },  // meticulous gap-spotter
   sami:  { head: 0, heart: 1, hustle: 2, honor: -1 },  // chill, fast, sloppy
   ravi:  { head: 1, heart: 1, hustle: 1, honor: -1 },  // jack of all trades
-  indra: { head: 2, heart: -1, hustle: 0, honor: 1 },  // quiet sniper
+  indra: { head: 2, heart: -1, hustle: 0, honor: 1 },  // precise observer
   mika:  { head: -1, heart: 2, hustle: 1, honor: 0 },  // bright, doesn't care
   noor:  { head: 1, heart: 1, hustle: -1, honor: 1 },  // deadpan, deliberate
 };

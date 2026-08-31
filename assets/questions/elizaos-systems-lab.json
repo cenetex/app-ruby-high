@@ -5,7 +5,7 @@
     "version": "1.2.0",
     "framework": "ElizaOS 1.x (current component contracts)",
     "reviewedAt": "2026-07-31",
-    "guidingQuestion": "How do ElizaOS components cooperate to build agents that are legible, bounded, testable, and safe to operate?",
+    "guidingQuestion": "When an agent run goes strange, which contract broke, what evidence reveals it, and what is the smallest safe repair?",
     "sources": [
       "https://docs.elizaos.ai/",
       "https://docs.elizaos.ai/guides/create-a-plugin",

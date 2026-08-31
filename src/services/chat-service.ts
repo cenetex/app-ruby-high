@@ -3,7 +3,16 @@ import { teacherById, type TeacherCharacter } from "../characters/teachers.js";
 import { STUDENTS, type StudentCharacter } from "../characters/students.js";
 import type { CharacterStats, Difficulty, NpcStudentState, QuizState } from "../types.js";
 import { GRADE_LABELS, npcsInRoom, type TeachingRoomId } from "../types.js";
-import { facultyByIdForSession, resolveFacultyIdForSession, roomForFacultyForSession } from "../content/registry.js";
+import {
+  courseForFacultyForSession,
+  facultyByIdForSession,
+  resolveFacultyIdForSession,
+  roomForFacultyForSession,
+} from "../content/registry.js";
+import {
+  courseWritingGuidePrompt,
+  YOUTH_CLASSROOM_WRITING_RULES,
+} from "../content/youth-writing.js";
 import { RubyHighService, type QuestionBankStatus } from "./ruby-high-service.js";
 import type { OpenRouterRequest } from "./openrouter-client.js";
 import {
@@ -754,14 +763,22 @@ export class ChatService extends Service {
     disableTools?: boolean;
   }): unknown[] {
     const { teacher, history, agentSessionId, bucketKey, speakerId, turnDirective, extraSystemContext, disableTools } = args;
+    const state = this.ruby!.getOrCreate(agentSessionId);
     const messages: unknown[] = [{ role: "system", content: teacher.systemPrompt }];
     const personaOverlay = this.personaMemory.activeOverlayPrompt(teacher.id, teacher.systemPrompt);
     if (personaOverlay) {
       messages.push({ role: "system", content: personaOverlay });
     }
+    if (bucketKey.faculty !== "lounge") {
+      messages.push({ role: "system", content: YOUTH_CLASSROOM_WRITING_RULES });
+      const course = courseForFacultyForSession(state, speakerId);
+      messages.push({
+        role: "system",
+        content: courseWritingGuidePrompt(course?.title ?? teacher.displayName, course?.writingGuide),
+      });
+    }
     messages.push({ role: "system", content: ROOM_SCENE_SYSTEM_RULES });
     const sceneMessages: unknown[] = [];
-    const state = this.ruby!.getOrCreate(agentSessionId);
     // Dynamic scene state can contain player-authored or pack-authored text.
     // Keep it in user-role blocks so it cannot become a system instruction.
     const groupBlock = describeRoomForTeacher(state);
@@ -1475,7 +1492,7 @@ async function callOpinionForNpc(args: {
     : "Class: independent.";
   const classmateLines = args.classmates
     .filter((c) => c.id !== args.student.id)
-    .map((c) => `- ${c.name}: ${shortVibe(c.id)}`)
+    .map((c) => `- ${c.name}: ${c.vibe}`)
     .join("\n");
   const stats = args.stats;
   const fmt = (n: number) => (n >= 0 ? "+" : "") + n;
@@ -1490,7 +1507,7 @@ async function callOpinionForNpc(args: {
     `Teacher's question: ${args.question}`,
     args.rubric ? `Rubric the teacher cares about: ${args.rubric}` : "",
     "",
-    "Write 2-3 sentences in your voice (under 60 words). Specific, with an opinion, engaging the question. Reference a classmate or the teacher by name when it fits. The response is the answer itself — just the prose, nothing wrapping it.",
+    "Answer in your voice in one or two short sentences. Take a position or name the uncertainty. Use one concrete detail, and respond to a classmate or teacher only when it matters. Return only the answer.",
   ].filter(Boolean).join("\n");
 
   const r = await fetchLlmChatCompletions({
@@ -1523,34 +1540,10 @@ function teacherForSession(state: QuizState, speakerId: string): TeacherCharacte
   };
 }
 
-function shortVibe(id: string): string {
-  switch (id) {
-    case "lyra": return "anxious overachiever";
-    case "sami": return "dry, sarcastic, deeply chill";
-    case "ravi": return "loud, drops obscure facts";
-    case "indra": return "quiet sniper, drops one perfect line";
-    case "mika": return "bright supportive jock energy";
-    case "noor": return "deadpan one-liner master";
-    default: return "classmate";
-  }
-}
-
-// One-line voice/vibe per NPC, used to give teachers + classmates a hint
-// of who else is in the room without dumping each character's full system
-// prompt into every turn.
-const STUDENT_VIBES: Record<string, string> = {
-  lyra:  "anxious overachiever",
-  sami:  "dry, sarcastic, deeply chill",
-  ravi:  "loud, enthusiastic, drops obscure facts",
-  indra: "quiet, observant, drops one perfect line",
-  mika:  "supportive himbo energy, hypes the room",
-  noor:  "deadpan, master of the one-liner",
-};
-
 function npcRoomDescriptor(npc: NpcStudentState): string {
   const s = STUDENTS[npc.id];
   const name = s?.name ?? npc.id;
-  const vibe = STUDENT_VIBES[npc.id];
+  const vibe = s?.vibe;
   return vibe ? `${name} (${vibe})` : name;
 }
 

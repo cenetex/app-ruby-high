@@ -423,6 +423,46 @@ describe("ChatService.send — message composition", () => {
     expect(messages[0].content.length).toBeGreaterThan(20);
   });
 
+  it("adds the youth-writing and course voice guides in class but not in the lounge", async () => {
+    const calls = mockOpenRouterSequence([
+      buildSseChunk([{ content: "Test the odd result first.", finish: "stop" }]),
+      buildSseChunk([{ content: "The kettle remains anecdotal.", finish: "stop" }]),
+    ]);
+    const { chat } = await makeServices();
+
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "youth-guide",
+      agentSessionId: "session:youth-guide",
+      faculty: "sally-science",
+      systemEventNote: "Begin a short class scene.",
+    })) { /* consume */ }
+    for await (const _ of chat.send({
+      apiKey: "sk-test",
+      sessionToken: "youth-guide",
+      agentSessionId: "session:youth-guide",
+      faculty: "lounge",
+      speakerFacultyId: "sally-science",
+      bucketKey: "lounge",
+      disableTools: true,
+      systemEventNote: "Add one lounge remark.",
+    })) { /* consume */ }
+
+    const classSystem = (calls[0]!.body.messages as Array<{ role: string; content?: string }>)
+      .filter((message) => message.role === "system")
+      .map((message) => message.content ?? "")
+      .join("\n");
+    const loungeSystem = (calls[1]!.body.messages as Array<{ role: string; content?: string }>)
+      .filter((message) => message.role === "system")
+      .map((message) => message.content ?? "")
+      .join("\n");
+    expect(classSystem).toContain("YOUTH-FACING CLASSROOM WRITING");
+    expect(classSystem).toContain("COURSE WRITING GUIDE — Science Lab");
+    expect(classSystem).toContain("odd measurement, specimen, graph, spill, or failed demonstration");
+    expect(loungeSystem).not.toContain("YOUTH-FACING CLASSROOM WRITING");
+    expect(loungeSystem).not.toContain("COURSE WRITING GUIDE");
+  });
+
   it("places the evolving persona overlay after the immutable core prompt", async () => {
     const personaMemory = new TeacherPersonaMemory({
       reflector: async () => ({

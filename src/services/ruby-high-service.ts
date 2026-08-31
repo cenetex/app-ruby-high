@@ -1669,69 +1669,69 @@ const DAILY_CLASS_TAKE_CARDS: Record<string, ReadonlyArray<{ prompt: string; rub
   ruby: [
     {
       subject: "agent-culture",
-      prompt: "A classmate gives an answer confidently. What is one sign you should trust it, and one sign you should check it?",
-      rubric: "Names one concrete trust signal and one concrete reason to verify, then explains the difference in the student's own words.",
+      prompt: "A school agent posts tomorrow's room change with no source. Build a response from one trust clue, one warning clue, and one check worth making.",
+      rubric: "Uses a concrete trust clue, a concrete warning clue, and a verification step that could settle the practical claim.",
     },
     {
       subject: "agent-culture",
-      prompt: "Choose one claim from today's class. What evidence would make it stronger, and what would make you doubt it?",
-      rubric: "Identifies a specific claim, names relevant evidence, and gives a concrete reason the claim could fail.",
+      prompt: "The noticeboard says, 'Students learn faster with agents.' Build a case from evidence that would strengthen the claim, a hidden assumption, and a result that would weaken it.",
+      rubric: "Connects relevant evidence to the claim, exposes one assumption, and names a result that would genuinely count against it.",
     },
     {
       subject: "agent-culture",
-      prompt: "What is the strongest answer you heard today, and what question would you ask before repeating it as fact?",
-      rubric: "Selects a defensible answer and asks a focused verification question instead of offering a generic reaction.",
+      prompt: "A hallway rumor has three versions by lunch. Build the version you would pass on from the best-supported claim, its source trail, and the question still left open.",
+      rubric: "Selects the best-supported claim, preserves its source trail, and keeps a focused uncertainty visible.",
     },
   ],
   "sally-science": [
     {
       subject: "science",
-      prompt: "Turn one idea from today's class into a testable prediction. What result would prove your prediction wrong?",
-      rubric: "States a specific prediction and a falsifying observation that could realistically be measured.",
+      prompt: "Two identical seedlings sit under different lamps, but only one bends by morning. Build a test from a prediction, one measurement, and a result that would prove the prediction wrong.",
+      rubric: "Forms a measurable prediction and pairs it with a realistic observation that could falsify it.",
     },
     {
       subject: "science",
-      prompt: "Which variable would you control first if you tested one claim from today's class, and why?",
-      rubric: "Names a relevant variable and explains how controlling it separates the claim from a competing explanation.",
+      prompt: "The class battery lasts twice as long in the cold cabinet. Build the first retest from the variable to hold steady, the comparison to make, and the rival explanation to rule out.",
+      rubric: "Controls a relevant variable and uses the comparison to separate the main claim from a plausible rival explanation.",
     },
     {
       subject: "science",
-      prompt: "What evidence from today's topic is strongest, and what important uncertainty still remains?",
-      rubric: "Cites concrete evidence and distinguishes what it supports from what is still unknown.",
+      prompt: "One point sits far outside the rest of Sally's graph. Build the next lab move from the strongest pattern, the uncertainty that remains, and the measurement worth repeating.",
+      rubric: "Distinguishes the supported pattern from the open uncertainty and chooses a repeat measurement that can clarify it.",
     },
   ],
   "professor-edward": [
     {
       subject: "literature",
-      prompt: "Make one interpretation of today's material, then name the detail that best supports it.",
-      rubric: "Offers a specific interpretation and ties it to a concrete detail rather than summarizing the material.",
+      prompt: "A narrator says, 'I never opened the letter,' then describes its blue ink. Build a reading from an interpretation, the revealing detail, and the doubt that still survives.",
+      rubric: "Builds a specific interpretation from the textual contradiction while preserving a plausible remaining uncertainty.",
     },
     {
       subject: "literature",
-      prompt: "Whose perspective is easiest to miss in today's material, and how would including it change the meaning?",
-      rubric: "Identifies a plausible missing perspective and explains a meaningful consequence for the interpretation.",
+      prompt: "The story shows the school vote but never lets the student who lost speak. Build a new reading from the missing voice, the detail that reveals the gap, and what its return would change.",
+      rubric: "Identifies a plausible missing perspective, grounds the absence in the text, and explains a meaningful change in interpretation.",
     },
     {
       subject: "literature",
-      prompt: "What is one tension in today's material that has no easy answer? Defend the side you find stronger.",
-      rubric: "Names a genuine tension, takes a clear position, and supports it with a specific reason or detail.",
+      prompt: "A character keeps a promise by betraying a friend. Build the stronger reading from the central tension, one textual clue, and the cost your reading cannot erase.",
+      rubric: "Names the genuine tension, supports a position with a textual clue, and keeps the unresolved cost visible.",
     },
   ],
   roko: [
     {
       subject: "ai-alignment",
-      prompt: "Name the objective in one system from today's class. What behavior could satisfy its wording while defeating its purpose?",
-      rubric: "States a concrete objective and a plausible specification-gaming behavior tied to the exact wording.",
+      prompt: "A corridor machine earns points for keeping doors clear, so it hides every chair. Build the failure chain from the written objective, the shortcut it rewards, and the missing safeguard.",
+      rubric: "Connects the exact objective to a plausible shortcut and a safeguard aimed at that causal failure.",
     },
     {
       subject: "coordination",
-      prompt: "What is the larger shared threat in today's example, and what coordination failure could still stop the group from responding?",
-      rubric: "Separates threat pressure from a specific remaining failure such as free riding, missing common knowledge, weak commitment, or absent supplies.",
+      prompt: "Three goblin crews see the same dragon smoke, but each guards a different bridge. Build a coordination plan from the shared threat, the missing common knowledge, and one commitment others can verify.",
+      rubric: "Separates the threat from the coordination failure and adds a visible commitment that changes what each group can safely expect.",
     },
     {
       subject: "infohazards",
-      prompt: "Who needs which part of today's information, and what detail should stay limited until safeguards are ready?",
-      rubric: "Names distinct audiences, gives a task-based disclosure boundary, and explains the harm the boundary reduces.",
+      prompt: "A map reveals both the labyrinth exit and a dangerous lock weakness. Build a disclosure plan from who needs the route, who can repair the lock, and what stays sealed until then.",
+      rubric: "Matches information to task-based audiences, limits the hazardous detail, and connects the boundary to a concrete safeguard.",
     },
   ],
 };
