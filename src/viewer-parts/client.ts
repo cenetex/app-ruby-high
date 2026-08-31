@@ -478,6 +478,8 @@ export function runViewerClient(bootstrap) {
     arcXp: $("arc-xp"),
     arcEssaySep: $("arc-essay-sep"),
     arcEssay: $("arc-essay"),
+    mobileViewToggle: $("mobile-view-toggle"),
+    mobileViewButtons: Array.from(document.querySelectorAll("[data-mobile-view]")),
     stream: $("stream"),
     blackboardPanel: $("blackboard-panel"),
     loungeStage: $("lounge-stage"),
@@ -846,6 +848,8 @@ export function runViewerClient(bootstrap) {
   let lockedFor = null;
   let renderedHistorySig = null;
   let activeQuestionId = null; // currently displayed question id on the blackboard
+  let mobilePane = "challenge";
+  let mobilePaneQuestionId = null;
   let questionCounter = 0;     // session-local question count for "Question N" label
   let lastShownGrade = null;
   let dismissedClassReportKey = null;
@@ -5089,6 +5093,8 @@ export function runViewerClient(bootstrap) {
     els.loungeStage.hidden = true;
     els.stream.hidden = true;
     els.composerZone.hidden = true;
+    if (els.mobileViewToggle) els.mobileViewToggle.hidden = true;
+    delete els.shell.dataset.mobilePane;
   }
 
   function renderLeaderboard(data) {
@@ -5234,6 +5240,7 @@ export function runViewerClient(bootstrap) {
         return;
       }
       if (phase === "asking") {
+        setMobilePane("chat", false);
         await runPlayerChatTurn("hint", { questionId: lastTelemetry.current && lastTelemetry.current.id });
         return;
       }
@@ -5457,6 +5464,38 @@ export function runViewerClient(bootstrap) {
     if (t.current) return "round-revealed";
     return "between-rounds";
   }
+  function setMobilePane(nextPane, focusTab) {
+    if (!els.mobileViewToggle || els.mobileViewToggle.hidden) return;
+    mobilePane = nextPane === "chat" ? "chat" : "challenge";
+    els.shell.dataset.mobilePane = mobilePane;
+    els.mobileViewButtons.forEach((button) => {
+      const selected = button.dataset.mobileView === mobilePane;
+      button.setAttribute("aria-selected", String(selected));
+      button.tabIndex = selected ? 0 : -1;
+      if (selected && focusTab) focusWithoutScroll(button);
+    });
+    if (mobilePane === "chat") {
+      requestAnimationFrame(() => {
+        els.stream.scrollTop = els.stream.scrollHeight;
+      });
+    }
+  }
+  function syncMobileViewToggle(mode) {
+    if (!els.mobileViewToggle) return;
+    const available = mode === "round-live" || mode === "round-revealed";
+    els.mobileViewToggle.hidden = !available;
+    if (!available) {
+      mobilePaneQuestionId = null;
+      delete els.shell.dataset.mobilePane;
+      return;
+    }
+    const questionId = lastTelemetry && lastTelemetry.current ? lastTelemetry.current.id : null;
+    if (questionId && questionId !== mobilePaneQuestionId) {
+      mobilePaneQuestionId = questionId;
+      mobilePane = "challenge";
+    }
+    setMobilePane(mobilePane, false);
+  }
   function applyViewMode(mode) {
     // The single authority for "what should be visible right now". Sets
     // a data-mode attribute on the blackboard panel + on the shell, and
@@ -5471,6 +5510,7 @@ export function runViewerClient(bootstrap) {
       els.composerZone.hidden = false;
       els.leaderboardPanel.hidden = true;
     }
+    syncMobileViewToggle(mode);
     updateChatAction(mode);
     els.chatForm.hidden = true;
     setChatComposerDisabled(true);
@@ -10960,6 +11000,9 @@ export function runViewerClient(bootstrap) {
   });
   els.generateMcBtn.addEventListener("click", generateMultipleChoice);
   els.nextBtn.addEventListener("click", pickNext);
+  els.mobileViewButtons.forEach((button) => {
+    button.addEventListener("click", () => setMobilePane(button.dataset.mobileView, false));
+  });
   els.hamburger.addEventListener("click", toggleRails);
   if (els.leaderboardBack) els.leaderboardBack.addEventListener("click", () => {
     showClassSurface(true);

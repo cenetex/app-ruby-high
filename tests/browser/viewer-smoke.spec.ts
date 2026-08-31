@@ -95,6 +95,31 @@ test("keeps creator editing and the start-class action reachable on a small phon
   expect(errors).toEqual([]);
 });
 
+test("gives challenge and chat their own full phone view", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { errors } = await openViewer(page);
+  await dismissAnnouncements(page);
+  await createCharacter(page);
+
+  const toggle = page.getByRole("tablist", { name: "Classroom view" });
+  const challengeTab = page.getByRole("tab", { name: "Challenge" });
+  const chatTab = page.getByRole("tab", { name: "Chat", exact: true });
+  await expect(toggle).toBeVisible();
+  await expect(challengeTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#blackboard-panel")).toBeVisible();
+  await expect(page.locator("#stream")).toBeHidden();
+
+  await chatTab.click();
+  await expect(chatTab).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#blackboard-panel")).toBeHidden();
+  await expect(page.locator("#stream")).toBeVisible();
+
+  await challengeTab.click();
+  await expect(page.locator("#blackboard-panel")).toBeVisible();
+  await expect(page.locator("#stream")).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
 test("keeps roll results in the conversation without scene controls", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   const { errors } = await openViewer(page);
@@ -105,6 +130,7 @@ test("keeps roll results in the conversation without scene controls", async ({ p
   await expect(page.locator(".first-bell-overlay")).toBeVisible();
   await closeFirstBellReportIfVisible(page);
   await expect(page.locator("#board-reveal")).toBeVisible();
+  await page.getByRole("tab", { name: "Chat", exact: true }).click();
   await expect(page.locator("#stream .class-note-result")).toBeVisible();
   await expect(page.locator("#scene-summary-host, #dialogue-log, #scene-latest")).toHaveCount(0);
 

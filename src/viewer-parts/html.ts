@@ -88,6 +88,11 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       </div>
     </header>
 
+    <nav class="mobile-view-toggle" id="mobile-view-toggle" aria-label="Classroom view" role="tablist" hidden>
+      <button type="button" role="tab" data-mobile-view="challenge" aria-selected="true" aria-controls="blackboard-panel">Challenge</button>
+      <button type="button" role="tab" data-mobile-view="chat" aria-selected="false" aria-controls="stream" tabindex="-1">Chat</button>
+    </nav>
+
     <section class="lounge-stage" id="lounge-stage">
       <div class="lounge-title">Teachers' Lounge — listen in</div>
       <div class="lounge-figures" id="lounge-figures">
