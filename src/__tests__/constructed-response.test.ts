@@ -109,4 +109,81 @@ describe("constructed response cards", () => {
       { id: "q-2:200", prompt: "Which evidence is strongest?", answer: "The repeated trial" },
     ]);
   });
+
+  it("uses completed Roko route events instead of unrelated choice history", () => {
+    const state = {
+      faculty: "roko",
+      current: {
+        type: "opinion",
+        caseStudy: {
+          episodeId: "sealed-note",
+          priorChoices: [
+            {
+              choiceId: "first-room",
+              stage: "investigate",
+              choiceLabel: "HEAD · Study the mechanism",
+              lockedText: "The ward map can be checked.",
+              event: {
+                eventId: "map-audited",
+                label: "The repair route becomes verifiable",
+                detail: "Ward keepers can now test the proposed repair against the seal.",
+              },
+              reflection: "Verification makes the repair possible.",
+              roomCompleted: true,
+            },
+            {
+              choiceId: "open-passage",
+              stage: "navigate",
+              choiceLabel: "go market-square",
+              lockedText: "The route stays open.",
+              event: {
+                eventId: "passage-opened",
+                label: "You reach the market square",
+                detail: "Moving rooms did not settle the evidence.",
+              },
+              reflection: "Movement is not a conclusion.",
+              roomCompleted: false,
+            },
+            {
+              choiceId: "final-room",
+              stage: "navigate",
+              choiceLabel: "HONOR · Make or defend a rule",
+              lockedText: "The full map stays controlled.",
+              event: {
+                eventId: "release-limited",
+                label: "The ward keepers receive a limited copy",
+                detail: "The repair team gets enough detail without posting the exploit publicly.",
+              },
+              reflection: "Access can be limited without hiding the repair.",
+              roomCompleted: true,
+            },
+          ],
+        },
+      },
+      history: [{
+        questionId: "old-roko-quiz",
+        faculty: "roko",
+        picked: "A",
+        correct: "A",
+        wasCorrect: true,
+        at: 50,
+        questionPrompt: "What is an old alignment term?",
+        answerText: "An old quiz answer",
+        answerKind: "choice",
+      }],
+    } as unknown as QuizState;
+
+    expect(constructedResponseClaimsForState(state)).toEqual([
+      {
+        id: "case:sealed-note:first-room",
+        prompt: "HEAD · Study the mechanism — Ward keepers can now test the proposed repair against the seal.",
+        answer: "The repair route becomes verifiable",
+      },
+      {
+        id: "case:sealed-note:final-room",
+        prompt: "HONOR · Make or defend a rule — The repair team gets enough detail without posting the exploit publicly.",
+        answer: "The ward keepers receive a limited copy",
+      },
+    ]);
+  });
 });
