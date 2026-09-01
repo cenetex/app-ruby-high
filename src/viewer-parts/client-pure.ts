@@ -103,6 +103,7 @@ export type GuestSpotlightView = {
   actionText: string;
   actionDisabled: boolean;
 };
+export type GuestSpotlightStartOutcome = "started" | "not-ready" | "handled-error";
 export type DailyClassProgressStepView = {
   key: "evidence-1" | "evidence-2" | "evidence-3" | "take" | "result";
   label: string;
@@ -683,15 +684,29 @@ export function guestSpotlightView(guestInput: NullableRecord): GuestSpotlightVi
   const teacher = String(pack.teacher_name || "Guest teacher");
   const subject = String(pack.subject || "guest class");
   const count = Math.max(0, Math.floor(Number(pack.question_count || 0)));
-  const active = guest.active && typeof guest.active === "object" && guest.active.id === pack.id && guest.mode === "auto";
   return {
     visible: true,
     packId,
     titleText: "This week's guest teacher",
     metaText: String(pack.name || "Guest course") + " · " + teacher + " · " + subject + " · " + formatWholeNumber(count) + " questions",
-    actionText: active ? "Current guest" : "Try this guest",
-    actionDisabled: !!active,
+    actionText: "Start guest class",
+    // `guest.active` means the weekly pack is mounted, not that the player is
+    // already in its classroom.
+    actionDisabled: false,
   };
+}
+
+export function guestSpotlightStartOutcome(
+  dataInput: NullableRecord,
+  commandErrorInput: NullableRecord,
+): GuestSpotlightStartOutcome {
+  if (commandErrorInput) return "handled-error";
+  const data = dataInput && typeof dataInput === "object" ? dataInput : {};
+  if (data.noQuestionDue) return "not-ready";
+  if (data.questionAlreadyLive) return "handled-error";
+  const session = data.session && typeof data.session === "object" ? data.session : {};
+  const telemetry = session.telemetry && typeof session.telemetry === "object" ? session.telemetry : {};
+  return telemetry.faculty === "guest" && telemetry.current ? "started" : "not-ready";
 }
 
 // ── number / money / token / duration formatting ───────────────────

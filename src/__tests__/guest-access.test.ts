@@ -6,12 +6,15 @@ import {
 } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
 import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
+import type { AuthRecord } from "../services/auth-service.js";
 import {
+  guestAccessStateForSession,
   guestTargetFacultyForCommand,
   guestTargetFacultyForTool,
   type GuestAccessState,
   type GuestFacultyResolutionState,
 } from "../services/guest-access.js";
+import type { RubyHighService } from "../services/ruby-high-service.js";
 
 const TEST_PACK_ID = "teacher:guest-access-resolution-test";
 const TEST_FACULTY_ID = "algebra-mentor";
@@ -68,6 +71,28 @@ function stateForPack(faculty: string): GuestFacultyResolutionState {
 }
 
 describe("guest target faculty resolution", () => {
+  it("requires signup after First Bell completes outside the rotating daily faculty", () => {
+    const ruby = {
+      dailyStatus: () => ({ available: true, facultyId: "sally-science" }),
+      courseProgress: (_sessionId: string, facultyId: string) => ({
+        displayName: facultyId === "sally-science" ? "Sally Science" : "Homeroom",
+        today: { status: facultyId === "ruby" ? "complete" : "available" },
+      }),
+    } as unknown as RubyHighService;
+
+    const access = guestAccessStateForSession({
+      record: { provider: "guest" } as AuthRecord,
+      ruby,
+      sessionId: "session:first-bell-guest",
+    });
+
+    expect(access).toMatchObject({
+      dailyFacultyId: "sally-science",
+      dailyFacultyName: "Sally Science",
+      requiresSignup: true,
+    });
+  });
+
   it("resolves command targets with a table-driven matrix", async () => {
     await getActivePack();
     registerPublicPack(guestResolverPack());

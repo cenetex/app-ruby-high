@@ -85,6 +85,7 @@ const PURE_HELPER_NAMES = [
   "boardSubjectGradesTitleView",
   "subjectGradeChipView",
   "guestSpotlightView",
+  "guestSpotlightStartOutcome",
   "formatWholeNumber",
   "formatMoney",
   "formatSolDisplayAmount",

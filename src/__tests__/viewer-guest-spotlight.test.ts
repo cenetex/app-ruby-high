@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { guestSpotlightView } from "../viewer-parts/client-pure.js";
+import {
+  guestSpotlightStartOutcome,
+  guestSpotlightView,
+} from "../viewer-parts/client-pure.js";
 
 describe("guestSpotlightView", () => {
   it("builds weekly guest pack copy and action state", () => {
@@ -16,12 +19,12 @@ describe("guestSpotlightView", () => {
       packId: "pack-week-1",
       titleText: "This week's guest teacher",
       metaText: "Null Signals · Captain Null · space ethics · 1,200 questions",
-      actionText: "Try this guest",
+      actionText: "Start guest class",
       actionDisabled: false,
     });
   });
 
-  it("disables the action when the guest pack is already active", () => {
+  it("keeps the start action enabled when the weekly pack is mounted", () => {
     expect(guestSpotlightView({
       mode: "auto",
       active: { id: "pack-week-2" },
@@ -33,9 +36,21 @@ describe("guestSpotlightView", () => {
     })).toMatchObject({
       visible: true,
       metaText: "Library Drift · Guest teacher · guest class · 4 questions",
-      actionText: "Current guest",
-      actionDisabled: true,
+      actionText: "Start guest class",
+      actionDisabled: false,
     });
+  });
+
+  it("keeps command failures separate from an empty guest schedule", () => {
+    expect(guestSpotlightStartOutcome(null, { kind: "network" })).toBe("handled-error");
+    expect(guestSpotlightStartOutcome({ noQuestionDue: true }, null)).toBe("not-ready");
+    expect(guestSpotlightStartOutcome({ questionAlreadyLive: true }, null)).toBe("handled-error");
+    expect(guestSpotlightStartOutcome({
+      session: { telemetry: { faculty: "guest", current: { id: "guest-1" } } },
+    }, null)).toBe("started");
+    expect(guestSpotlightStartOutcome({
+      session: { telemetry: { faculty: "ruby", current: { id: "ruby-1" } } },
+    }, null)).toBe("not-ready");
   });
 
   it("hides malformed or unavailable packs", () => {

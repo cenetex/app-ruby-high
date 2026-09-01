@@ -264,17 +264,31 @@ export function runViewerClient(bootstrap) {
     return guestSpotlightRenderer.build(t);
   }
 
+  let guestSpotlightStartInFlight = false;
   async function startGuestSpotlight(pack) {
-    if (!pack || !pack.id) return;
-    postViewerMetricEvent("guest_spotlight_started", { packId: pack.id });
+    if (!pack || !pack.id || guestSpotlightStartInFlight) return false;
+    guestSpotlightStartInFlight = true;
     try {
       packLibraryState = await packStudioClient.setGuestAuto();
       syncGuestAutoButton();
       renderPackList();
       renderDraftPackList();
       await fetchSession();
+      const data = await command({ type: "pick", faculty: "guest", mode: "class" });
+      const outcome = guestSpotlightStartOutcome(data, apiClient.lastCommandError());
+      if (outcome === "not-ready") {
+        appendSystem("The guest teacher does not have a class ready yet.");
+        return false;
+      }
+      if (outcome !== "started") return false;
+      // Record a start only after a guest question reaches the board.
+      postViewerMetricEvent("guest_spotlight_started", { packId: pack.id });
+      return true;
     } catch (_err) {
-      appendSystem("The guest teacher is unavailable.");
+      appendSystem("The guest teacher is unavailable. Try again in a moment.");
+      return false;
+    } finally {
+      guestSpotlightStartInFlight = false;
     }
   }
 
@@ -5672,11 +5686,8 @@ export function runViewerClient(bootstrap) {
 
     if (authed && !t.character && !firstRunCreationOpened) {
       firstRunCreationOpened = true;
-      // If a class is already live, jump straight to character creation
-      // so the teacher isn't hidden behind an intro screen.
-      if (t.current || t.active_round || quickRollExperimentLanding) {
-        setTimeout(() => openCharacterCreation(), 0);
-      }
+      // Put every new player at the first useful decision immediately.
+      setTimeout(() => openCharacterCreation(), 0);
     }
     setAccent(t.facultyAccent);
     rebuildServersRail();
@@ -10472,6 +10483,9 @@ export function runViewerClient(bootstrap) {
     hostedAiActive = false;
     lastAuthState = null;
     lastRosterSig = null;
+    firstRunCreationOpened = false;
+    onboardingIntroTracked = false;
+    onboardingFunnelStepsSent.clear();
     roomHumanHistorySig = "";
     chatHistoryHumanStudentsByFaculty.clear();
     await deriveAuth();
