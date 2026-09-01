@@ -368,6 +368,7 @@ const SCHOOL_WORLD_EVENT_CACHE_LIMIT = SCHOOL_WORLD_RECENT_EVENT_LIMIT * 4;
 const SCHOOL_WORLD_SESSION_REFRESH_LIMIT = 5_000;
 const SCHOOL_WORLD_STORE_REFRESH_MS = 2_000;
 const ANSWER_HISTORY_LIMIT = 500;
+const RECENT_QUESTION_AVOIDANCE_COUNT = 4;
 const ESSAY_REPORT_LIMIT = 100;
 const WALLET_TRANSACTION_LIMIT = 200;
 const STUDENT_POOL_LIMIT = 50;
@@ -7505,6 +7506,12 @@ export class RubyHighService extends Service {
       (!filter.difficulty || q.difficulty === filter.difficulty)
     );
     const memory = this.ensureCardMemory(state);
+    const recentQuestionIds = new Set(
+      state.history
+        .slice(-RECENT_QUESTION_AVOIDANCE_COUNT)
+        .filter((record) => !record.faculty || record.faculty === facultyId)
+        .map((record) => record.questionId),
+    );
     const withoutSourceCards = (pool: BankedQuestion[]): BankedQuestion[] =>
       pool.filter((q) => !q.sourceCardId);
     const preferBankedQuestions = (pool: BankedQuestion[]): BankedQuestion[] => {
@@ -7513,6 +7520,7 @@ export class RubyHighService extends Service {
     };
     const choose = (pool: BankedQuestion[]): BankedQuestion | null => {
       const due: BankedQuestion[] = [];
+      const recentDue: BankedQuestion[] = [];
       const legacyDue: BankedQuestion[] = [];
       const fresh: BankedQuestion[] = [];
       const masteredDue: BankedQuestion[] = [];
@@ -7527,7 +7535,8 @@ export class RubyHighService extends Service {
         if (!m) {
           fresh.push(q);
         } else if (dueKnownCard(m, now)) {
-          if (m.phase === "mastered") masteredDue.push(q);
+          if (recentQuestionIds.has(q.id)) recentDue.push(q);
+          else if (m.phase === "mastered") masteredDue.push(q);
           else if (m.lastReviewedAt == null) legacyDue.push(q);
           else due.push(q);
         } else if (filter.allowUndue && m) {
@@ -7548,6 +7557,9 @@ export class RubyHighService extends Service {
         const freshPool = preferBankedQuestions(fresh);
         return freshPool[Math.floor(Math.random() * freshPool.length)] ?? null;
       }
+      // A due card remains eligible when it is the only useful choice, but a
+      // healthy bank should not immediately repeat one of the last four cards.
+      if (recentDue.length > 0) return preferBankedQuestions(recentDue)[0]!;
       if (legacyDue.length > 0) return preferBankedQuestions(legacyDue)[0]!;
       masteredDue.sort((a, b) => {
         const ma = memory[cardMemoryKey(facultyId, a.id)]!;
@@ -7564,7 +7576,7 @@ export class RubyHighService extends Service {
       return preferBankedQuestions(undue)[0] ?? null;
     };
 
-    const chooseWithWeights = (pool: BankedQuestion[]): BankedQuestion | null => {
+    const chooseWeightedPool = (pool: BankedQuestion[]): BankedQuestion | null => {
       const weights = filter.difficultyWeights;
       if (!weights || filter.difficulty) return choose(pool);
       const weighted = (["easy", "medium", "hard"] as const)
@@ -7588,6 +7600,14 @@ export class RubyHighService extends Service {
         }
       }
       return choose(pool);
+    };
+    const chooseWithWeights = (pool: BankedQuestion[]): BankedQuestion | null => {
+      const withoutRecent = pool.filter((question) => !recentQuestionIds.has(question.id));
+      if (withoutRecent.length < pool.length) {
+        const nonRecent = chooseWeightedPool(withoutRecent);
+        if (nonRecent) return nonRecent;
+      }
+      return chooseWeightedPool(pool);
     };
 
     const subjectAndDifficultyPool = preferred.length > 0 ? preferred : all;

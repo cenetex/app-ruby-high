@@ -56,13 +56,20 @@ export function guestAccessStateForSession(args: {
 
   let dailyFacultyName = dailyFacultyId;
   let requiresSignup = dailyStatus.available === false && dailyStatus.reason === "completed";
-  try {
-    const progress = args.ruby.courseProgress(args.sessionId, dailyFacultyId);
-    dailyFacultyName = progress.displayName || dailyFacultyId;
-    const todayStatus = String(progress.today?.status ?? "");
-    requiresSignup = requiresSignup || todayStatus === "complete" || todayStatus === "completed";
-  } catch {
-    // Keep a safe default if pack/session state is mid-migration.
+  // First Bell always starts in Homeroom, even when another faculty is on the
+  // daily rotation. Completing either available guest class uses the guest's
+  // daily lesson and should lead to the same signup gate.
+  for (const facultyId of new Set([HOMEROOM_FACULTY_ID, dailyFacultyId])) {
+    try {
+      const progress = args.ruby.courseProgress(args.sessionId, facultyId);
+      if (facultyId === dailyFacultyId) {
+        dailyFacultyName = progress.displayName || dailyFacultyId;
+      }
+      const todayStatus = String(progress.today?.status ?? "");
+      requiresSignup = requiresSignup || todayStatus === "complete" || todayStatus === "completed";
+    } catch {
+      // Keep a safe default if pack/session state is mid-migration.
+    }
   }
 
   const allowedFacultyIds = new Set<string>([HOMEROOM_FACULTY_ID, dailyFacultyId]);

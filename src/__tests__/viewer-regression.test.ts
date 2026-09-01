@@ -96,14 +96,22 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'window.addEventListener("pageshow"');
   });
 
-  it("captures only bounded acquisition keys and routes the canonical landing into student creation", () => {
+  it("captures only bounded acquisition keys and opens creation for every new player", () => {
     const script = inlineScript(renderedViewer());
 
     expectScriptToContain(script, "function consumeAcquisitionAttribution()");
     expectScriptToContain(script, '["rh_source", "rh_campaign", "rh_landing", "rh_entry"]');
     expectScriptToContain(script, 'quickRollExperimentLanding = acquisitionAttribution.landingVariant === "quick-roll-v1"');
     expectScriptToContain(script, "Create a student. Complete one class. Get your report.");
-    expectScriptToContain(script, "t.current || t.active_round || quickRollExperimentLanding");
+    expectScriptToContain(script, "if (authed && !t.character && !firstRunCreationOpened)");
+    expectScriptToContain(script, "setTimeout(() => openCharacterCreation(), 0)");
+    const logout = script.slice(
+      script.indexOf("async function logout()"),
+      script.indexOf("function roomHumanHistoryFacultyIds"),
+    );
+    expect(logout).toContain("firstRunCreationOpened = false");
+    expect(logout).toContain("onboardingIntroTracked = false");
+    expect(logout).toContain("onboardingFunnelStepsSent.clear()");
     expectScriptToContain(script, 'postViewerMetricEvent("app_open", acquisitionAttribution || {})');
     expectScriptToContain(script, 'keys.forEach((key) => url.searchParams.delete(key))');
     expect(script).not.toContain("document.referrer");
@@ -1342,6 +1350,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'bubble.className = "board-info-popover";');
     expectScriptToContain(script, "const spotlight = buildGuestSpotlight(lastTelemetry);");
     expectScriptToContain(script, "function guestSpotlightView(guestInput)");
+    expectScriptToContain(script, "function guestSpotlightStartOutcome(dataInput, commandErrorInput)");
     expectScriptToContain(script, "function createGuestSpotlightRenderer(deps)");
     expectScriptToContain(script, "const guestSpotlightRenderer = createGuestSpotlightRenderer({");
     expectScriptToContain(script, "viewFor: guestSpotlightView");

@@ -284,6 +284,10 @@ test("generates the complete Ruby High app screen sheet", async ({ page }) => {
   await openViewer(page);
   await freezeMotion(page);
   await expect(page.locator("#announcements-overlay")).not.toBeVisible();
+  // New players enter through the creator. Close it once so the sheet also
+  // keeps the underlying welcome state in the visual inventory.
+  await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
+  await page.locator("#sheet-close").click();
   await expect(page.getByRole("button", { name: "Create my student" })).toBeVisible();
   await capture("Welcome", "Entry");
 

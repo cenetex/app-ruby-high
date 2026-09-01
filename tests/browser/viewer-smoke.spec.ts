@@ -308,13 +308,14 @@ test("keeps the generated student as a preview until the player takes their seat
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);
 
-  await page.getByRole("button", { name: "Create my student", exact: true }).click();
+  await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
   await expect(page.getByRole("button", { name: /start first class/i })).toBeVisible();
   await page.locator("#sheet-close").click();
 
   await page.reload();
   await dismissAnnouncements(page);
-  await expect(page.getByRole("button", { name: "Create my student", exact: true })).toBeVisible();
+  await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
+  await expect(page.getByRole("button", { name: /start first class/i })).toBeVisible();
   await expect(page.locator(".answer:not([disabled])")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
@@ -391,7 +392,8 @@ test("uses one welcome layer, then keeps announcements for returning students", 
   const { errors } = await openViewer(page);
   const announcements = page.locator("#announcements-overlay");
   await expect(announcements).not.toBeVisible();
-  await expect(page.getByRole("button", { name: "Create my student" })).toBeVisible();
+  await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
+  await expect(page.getByRole("button", { name: /start first class/i })).toBeVisible();
   await createCharacter(page);
   await expect(announcements).not.toBeVisible();
   await page.evaluate(() => localStorage.removeItem("ruby-high:announcements-last-date"));

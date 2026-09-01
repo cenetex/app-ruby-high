@@ -4716,6 +4716,25 @@ describe("RubyHighService Phase 1", () => {
     expect(status.remainingByDifficulty.hard).toBeUndefined();
   });
 
+  it("uses fresh bank material before repeating one of the last four questions", async () => {
+    const { ruby } = await makeServices();
+    const sid = "test:recent-question-avoidance";
+    const pack = fakeLeveledPack("pack:recent-question-avoidance");
+    registerPack(pack, sid);
+    ruby.setActivePackForSession(sid, pack.id);
+    ruby.selectGrade(sid, "10");
+
+    let state = ruby.pickAndPose(sid, { faculty: "level-test-course" });
+    const firstQuestionId = state.current!.id;
+    ruby.submitAnswer(sid, state.current!.correctChoice!);
+    const memory = ruby.getOrCreate(sid).cardMemory!;
+    memory[`level-test-course::${firstQuestionId}`]!.dueAt = Date.now() - 1;
+    ruby.clearBoard(sid);
+
+    state = ruby.pickAndPose(sid, { faculty: "level-test-course" });
+    expect(state.current?.id).not.toBe(firstQuestionId);
+  });
+
   it("unlocks hard bank questions for Senior year", async () => {
     const { ruby } = await makeServices();
     const sid = "test:level-gate-senior";
@@ -5590,7 +5609,7 @@ describe("RubyHighService Phase 1", () => {
 
   it.each([
     ["sally-science", /evidence|prediction|variable/i],
-    ["professor-edward", /interpretation|perspective|tension/i],
+    ["professor-edward", /interpretation|perspective|tension|reading|voice/i],
   ])("uses a subject-specific daily take for %s", async (facultyId, promptPattern) => {
     const { ruby } = await makeServices();
     const sid = `test:core-take:${facultyId}`;
