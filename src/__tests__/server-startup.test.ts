@@ -12,6 +12,8 @@ const dockerfile = readFileSync(new URL("../../Dockerfile", import.meta.url), "u
 const flyConfig = readFileSync(new URL("../../fly.toml", import.meta.url), "utf8");
 const packageJson = readFileSync(new URL("../../package.json", import.meta.url), "utf8");
 const dockerignore = readFileSync(new URL("../../.dockerignore", import.meta.url), "utf8");
+const deployWorkflow = readFileSync(new URL("../../.github/workflows/deploy-fly.yml", import.meta.url), "utf8");
+const smokeWorkflow = readFileSync(new URL("../../.github/workflows/smoke.yml", import.meta.url), "utf8");
 
 describe("production startup guardrails", () => {
   it("keeps readiness unhealthy until services finish booting", () => {
@@ -120,6 +122,17 @@ describe("production startup guardrails", () => {
     expect(serverEntry.indexOf("if (redirectToCanonicalHost(req, res, url))")).toBeLessThan(
       serverEntry.indexOf("await serveLandingRequest(req, res, url)"),
     );
+  });
+
+  it("runs production smoke checks on the canonical passkey origin", () => {
+    const pkg = JSON.parse(packageJson);
+    expect(pkg.scripts["smoke:prod"]).toBe("node scripts/smoke.mjs https://ruby-high.ai");
+    expect(deployWorkflow).toContain("run: node scripts/smoke.mjs https://ruby-high.ai");
+    expect(deployWorkflow).toContain("url: https://ruby-high.ai");
+    expect(smokeWorkflow).toContain("run: node scripts/smoke.mjs https://ruby-high.ai");
+    for (const source of [deployWorkflow, smokeWorkflow]) {
+      expect(source).not.toContain("ruby-high.fly.dev");
+    }
   });
 
   it("uses the shared host JSON body cap helper", () => {

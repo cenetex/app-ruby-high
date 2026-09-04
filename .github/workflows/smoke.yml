@@ -30,4 +30,4 @@ jobs:
           node-version: "24"
 
       - name: Run smoke against prod
-        run: node scripts/smoke.mjs https://ruby-high.fly.dev
+        run: node scripts/smoke.mjs https://ruby-high.ai

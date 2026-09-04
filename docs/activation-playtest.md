@@ -12,8 +12,8 @@ Run two waves of five first-time participants. Use people who have not seen the
 current onboarding flow. Do not require an account, wallet, AI key, purchase,
 or personally identifying information.
 
-- Wave A: `https://ruby-high.fly.dev/api/apps/ruby-high/viewer?ref=activation-wave-a`
-- Wave B: `https://ruby-high.fly.dev/api/apps/ruby-high/viewer?ref=activation-wave-b`
+- Wave A: `https://ruby-high.ai/api/apps/ruby-high/viewer?ref=activation-wave-a`
+- Wave B: `https://ruby-high.ai/api/apps/ruby-high/viewer?ref=activation-wave-b`
 
 The `ref` value is stored only as aggregate referral attribution in the admin
 metrics. Assign each participant an offline code such as `A1`; do not put that

@@ -57,7 +57,7 @@ jobs:
       cancel-in-progress: false
     environment:
       name: production
-      url: https://ruby-high.fly.dev
+      url: https://ruby-high.ai
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
     steps:
@@ -116,7 +116,7 @@ jobs:
 
       - name: Smoke production
         id: smoke
-        run: node scripts/smoke.mjs https://ruby-high.fly.dev
+        run: node scripts/smoke.mjs https://ruby-high.ai
 
       - name: Roll back Fly on deploy smoke failure
         if: failure() && steps.deploy.outcome == 'success' && steps.smoke.outcome == 'failure' && steps.previous-release.outputs.image != ''

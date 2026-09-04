@@ -67,7 +67,6 @@ RUBY_HIGH_PASSKEY_RP_ID = "ruby-high.ai"
 
 In the Privy dashboard, configure the Ruby High app for Solana wallet connection. Add these app domains/origins:
 
-- `https://ruby-high.fly.dev`
 - `https://ruby-high.ai`
 - `https://www.ruby-high.ai`
 - `http://localhost:3000` for local development, preferably in a separate dev Privy app
