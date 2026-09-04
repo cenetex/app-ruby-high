@@ -12,6 +12,7 @@ import { StateStore } from "../services/state-store.js";
 import { getActivePack, registerPublicPack, resetActivePack } from "../content/registry.js";
 import type { ContentPack } from "../content/types.js";
 import { getPrivyPublicConfigFromEnv, setPrivyAuthVerifierForTest } from "../services/privy-auth.js";
+import { setPasskeyAuthVerifiersForTest } from "../services/passkey-auth.js";
 import { setHallPassNftBurnVerifierForTest } from "../services/hall-pass-nfts.js";
 
 let tmpDir: string;
@@ -267,6 +268,7 @@ afterEach(async () => {
   restoreEnv("RUBY_HIGH_PRIVY_VERIFICATION_KEY", originalPrivyVerificationKey);
   restoreEnv("RUBY_HIGH_PUBLIC_BASE", originalPublicBase);
   setPrivyAuthVerifierForTest(null);
+  setPasskeyAuthVerifiersForTest({ registration: null, authentication: null });
   if (restoreHallPassBurnVerifier) restoreHallPassBurnVerifier();
   restoreHallPassBurnVerifier = null;
   vi.restoreAllMocks();
@@ -479,15 +481,180 @@ describe("auth origin guard", () => {
   });
 });
 
-describe("Privy auth", () => {
-  it("publishes email, wallet, social, and passkey Privy login by default", () => {
+describe("passkey auth", () => {
+  it("registers a discoverable passkey and signs the same student back in", async () => {
+    const guest = await auth.createGuestSession();
+    const credentialId = "passkey-credential-alice";
+    const restoreVerifiers = setPasskeyAuthVerifiersForTest({
+      registration: async (input) => {
+        expect(input.relyingParty).toEqual({
+          id: "localhost",
+          name: "Ruby High",
+          origin: "http://localhost:3000",
+        });
+        expect(input.expectedChallenge).toBeTruthy();
+        return {
+          id: credentialId,
+          publicKey: Buffer.from("public-key-alice").toString("base64url"),
+          counter: 0,
+          transports: ["internal"],
+          deviceType: "multiDevice",
+          backedUp: true,
+        };
+      },
+      authentication: async (input) => {
+        expect(input.credential).toMatchObject({
+          id: credentialId,
+          counter: 0,
+          transports: ["internal"],
+        });
+        expect(input.expectedChallenge).toBeTruthy();
+        return { newCounter: 1 };
+      },
+    });
+
+    try {
+      const registerOptionsRes = new TestResponse();
+      await handleChatRoutes(makeCtx(
+        new URL("http://localhost:3000/api/apps/ruby-high/auth/passkey/register/options"),
+        registerOptionsRes,
+        {
+          method: "POST",
+          cookieHeader: `rh_session=${guest.token}`,
+          originHeader: "http://localhost:3000",
+          body: {},
+        },
+      ));
+      expect(registerOptionsRes.statusCode).toBe(200);
+      const registerOptions = JSON.parse(registerOptionsRes.body);
+      expect(registerOptions.publicKey).toMatchObject({
+        rp: { id: "localhost", name: "Ruby High" },
+        authenticatorSelection: {
+          residentKey: "required",
+          requireResidentKey: true,
+          userVerification: "required",
+        },
+      });
+
+      const registerRes = new TestResponse();
+      await handleChatRoutes(makeCtx(
+        new URL("http://localhost:3000/api/apps/ruby-high/auth/passkey/register/verify"),
+        registerRes,
+        {
+          method: "POST",
+          cookieHeader: `rh_session=${guest.token}`,
+          originHeader: "http://localhost:3000",
+          body: {
+            flowId: registerOptions.flowId,
+            response: { id: credentialId },
+          },
+        },
+      ));
+      expect(registerRes.statusCode).toBe(200);
+      const registered = JSON.parse(registerRes.body);
+      expect(registered).toMatchObject({
+        session: true,
+        label: "Passkey",
+        passkey: { available: true, registered: true, authenticated: true },
+      });
+      const registeredToken = decodeURIComponent(String(registerRes.getHeader("set-cookie")).match(/rh_session=([^;]+)/)?.[1] || "");
+      expect(auth.resolve(registeredToken)).toMatchObject({
+        userId: guest.record.userId,
+        provider: "passkey",
+      });
+
+      await auth.stop();
+      auth = await AuthService.start({} as never, stateStore);
+      expect(auth.resolve(registeredToken)).toMatchObject({
+        userId: guest.record.userId,
+        provider: "passkey",
+      });
+      const loginOptionsRes = new TestResponse();
+      await handleChatRoutes(makeCtx(
+        new URL("http://localhost:3000/api/apps/ruby-high/auth/passkey/login/options"),
+        loginOptionsRes,
+        { method: "POST", originHeader: "http://localhost:3000", body: {} },
+      ));
+      expect(loginOptionsRes.statusCode).toBe(200);
+      const loginOptions = JSON.parse(loginOptionsRes.body);
+      expect(loginOptions.publicKey).toMatchObject({
+        rpId: "localhost",
+        userVerification: "required",
+      });
+      expect(loginOptions.publicKey.allowCredentials).toBeUndefined();
+
+      const loginRes = new TestResponse();
+      await handleChatRoutes(makeCtx(
+        new URL("http://localhost:3000/api/apps/ruby-high/auth/passkey/login/verify"),
+        loginRes,
+        {
+          method: "POST",
+          originHeader: "http://localhost:3000",
+          body: {
+            flowId: loginOptions.flowId,
+            response: { id: credentialId },
+          },
+        },
+      ));
+      expect(loginRes.statusCode).toBe(200);
+      const loginToken = decodeURIComponent(String(loginRes.getHeader("set-cookie")).match(/rh_session=([^;]+)/)?.[1] || "");
+      expect(auth.resolve(loginToken)).toMatchObject({
+        userId: guest.record.userId,
+        provider: "passkey",
+      });
+      expect((await stateStore.loadAuth()).users).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          userId: guest.record.userId,
+          provider: "passkey",
+          passkeys: [expect.objectContaining({ id: credentialId, counter: 1, lastUsedAt: expect.any(Number) })],
+        }),
+      ]));
+    } finally {
+      restoreVerifiers();
+    }
+  });
+
+  it("binds registration to the student session that started it", async () => {
+    const first = await auth.createGuestSession();
+    const second = await auth.createGuestSession();
+    const optionsRes = new TestResponse();
+    await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/auth/passkey/register/options"),
+      optionsRes,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${first.token}`,
+        originHeader: "http://localhost:3000",
+        body: {},
+      },
+    ));
+    const options = JSON.parse(optionsRes.body);
+    const verifyRes = new TestResponse();
+    await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/auth/passkey/register/verify"),
+      verifyRes,
+      {
+        method: "POST",
+        cookieHeader: `rh_session=${second.token}`,
+        originHeader: "http://localhost:3000",
+        body: { flowId: options.flowId, response: { id: "wrong-session" } },
+      },
+    ));
+
+    expect(verifyRes.statusCode).toBe(401);
+    expect(JSON.parse(verifyRes.body).error).toContain("session changed");
+  });
+});
+
+describe("Privy wallet auth compatibility", () => {
+  it("keeps the Privy client focused on wallet connection by default", () => {
     expect(getPrivyPublicConfigFromEnv({
       RUBY_HIGH_PRIVY_APP_ID: "privy-app-test",
       RUBY_HIGH_PRIVY_CLIENT_ID: "privy-client-test",
     } as NodeJS.ProcessEnv)).toEqual({
       appId: "privy-app-test",
       clientId: "privy-client-test",
-      loginMethods: ["email", "wallet", "google", "twitter", "passkey"],
+      loginMethods: ["wallet"],
     });
   });
 

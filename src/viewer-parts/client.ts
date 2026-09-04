@@ -551,6 +551,8 @@ export function runViewerClient(bootstrap) {
     privyOverlay: $("privy-overlay"),
     privyClose: $("privy-close"),
     privyWallet: $("privy-wallet"),
+    passkeyAction: $("passkey-action"),
+    passkeyCreate: $("passkey-create"),
     privyLoginWidget: $("privy-login-widget"),
     privySignout: $("privy-signout"),
     privyStatus: $("privy-status"),
@@ -808,6 +810,11 @@ export function runViewerClient(bootstrap) {
   let aiEnabled = false; // Browser/local/hosted text AI + Ruby High session present
   let localAiEnabled = false;
   let hostedAiActive = false;
+  let passkeyState = {
+    available: true,
+    registered: false,
+    authenticated: false,
+  };
   let privyClient = null;
   let privyClientPromise = null;
   let privyRefreshPromise = null;
@@ -2931,11 +2938,8 @@ export function runViewerClient(bootstrap) {
     billingBusy = true;
     renderAccountPage();
     try {
-      if (!privyState.authenticated) {
-        setPrivyStatus("Sign in to connect a Solana wallet.", false);
-        const loginSnapshot = await startPrivyLogin({ source: "account-wallet" });
-        if (!loginSnapshot && !privyState.authenticated) return false;
-      }
+      if (!await ensurePasskeyAccount()) return false;
+      await initializePrivyFromStoredSession();
       if (knownSolanaOwnerWalletAddress()) {
         setPrivyStatus("Wallet ready.", false);
         return true;
@@ -3434,11 +3438,8 @@ export function runViewerClient(bootstrap) {
     if (connectedSolanaWalletAddress()) return true;
     const actionLabel = opts && opts.actionLabel ? String(opts.actionLabel) : "collectible-pack checkout";
     if (!privyConfig) throw new Error(actionLabel + " is not configured.");
-    if (!privyState.authenticated) {
-      setBillingStatus("Opening sign-in for " + actionLabel + "...", false);
-      const loginSnapshot = await startPrivyLogin({ source: "billing" });
-      if (!loginSnapshot && !privyState.authenticated) return false;
-    }
+    if (!await ensurePasskeyAccount()) return false;
+    await initializePrivyFromStoredSession();
     if (connectedSolanaWalletAddress()) return true;
     setBillingStatus("Opening wallet connection for " + actionLabel + "...", false);
     const approved = await confirmWalletTransactionPreview({
@@ -9966,6 +9967,161 @@ export function runViewerClient(bootstrap) {
     els.privyStatus.textContent = text || "";
     els.privyStatus.classList.toggle("is-invalid", !!invalid);
   }
+  function applyPasskeyState(next) {
+    if (!next || typeof next !== "object") return;
+    passkeyState = {
+      available: next.available !== false,
+      registered: !!next.registered,
+      authenticated: !!next.authenticated,
+    };
+    renderAccountIdentity();
+  }
+  function passkeySupported() {
+    return !!(window.PublicKeyCredential && navigator.credentials);
+  }
+  function decodePasskeyBase64url(value) {
+    const normalized = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+    return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0)).buffer;
+  }
+  function encodePasskeyBase64url(value) {
+    const bytes = new Uint8Array(value);
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  }
+  function passkeyCreationOptions(options) {
+    if (typeof PublicKeyCredential.parseCreationOptionsFromJSON === "function") {
+      return PublicKeyCredential.parseCreationOptionsFromJSON(options);
+    }
+    return {
+      ...options,
+      challenge: decodePasskeyBase64url(options.challenge),
+      user: { ...options.user, id: decodePasskeyBase64url(options.user.id) },
+      excludeCredentials: (options.excludeCredentials || []).map((item) => ({
+        ...item,
+        id: decodePasskeyBase64url(item.id),
+      })),
+    };
+  }
+  function passkeyRequestOptions(options) {
+    if (typeof PublicKeyCredential.parseRequestOptionsFromJSON === "function") {
+      return PublicKeyCredential.parseRequestOptionsFromJSON(options);
+    }
+    return {
+      ...options,
+      challenge: decodePasskeyBase64url(options.challenge),
+      allowCredentials: (options.allowCredentials || []).map((item) => ({
+        ...item,
+        id: decodePasskeyBase64url(item.id),
+      })),
+    };
+  }
+  function passkeyCredentialJson(credential) {
+    if (typeof credential.toJSON === "function") return credential.toJSON();
+    const response = credential.response;
+    const result = {
+      id: credential.id,
+      rawId: encodePasskeyBase64url(credential.rawId),
+      type: credential.type,
+      authenticatorAttachment: credential.authenticatorAttachment,
+      clientExtensionResults: credential.getClientExtensionResults(),
+      response: { clientDataJSON: encodePasskeyBase64url(response.clientDataJSON) },
+    };
+    if ("attestationObject" in response) {
+      result.response.attestationObject = encodePasskeyBase64url(response.attestationObject);
+      result.response.transports = typeof response.getTransports === "function" ? response.getTransports() : [];
+    } else {
+      result.response.authenticatorData = encodePasskeyBase64url(response.authenticatorData);
+      result.response.signature = encodePasskeyBase64url(response.signature);
+      result.response.userHandle = response.userHandle ? encodePasskeyBase64url(response.userHandle) : undefined;
+    }
+    return result;
+  }
+  function friendlyPasskeyError(err) {
+    if (err && err.name === "NotAllowedError") return "Passkey check closed or timed out. Try again.";
+    if (err && err.name === "InvalidStateError") return "This passkey is already linked to Ruby High.";
+    if (err && err.name === "NotSupportedError") return "This browser needs a newer passkey feature. Try Safari, Chrome, or Edge.";
+    if (err && err.name === "SecurityError") return "Passkeys need Ruby High to open on its secure web address.";
+    return err && err.message ? String(err.message) : "Passkey check failed. Try again.";
+  }
+  async function passkeyJsonRequest(path, body) {
+    const r = await fetch(apiBase + path, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: attachVisitorHeader(new Headers({ "Content-Type": "application/json" })),
+      body: JSON.stringify(body || {}),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || "Passkey request failed.");
+    return data;
+  }
+  async function finishPasskeySession(data, message) {
+    applyPasskeyState(data.passkey);
+    if (data.privy) applyPrivyState({ ...data.privy, ready: true });
+    setAuthState(true, {
+      ai: !!data.ai,
+      local_ai: !!data.local_ai,
+      hosted_ai: data.hosted_ai,
+      entitlements: data.entitlements,
+      passkey: data.passkey,
+      privy: data.privy,
+    });
+    setPrivyStatus(message, false);
+    await fetchSession();
+  }
+  async function startPasskeyRegistration() {
+    if (!passkeySupported()) {
+      setPrivyStatus("This browser needs passkey support. Try Safari, Chrome, or Edge.", true);
+      return false;
+    }
+    setPasskeyBusy(true);
+    setPrivyStatus("Waiting for your device to create a passkey...", false);
+    try {
+      const options = await passkeyJsonRequest("/auth/passkey/register/options", {});
+      const credential = await navigator.credentials.create({ publicKey: passkeyCreationOptions(options.publicKey) });
+      if (!credential) throw new Error("Your device did not create a passkey.");
+      const data = await passkeyJsonRequest("/auth/passkey/register/verify", {
+        flowId: options.flowId,
+        response: passkeyCredentialJson(credential),
+      });
+      await finishPasskeySession(data, "Passkey ready. Your Ruby High account can travel with you.");
+      return true;
+    } catch (err) {
+      setPrivyStatus(friendlyPasskeyError(err), true);
+      return false;
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
+  async function startPasskeyLogin() {
+    if (!passkeySupported()) {
+      setPrivyStatus("This browser needs passkey support. Try Safari, Chrome, or Edge.", true);
+      return false;
+    }
+    setPasskeyBusy(true);
+    setPrivyStatus("Waiting for your passkey...", false);
+    try {
+      const options = await passkeyJsonRequest("/auth/passkey/login/options", {});
+      const credential = await navigator.credentials.get({ publicKey: passkeyRequestOptions(options.publicKey) });
+      if (!credential) throw new Error("Your device did not return a passkey.");
+      const data = await passkeyJsonRequest("/auth/passkey/login/verify", {
+        flowId: options.flowId,
+        response: passkeyCredentialJson(credential),
+      });
+      await finishPasskeySession(data, "Signed in with your passkey.");
+      return true;
+    } catch (err) {
+      setPrivyStatus(friendlyPasskeyError(err), true);
+      return false;
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
+  async function ensurePasskeyAccount() {
+    if (passkeyState.authenticated) return true;
+    return passkeyState.registered ? startPasskeyLogin() : startPasskeyRegistration();
+  }
   // shortWallet is in client-pure.
   function connectedSolanaWalletAddress() {
     return privyState.solanaWalletAddress || null;
@@ -10039,30 +10195,36 @@ export function runViewerClient(bootstrap) {
         label: next.label || null,
       };
     }
+    renderAccountIdentity();
+    applyAuthUI();
+    renderAccountPage();
+  }
+  function renderAccountIdentity() {
     const solanaAddress = knownSolanaOwnerWalletAddress();
     if (els.privyWallet) {
       els.privyWallet.textContent = solanaAddress
         ? shortWallet(solanaAddress) + " · solana"
-        : privyState.walletAddress
-        ? shortWallet(privyState.walletAddress) + " · " + (privyState.walletChainType || "wallet")
-        : privyState.authenticated
-          ? "Signed in · no Solana wallet"
-          : privyState.configured
-            ? "Not connected"
-            : "Sign-in unavailable";
+        : passkeyState.authenticated
+          ? "Passkey account"
+          : passkeyState.registered
+            ? "Passkey ready"
+            : "Guest session";
+    }
+    if (els.passkeyAction) {
+      els.passkeyAction.hidden = passkeyState.authenticated;
+      els.passkeyAction.textContent = "Use passkey";
+    }
+    if (els.passkeyCreate) {
+      els.passkeyCreate.hidden = passkeyState.registered && !passkeyState.authenticated;
+      els.passkeyCreate.textContent = passkeyState.authenticated ? "Add passkey" : "Create passkey";
     }
     if (els.privyLoginWidget) {
-      const needsWalletConnect = privyState.authenticated && !solanaAddress;
-      els.privyLoginWidget.hidden = !privyState.configured || (privyState.authenticated && !needsWalletConnect);
-      els.privyLoginWidget.textContent = needsWalletConnect ? "Connect Wallet" : "Sign in";
-      els.privyLoginWidget.title = needsWalletConnect
-        ? "Connect a Solana wallet to open packs or mint collectible cards."
-        : "Sign in";
+      els.privyLoginWidget.hidden = !passkeyState.authenticated || !privyState.configured || !!solanaAddress;
+      els.privyLoginWidget.textContent = "Connect wallet";
+      els.privyLoginWidget.title = "Connect a Solana wallet to open packs or mint collectible cards.";
     }
-    if (els.privySignout) els.privySignout.hidden = !privyState.authenticated;
-    if (els.signinPrivy) els.signinPrivy.hidden = !privyState.configured;
-    applyAuthUI();
-    renderAccountPage();
+    if (els.privySignout) els.privySignout.hidden = !passkeyState.authenticated;
+    if (els.signinPrivy) els.signinPrivy.hidden = false;
   }
   async function getPrivyClient() {
     if (!privyConfig) return null;
@@ -10112,11 +10274,7 @@ export function runViewerClient(bootstrap) {
       return;
     }
     applyPrivyState({ ...snapshot, configured: true, ready: true });
-    await syncPrivyServerSession(snapshot);
-    if (opts && opts.source === "login") {
-      setPrivyStatus("Account connected.", false);
-      closePrivyAccount();
-    }
+    if (!passkeyState.authenticated) await syncPrivyServerSession(snapshot);
     await fetchSession();
   }
   async function syncPrivyServerSession(snapshot) {
@@ -10154,7 +10312,7 @@ export function runViewerClient(bootstrap) {
         if (!client) return;
         const snapshot = await client.current();
         applyPrivyState({ ...snapshot, configured: true, ready: true });
-        if (snapshot.authenticated) await syncPrivyServerSession(snapshot);
+        if (snapshot.authenticated && !passkeyState.authenticated) await syncPrivyServerSession(snapshot);
       } catch (err) {
         if (/429|too many requests|rate.?limit/i.test(err && err.message ? String(err.message) : String(err || ""))) {
           lastPrivyRateLimitedAt = Date.now();
@@ -10168,31 +10326,6 @@ export function runViewerClient(bootstrap) {
       }
     })();
     return privyRefreshPromise;
-  }
-  async function startPrivyLogin(opts) {
-    if (!privyConfig) return;
-    const fromBilling = opts && opts.source === "billing";
-    const reportStatus = fromBilling ? setBillingStatus : setPrivyStatus;
-    setPrivyBusy(true);
-    reportStatus("Opening sign-in...", false);
-    try {
-      const client = await getPrivyClient();
-      if (!client) throw new Error("Sign-in is not available.");
-      const snapshot = await client.login();
-      if (!snapshot) {
-        reportStatus("Sign-in closed.", false);
-        return null;
-      }
-      await handlePrivySession(snapshot, { source: fromBilling ? "billing-login" : "login" });
-      if (fromBilling) reportStatus("Account connected. Continue with card pack checkout.", false);
-      return snapshot;
-    } catch (err) {
-      if (!fromBilling) showPrivyAccountModal();
-      reportStatus(friendlyPrivyAccountError(err, "Sign-in failed"), true);
-      return null;
-    } finally {
-      setPrivyBusy(false);
-    }
   }
   async function startSolanaWalletConnect(opts) {
     if (!privyConfig) return;
@@ -10228,15 +10361,10 @@ export function runViewerClient(bootstrap) {
     });
   }
   async function openPrivyAccount() {
-    setPrivyStatus("Checking account...", false);
+    setPrivyStatus("", false);
     try {
-      await initializePrivyFromStoredSession();
       showPrivyAccountModal();
-      setPrivyStatus(privyState.authenticated
-        ? knownSolanaOwnerWalletAddress()
-          ? "Account connected."
-          : "Connect a Solana wallet to open packs and reveal Cards."
-        : "", false);
+      renderAccountIdentity();
       renderAccountPage();
       if (els.accountWorkspace) els.accountWorkspace.scrollTop = 0;
       void syncWalletPackNftsFromAccount({ force: true });
@@ -10255,13 +10383,18 @@ export function runViewerClient(bootstrap) {
     if (els.privySignout) els.privySignout.disabled = !!busy;
     if (els.accountDelete) els.accountDelete.disabled = !!busy;
   }
+  function setPasskeyBusy(busy) {
+    if (els.passkeyAction) els.passkeyAction.disabled = !!busy;
+    if (els.passkeyCreate) els.passkeyCreate.disabled = !!busy;
+    if (els.signinPrivy) els.signinPrivy.disabled = !!busy;
+  }
   async function signOutPrivy() {
     setPrivyBusy(true);
     setPrivyStatus("Signing out...", false);
     try {
-      const client = await getPrivyClient();
-      if (client) await client.logout();
+      if (privyClient) await privyClient.logout();
       applyPrivyState({ configured: !!privyConfig, authenticated: false, ready: true });
+      applyPasskeyState({ available: true, registered: passkeyState.registered, authenticated: false });
       await logout();
       setPrivyStatus("Signed out.", false);
     } catch (err) {
@@ -10297,8 +10430,7 @@ export function runViewerClient(bootstrap) {
       if (!r.ok || !data.ok) throw new Error(data.error || "Could not delete account.");
       clearStoredAuth();
       try {
-        const client = await getPrivyClient();
-        if (client) await client.logout();
+        if (privyClient) await privyClient.logout();
       } catch (_err) {}
       applyPrivyState({ configured: !!privyConfig, authenticated: false, ready: true });
       authed = null;
@@ -10329,6 +10461,7 @@ export function runViewerClient(bootstrap) {
           hosted_ai: opts.entitlements.hosted_ai || lastTelemetry.hosted_ai,
         };
       }
+      if (opts && opts.passkey) applyPasskeyState(opts.passkey);
       if (opts && opts.privy) applyPrivyState({ ...opts.privy, ready: true });
       return;
     }
@@ -10345,6 +10478,7 @@ export function runViewerClient(bootstrap) {
         hosted_ai: opts.entitlements.hosted_ai || lastTelemetry.hosted_ai,
       };
     }
+    if (opts && opts.passkey) applyPasskeyState(opts.passkey);
     if (opts && opts.privy) applyPrivyState({ ...opts.privy, ready: true });
     applyAuthUI();
     // Browser-owned AI is optional. The overlay is now only a fallback if the app
@@ -10379,7 +10513,7 @@ export function runViewerClient(bootstrap) {
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data || !data.session) throw new Error("guest session failed");
-    setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai, hosted_ai: data.hosted_ai, entitlements: data.entitlements, privy: data.privy });
+    setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai, hosted_ai: data.hosted_ai, entitlements: data.entitlements, passkey: data.passkey, privy: data.privy });
   }
   async function retryGuestSession() {
     if (els.signinGuest) els.signinGuest.disabled = true;
@@ -10407,7 +10541,7 @@ export function runViewerClient(bootstrap) {
       const data = await r.json().catch(() => ({}));
       if (seq !== authCheckSeq) return;
       if (r.ok && data && data.session) {
-        setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai, hosted_ai: data.hosted_ai, entitlements: data.entitlements, privy: data.privy });
+        setAuthState(true, { ai: !!data.ai, local_ai: !!data.local_ai, hosted_ai: data.hosted_ai, entitlements: data.entitlements, passkey: data.passkey, privy: data.privy });
       } else {
         await ensureGuestSession();
       }
@@ -10435,6 +10569,8 @@ export function runViewerClient(bootstrap) {
     if (authed) {
       els.youState.textContent = privyState.authenticated && privyState.walletAddress
         ? shortWallet(privyState.walletAddress)
+        : passkeyState.authenticated
+          ? "passkey ready"
         : aiEnabled
           ? (localAiEnabled ? "on-device AI" : "AI enabled")
           : activeTeacherUsesServerAi() ? "teacher connected" : "offline mode";
@@ -11036,7 +11172,7 @@ export function runViewerClient(bootstrap) {
     }
   });
   if (els.privyAction) els.privyAction.addEventListener("click", openPrivyAccount);
-  if (els.signinPrivy) els.signinPrivy.addEventListener("click", openPrivyAccount);
+  if (els.signinPrivy) els.signinPrivy.addEventListener("click", startPasskeyLogin);
 
   // ── bug-report surface ─────────────────────────────────────────────────
   // Capture the last few console errors + unhandled rejections so the
@@ -11199,12 +11335,10 @@ export function runViewerClient(bootstrap) {
   if (els.privyOverlay) els.privyOverlay.addEventListener("click", (e) => {
     if (e.target === els.privyOverlay) closePrivyAccount();
   });
+  if (els.passkeyAction) els.passkeyAction.addEventListener("click", startPasskeyLogin);
+  if (els.passkeyCreate) els.passkeyCreate.addEventListener("click", startPasskeyRegistration);
   if (els.privyLoginWidget) els.privyLoginWidget.addEventListener("click", async () => {
-    if (privyState.authenticated) {
-      await ensureSolanaWalletFromAccount();
-      return;
-    }
-    await startPrivyLogin();
+    await ensureSolanaWalletFromAccount();
   });
   if (els.privySignout) els.privySignout.addEventListener("click", signOutPrivy);
 

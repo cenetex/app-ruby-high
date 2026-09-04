@@ -351,12 +351,14 @@ test("boots as a guest, creates a character, answers a card, and opens account t
 
   await expect(page.locator("#privy-action")).toBeVisible();
   await page.locator("#privy-action").click();
-  await expect.poll(privyRequests).toBeGreaterThan(0);
+  expect(privyRequests()).toBe(0);
   const accountOverlay = page.locator("#privy-overlay");
   const accountDialog = page.getByRole("dialog", { name: "Account" });
   await expect(accountDialog).toHaveClass(/is-open/);
   await expect(accountDialog).toHaveAttribute("aria-modal", "true");
   await expect(accountDialog).toHaveAttribute("aria-hidden", "false");
+  await expect(page.locator("#passkey-action")).toHaveText("Use passkey");
+  await expect(page.locator("#passkey-create")).toHaveText("Create passkey");
   await expect(page.locator("#shell")).toHaveAttribute("inert", "");
   await expect(page.locator("#shell")).toHaveAttribute("aria-hidden", "true");
   await expect(page.locator("#account-tab-account")).toBeFocused();
@@ -386,6 +388,52 @@ test("boots as a guest, creates a character, answers a card, and opens account t
   await expect(accountOverlay).not.toHaveClass(/is-open/);
 
   expect(errors).toEqual([]);
+});
+
+test("creates a passkey and signs the same student back in", async ({ page }) => {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("WebAuthn.enable");
+  const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {
+    options: {
+      protocol: "ctap2",
+      transport: "internal",
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+      automaticPresenceSimulation: true,
+    },
+  });
+
+  try {
+    const { errors, privyRequests } = await openViewer(page);
+    await dismissAnnouncements(page);
+    const creationSheet = page.locator("#sheet-overlay");
+    if (await creationSheet.isVisible().catch(() => false)) await page.locator("#sheet-close").click();
+
+    await page.locator("#privy-action").click();
+    await page.locator("#passkey-create").click();
+    await expect(page.locator("#privy-status")).toContainText("Passkey ready");
+    await expect(page.locator("#privy-wallet")).toHaveText("Passkey account");
+    await expect(page.locator("#passkey-action")).toBeHidden();
+    await expect(page.locator("#privy-signout")).toBeVisible();
+
+    await page.locator("#privy-signout").click();
+    await expect(page.locator("#passkey-action")).toBeVisible();
+    await page.locator("#passkey-action").click();
+    await expect(page.locator("#privy-status")).toHaveText("Signed in with your passkey.");
+    await expect(page.locator("#privy-wallet")).toHaveText("Passkey account");
+
+    const me = await page.evaluate(async () => {
+      const response = await fetch("/api/apps/ruby-high/auth/me", { credentials: "same-origin" });
+      return response.json();
+    });
+    expect(me.passkey).toEqual({ available: true, registered: true, authenticated: true });
+    expect(privyRequests()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await cdp.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId });
+    await cdp.send("WebAuthn.disable");
+  }
 });
 
 test("uses one welcome layer, then keeps announcements for returning students", async ({ page }) => {

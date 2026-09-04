@@ -19,7 +19,7 @@ npm run build
 npm run dev:server
 ```
 
-Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Normal play starts with a Ruby High session cookie; OpenRouter sign-in is available for BYOK AI (PKCE, your own key, no card). If Privy is configured, the Account button signs the player in and can connect or reuse a Solana wallet; this build does not auto-create one on login. Browser-owned OpenRouter keys default to sessionStorage, can opt into localStorage persistence with `rh_openrouter_persist=1`, and are never held by the server. Game state, auth sessions, and session-scoped packs persist through the configured store (SQLite in production, JSON file in local dev); teacher chat transcripts are process-local and reset on server restart/deploy. Requires Node ≥24 for the built-in `node:sqlite` module.
+Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Normal play starts with a Ruby High session cookie. The Account screen can turn that session into a passkey account with Touch ID, Face ID, Windows Hello, a phone, or a security key. OpenRouter sign-in is available for BYOK AI (PKCE, your own key, no card). Privy can connect an optional Solana wallet for packs and collectible cards. Browser-owned OpenRouter keys default to sessionStorage and can opt into localStorage persistence with `rh_openrouter_persist=1`. Game state, auth sessions, and session-scoped packs persist through the configured store (SQLite in production, JSON file in local dev); teacher chat transcripts are process-local and reset on server restart/deploy. Requires Node ≥24 for the built-in `node:sqlite` module.
 
 ## Ruby High 2.0 C wedge
 
@@ -124,11 +124,13 @@ Scheduled play is opt-in and server-bounded: 15–1440 minute intervals, at most
 | `HOST` | `0.0.0.0` | Bind address. |
 | `RUBY_HIGH_PUBLIC_BASE` | `http://localhost:3000` (dev) | Public URL the app is reachable at. Required and enforced as HTTPS in production. |
 | `RUBY_HIGH_TRUST_PROXY` | `false` | Trust proxy-provided client IP, host, and protocol headers. Enable only when the server is reachable exclusively through a trusted reverse proxy; Fly enables it explicitly. |
-| `RUBY_HIGH_PRIVY_APP_ID` | — | Enables Privy account sign-in when set with `RUBY_HIGH_PRIVY_CLIENT_ID` and one server verifier secret. |
-| `RUBY_HIGH_PRIVY_CLIENT_ID` | — | Public Privy client id embedded in the viewer so the browser SDK can initialize. |
-| `RUBY_HIGH_PRIVY_LOGIN_METHODS` | `email,wallet,google,twitter,passkey` | Comma-separated Privy login methods shown in the viewer. Use `google` for Gmail sign-in. Each method must also be enabled in the Privy dashboard. |
-| `RUBY_HIGH_PRIVY_APP_SECRET` | — | Preferred server-side Privy secret for verifying tokens and fetching linked wallet/user details. Set via secrets only. |
-| `RUBY_HIGH_PRIVY_VERIFICATION_KEY` | — | Optional JWT verification-key fallback for deployments that do not use `RUBY_HIGH_PRIVY_APP_SECRET`. |
+| `RUBY_HIGH_PASSKEY_ORIGIN` | request origin | Public HTTPS origin used for passkey checks. Set this when a proxy presents Ruby High on one canonical origin. |
+| `RUBY_HIGH_PASSKEY_RP_ID` | passkey origin host | Passkey relying-party domain. It must match the public host or a parent domain. |
+| `RUBY_HIGH_PRIVY_APP_ID` | — | Enables the optional Solana wallet connector when set with `RUBY_HIGH_PRIVY_CLIENT_ID`. |
+| `RUBY_HIGH_PRIVY_CLIENT_ID` | — | Public Privy client id used by the wallet connector. |
+| `RUBY_HIGH_PRIVY_LOGIN_METHODS` | `wallet` | Legacy Privy account migration setting. New account sign-in uses Ruby High passkeys. |
+| `RUBY_HIGH_PRIVY_APP_SECRET` | — | Server verifier for legacy Privy account migration and linked wallet details. Set via secrets only. |
+| `RUBY_HIGH_PRIVY_VERIFICATION_KEY` | — | Optional JWT verification key for legacy Privy account migration. |
 | `RUBY_HIGH_STORE_BACKEND` | `json` | `json` for local dev (atomic file at `~/.ruby-high/state.json`), `sqlite` for production (Fly Volume at `/data/ruby-high.db`). The legacy `dynamodb` backend is archived. |
 | `RUBY_HIGH_STATE_PATH` | `~/.ruby-high/state.json` | State file path. For the `sqlite` backend this is the db file path (e.g. `/data/ruby-high.db`). |
 | `RUBY_HIGH_X_SCHEDULED_POSTS_ENABLED` | `0` | Set to `1` to let the first connected teacher publish at most one classroom/teacher-lounge update per 24 hours. A real Guest Faculty rotation change is announced before the normal AI-authored calendar and recorded by week plus pack, so cold starts, deploys, and later daily ticks do not repeat the same flip. Guest welcomes use only verified roster copy and do not depend on the text model. Each post composes a dynamic, identity-locked campus photo from canonical faculty/classmate art, appends a deterministic viewer link, persists cadence across restarts, and backs off six hours after a failed attempt. |
@@ -192,7 +194,7 @@ Scheduled play is opt-in and server-bounded: 15–1440 minute intervals, at most
 
 The `/health` route is readiness: it returns 200 only after services have booted, so the platform should not route first-load traffic while Ruby High is hydrating. `/livez` is a process-liveness probe. Forwarded proxy headers are ignored unless `RUBY_HIGH_TRUST_PROXY` is explicitly enabled.
 
-No OpenRouter key is required on the server for offline question-bank play. In production, `RUBY_HIGH_OPENROUTER_API_KEY` sponsors text generation for every guest and signed-in session, while player-authored chat spends Merit Stars. Players may still connect their own key through PKCE, and Privy provides persistent identity/wallet ownership when configured. The server key also enables hosted image generation with per-image Hall Pass costs. Edit Pack creates OpenRouter-backed local teacher drafts; Ruby High does not list, import, grant, or call external avatar/agent backends.
+No OpenRouter key is required on the server for offline question-bank play. In production, `RUBY_HIGH_OPENROUTER_API_KEY` sponsors text generation for every guest and signed-in session, while player-authored chat spends Merit Stars. Players may connect their own key through PKCE. Passkeys provide persistent account identity, while the optional wallet connector handles Solana packs and collectible cards. The server key also enables hosted image generation with per-image Hall Pass costs. Edit Pack creates OpenRouter-backed local teacher drafts; Ruby High does not list, import, grant, or call external avatar/agent backends.
 
 ## Billing and Hall Passes
 

@@ -6,7 +6,7 @@ import type { ContentPack, PackSourceCard } from "../content/types.js";
 
 export interface AuthUserRecord {
   userId: string;
-  provider: "openrouter" | "guest" | "privy";
+  provider: "openrouter" | "guest" | "privy" | "passkey";
   providerUserHash: string;
   createdAt: number;
   lastLoginAt: number;
@@ -16,9 +16,21 @@ export interface AuthUserRecord {
   visitorLastSeenAt?: number;
   walletAddress?: string;
   walletChainType?: "ethereum" | "solana";
+  passkeys?: StoredPasskeyCredential[];
   /** Synthetic clients (for example the scheduled smoke test) are retained
    *  operationally but excluded from product analytics. */
   clientSurface?: MetricClientSurface;
+}
+
+export interface StoredPasskeyCredential {
+  id: string;
+  publicKey: string;
+  counter: number;
+  transports?: string[];
+  deviceType?: "singleDevice" | "multiDevice";
+  backedUp?: boolean;
+  createdAt: number;
+  lastUsedAt?: number;
 }
 
 export interface AuthSessionRecord {
@@ -26,6 +38,7 @@ export interface AuthSessionRecord {
   userId: string;
   createdAt: number;
   expiresAt: number;
+  provider?: AuthUserRecord["provider"];
   clientSurface?: MetricClientSurface;
 }
 
@@ -510,7 +523,7 @@ export class StateStore implements StateStoreLike {
     for (const u of parsed.authUsers ?? []) {
       if (
         u &&
-        (u.provider === "openrouter" || u.provider === "guest" || u.provider === "privy") &&
+        (u.provider === "openrouter" || u.provider === "guest" || u.provider === "privy" || u.provider === "passkey") &&
         typeof u.providerUserHash === "string" &&
         typeof u.userId === "string"
       ) {
@@ -1025,7 +1038,7 @@ export function normalizeStoredAccountDeletionTarget(target: StoredAccountDeleti
     !!user &&
     typeof user.userId === "string" &&
     typeof user.providerUserHash === "string" &&
-    (user.provider === "openrouter" || user.provider === "guest" || user.provider === "privy"));
+    (user.provider === "openrouter" || user.provider === "guest" || user.provider === "privy" || user.provider === "passkey"));
   const visitorHashes = Array.from(new Set([
     ...(target.visitorHashes ?? []),
     ...authUsers.map((user) => user.visitorHash),

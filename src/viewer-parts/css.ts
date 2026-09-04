@@ -4836,6 +4836,8 @@ export const VIEWER_CSS = `
       padding: 0 8px;
     }
   }
+  #passkey-action:disabled,
+  #passkey-create:disabled,
   #privy-login-widget:disabled,
   #privy-signout:disabled,
   #account-use-pass:disabled,
@@ -9679,11 +9681,16 @@ export const VIEWER_CSS = `
     background: transparent;
     color: var(--text);
   }
+  .privy-card.account-card #passkey-action,
   .privy-card.account-card #privy-login-widget,
   .privy-card.account-card .account-section-head button:not(.secondary):not(.danger),
   .privy-card.account-card .account-history-row button:not(.secondary):not(.danger) {
     background: var(--utility-accent);
     color: #fff;
+  }
+  .account-passkey-copy {
+    margin: 0 0 12px;
+    max-width: 640px;
   }
   .privy-card.account-card .account-character-card {
     border-color: rgba(255,255,255,0.1);

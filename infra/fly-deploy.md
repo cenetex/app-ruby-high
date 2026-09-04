@@ -56,9 +56,16 @@ image until the next `flyctl deploy`.
 
 In your OpenRouter settings, add `https://ruby-high.fly.dev/api/apps/ruby-high/auth/callback` to the allowed redirect URIs (or replace the existing App Runner one if you're cutting over rather than running both).
 
-### 6. Configure Privy account sign-in
+### 6. Configure passkeys and the Solana wallet connector
 
-In the Privy dashboard, configure the Ruby High app for email login and embedded wallet creation. Add these app domains/origins:
+Passkey sign-in uses the public Ruby High origin. The checked-in Fly config sets:
+
+```toml
+RUBY_HIGH_PASSKEY_ORIGIN = "https://ruby-high.ai"
+RUBY_HIGH_PASSKEY_RP_ID = "ruby-high.ai"
+```
+
+In the Privy dashboard, configure the Ruby High app for Solana wallet connection. Add these app domains/origins:
 
 - `https://ruby-high.fly.dev`
 - `https://ruby-high.ai`
@@ -74,7 +81,7 @@ flyctl secrets set --app ruby-high \
   RUBY_HIGH_PRIVY_APP_SECRET=<privy app secret>
 ```
 
-`RUBY_HIGH_PRIVY_APP_SECRET` is the preferred server verifier because the API can also fetch linked user/wallet details. `RUBY_HIGH_PRIVY_VERIFICATION_KEY` is supported as a fallback verifier, but the identity token then needs to include enough linked account detail for wallet display. The viewer defaults `RUBY_HIGH_PRIVY_LOGIN_METHODS` to `wallet`; every configured method must also be enabled in the Privy dashboard.
+The viewer uses Ruby High passkeys for account sign-in. The Privy client opens only for a wallet action. `RUBY_HIGH_PRIVY_APP_SECRET` keeps legacy account migration available and can fetch linked wallet details. `RUBY_HIGH_PRIVY_VERIFICATION_KEY` is supported as a fallback verifier.
 
 ## Day-to-day
 
