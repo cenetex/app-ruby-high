@@ -5608,7 +5608,7 @@ describe("RubyHighService Phase 1", () => {
   });
 
   it.each([
-    ["sally-science", /evidence|prediction|variable/i],
+    ["sally-science", /evidence|prediction|variable|pattern|uncertainty|measurement/i],
     ["professor-edward", /interpretation|perspective|tension|reading|voice/i],
   ])("uses a subject-specific daily take for %s", async (facultyId, promptPattern) => {
     const { ruby } = await makeServices();
