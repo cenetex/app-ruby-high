@@ -13,7 +13,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -23,7 +23,20 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: npm run audit:prod
+      - name: Audit production dependencies
+        env:
+          npm_config_fetch_timeout: "60000"
+          npm_config_fetch_retries: "1"
+        run: |
+          for attempt in 1 2 3; do
+            if npm run audit:prod; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep 10
+            fi
+          done
+          exit 1
       - run: npm run check:full
       - run: npm run test:coverage
 
