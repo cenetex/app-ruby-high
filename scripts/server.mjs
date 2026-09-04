@@ -92,7 +92,7 @@ async function bootServices() {
   agentAccessSvc = new AgentAccessService(fakeRuntime, stateStore);
   await agentAccessSvc.hydrate();
   try {
-    xSocialSvc = await XSocialService.start(fakeRuntime);
+    xSocialSvc = await XSocialService.start(fakeRuntime, stateStore);
     svc.startRotationScheduler();
   } catch (err) {
     console.error("XSocialService failed to start:", err.message);

@@ -16,6 +16,15 @@ export interface PostMetricsRecord {
   retweets: number;
   replies: number;
   quotes: number;
+  bookmarks: number;
+  kind: string;
+  text: string;
+}
+
+export interface PendingPostMetrics {
+  teacherId: string;
+  postedAt: number;
+  fetchAfter: number;
   kind: string;
   text: string;
 }
@@ -26,7 +35,7 @@ const MAX_STORED_RECORDS = 200;
 
 export interface HydratedPostAnalyticsState {
   records: PostMetricsRecord[];
-  pendingFetches: Map<string, number>;
+  pendingFetches: Map<string, PendingPostMetrics>;
 }
 
 export function hydratePostAnalyticsState(
@@ -40,18 +49,18 @@ export function hydratePostAnalyticsState(
   const data = (record as Record<string, unknown>).data;
   if (!data || typeof data !== "object") return out;
   const d = data as Record<string, unknown>;
-  if (d.version !== 1) return out;
+  if (d.version !== 1 && d.version !== 2) return out;
   if (Array.isArray(d.records)) {
     for (const r of d.records) {
-      if (isPostMetricsRecord(r)) out.records.push(r);
+      const normalized = normalizePostMetricsRecord(r);
+      if (normalized) out.records.push(normalized);
     }
   }
   if (d.pendingFetches && typeof d.pendingFetches === "object") {
     const pf = d.pendingFetches as Record<string, unknown>;
-    for (const [id, ts] of Object.entries(pf)) {
-      if (typeof id === "string" && typeof ts === "number" && Number.isFinite(ts)) {
-        out.pendingFetches.set(id, ts);
-      }
+    for (const [id, value] of Object.entries(pf)) {
+      const pending = normalizePendingPostMetrics(value);
+      if (typeof id === "string" && pending) out.pendingFetches.set(id, pending);
     }
   }
   return out;
@@ -59,27 +68,27 @@ export function hydratePostAnalyticsState(
 
 export function postAnalyticsStateRecord(input: {
   records: PostMetricsRecord[];
-  pendingFetches: ReadonlyMap<string, number>;
+  pendingFetches: ReadonlyMap<string, PendingPostMetrics>;
 }): { id: string; updatedAt: number; data: Record<string, unknown> } {
-  const pendingFetchesObj: Record<string, number> = {};
-  for (const [id, ts] of input.pendingFetches) {
-    pendingFetchesObj[id] = ts;
+  const pendingFetchesObj: Record<string, PendingPostMetrics> = {};
+  for (const [id, pending] of input.pendingFetches) {
+    pendingFetchesObj[id] = pending;
   }
   return {
     id: ANALYTICS_STATE_ID,
     updatedAt: Date.now(),
     data: {
-      version: 1,
+      version: 2,
       records: input.records,
       pendingFetches: pendingFetchesObj,
     },
   };
 }
 
-function isPostMetricsRecord(value: unknown): value is PostMetricsRecord {
-  if (!value || typeof value !== "object") return false;
+function normalizePostMetricsRecord(value: unknown): PostMetricsRecord | null {
+  if (!value || typeof value !== "object") return null;
   const r = value as Record<string, unknown>;
-  return (
+  if (!(
     typeof r.tweetId === "string" &&
     typeof r.teacherId === "string" &&
     typeof r.postedAt === "number" &&
@@ -91,14 +100,55 @@ function isPostMetricsRecord(value: unknown): value is PostMetricsRecord {
     typeof r.quotes === "number" &&
     typeof r.kind === "string" &&
     typeof r.text === "string"
-  );
+  )) return null;
+  return {
+    tweetId: r.tweetId,
+    teacherId: r.teacherId,
+    postedAt: r.postedAt,
+    fetchedAt: r.fetchedAt,
+    impressions: r.impressions,
+    likes: r.likes,
+    retweets: r.retweets,
+    replies: r.replies,
+    quotes: r.quotes,
+    bookmarks: typeof r.bookmarks === "number" ? r.bookmarks : 0,
+    kind: r.kind,
+    text: r.text,
+  };
+}
+
+function normalizePendingPostMetrics(value: unknown): PendingPostMetrics | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return {
+      teacherId: "",
+      postedAt: Math.max(0, value - METRICS_FETCH_DELAY_MS),
+      fetchAfter: value,
+      kind: "",
+      text: "",
+    };
+  }
+  if (!value || typeof value !== "object") return null;
+  const pending = value as Record<string, unknown>;
+  if (
+    typeof pending.teacherId !== "string" ||
+    typeof pending.postedAt !== "number" ||
+    typeof pending.fetchAfter !== "number" ||
+    typeof pending.kind !== "string" ||
+    typeof pending.text !== "string"
+  ) return null;
+  return {
+    teacherId: pending.teacherId,
+    postedAt: pending.postedAt,
+    fetchAfter: pending.fetchAfter,
+    kind: pending.kind,
+    text: pending.text,
+  };
 }
 
 export class PostAnalytics {
   private records: PostMetricsRecord[] = [];
-  private pendingFetches = new Map<string, number>();
+  private pendingFetches = new Map<string, PendingPostMetrics>();
   private store: StateStoreLike | null = null;
-  private fetchTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(store: StateStoreLike | null) {
     this.store = store;
@@ -111,24 +161,33 @@ export class PostAnalytics {
       const hydrated = hydratePostAnalyticsState(record);
       this.records = hydrated.records;
       this.pendingFetches = hydrated.pendingFetches;
-      this.scheduleNextFetch();
     } catch (err) {
       log.error("post-analytics.hydrate-failed", err);
     }
   }
 
-  enqueueFetch(tweetId: string, postedAt: number): void {
-    const fetchAfter = postedAt + METRICS_FETCH_DELAY_MS;
-    this.pendingFetches.set(tweetId, fetchAfter);
+  enqueueFetch(input: {
+    tweetId: string;
+    teacherId: string;
+    postedAt: number;
+    kind: string;
+    text: string;
+  }): void {
+    this.pendingFetches.set(input.tweetId, {
+      teacherId: input.teacherId,
+      postedAt: input.postedAt,
+      fetchAfter: input.postedAt + METRICS_FETCH_DELAY_MS,
+      kind: input.kind,
+      text: input.text,
+    });
     void this.persist();
-    this.scheduleNextFetch();
   }
 
   getTopPerforming(kind?: string, limit = 10): PostMetricsRecord[] {
     let filtered = this.records;
     if (kind) filtered = filtered.filter((r) => r.kind === kind);
     return [...filtered]
-      .sort((a, b) => b.likes + b.retweets - (a.likes + a.retweets))
+      .sort((a, b) => postBangerScore(b) - postBangerScore(a))
       .slice(0, limit);
   }
 
@@ -136,7 +195,7 @@ export class PostAnalytics {
     const kindRecords = this.records.filter((r) => r.kind === kind);
     if (kindRecords.length === 0) return 0;
     const total = kindRecords.reduce(
-      (sum, r) => sum + r.likes + r.retweets * 2 + r.replies * 3,
+      (sum, r) => sum + postBangerScore(r),
       0,
     );
     return Math.round(total / kindRecords.length);
@@ -147,8 +206,8 @@ export class PostAnalytics {
   ): Promise<number> {
     const now = Date.now();
     const ready: string[] = [];
-    for (const [id, fetchAfter] of this.pendingFetches) {
-      if (fetchAfter <= now) ready.push(id);
+    for (const [id, pending] of this.pendingFetches) {
+      if (pending.fetchAfter <= now) ready.push(id);
     }
     if (ready.length === 0) return 0;
 
@@ -177,36 +236,38 @@ export class PostAnalytics {
               retweet_count: number;
               reply_count: number;
               quote_count: number;
+              bookmark_count?: number;
             };
           }>;
         };
         for (const tweet of data.data ?? []) {
           const metrics = tweet.public_metrics;
-          if (!metrics) continue;
+          const pending = this.pendingFetches.get(tweet.id);
+          if (!metrics || !pending) continue;
           const record: PostMetricsRecord = {
             tweetId: tweet.id,
-            teacherId: "",
-            postedAt: 0,
+            teacherId: pending.teacherId,
+            postedAt: pending.postedAt,
             fetchedAt: now,
             impressions: metrics.impression_count ?? 0,
             likes: metrics.like_count ?? 0,
             retweets: metrics.retweet_count ?? 0,
             replies: metrics.reply_count ?? 0,
             quotes: metrics.quote_count ?? 0,
-            kind: "",
-            text: "",
+            bookmarks: metrics.bookmark_count ?? 0,
+            kind: pending.kind,
+            text: pending.text,
           };
           this.addRecord(record);
           this.pendingFetches.delete(tweet.id);
+          fetched += 1;
         }
-        fetched += batch.length;
       } catch {
         break;
       }
     }
     if (fetched > 0) {
       void this.persist();
-      this.scheduleNextFetch();
     }
     return fetched;
   }
@@ -217,24 +278,6 @@ export class PostAnalytics {
     else this.records.push(record);
     if (this.records.length > MAX_STORED_RECORDS) {
       this.records = this.records.slice(-MAX_STORED_RECORDS);
-    }
-  }
-
-  private scheduleNextFetch(): void {
-    if (this.fetchTimer) clearTimeout(this.fetchTimer);
-    const now = Date.now();
-    let nextAt = Infinity;
-    for (const fetchAfter of this.pendingFetches.values()) {
-      if (fetchAfter > now && fetchAfter < nextAt) {
-        nextAt = fetchAfter;
-      }
-    }
-    if (Number.isFinite(nextAt)) {
-      const delay = Math.max(60_000, nextAt - now);
-      this.fetchTimer = setTimeout(() => {
-        this.fetchTimer = null;
-      }, delay);
-      this.fetchTimer.unref?.();
     }
   }
 
@@ -253,3 +296,12 @@ export class PostAnalytics {
   }
 }
 
+export function postBangerScore(record: PostMetricsRecord): number {
+  const weighted = record.likes
+    + record.retweets * 2
+    + record.replies * 3
+    + record.quotes * 3
+    + record.bookmarks * 2;
+  if (record.impressions <= 0) return weighted;
+  return Math.round(((weighted + 2) / (record.impressions + 200)) * 1000);
+}

@@ -90,6 +90,26 @@ function mockMediaUpload(mediaId = "media-test"): void {
   });
 }
 
+function tweetCandidateResponse(text: string): { choices: Array<{ message: { content: string } }> } {
+  const shapes = [
+    "verdict",
+    "contrast",
+    "object",
+    "correction",
+    "question",
+    "tiny-scene",
+    "rule",
+    "challenge",
+  ];
+  return {
+    choices: [{
+      message: {
+        content: JSON.stringify({ candidates: shapes.map((shape) => ({ shape, text })) }),
+      },
+    }],
+  };
+}
+
 async function connectRuby(svc: XSocialService, scope = "tweet.read tweet.write users.read offline.access media.write"): Promise<void> {
   const { state } = svc.beginConnect("ruby");
   mockFetch
@@ -1103,7 +1123,7 @@ describe("XSocialService", () => {
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ choices: [{ message: { content: "The classrooms are moving, and the lounge has plenty to talk about. #RubyHigh" } }] }),
+          json: async () => tweetCandidateResponse("One claim survived the board. Take today's class and test the evidence."),
         })
         .mockResolvedValueOnce({
           ok: true,
@@ -1121,6 +1141,16 @@ describe("XSocialService", () => {
       const result = await svc.postScheduledSchoolUpdate(
         RUBY_TEACHER,
         SCHOOL_UPDATE_CONTEXT,
+        {
+          plannedSlot: {
+            id: "slot-1",
+            publishDate: SCHOOL_UPDATE_CONTEXT.date,
+            pillar: "school-pulse",
+            angle: "Test one classroom claim",
+            brief: "Use the live classroom result and make a clear judgment.",
+            callToAction: "take-class",
+          },
+        },
       );
       expect(result).toBe("tweet-school-update");
 
@@ -1129,7 +1159,7 @@ describe("XSocialService", () => {
       );
       const body = JSON.parse((tweetCall![1] as RequestInit).body as string);
       expect(body).toEqual({
-        text: "The classrooms are moving, and the lounge has plenty to talk about. #RubyHigh https://ruby-high.ai/api/apps/ruby-high/viewer?ref=activation-x-school-update",
+        text: "One claim survived the board. Take today's class and test the evidence. https://ruby-high.ai/api/apps/ruby-high/viewer?ref=activation-x-school-update",
         media: { media_ids: ["media-school-update"] },
       });
       const llmCall = mockFetch.mock.calls.find((call: unknown[]) => {
@@ -1137,7 +1167,8 @@ describe("XSocialService", () => {
         return bodyText.includes("concrete invitation to take today's class");
       });
       expect(llmCall).toBeDefined();
-      expect(String((llmCall![1] as RequestInit).body)).toContain("under 180 characters");
+      expect(String((llmCall![1] as RequestInit).body)).toContain("ruby_high_tweet_candidates");
+      expect(String((llmCall![1] as RequestInit).body)).toContain("one concrete receipt");
       const imageCall = mockFetch.mock.calls.find((call: unknown[]) => {
         const bodyText = String((call[1] as RequestInit | undefined)?.body ?? "");
         return bodyText.includes('"modalities":["image","text"]');
@@ -1181,7 +1212,7 @@ describe("XSocialService", () => {
       );
       const body = JSON.parse((tweetCall![1] as RequestInit).body as string);
       expect(body).toEqual({
-        text: "Welcome this week's featured guest teacher, Eliza (@elizaOS), to Ruby High! This week's course: elizaOS Systems Lab. #RubyHigh https://ruby-high.ai/api/apps/ruby-high/viewer?ref=activation-x-guest-welcome",
+        text: "Welcome this week's featured guest teacher, Eliza (@elizaOS), to Ruby High! This week's course: elizaOS Systems Lab. #RubyHigh",
         media: { media_ids: ["media-guest-welcome"] },
       });
     });
@@ -1257,13 +1288,9 @@ describe("XSocialService", () => {
         })
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({
-            choices: [{
-              message: {
-                content: "Insights from @elizaOS: explicit authority and tool boundaries make agent systems easier to trust. #RubyHigh",
-              },
-            }],
-          }),
+          json: async () => tweetCandidateResponse(
+            "Insights from @elizaOS: explicit authority and tool boundaries make agent systems easier to trust.",
+          ),
         })
         .mockResolvedValueOnce({
           ok: true,
@@ -1303,7 +1330,7 @@ describe("XSocialService", () => {
       );
       const body = JSON.parse((tweetCall![1] as RequestInit).body as string);
       expect(body.text).toContain("Insights from @elizaOS");
-      expect(body.text).toContain("ref=activation-x-guest-insights");
+      expect(body.text).not.toContain("ref=activation-x-guest-insights");
       expect(body.media.media_ids).toEqual(["media-guest-insight"]);
     });
 
@@ -1313,7 +1340,7 @@ describe("XSocialService", () => {
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ choices: [{ message: { content: "Class is moving with purpose today. #RubyHigh" } }] }),
+          json: async () => tweetCandidateResponse("One class result reached the board. The evidence held up."),
         })
         .mockResolvedValueOnce({
           ok: true,

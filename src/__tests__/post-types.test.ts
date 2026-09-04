@@ -9,6 +9,7 @@ import {
   hasMeaningfulScheduledSchoolActivity,
   normalizeScheduledSchoolUpdateText,
   scheduledSchoolUpdateFingerprint,
+  selectScheduledTweetCandidate,
 } from "../services/ruby-high/post-types.js";
 import type { TeacherCharacter } from "../characters/teachers.js";
 
@@ -56,29 +57,29 @@ describe("isLowSignalMilestone", () => {
 });
 
 describe("buildDeterministicPostText", () => {
-  it("uses playful template for Ruby (mischievous in prompt)", () => {
+  it("gives Ruby a dry claim-and-evidence voice", () => {
     const text = buildDeterministicPostText(WARM_TEACHER, {
       kind: "character-created",
       characterName: "Lyra",
     });
-    expect(text).toContain("hallways");
+    expect(text).toContain("claim");
     expect(text).toContain("Lyra");
-    expect(text).toContain("#RubyHigh");
+    expect(text).not.toContain("#RubyHigh");
   });
 
-  it("uses strict template for Professor Edward", () => {
+  it("gives Professor Edward a line-and-page voice", () => {
     const text = buildDeterministicPostText(STRICT_TEACHER, {
       kind: "class-passed",
       characterName: "Sami",
       teacherName: "Ruby",
       letterGrade: "A",
     });
-    expect(text).toContain("Acceptable");
+    expect(text).toContain("reading");
     expect(text).toContain("Sami");
     expect(text).toContain("A");
   });
 
-  it("uses playful template for Sally Science", () => {
+  it("gives Sally Science an experiment voice", () => {
     const text = buildDeterministicPostText(PLAYFUL_TEACHER, {
       kind: "grade-advanced",
       characterName: "Noor",
@@ -86,7 +87,7 @@ describe("buildDeterministicPostText", () => {
       toGrade: "10",
     });
     expect(text).toContain("Noor");
-    expect(text).toContain("chaos");
+    expect(text).toContain("control");
   });
 
   it("includes student name in every template", () => {
@@ -148,9 +149,9 @@ describe("scheduled school update safety", () => {
     );
   });
 
-  it("normalizes model wrappers and adds the campaign tag", () => {
+  it("normalizes model wrappers and leaves hashtags optional", () => {
     expect(normalizeScheduledSchoolUpdateText('```text\nTweet: "The lounge is buzzing after a strong class day."\n```'))
-      .toBe("The lounge is buzzing after a strong class day. #RubyHigh");
+      .toBe("The lounge is buzzing after a strong class day.");
   });
 
   it("builds a bounded welcome from verified guest-roster metadata", () => {
@@ -207,8 +208,32 @@ describe("scheduled school update safety", () => {
       { allowedHandle: "elizaOS" },
     )).toBeNull();
     expect(normalizeScheduledSchoolUpdateText("Read https://example.com #RubyHigh")).toBeNull();
-    expect(normalizeScheduledSchoolUpdateText("A".repeat(400))).toMatch(/^A+\.\.\. #RubyHigh$/);
+    expect(normalizeScheduledSchoolUpdateText("A".repeat(400))).toMatch(/^A+\.\.\.$/);
     expect(normalizeScheduledSchoolUpdateText("A".repeat(400))!.length).toBeLessThanOrEqual(280);
+  });
+
+  it("ranks eight shapes and rejects bland repeat copy", () => {
+    const raw = JSON.stringify({
+      candidates: [
+        { shape: "verdict", text: "At Ruby High, we're excited about another great day of learning." },
+        { shape: "contrast", text: "A confident claim arrived. Its evidence missed the bus." },
+        { shape: "object", text: "The classroom door opened." },
+        { shape: "correction", text: "The answer changed after class." },
+        { shape: "question", text: "What would change your mind?" },
+        { shape: "tiny-scene", text: "A rule reached the board with no receipt. It is staying after class." },
+        { shape: "rule", text: "Claims need evidence." },
+        { shape: "challenge", text: "Bring one assumption to class." },
+      ],
+    });
+    expect(selectScheduledTweetCandidate(raw, WARM_TEACHER, {
+      callToAction: "none",
+      recentPosts: [{
+        publishDate: "2026-07-21",
+        pillar: "teacher-take",
+        angle: "old",
+        text: "A confident claim arrived. Its evidence missed the bus.",
+      }],
+    })).toBe("A rule reached the board with no receipt. It is staying after class.");
   });
 
   it("appends only a bounded HTTPS activation link after generated copy is validated", () => {

@@ -61,7 +61,7 @@ const fakeRuntime = {
 
 let xSocialSvc = null;
 try {
-  xSocialSvc = await XSocialService.start(fakeRuntime);
+  xSocialSvc = await XSocialService.start(fakeRuntime, stateStore);
 } catch (err) {
   console.error("XSocialService failed to start:", err.message);
 }
