@@ -55,7 +55,7 @@
     "nft:check-image-urls": "node scripts/check-nft-image-urls.mjs",
     "eval:voice": "npm run build && node scripts/eval-voice.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "smoke:prod": "node scripts/smoke.mjs https://ruby-high.fly.dev",
+    "smoke:prod": "node scripts/smoke.mjs https://ruby-high.ai",
     "nft:crop-cards": "node scripts/generate-nft-card-crops.mjs",
     "deploy": "node scripts/deploy-fly.mjs",
     "clean": "rm -rf dist dist-spa .turbo"

@@ -386,7 +386,7 @@ should feel the product is *worthy* of the story that brought them there.
 
 ## Context
 
-- Ruby High is deployed on Fly.io (`ruby-high.fly.dev`) with scale-to-zero.
+- Ruby High is deployed on Fly.io at `ruby-high.ai` with scale-to-zero.
 - Users bring their own OpenRouter key — inference costs are theirs, not ours.
 - Marginal cost per active user is functionally zero.
 - Monetization: Stripe Hall Passes, Solana NFT packs (priced in SOL), card-burn

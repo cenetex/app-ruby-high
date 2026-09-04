@@ -52,9 +52,9 @@
  *
  * Usage:
  *   node scripts/smoke.mjs                                # against http://127.0.0.1:8080
- *   node scripts/smoke.mjs https://ruby-high.fly.dev      # against prod
+ *   node scripts/smoke.mjs https://ruby-high.ai           # against prod
  *   npm run smoke                                          # via package.json
- *   npm run smoke -- https://ruby-high.fly.dev             # with explicit base
+ *   npm run smoke -- https://ruby-high.ai                  # with explicit base
  *
  * Exits 0 on all green, non-zero on any failure (with which check
  * failed and what the response was). Wired into the Fly deploy flow

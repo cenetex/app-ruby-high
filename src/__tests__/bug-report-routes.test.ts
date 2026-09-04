@@ -177,7 +177,7 @@ describe("bug report route", () => {
     vi.stubGlobal("fetch", fetchMock);
     const harness = makeHarness({ description: "custom domain" }, {
       clientIp: "203.0.113.15",
-      callbackOrigin: "https://ruby-high.fly.dev",
+      callbackOrigin: "https://ruby-high.internal.example",
       origin: "https://ruby-high.ai",
       urlOrigin: "http://ruby-high.ai",
     });
