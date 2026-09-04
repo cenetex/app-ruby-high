@@ -1,0 +1,26 @@
+.share-main { max-width: 1160px; margin: 0 auto; padding: 64px 28px; }
+.share-intro { max-width: 640px; margin-bottom: 40px; }
+.share-intro h1 { color: var(--navy); font-size: clamp(2.4rem, 5vw, 4.4rem); letter-spacing: -0.05em; line-height: 1.05; margin-bottom: 20px; }
+.share-intro > p:last-child { font-size: 1.2rem; }
+.share-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 28px; align-items: start; }
+.invite-card, .share-art { background: var(--paper); border: 1px solid var(--line); border-radius: 24px; overflow: hidden; }
+.invite-card, .share-art > div { padding: 28px; }
+.share-grid h2, .share-details h2 { color: var(--navy); font-size: 1.5rem; letter-spacing: -0.03em; }
+.invite-card label { display: block; font-size: 0.9rem; font-weight: 750; margin: 20px 0 8px; }
+.invite-card select, .invite-card textarea { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: white; color: var(--ink); font: inherit; }
+.invite-card textarea { font-size: 0.94rem; line-height: 1.6; resize: vertical; }
+.share-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+[hidden] { display: none !important; }
+.share-actions button { font: inherit; font-weight: 750; cursor: pointer; }
+.share-main :is(button, select, textarea):focus-visible { outline: 4px solid var(--sky); outline-offset: 3px; }
+.share-status { min-height: 1.5em; margin: 10px 0 0; color: var(--blue); font-size: 0.9rem; }
+.share-note { font-size: 0.9rem; }
+.share-art > img { width: 100%; height: auto; }
+.share-details { margin-top: 48px; padding-top: 28px; border-top: 1px solid var(--line); }
+.share-details > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+@media (max-width: 720px) {
+  .share-main { padding: 40px 18px; }
+  .share-grid, .share-details > div { grid-template-columns: 1fr; }
+  .invite-card, .share-art > div { padding: 22px; }
+  .share-details > div { gap: 8px; }
+}

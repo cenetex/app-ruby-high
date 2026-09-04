@@ -61,18 +61,37 @@ function sendPlain(res, status, body) {
   res.end(body);
 }
 
-async function sendLandingFile(req, res, pathname) {
+function viewerLink(url) {
+  const params = new URLSearchParams();
+  // Forward only bounded campaign fields. The metrics API applies its fixed
+  // vocabulary when the visitor opens the viewer.
+  for (const key of ["ref", "rh_source", "rh_campaign", "rh_landing", "rh_entry"]) {
+    const value = url.searchParams.get(key)?.trim();
+    const limit = key === "ref" ? 120 : 32;
+    if (value && value.length <= limit && /^[a-z0-9_-]+$/i.test(value)) {
+      params.set(key, value);
+    }
+  }
+  const query = params.toString();
+  return `/api/apps/ruby-high/viewer${query ? `?${query.replaceAll("&", "&amp;")}` : ""}`;
+}
+
+async function sendLandingFile(req, res, pathname, url) {
   const fileUrl = fileUrlForPath(pathname);
   if (!fileUrl) {
     sendPlain(res, 404, "Not found");
     return;
   }
   try {
-    const body = await readFile(fileUrl);
+    let body = await readFile(fileUrl);
     res.statusCode = 200;
     res.setHeader("Content-Type", contentTypeFor(fileUrl.pathname));
     res.setHeader("Cache-Control", cacheControlFor(pathname));
     if (fileUrl.pathname.endsWith(".html")) {
+      body = Buffer.from(body.toString("utf8").replaceAll(
+        'href="/api/apps/ruby-high/viewer"',
+        `href="${viewerLink(url)}"`,
+      ));
       res.setHeader(
         "Content-Security-Policy",
         "default-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'; style-src 'self'; font-src 'self'; img-src 'self'",
@@ -94,7 +113,7 @@ async function sendLandingFile(req, res, pathname) {
 
 /**
  * Serve a request from the static landing bundle when the path is the root,
- * the shared stylesheet, or anything under /assets. Returns true when the
+ * the share kit, their styles/scripts, or anything under /assets. Returns true when the
  * response was written so the caller can stop; returns false otherwise so
  * the app routes can handle it.
  */
@@ -102,12 +121,17 @@ export async function serveLandingRequest(req, res, url) {
   if (req.method !== "GET" && req.method !== "HEAD") return false;
 
   if (url.pathname === "/" || url.pathname === "/index.html") {
-    await sendLandingFile(req, res, "/index.html");
+    await sendLandingFile(req, res, "/index.html", url);
     return true;
   }
 
-  if (url.pathname === "/styles.css" || url.pathname.startsWith("/assets/")) {
-    await sendLandingFile(req, res, url.pathname);
+  if (url.pathname === "/share" || url.pathname === "/share/") {
+    await sendLandingFile(req, res, "/share.html", url);
+    return true;
+  }
+
+  if (["/styles.css", "/share.css", "/share.js"].includes(url.pathname) || url.pathname.startsWith("/assets/")) {
+    await sendLandingFile(req, res, url.pathname, url);
     return true;
   }
 
