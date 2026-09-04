@@ -8,6 +8,12 @@ import {
 } from "../services/acquisition-attribution.js";
 
 describe("privacy-bounded acquisition attribution", () => {
+  it.each(["friend", "x", "discord", "telegram", "hn", "reddit", "partner"])("accepts the outreach campaign for %s", (source) => {
+    const attribution = normalizeAcquisitionAttribution({ source, campaignId: "outreach-v1" });
+    expect(attribution).toMatchObject({ source, campaignId: "outreach-v1" });
+    expect(acquisitionAttributionFromMetadata(acquisitionAttributionMetadata(attribution))).toEqual(attribution);
+  });
+
   it("keeps direct traffic explicit when no campaign values are supplied", () => {
     expect(normalizeAcquisitionAttribution({}, "dev")).toEqual({
       source: "direct",

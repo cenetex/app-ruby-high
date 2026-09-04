@@ -9,7 +9,7 @@ Reference docs. The entry points stay at the repo root:
 - [`../ROADMAP.md`](../ROADMAP.md) — revenue roadmap, sequenced
 
 ## Distribution
-- [`MARKETING.md`](./MARKETING.md) — the marketing-events pipeline (Amanda Iacone is one row, not the whole funnel)
+- [`MARKETING.md`](./MARKETING.md) — outreach copy, a seven-day first wave, tracked links, and channel results
 
 ## Curriculum
 - [`course-janus-cyborgism-design.md`](./course-janus-cyborgism-design.md) — design doc for a proposed Janus & Cyborgism Lab guest course in the Project 89 house format

@@ -1,84 +1,159 @@
-# Ruby High — Marketing Events Pipeline
+# Ruby High outreach and distribution
 
-**The Amanda Iacone email is one event in this pipeline, not the funnel.** Distribution
-is a *sequence of independent shots on goal* — each one drives a traffic spike; the
-product (the warm landing surface, three visible purchase paths, a converting first
-session) is what turns any given spike into supporters. If one event misses, the next
-fires. The roadmap builds the conversion surface; this doc builds the traffic.
+## The invitation
 
-> Status tags: 🟢 proposed by Jon · 🔵 proposed by Claude (edit/cut freely) · ▶️ queued · ✅ fired
+> One short class. Six AI classmates. A teacher with something to say.
+> Try your first class free at Ruby High.
 
-## Scoring
+Lead with a class people can try. Show the teacher's feedback and the yearbook
+as reasons to return. Give agent builders the plugin as a separate next step.
 
-Each event scored 1–5 on three axes, ranked by **leverage ÷ (cost + effort)**:
+The public [share kit](https://ruby-high.ai/share) provides channel-specific
+invitations, links, and downloadable school artwork. Its source lives in
+`landing/share.html` and `landing/share.js`. Select a channel, copy the text,
+and add a personal introduction before publishing.
 
-- **Leverage** — how big and how *qualified* the spike is if it lands.
-- **Cost** — actual dollars (against the ~$40 budget).
-- **Effort** — your time + how many one-shot tries you get.
+Status: copy and links prepared for this release. Record each publication in
+the table below when it happens.
 
-## The pipeline (ranked)
+## First wave
 
-| # | Event | Audience | Asset / dependency | Lev | Cost | Eff | Status |
-|---|-------|----------|--------------------|-----|------|-----|--------|
-| 1 | **Show HN launch** | HN / builders | landing + first-session must convert; "BYO key, $0 marginal cost" + founder story | 5 | $0 | 2 | 🔵 ▶️ |
-| 2 | **annihilism.org → school funnel** | philosophy readers already arriving | annihilism.org under your control; in-game lesson findable | 4 | $0 | 1 | 🔵 ▶️ |
-| 3 | **Amanda Iacone / Bloomberg Tax** | tax & accounting press | the legal-fight story; warm landing worthy of it | 5 | $0 | 1 (one shot) | 🟢 ▶️ |
-| 4 | **Founder-story thread (X)** | indie/AI builders, your existing circle | "lost funding for a 31-repo swarm, kept the school" narrative | 3 | $0 | 1 | 🔵 ▶️ |
-| 5 | **Gumroad books drop** | philosophy readers (Qiao), devs (Egregoregramming) | books already published; "Books" nav link (Roadmap P1.1) | 3 | $0 | 1 | 🔵 ▶️ |
-| 6 | **Reddit: r/SideProject + r/InternetIsBeautiful** | makers; aesthetics crowd | the chalkboard surface screenshots well | 3 | $0 | 2 | 🔵 ▶️ |
-| 7 | **Magic Eden listing as a crypto event** | Solana/NFT collectors | depends on Roadmap Magic Eden phase (verified collection) | 3 | seed $ | 3 | 🟢 ▶️ |
+Run a small wave over seven days after the release is live. This is a proposed
+sequence. The owner chooses each publication and sends it through their own
+account.
 
-## Per-event detail
+| When | Audience | Action | Useful result |
+|---|---|---|---|
+| Day 1 | Five first-time players | Use Wave A from the [activation playtest](activation-playtest.md). Observe the first class. | Find the first repeated point of confusion. |
+| Day 2 | Existing X audience | Post one classroom image with the X invitation. Reply to questions. | New visitors reach a class result. |
+| Day 3 | Ruby High Discord or Telegram | Ask members to try a class and share a teacher note. Pick one channel for this wave. | People explain why they would return. |
+| Day 4 | One agent community | Show the elizaOS install command and a short account of an agent taking class. Use the partner invitation. | Builders try the plugin or give concrete setup feedback. |
+| Day 5 | Five new first-time players | Run Wave B after the first observed friction is fixed. | Compare raw stage counts with Wave A. |
+| Day 6 | One builder community | Choose a Show HN or Reddit post using the guidance below. | A fresh audience tries the product and asks useful questions. |
+| Day 7 | Owner review | Read channel results and feedback. Choose one channel for the next wave. | A clear next action tied to observed use. |
 
-### 1. Show HN — "AI teachers grade your opinions in their own voice"
-The HN crowd rewards exactly this story: an indie dev who lost funding for an ambitious
-agent ecosystem and shipped one honest thing on a $40 budget, BYO-OpenRouter-key so
-marginal cost is zero. Title leads with the product, body tells the founder story.
-**Hard prerequisite:** the first-session flow (Roadmap P1.3) must convert a cold visitor
-in 30s, because HN sends a brutal, one-time spike. Don't fire this until the surface is
-ready. Best Tue–Thu morning ET.
+Budget for this wave: existing product assets and owner time. Reserve 20–30
+minutes for replies after each post, plus time for the observed playtests.
 
-### 2. annihilism.org → school funnel
-Lowest-cost, evergreen, fully owned. People already land on annihilism.org for the Qiao
-analects. Add a path from there into Ruby High ("the school where this is a lesson"),
-and make the in-game annihilism lesson discoverable from the landing page (Roadmap P1.1).
-This isn't a spike — it's a always-on trickle that costs nothing to keep running.
+## Ready-to-use copy
 
-### 3. Amanda Iacone (Bloomberg Tax & Accounting) — the legal-story email
-One email, one shot, potentially the highest-leverage single event here — a Bloomberg Tax
-piece is qualified traffic that no other channel reaches. But it's a single arrow: fire it
-only once the landing surface is *worthy of the story that brought them* (the whole point
-of Roadmap Phase 1). Treat it as the capstone of the first wave, not the opener.
+### X
 
-### 4. Founder-story thread (X)
-Honest narrative: the 31-repo RATiMICS swarm, the funding loss, the one thing kept and why.
-On-brand with annihilism (building meaning against entropy). Warm-up act that primes your
-existing circle before the bigger shots; also reusable as the body copy for #1 and #3.
+> One short class. Six AI classmates. A teacher with something to say.
+> Try your first class free at Ruby High.
 
-### 5. Gumroad books drop
-The books (Qiao PWYW, Egregoregramming 101 $19) are a *third purchase path* for people who
-won't play or collect (Roadmap P1.2 makes them visible). Each book has its own audience —
-launch them as their own small events, not just nav links.
+Choose **X** in the share kit for the tracked link. Attach the school artwork
+or a classroom screenshot from your own session.
 
-### 6. Reddit
-r/SideProject and r/InternetIsBeautiful for the chalkboard aesthetic (it screenshots well);
-philosophy subs for the annihilism angle. Lower leverage, but cheap repeat shots — unlike
-Amanda, you get many tries.
+### Discord or Telegram
 
-### 7. Magic Eden listing as a crypto-audience event
-Listing + verification is a *credibility signal* (Roadmap Magic Eden phase) AND a marketing
-event for the Solana/NFT crowd — but only this audience. Don't let it gate the press/HN
-events, which don't care about the collection. Seeding volume toward the badge threshold
-costs real money against a $40 budget; treat that spend as optional.
+> Our next class? Ruby High is a school game with short daily classes,
+> AI classmates, and teacher feedback. Try the first class free and share
+> the note your teacher gives you.
 
-## How to run this
+Choose the matching channel in the share kit. Use one existing community and
+ask one clear question: “What did you expect after your first answer?”
 
-1. **Sequence by readiness, not by rank.** #2 and #4 need nothing — fire now. #1 and #3
-   wait on a converting surface. #7 waits on Magic Eden verification.
-2. **One event at a time, then read the funnel** (Roadmap measurement). A spike you can't
-   measure teaches nothing — and the v4 admin metrics already track visitor D1 retention.
-3. **Amanda is a capstone, not an opener.** Don't burn the single highest-leverage shot
-   before the product can hold the traffic.
+### Agent community
 
-> Add rows freely. The point is that there's always a *next* event queued, so distribution
-> never rests on a single arrow.
+> Give your AI agent a desk at Ruby High. The elizaOS plugin gives it its own
+> student, a class schedule, and daily limits. Explore the school, then find
+> the plugin in the For agents section.
+
+Choose **An agent community** in the share kit. Its link opens `#agents`.
+The install command is `elizaos plugins add @rati-osf/plugin-ruby-high`.
+Use the [plugin repository](https://github.com/cenetex/plugin-ruby-high) for
+setup details. Log plugin questions and enrollments separately from the human
+viewer funnel.
+
+### Show HN draft for the maker
+
+Title: **Show HN: Ruby High, a school game for people and AI agents**
+
+> I built Ruby High around a short daily class. You create a student, answer
+> the class prompts, and get feedback from the teacher. Six AI classmates
+> take part, and your yearbook keeps your progress.
+>
+> Your first class is free. Agents can also attend through an elizaOS plugin
+> with their own student state, schedules, and daily limits.
+>
+> I would appreciate feedback on the first few minutes: what felt clear,
+> and where did you expect something different?
+
+Choose **Hacker News** in the share kit. Its link opens the playable viewer.
+Add a concrete detail about why you built the school. Be available to discuss
+it. Show HN asks for something people can try and a maker who can explain the
+work. [Show HN guidelines](https://news.ycombinator.com/showhn.html).
+
+### Reddit draft for the maker
+
+Title: **I built a school game with AI classmates. How does the first class feel?**
+
+> I am building Ruby High, a school game with short daily classes,
+> AI classmates, and teacher feedback. The first class is free.
+>
+> I am working on the opening experience. If you try it, what did you expect
+> to happen after your first answer?
+
+Choose **Reddit** in the share kit. Tailor the post to a community you already
+participate in. Check its current posting rules and explain your role in the
+project. Reddit recommends relevant, authentic participation and leaves
+community posting rules to moderators. [Reddit guidance](https://support.reddithelp.com/hc/en-us/articles/360043504051-Spam).
+
+## Links and measurement
+
+The share kit uses the fixed campaign `outreach-v1` and one source per channel:
+`friend`, `x`, `discord`, `telegram`, `hn`, `reddit`, or `partner`.
+The human entrypoint is `viewer`; the landing variant is `default`.
+Referral codes use `outreach-<source>-v1` for aggregate visit counts.
+
+Example landing link:
+
+```text
+https://ruby-high.ai/?ref=outreach-discord-v1&rh_source=discord&rh_campaign=outreach-v1&rh_landing=default&rh_entry=viewer
+```
+
+The homepage carries these fields through every class button. The viewer
+consumes them when it opens. The metrics API accepts a fixed vocabulary for
+acquisition fields. Use channel labels for referral codes and keep participant
+notes under offline codes from the playtest guide.
+
+Open `/api/apps/ruby-high/admin`, load the metrics, and use **Export acquisition**.
+In `ruby.events.acquisition.cohorts`, select `campaignId: "outreach-v1"` and
+compare sources and release markers. Each row includes:
+
+- `sampleSize`: distinct eligible human viewer visitors, assigned to their first source.
+- `steps`: ordered progress from app open through character creation, class
+  start, first answer, completed result, and viewed result. Each step includes
+  a numerator, denominator, and rate from the previous step.
+- `d1Return`: eligible visitors and visitors who open or resume the app at
+  least 24 hours after their first visit, within the available event window.
+
+`ruby.events.referral.byRef` counts referred app opens. A landing-page view
+enters this measurement when the visitor opens the class. Existing visitors
+keep their first acquisition source. Use a fresh browser profile for QA and
+label QA with `rh_source=internal&rh_entry=internal-qa`.
+
+Report raw counts for small samples. After the first ten eligible visitors
+from a channel, review the largest drop between stages and the actual
+feedback. Expand a channel when players reach a result and some return after
+24 hours. Treat ten visitors as a practical review point. Use larger samples
+before claiming one channel is better.
+
+The existing scheduled X links use `activation-x-*` referral codes. Keep those
+and the observed Wave A/B results separate from `outreach-v1` when reviewing
+the wave.
+
+## Publication log
+
+| Date | Owner | Channel | Public post URL | Source / campaign | New viewers | Results viewed | Returned / eligible | Feedback and next action |
+|---|---|---|---|---|---|---|---|---|
+| Pending | Project owner | First wave | — | outreach-v1 | — | — | — | Publish the release, then start Day 1. |
+
+## Follow-on work
+
+After the first wave, choose the channel with the clearest evidence of useful
+play. A relevant owned-site link can provide a steady path into a matching
+class. A press pitch can use observed player feedback and a concrete product
+story. Prepare each as its own small test with a named owner, source, and
+review date.

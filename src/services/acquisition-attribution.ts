@@ -2,6 +2,10 @@ export const ACQUISITION_SOURCES = [
   "direct",
   "x",
   "discord",
+  "telegram",
+  "hn",
+  "reddit",
+  "friend",
   "moltbook",
   "partner",
   "internal",
@@ -11,6 +15,7 @@ export const ACQUISITION_SOURCES = [
 export const ACQUISITION_CAMPAIGNS = [
   "none",
   "issue-174-v1",
+  "outreach-v1",
   "unknown",
 ] as const;
 

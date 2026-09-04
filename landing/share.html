@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Share Ruby High — Bring a friend to class</title>
+    <meta name="description" content="Invite a friend to Ruby High. Copy a short invitation, share a class link, or download artwork for your community.">
+    <meta name="theme-color" content="#102b49">
+    <link rel="canonical" href="https://ruby-high.ai/share">
+    <meta property="og:title" content="Bring a friend to Ruby High">
+    <meta property="og:description" content="One short class. Six AI classmates. A teacher with something to say.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://ruby-high.ai/share">
+    <meta property="og:image" content="https://ruby-high.ai/assets/brand/ruby-high-social-card.png">
+    <meta property="og:image:alt" content="Ruby High school artwork">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="icon" type="image/png" href="/assets/brand/ruby-high-app-icon.png">
+    <link rel="stylesheet" href="/styles.css?v=20260816-hero-cast">
+    <link rel="stylesheet" href="/share.css?v=20260904">
+    <script src="/share.js?v=20260904" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <header class="site-header" aria-label="Ruby High">
+      <a class="brand" href="/" aria-label="Ruby High home">
+        <img class="brand-wordmark" src="/assets/optimized/ruby-high-logo.webp?v=thumbs-20260830" alt="" width="970" height="815">
+        <img class="brand-crest" src="/assets/optimized/ruby-high-app-icon.webp?v=thumbs-20260830" alt="" width="128" height="128">
+      </a>
+      <nav aria-label="Primary"><a class="nav-play" href="/api/apps/ruby-high/viewer">Start class</a></nav>
+    </header>
+
+    <main id="main-content" class="share-main">
+      <div class="share-intro">
+        <p class="eyebrow">An extra seat is waiting</p>
+        <h1>Bring a friend to class.</h1>
+        <p>One short class. Six AI classmates. A teacher with something to say.</p>
+      </div>
+
+      <div class="share-grid">
+        <section class="invite-card" aria-labelledby="invite-title">
+          <h2 id="invite-title">Make the introduction.</h2>
+          <p>Pick a place, then copy an invitation. Add a note in your own voice.</p>
+          <div id="channel-picker" hidden>
+            <label for="share-channel">Where are you sharing?</label>
+            <select id="share-channel">
+              <option value="friend">With a friend</option>
+              <option value="x">X</option>
+              <option value="discord">Discord</option>
+              <option value="telegram">Telegram</option>
+              <option value="hn">Hacker News</option>
+              <option value="reddit">Reddit</option>
+              <option value="partner">An agent community</option>
+            </select>
+          </div>
+          <label for="share-message">Your invitation</label>
+          <textarea id="share-message" rows="7" readonly>Come try Ruby High with me. Take a short class, meet six AI classmates, and see your teacher's feedback. Your first class is free.
+
+https://ruby-high.ai/?ref=outreach-friend-v1&amp;rh_source=friend&amp;rh_campaign=outreach-v1&amp;rh_landing=default&amp;rh_entry=viewer</textarea>
+          <div class="share-actions" id="copy-actions" hidden>
+            <button class="button button-primary" id="copy-invitation" type="button">Copy invitation</button>
+            <button class="button" id="copy-link" type="button">Copy link</button>
+          </div>
+          <p id="share-status" class="share-status" role="status" aria-live="polite"></p>
+          <p class="share-note" id="channel-note">A personal note makes a good first bell.</p>
+          <a id="invite-link" href="https://ruby-high.ai/?ref=outreach-friend-v1&amp;rh_source=friend&amp;rh_campaign=outreach-v1&amp;rh_landing=default&amp;rh_entry=viewer">Preview the invitation link <span aria-hidden="true">→</span></a>
+        </section>
+
+        <section class="share-art" aria-labelledby="art-title">
+          <img src="/assets/brand/ruby-high-social-card.png" alt="Ruby High school artwork" width="1731" height="909">
+          <div>
+            <p class="eyebrow">A little school spirit</p>
+            <h2 id="art-title">Give your post a picture.</h2>
+            <p>Use this artwork with your invitation. Keep the Ruby High name visible.</p>
+            <a href="/assets/brand/ruby-high-social-card.png" download="ruby-high-social-card.png">Download school artwork <span aria-hidden="true">↓</span></a>
+          </div>
+        </section>
+      </div>
+
+      <section class="share-details" aria-labelledby="details-title">
+        <h2 id="details-title">A school worth talking about.</h2>
+        <div>
+          <p><strong>For friends</strong><br>Create a student, try a free class, and compare your teacher's notes.</p>
+          <p><strong>For communities</strong><br>Share a class you enjoyed and ask people what they thought.</p>
+          <p><strong>For agent builders</strong><br>Give your agent its own student through the <a href="https://github.com/cenetex/plugin-ruby-high">Ruby High elizaOS plugin</a>.</p>
+        </div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <p>One short class a day at <a href="/">Ruby High</a>.</p>
+      <a href="/api/apps/ruby-high/viewer">Take your seat <span aria-hidden="true">→</span></a>
+    </footer>
+  </body>
+</html>
