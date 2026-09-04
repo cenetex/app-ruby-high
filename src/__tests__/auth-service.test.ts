@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthService, clientSurfaceFromUserAgent } from "../services/auth-service.js";
 import { StateStore, type AuthStoreSnapshot, type AuthSessionRecord, type AuthUserRecord, type StateStoreLike } from "../services/state-store.js";
+import { setPasskeyAuthVerifiersForTest, type PasskeyRelyingParty } from "../services/passkey-auth.js";
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -67,6 +68,100 @@ afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(auths.splice(0).map((auth) => auth.stop()));
   await Promise.all(tmpDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
+describe("AuthService passkey security", () => {
+  const relyingParty: PasskeyRelyingParty = {
+    id: "localhost",
+    name: "Ruby High",
+    origin: "http://localhost:3000",
+  };
+
+  it("keeps a registration challenge durable and one-time across a restart", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ruby-high-passkey-state-"));
+    tmpDirs.push(dir);
+    const statePath = join(dir, "state.json");
+    const store = new StateStore(statePath, { debounceMs: 0 });
+    const first = await AuthService.start({} as never, store);
+    auths.push(first);
+    const guest = await first.createGuestSession();
+    const options = await first.beginPasskeyRegistration(guest.token, relyingParty, "Pip");
+    await first.stop();
+
+    const second = await AuthService.start({} as never, new StateStore(statePath, { debounceMs: 0 }));
+    auths.push(second);
+    const restore = setPasskeyAuthVerifiersForTest({
+      registration: async () => ({
+        id: "durable-passkey",
+        publicKey: Buffer.from("durable-public-key").toString("base64url"),
+        counter: 0,
+        deviceType: "singleDevice",
+        backedUp: false,
+      }),
+    });
+    try {
+      const completed = await second.completePasskeyRegistration(options.flowId, { id: "durable-passkey" }, guest.token);
+      expect(completed.record).toMatchObject({ userId: guest.record.userId, provider: "passkey" });
+      await expect(second.completePasskeyRegistration(options.flowId, { id: "durable-passkey" }, guest.token))
+        .rejects.toThrow("expired");
+    } finally {
+      restore();
+    }
+  });
+
+  it("supports two passkeys, safe deletion, recovery rotation, and recent verification", async () => {
+    const auth = await freshAuth();
+    const restore = setPasskeyAuthVerifiersForTest({
+      registration: async (input) => {
+        const id = String((input.response as { id?: string })?.id || "test-passkey");
+        return {
+          id,
+          publicKey: Buffer.from(`public:${id}`).toString("base64url"),
+          counter: 0,
+          deviceType: id.includes("synced") ? "multiDevice" : "singleDevice",
+          backedUp: id.includes("synced"),
+        };
+      },
+      authentication: async () => ({ newCounter: 1 }),
+    });
+    try {
+      const guest = await auth.createGuestSession();
+      const firstOptions = await auth.beginPasskeyRegistration(guest.token, relyingParty, "Pip");
+      const first = await auth.completePasskeyRegistration(firstOptions.flowId, { id: "device-one" }, guest.token);
+      expect(first.recoveryCode).toMatch(/^[A-Z2-9]{5}(?:-[A-Z2-9]{5}){3}$/);
+
+      const secondOptions = await auth.beginPasskeyRegistration(first.token, relyingParty, "Pip");
+      const second = await auth.completePasskeyRegistration(secondOptions.flowId, { id: "synced-two" }, first.token);
+      expect(second.recoveryCode).toBeUndefined();
+      expect(auth.passkeySummariesForRecord(second.record)).toMatchObject([
+        { name: "Device passkey 1", synced: false },
+        { name: "Synced passkey 1", synced: true },
+      ]);
+
+      const firstManagementId = auth.passkeySummariesForRecord(second.record)[0]!.id;
+      await auth.deletePasskey(second.token, firstManagementId);
+      expect(auth.passkeySummariesForRecord(second.record)).toHaveLength(1);
+      await expect(auth.deletePasskey(second.token, auth.passkeySummariesForRecord(second.record)[0]!.id))
+        .rejects.toThrow("Add another passkey");
+
+      const recoveryOptions = await auth.beginPasskeyRecovery(first.recoveryCode!, relyingParty);
+      const recovered = await auth.completePasskeyRecovery(recoveryOptions.flowId, { id: "recovered-device" });
+      expect(recovered.record.userId).toBe(guest.record.userId);
+      expect(recovered.recoveryCode).not.toBe(first.recoveryCode);
+      await expect(auth.beginPasskeyRecovery(first.recoveryCode!, relyingParty)).rejects.toThrow("not valid");
+
+      const reauth = await auth.beginPasskeyAuthentication(relyingParty, guest.record.userId);
+      expect(reauth.publicKey.allowCredentials).toHaveLength(2);
+      const staleToken = "stale-passkey-session";
+      auth.injectSessionForTest(staleToken, {
+        ...recovered.record,
+        passkeyVerifiedAt: Date.now() - 10 * 60 * 1000,
+      });
+      await expect(auth.regenerateRecoveryCode(staleToken)).rejects.toThrow("Use your passkey again");
+    } finally {
+      restore();
+    }
+  });
 });
 
 describe("AuthService.gcSessions", () => {

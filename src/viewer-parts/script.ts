@@ -72,6 +72,7 @@ const PURE_HELPER_NAMES = [
   "dailyClassProgressView",
   "makeVisitorId",
   "getVisitorId",
+  "rotateVisitorId",
   "attachVisitorHeader",
   "teacherShortName",
   "earnedCourseGrade",

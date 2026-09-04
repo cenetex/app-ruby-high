@@ -327,6 +327,19 @@ export class DynamoStateStore implements StateStoreLike {
     return null;
   }
 
+  async takeServiceState(id: string): Promise<StoredServiceStateRecord | null> {
+    this.invalidateScanCache();
+    const result = await this.client.send(new DeleteCommand({
+      TableName: this.tableName,
+      Key: { pk: `service-state:${encodeURIComponent(id)}` },
+      ReturnValues: "ALL_OLD",
+    })) as { Attributes?: Record<string, unknown> };
+    const record = result.Attributes?.serviceState as StoredServiceStateRecord | undefined;
+    if (!record || record.id !== id) return null;
+    if (record.expiresAt && record.expiresAt <= Date.now()) return null;
+    return record;
+  }
+
   private async scanAll(): Promise<Array<Record<string, unknown>>> {
     const now = Date.now();
     if (this.scanCache && now - this.scanCache.at <= SCAN_CACHE_MS) {
@@ -549,13 +562,15 @@ export class DynamoStateStore implements StateStoreLike {
 
   async saveServiceState(record: StoredServiceStateRecord): Promise<void> {
     this.invalidateScanCache();
+    const item: Record<string, unknown> = {
+      pk: `service-state:${encodeURIComponent(record.id)}`,
+      serviceState: record,
+      updatedAt: record.updatedAt,
+    };
+    if (record.expiresAt) item.expiresAt = Math.floor(record.expiresAt / 1000);
     await this.client.send(new PutCommand({
       TableName: this.tableName,
-      Item: {
-        pk: `service-state:${encodeURIComponent(record.id)}`,
-        serviceState: record,
-        updatedAt: record.updatedAt,
-      },
+      Item: item,
     }));
   }
 

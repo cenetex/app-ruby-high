@@ -267,6 +267,8 @@ describe("SqliteStateStore", () => {
     expect(await s.loadSchoolEvents()).toEqual([schoolEvent]);
     expect(await s.loadServiceState("svc:test")).toEqual(serviceState);
     expect(await s.loadServiceState("svc:missing")).toBeNull();
+    expect(await s.takeServiceState("svc:test")).toEqual(serviceState);
+    expect(await s.takeServiceState("svc:test")).toBeNull();
 
     await s.deletePack("rh:user:a", "p1");
     await s.deleteDraftPack("d1");

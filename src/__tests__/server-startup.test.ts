@@ -110,6 +110,18 @@ describe("production startup guardrails", () => {
     expect(dockerfile).toContain("COPY landing ./landing");
   });
 
+  it("redirects public traffic to the passkey origin while keeping health checks direct", () => {
+    expect(serverEntry).toContain("function redirectToCanonicalHost(req, res, url)");
+    expect(serverEntry).toContain("res.statusCode = 308");
+    expect(serverEntry).toContain('res.setHeader("Vary", "Host, X-Forwarded-Host")');
+    expect(serverEntry.indexOf("if (redirectToCanonicalHost(req, res, url))")).toBeGreaterThan(
+      serverEntry.indexOf('url.pathname === "/health"'),
+    );
+    expect(serverEntry.indexOf("if (redirectToCanonicalHost(req, res, url))")).toBeLessThan(
+      serverEntry.indexOf("await serveLandingRequest(req, res, url)"),
+    );
+  });
+
   it("uses the shared host JSON body cap helper", () => {
     expect(serverEntry).toContain('from "./http-server.mjs"');
     expect(devServerEntry).toContain('from "./http-server.mjs"');

@@ -47,8 +47,9 @@ class FakeDdbDocClient implements DynamoDBDocumentClientLike {
     }
     if (command instanceof DeleteCommand) {
       const { Key } = (command as DeleteCommand).input;
+      const item = Key?.pk ? this.items.get(String(Key.pk)) : undefined;
       if (Key?.pk) this.items.delete(String(Key.pk));
-      return {};
+      return (command as DeleteCommand).input.ReturnValues === "ALL_OLD" ? { Attributes: item } : {};
     }
     throw new Error(`FakeDdbDocClient: unhandled command ${command?.constructor?.name}`);
   }
@@ -732,6 +733,8 @@ describe("DynamoStateStore", () => {
       },
     });
     await expect(store.loadServiceState("svc:missing")).resolves.toBeNull();
+    await expect(store.takeServiceState("svc:test")).resolves.toMatchObject({ id: "svc:test" });
+    await expect(store.takeServiceState("svc:test")).resolves.toBeNull();
     const loadedSessions = await store.load();
     expect(loadedSessions.has("rh:user:state")).toBe(true);
     expect(loadedSessions.has("service-state:svc%3Atest")).toBe(false);

@@ -128,6 +128,23 @@ function isSecureReq(req) {
   return proto === "https";
 }
 
+function requestHost(req) {
+  const forwardedHost = TRUST_PROXY ? req.headers["x-forwarded-host"] : null;
+  return (forwardedHost ?? req.headers.host ?? "").toString().split(",").at(-1).trim().toLowerCase();
+}
+
+function redirectToCanonicalHost(req, res, url) {
+  if (!PUBLIC_BASE) return false;
+  const canonical = new URL(PUBLIC_BASE);
+  if (requestHost(req) === canonical.host.toLowerCase()) return false;
+  res.statusCode = 308;
+  res.setHeader("Location", new URL(`${url.pathname}${url.search}`, canonical).toString());
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Vary", "Host, X-Forwarded-Host");
+  res.end();
+  return true;
+}
+
 function makeRouteContext(req, res, url) {
   return createRouteContext({
     req,
@@ -269,6 +286,8 @@ const server = createServer(async (req, res) => {
     sendJson(res, { ...healthPayload(), status: "ready", t: Date.now() });
     return;
   }
+
+  if (redirectToCanonicalHost(req, res, url)) return;
 
   if (await serveLandingRequest(req, res, url)) {
     return;

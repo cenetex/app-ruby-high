@@ -65,12 +65,13 @@ export async function passkeyRegistrationOptions(input: {
   relyingParty: PasskeyRelyingParty;
   existingCredentials?: StoredPasskeyCredential[];
 }): Promise<PublicKeyCredentialCreationOptionsJSON> {
+  const displayName = cleanDisplayName(input.displayName);
   return generateRegistrationOptions({
     rpName: input.relyingParty.name,
     rpID: input.relyingParty.id,
     userID: new TextEncoder().encode(input.userId),
-    userName: input.userId,
-    userDisplayName: cleanDisplayName(input.displayName),
+    userName: `${displayName} · ${input.userId.slice(-6)}`,
+    userDisplayName: displayName,
     timeout: 60_000,
     attestationType: "none",
     excludeCredentials: (input.existingCredentials ?? []).map((credential) => ({
@@ -87,11 +88,20 @@ export async function passkeyRegistrationOptions(input: {
 
 export async function passkeyAuthenticationOptions(
   relyingParty: PasskeyRelyingParty,
+  credentials?: StoredPasskeyCredential[],
 ): Promise<PublicKeyCredentialRequestOptionsJSON> {
   return generateAuthenticationOptions({
     rpID: relyingParty.id,
     timeout: 60_000,
     userVerification: "required",
+    ...(credentials?.length
+      ? {
+          allowCredentials: credentials.map((credential) => ({
+            id: credential.id,
+            ...(credential.transports?.length ? { transports: credential.transports } : {}),
+          })),
+        }
+      : {}),
   });
 }
 

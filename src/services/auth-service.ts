@@ -8,6 +8,7 @@ import {
   type AuthUserRecord,
   type MetricClientSurface,
   type StoredPasskeyCredential,
+  type StoredServiceStateRecord,
   type StateStoreLike,
 } from "./state-store.js";
 import {
@@ -29,6 +30,7 @@ export interface AuthRecord {
   createdAt: number;
   expiresAt: number;
   provider?: AuthUserRecord["provider"];
+  passkeyVerifiedAt?: number;
   /** OpenRouter username if returned by the token exchange. Cosmetic. */
   label?: string;
   walletAddress?: string;
@@ -85,18 +87,32 @@ interface PendingPkce {
 }
 
 interface PendingPasskey {
-  kind: "registration" | "authentication";
+  kind: "registration" | "authentication" | "recovery";
   challenge: string;
   relyingParty: PasskeyRelyingParty;
   createdAt: number;
   userId?: string;
+  displayName?: string;
+  recoveryCodeHash?: string;
+}
+
+export interface PasskeySummary {
+  id: string;
+  name: string;
+  createdAt: number;
+  lastUsedAt?: number;
+  synced: boolean;
 }
 
 const SESSION_COOKIE = "rh_session";
 const PENDING_AUTH_COOKIE = "rh_auth_pending";
 const PENDING_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const PASSKEY_PENDING_TTL_MS = 2 * 60 * 1000; // close to the 60-second browser ceremony
+const RECENT_PASSKEY_VERIFICATION_MS = 5 * 60 * 1000;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const ACTIVITY_TOUCH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const PASSKEY_STATE_PREFIX = "auth:passkey:";
+const RECOVERY_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 /**
  * OpenRouter PKCE auth + opaque cookie sessions.
@@ -131,6 +147,7 @@ export class AuthService extends Service {
     user: AuthUserRecord;
     credential: StoredPasskeyCredential;
   }>();
+  private readonly usersByRecoveryCodeHash = new Map<string, AuthUserRecord>();
   private readonly store: StateStoreLike;
   private readonly pending = new Map<string, PendingPkce>();
   private readonly pendingPasskeys = new Map<string, PendingPasskey>();
@@ -164,6 +181,7 @@ export class AuthService extends Service {
     this.usersByProviderHash.clear();
     this.usersById.clear();
     this.passkeysByCredentialId.clear();
+    this.usersByRecoveryCodeHash.clear();
     this.pending.clear();
     this.pendingPasskeys.clear();
   }
@@ -321,6 +339,7 @@ export class AuthService extends Service {
           createdAt: touched.createdAt,
           expiresAt: touched.expiresAt,
           ...(touched.provider ? { provider: touched.provider } : {}),
+          ...(touched.passkeyVerifiedAt ? { passkeyVerifiedAt: touched.passkeyVerifiedAt } : {}),
           clientSurface,
         });
       }
@@ -525,27 +544,30 @@ export class AuthService extends Service {
   async beginPasskeyRegistration(
     sessionToken: string | null,
     relyingParty: PasskeyRelyingParty,
+    displayName?: string | null,
   ): Promise<{ flowId: string; publicKey: Awaited<ReturnType<typeof passkeyRegistrationOptions>> }> {
     this.gcPendingPasskeys();
     const record = this.resolve(sessionToken);
     if (!record) throw new Error("Start a Ruby High session before creating a passkey.");
     const credentials = this.passkeysForUser(record.userId);
-    if (credentials.length > 0 && record.provider !== "passkey") {
-      throw new Error("Use your current passkey before adding another one.");
+    if (credentials.length > 0 && !this.hasRecentPasskeyVerification(record)) {
+      throw new Error("Use your current passkey again before adding another one.");
     }
+    const label = passkeyAccountLabel(displayName ?? record.label, record.userId);
     const publicKey = await passkeyRegistrationOptions({
       userId: record.userId,
-      displayName: record.label,
+      displayName: label,
       relyingParty,
       existingCredentials: credentials,
     });
     const flowId = base64url(randomBytes(24));
-    this.pendingPasskeys.set(flowId, {
+    await this.rememberPendingPasskey(flowId, {
       kind: "registration",
       challenge: publicKey.challenge,
       relyingParty,
       createdAt: Date.now(),
       userId: record.userId,
+      displayName: label,
     });
     return { flowId, publicKey };
   }
@@ -554,8 +576,8 @@ export class AuthService extends Service {
     flowId: string,
     response: unknown,
     sessionToken: string | null,
-  ): Promise<{ token: string; record: AuthRecord; isReturning: boolean }> {
-    const pending = this.takePendingPasskey(flowId, "registration");
+  ): Promise<{ token: string; record: AuthRecord; isReturning: boolean; recoveryCode?: string }> {
+    const pending = await this.takePendingPasskey(flowId, "registration");
     const current = this.resolve(sessionToken);
     if (!current || !pending.userId || current.userId !== pending.userId) {
       throw new Error("Passkey registration session changed. Please try again.");
@@ -565,64 +587,88 @@ export class AuthService extends Service {
       expectedChallenge: pending.challenge,
       relyingParty: pending.relyingParty,
     });
-    const collision = this.passkeysByCredentialId.get(verified.id);
-    if (collision && collision.user.userId !== current.userId) {
-      throw new Error("This passkey belongs to another Ruby High account.");
-    }
-    const now = Date.now();
-    const existing = this.passkeyUserForId(current.userId);
-    const credential: StoredPasskeyCredential = {
-      id: verified.id,
-      publicKey: verified.publicKey,
-      counter: Math.max(0, verified.counter),
-      ...(verified.transports?.length ? { transports: verified.transports } : {}),
-      deviceType: verified.deviceType,
-      backedUp: verified.backedUp,
-      createdAt: collision?.credential.createdAt ?? now,
-    };
-    const passkeys = [
-      ...(existing?.passkeys ?? []).filter((candidate) => candidate.id !== credential.id),
-      credential,
-    ];
-    const user: AuthUserRecord = existing
-      ? {
-          ...existing,
-          lastLoginAt: now,
-          label: current.label && current.label !== "Guest" ? current.label : "Passkey",
-          passkeys,
-        }
-      : {
-          userId: current.userId,
-          provider: "passkey",
-          providerUserHash: providerIdentityHash(current.userId, "passkey"),
-          createdAt: this.userProfileForId(current.userId)?.createdAt ?? now,
-          lastLoginAt: now,
-          label: current.label && current.label !== "Guest" ? current.label : "Passkey",
-          passkeys,
-          ...(current.clientSurface ? { clientSurface: current.clientSurface } : {}),
-        };
-    this.rememberAuthUser(user);
-    await this.store.saveAuthUser(user);
-    const session = await this.issueSession(user, now);
-    log.event("auth.signed-in", {
-      userId: user.userId,
-      provider: "passkey",
-      isReturning: !!existing,
+    const completed = await this.finishPasskeyCreation({
+      userId: current.userId,
+      displayName: pending.displayName ?? current.label,
+      clientSurface: current.clientSurface,
+      verified,
+      rotateRecoveryCode: false,
     });
-    return { ...session, isReturning: !!existing };
+    log.event("auth.signed-in", {
+      userId: completed.record.userId,
+      provider: "passkey",
+      isReturning: completed.isReturning,
+    });
+    return completed;
+  }
+
+  async beginPasskeyRecovery(
+    recoveryCode: string,
+    relyingParty: PasskeyRelyingParty,
+  ): Promise<{ flowId: string; publicKey: Awaited<ReturnType<typeof passkeyRegistrationOptions>> }> {
+    this.gcPendingPasskeys();
+    const recoveryCodeHash = recoveryCodeDigest(recoveryCode);
+    const user = recoveryCodeHash ? this.usersByRecoveryCodeHash.get(recoveryCodeHash) : undefined;
+    if (!user || user.provider !== "passkey") throw new Error("Recovery code is not valid.");
+    const publicKey = await passkeyRegistrationOptions({
+      userId: user.userId,
+      displayName: passkeyAccountLabel(user.label, user.userId),
+      relyingParty,
+      existingCredentials: this.passkeysForUser(user.userId),
+    });
+    const flowId = base64url(randomBytes(24));
+    await this.rememberPendingPasskey(flowId, {
+      kind: "recovery",
+      challenge: publicKey.challenge,
+      relyingParty,
+      createdAt: Date.now(),
+      userId: user.userId,
+      displayName: user.label,
+      recoveryCodeHash,
+    });
+    return { flowId, publicKey };
+  }
+
+  async completePasskeyRecovery(
+    flowId: string,
+    response: unknown,
+  ): Promise<{ token: string; record: AuthRecord; isReturning: true; recoveryCode: string }> {
+    const pending = await this.takePendingPasskey(flowId, "recovery");
+    const user = pending.userId ? this.passkeyUserForId(pending.userId) : undefined;
+    if (!user || !pending.recoveryCodeHash || user.recoveryCodeHash !== pending.recoveryCodeHash) {
+      throw new Error("Recovery request expired. Please start again.");
+    }
+    const verified = await verifyPasskeyRegistration({
+      response,
+      expectedChallenge: pending.challenge,
+      relyingParty: pending.relyingParty,
+    });
+    const completed = await this.finishPasskeyCreation({
+      userId: user.userId,
+      displayName: pending.displayName ?? user.label,
+      clientSurface: user.clientSurface,
+      verified,
+      rotateRecoveryCode: true,
+    });
+    if (!completed.recoveryCode) throw new Error("Recovery code rotation failed.");
+    return { ...completed, isReturning: true, recoveryCode: completed.recoveryCode };
   }
 
   async beginPasskeyAuthentication(
     relyingParty: PasskeyRelyingParty,
+    expectedUserId?: string,
   ): Promise<{ flowId: string; publicKey: Awaited<ReturnType<typeof passkeyAuthenticationOptions>> }> {
     this.gcPendingPasskeys();
-    const publicKey = await passkeyAuthenticationOptions(relyingParty);
+    const credentials = expectedUserId ? this.passkeysForUser(expectedUserId) : undefined;
+    if (expectedUserId && !credentials?.length) throw new Error("This account has no passkey.");
+    const publicKey = await passkeyAuthenticationOptions(relyingParty, credentials);
     const flowId = base64url(randomBytes(24));
-    this.pendingPasskeys.set(flowId, {
+    await this.rememberPendingPasskey(flowId, {
       kind: "authentication",
       challenge: publicKey.challenge,
       relyingParty,
       createdAt: Date.now(),
+      ...(expectedUserId ? { userId: expectedUserId } : {}),
     });
     return { flowId, publicKey };
   }
@@ -631,10 +677,13 @@ export class AuthService extends Service {
     flowId: string,
     response: unknown,
   ): Promise<{ token: string; record: AuthRecord; isReturning: true }> {
-    const pending = this.takePendingPasskey(flowId, "authentication");
+    const pending = await this.takePendingPasskey(flowId, "authentication");
     const credentialId = passkeyCredentialId(response);
     const match = this.passkeysByCredentialId.get(credentialId);
     if (!match) throw new Error("This passkey is not registered with Ruby High.");
+    if (pending.userId && pending.userId !== match.user.userId) {
+      throw new Error("Use a passkey for this Ruby High account.");
+    }
     const verified = await verifyPasskeyAuthentication({
       response,
       expectedChallenge: pending.challenge,
@@ -651,7 +700,7 @@ export class AuthService extends Service {
     };
     this.rememberAuthUser(user);
     await this.store.saveAuthUser(user);
-    const session = await this.issueSession(user, now);
+    const session = await this.issueSession(user, now, now);
     log.event("auth.signed-in", {
       userId: user.userId,
       provider: "passkey",
@@ -662,6 +711,76 @@ export class AuthService extends Service {
 
   hasPasskeyForRecord(record: AuthRecord | null | undefined): boolean {
     return !!record && this.passkeysForUser(record.userId).length > 0;
+  }
+
+  hasRecentPasskeyVerification(
+    record: AuthRecord | null | undefined,
+    now: number = Date.now(),
+  ): boolean {
+    return !!record
+      && record.provider === "passkey"
+      && typeof record.passkeyVerifiedAt === "number"
+      && now - record.passkeyVerifiedAt <= RECENT_PASSKEY_VERIFICATION_MS;
+  }
+
+  passkeySummariesForRecord(record: AuthRecord | null | undefined): PasskeySummary[] {
+    if (!record) return [];
+    const counts = new Map<string, number>();
+    return this.passkeysForUser(record.userId)
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map((credential) => {
+        const baseName = credential.deviceType === "multiDevice" || credential.backedUp
+          ? "Synced passkey"
+          : credential.deviceType === "singleDevice"
+            ? "Device passkey"
+            : "Passkey";
+        const count = (counts.get(baseName) ?? 0) + 1;
+        counts.set(baseName, count);
+        return {
+          id: passkeyManagementId(credential.id),
+          name: `${baseName} ${count}`,
+          createdAt: credential.createdAt,
+          ...(credential.lastUsedAt ? { lastUsedAt: credential.lastUsedAt } : {}),
+          synced: credential.deviceType === "multiDevice" || credential.backedUp === true,
+        };
+      });
+  }
+
+  recoveryConfiguredForRecord(record: AuthRecord | null | undefined): boolean {
+    return !!record && !!this.passkeyUserForId(record.userId)?.recoveryCodeHash;
+  }
+
+  async regenerateRecoveryCode(sessionToken: string | null): Promise<string> {
+    const record = this.requireRecentPasskey(sessionToken);
+    const user = this.passkeyUserForId(record.userId);
+    if (!user) throw new Error("Passkey account is unavailable.");
+    const recovery = createRecoveryCode();
+    const updated = {
+      ...user,
+      recoveryCodeHash: recovery.hash,
+      recoveryCodeCreatedAt: Date.now(),
+    };
+    this.rememberAuthUser(updated);
+    await this.store.saveAuthUser(updated);
+    return recovery.code;
+  }
+
+  async deletePasskey(sessionToken: string | null, managementId: string): Promise<void> {
+    const record = this.requireRecentPasskey(sessionToken);
+    const user = this.passkeyUserForId(record.userId);
+    const passkeys = user?.passkeys ?? [];
+    if (!user) throw new Error("Passkey account is unavailable.");
+    if (passkeys.length <= 1) throw new Error("Add another passkey before deleting this one.");
+    const target = passkeys.find((credential) => passkeyManagementId(credential.id) === managementId);
+    if (!target) throw new Error("Passkey was not found.");
+    const updated = { ...user, passkeys: passkeys.filter((credential) => credential.id !== target.id) };
+    this.rememberAuthUser(updated);
+    await this.store.saveAuthUser(updated);
+  }
+
+  requireRecentPasskeyForAccount(sessionToken: string | null): void {
+    const record = this.resolve(sessionToken);
+    if (record && this.hasPasskeyForRecord(record)) this.requireRecentPasskey(sessionToken);
   }
 
   private passkeysForUser(userId: string): StoredPasskeyCredential[] {
@@ -680,18 +799,106 @@ export class AuthService extends Service {
     return undefined;
   }
 
-  private takePendingPasskey(flowId: string, kind: PendingPasskey["kind"]): PendingPasskey {
+  private async rememberPendingPasskey(flowId: string, pending: PendingPasskey): Promise<void> {
+    this.pendingPasskeys.set(flowId, pending);
+    if (!this.store.saveServiceState) return;
+    await this.store.saveServiceState({
+      id: `${PASSKEY_STATE_PREFIX}${flowId}`,
+      updatedAt: pending.createdAt,
+      expiresAt: pending.createdAt + PASSKEY_PENDING_TTL_MS,
+      data: pending as unknown as Record<string, unknown>,
+    });
+  }
+
+  private async takePendingPasskey(flowId: string, kind: PendingPasskey["kind"]): Promise<PendingPasskey> {
     this.gcPendingPasskeys();
     const clean = String(flowId || "").trim();
-    const pending = this.pendingPasskeys.get(clean);
+    let pending = this.pendingPasskeys.get(clean);
+    if (clean && this.store.takeServiceState) {
+      const stored = await this.store.takeServiceState(`${PASSKEY_STATE_PREFIX}${clean}`);
+      pending = pendingPasskeyFromState(stored) ?? pending;
+    }
     if (clean) this.pendingPasskeys.delete(clean);
-    if (!pending || pending.kind !== kind) throw new Error("Passkey request expired. Please try again.");
+    if (
+      !pending
+      || pending.kind !== kind
+      || Date.now() - pending.createdAt > PASSKEY_PENDING_TTL_MS
+    ) {
+      throw new Error("Passkey request expired. Please try again.");
+    }
     return pending;
   }
 
-  private async issueSession(user: AuthUserRecord, now: number): Promise<{ token: string; record: AuthRecord }> {
+  private requireRecentPasskey(sessionToken: string | null): AuthRecord {
+    const record = this.resolve(sessionToken);
+    if (!this.hasRecentPasskeyVerification(record)) {
+      throw new Error("Use your passkey again before changing account security.");
+    }
+    return record!;
+  }
+
+  private async finishPasskeyCreation(input: {
+    userId: string;
+    displayName?: string | null;
+    clientSurface?: MetricClientSurface;
+    verified: Awaited<ReturnType<typeof verifyPasskeyRegistration>>;
+    rotateRecoveryCode: boolean;
+  }): Promise<{ token: string; record: AuthRecord; isReturning: boolean; recoveryCode?: string }> {
+    const collision = this.passkeysByCredentialId.get(input.verified.id);
+    if (collision && collision.user.userId !== input.userId) {
+      throw new Error("This passkey belongs to another Ruby High account.");
+    }
+    const now = Date.now();
+    const existing = this.passkeyUserForId(input.userId);
+    const credential: StoredPasskeyCredential = {
+      id: input.verified.id,
+      publicKey: input.verified.publicKey,
+      counter: Math.max(0, input.verified.counter),
+      ...(input.verified.transports?.length ? { transports: input.verified.transports } : {}),
+      deviceType: input.verified.deviceType,
+      backedUp: input.verified.backedUp,
+      createdAt: collision?.credential.createdAt ?? now,
+    };
+    const passkeys = [
+      ...(existing?.passkeys ?? []).filter((candidate) => candidate.id !== credential.id),
+      credential,
+    ];
+    const recovery = input.rotateRecoveryCode || !existing?.recoveryCodeHash
+      ? createRecoveryCode()
+      : null;
+    const label = passkeyAccountLabel(input.displayName ?? existing?.label, input.userId);
+    const user: AuthUserRecord = {
+      ...(existing ?? {
+        userId: input.userId,
+        provider: "passkey" as const,
+        providerUserHash: providerIdentityHash(input.userId, "passkey"),
+        createdAt: this.userProfileForId(input.userId)?.createdAt ?? now,
+      }),
+      lastLoginAt: now,
+      label,
+      passkeys,
+      ...(recovery
+        ? { recoveryCodeHash: recovery.hash, recoveryCodeCreatedAt: now }
+        : {}),
+      ...(input.clientSurface ? { clientSurface: input.clientSurface } : {}),
+    };
+    this.rememberAuthUser(user);
+    await this.store.saveAuthUser(user);
+    const session = await this.issueSession(user, now, now);
+    return {
+      ...session,
+      isReturning: !!existing,
+      ...(recovery ? { recoveryCode: recovery.code } : {}),
+    };
+  }
+
+  private async issueSession(
+    user: AuthUserRecord,
+    now: number,
+    passkeyVerifiedAt?: number,
+  ): Promise<{ token: string; record: AuthRecord }> {
     const token = base64url(randomBytes(24));
-    const record = this.recordForUser(user, now);
+    const record = this.recordForUser(user, now, passkeyVerifiedAt);
     this.sessions.set(token, record);
     await this.store.saveAuthSession({
       token,
@@ -699,6 +906,7 @@ export class AuthService extends Service {
       createdAt: record.createdAt,
       expiresAt: record.expiresAt,
       provider: record.provider,
+      ...(record.passkeyVerifiedAt ? { passkeyVerifiedAt: record.passkeyVerifiedAt } : {}),
       ...(record.clientSurface ? { clientSurface: record.clientSurface } : {}),
     });
     return { token, record };
@@ -785,11 +993,13 @@ export class AuthService extends Service {
     }
     for (const user of target.authUsers ?? []) {
       for (const credential of user.passkeys ?? []) this.passkeysByCredentialId.delete(credential.id);
+      if (user.recoveryCodeHash) this.usersByRecoveryCodeHash.delete(user.recoveryCodeHash);
       this.usersByProviderHash.delete(authUserKey(user.provider, user.providerUserHash));
     }
     for (const [key, user] of Array.from(this.usersByProviderHash.entries())) {
       if (user.userId === target.userId) {
         for (const credential of user.passkeys ?? []) this.passkeysByCredentialId.delete(credential.id);
+        if (user.recoveryCodeHash) this.usersByRecoveryCodeHash.delete(user.recoveryCodeHash);
         this.usersByProviderHash.delete(key);
       }
     }
@@ -872,7 +1082,7 @@ export class AuthService extends Service {
   private gcPendingPasskeys(): void {
     const now = Date.now();
     for (const [key, pending] of this.pendingPasskeys) {
-      if (now - pending.createdAt > PENDING_TTL_MS) this.pendingPasskeys.delete(key);
+      if (now - pending.createdAt > PASSKEY_PENDING_TTL_MS) this.pendingPasskeys.delete(key);
     }
   }
 
@@ -896,6 +1106,7 @@ export class AuthService extends Service {
         createdAt: session.createdAt,
         expiresAt: session.expiresAt,
         provider: session.provider ?? user?.provider,
+        ...(session.passkeyVerifiedAt ? { passkeyVerifiedAt: session.passkeyVerifiedAt } : {}),
         label: user?.label,
         ...(user?.walletAddress ? { walletAddress: user.walletAddress } : {}),
         ...(user?.walletChainType ? { walletChainType: user.walletChainType } : {}),
@@ -910,13 +1121,14 @@ export class AuthService extends Service {
     return now - record.createdAt > SESSION_TTL_MS || record.expiresAt < now;
   }
 
-  private recordForUser(user: AuthUserRecord, now: number): AuthRecord {
+  private recordForUser(user: AuthUserRecord, now: number, passkeyVerifiedAt?: number): AuthRecord {
     const profile = this.userProfileForId(user.userId) ?? user;
     return {
       userId: user.userId,
       createdAt: now,
       expiresAt: now + SESSION_TTL_MS,
       provider: user.provider,
+      ...(passkeyVerifiedAt ? { passkeyVerifiedAt } : {}),
       label: user.label ?? profile.label,
       ...(profile.walletAddress ? { walletAddress: profile.walletAddress } : {}),
       ...(profile.walletChainType ? { walletChainType: profile.walletChainType } : {}),
@@ -974,6 +1186,7 @@ export class AuthService extends Service {
   private rememberAuthUser(user: AuthUserRecord): AuthUserRecord {
     const providerKey = authUserKey(user.provider, user.providerUserHash);
     const previous = this.usersByProviderHash.get(providerKey);
+    if (previous?.recoveryCodeHash) this.usersByRecoveryCodeHash.delete(previous.recoveryCodeHash);
     for (const credential of previous?.passkeys ?? []) {
       const mapped = this.passkeysByCredentialId.get(credential.id);
       if (mapped?.user.providerUserHash === previous?.providerUserHash) {
@@ -984,6 +1197,7 @@ export class AuthService extends Service {
     for (const credential of user.passkeys ?? []) {
       this.passkeysByCredentialId.set(credential.id, { user, credential });
     }
+    if (user.recoveryCodeHash) this.usersByRecoveryCodeHash.set(user.recoveryCodeHash, user);
     const merged = mergeAuthUserProfile(this.usersById.get(user.userId), user);
     this.usersById.set(user.userId, merged);
     return merged;
@@ -1056,6 +1270,15 @@ function mergeAuthUserProfile(current: AuthUserRecord | undefined, next: AuthUse
       : {}),
     ...(primary.walletChainType ?? secondary.walletChainType
       ? { walletChainType: primary.walletChainType ?? secondary.walletChainType }
+      : {}),
+    ...(primary.passkeys ?? secondary.passkeys
+      ? { passkeys: primary.passkeys ?? secondary.passkeys }
+      : {}),
+    ...(primary.recoveryCodeHash ?? secondary.recoveryCodeHash
+      ? { recoveryCodeHash: primary.recoveryCodeHash ?? secondary.recoveryCodeHash }
+      : {}),
+    ...(primary.recoveryCodeCreatedAt ?? secondary.recoveryCodeCreatedAt
+      ? { recoveryCodeCreatedAt: primary.recoveryCodeCreatedAt ?? secondary.recoveryCodeCreatedAt }
       : {}),
     ...(primary.clientSurface === "smoke" || secondary.clientSurface === "smoke"
       ? { clientSurface: "smoke" as const }
@@ -1145,6 +1368,69 @@ async function exchangeCodeForKey(code: string, codeVerifier: string): Promise<{
 
 function base64url(buf: Buffer): string {
   return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function passkeyAccountLabel(value: string | null | undefined, _userId: string): string {
+  const clean = String(value || "").replace(/\s+/g, " ").trim();
+  return clean && clean !== "Guest" && !clean.startsWith("usr_")
+    ? clean.slice(0, 64)
+    : "Ruby High Student";
+}
+
+function normalizeRecoveryCode(value: string): string {
+  return String(value || "").toUpperCase().replace(/[^A-Z2-9]/g, "");
+}
+
+function recoveryCodeDigest(value: string): string {
+  const normalized = normalizeRecoveryCode(value);
+  if (normalized.length !== 20) return "";
+  return createHash("sha256")
+    .update(`ruby-high:recovery:v1:${normalized}`)
+    .digest("hex");
+}
+
+function createRecoveryCode(): { code: string; hash: string } {
+  let raw = "";
+  while (raw.length < 20) {
+    for (const byte of randomBytes(24)) {
+      if (byte >= 224) continue;
+      raw += RECOVERY_CODE_ALPHABET[byte % RECOVERY_CODE_ALPHABET.length];
+      if (raw.length === 20) break;
+    }
+  }
+  const code = raw.match(/.{1,5}/g)!.join("-");
+  return { code, hash: recoveryCodeDigest(code) };
+}
+
+function passkeyManagementId(credentialId: string): string {
+  return createHash("sha256").update(`ruby-high:passkey:v1:${credentialId}`).digest("base64url").slice(0, 20);
+}
+
+function pendingPasskeyFromState(record: StoredServiceStateRecord | null): PendingPasskey | undefined {
+  if (!record || (record.expiresAt && record.expiresAt <= Date.now())) return undefined;
+  const data = record.data;
+  const relyingParty = data.relyingParty;
+  if (
+    (data.kind !== "registration" && data.kind !== "authentication" && data.kind !== "recovery")
+    || typeof data.challenge !== "string"
+    || typeof data.createdAt !== "number"
+    || !relyingParty
+    || typeof relyingParty !== "object"
+    || Array.isArray(relyingParty)
+  ) return undefined;
+  const rp = relyingParty as Record<string, unknown>;
+  if (typeof rp.id !== "string" || typeof rp.name !== "string" || typeof rp.origin !== "string") {
+    return undefined;
+  }
+  return {
+    kind: data.kind,
+    challenge: data.challenge,
+    createdAt: data.createdAt,
+    relyingParty: { id: rp.id, name: rp.name, origin: rp.origin },
+    ...(typeof data.userId === "string" ? { userId: data.userId } : {}),
+    ...(typeof data.displayName === "string" ? { displayName: data.displayName } : {}),
+    ...(typeof data.recoveryCodeHash === "string" ? { recoveryCodeHash: data.recoveryCodeHash } : {}),
+  };
 }
 
 export function visitorHashFromHeader(value: string | string[] | null | undefined): string | null {

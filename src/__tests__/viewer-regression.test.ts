@@ -96,7 +96,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'window.addEventListener("pageshow"');
   });
 
-  it("captures only bounded acquisition keys and opens creation for every new player", () => {
+  it("captures bounded acquisition keys and keeps account recovery reachable after sign-out", () => {
     const script = inlineScript(renderedViewer());
 
     expectScriptToContain(script, "function consumeAcquisitionAttribution()");
@@ -104,12 +104,12 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'quickRollExperimentLanding = acquisitionAttribution.landingVariant === "quick-roll-v1"');
     expectScriptToContain(script, "Create a student. Complete one class. Get your report.");
     expectScriptToContain(script, "if (authed && !t.character && !firstRunCreationOpened)");
-    expectScriptToContain(script, "setTimeout(() => openCharacterCreation(), 0)");
+    expectScriptToContain(script, "if (lastTelemetry === t && !lastTelemetry.character) openCharacterCreation()");
     const logout = script.slice(
       script.indexOf("async function logout()"),
       script.indexOf("function roomHumanHistoryFacultyIds"),
     );
-    expect(logout).toContain("firstRunCreationOpened = false");
+    expect(logout).toContain("firstRunCreationOpened = true");
     expect(logout).toContain("onboardingIntroTracked = false");
     expect(logout).toContain("onboardingFunnelStepsSent.clear()");
     expectScriptToContain(script, 'postViewerMetricEvent("app_open", acquisitionAttribution || {})');
@@ -761,6 +761,11 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="passkey-action"');
     expect(html).toContain('id="passkey-create"');
     expect(html).toContain("Use Touch ID, Face ID, Windows Hello, your phone, or a security key.");
+    expect(html).toContain("Ruby High stores your public key. Your passkey manager protects the private key.");
+    expect(html).toContain('autocomplete="username webauthn"');
+    expect(html).toContain('id="passkey-list"');
+    expect(html).toContain('id="passkey-recovery-input"');
+    expect(html).toContain('id="passkey-recovery-create"');
     expect(html).not.toContain('id="privy-phantom-login"');
     expect(html).toContain('id="privy-login-widget"');
     expect(html).not.toContain('id="privy-connect-solana"');
@@ -846,6 +851,14 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, '"/auth/passkey/login/verify"');
     expectScriptToContain(script, '"/auth/passkey/register/options"');
     expectScriptToContain(script, '"/auth/passkey/register/verify"');
+    expectScriptToContain(script, '"/auth/passkey/reauth/options"');
+    expectScriptToContain(script, '"/auth/passkey/recover/options"');
+    expectScriptToContain(script, '"/auth/passkey/recover/verify"');
+    expectScriptToContain(script, '"/auth/passkey/recovery-code"');
+    expectScriptToContain(script, '"/auth/passkey/delete"');
+    expectScriptToContain(script, "PublicKeyCredential.isConditionalMediationAvailable()");
+    expectScriptToContain(script, 'mediation: "conditional"');
+    expectScriptToContain(script, "rotateVisitorId()");
     expectScriptToContain(script, "navigator.credentials.get");
     expectScriptToContain(script, "navigator.credentials.create");
     expectScriptToContain(script, "startSolanaWalletConnect");

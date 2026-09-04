@@ -574,6 +574,15 @@ export function getVisitorId(): string {
     return "";
   }
 }
+export function rotateVisitorId(): string {
+  try {
+    const next = makeVisitorId();
+    localStorage.setItem(VIEWER_CONSTANTS.VISITOR_ID_KEY, next);
+    return next;
+  } catch (_err) {
+    return "";
+  }
+}
 export function attachVisitorHeader<T extends Headers>(headers: T): T {
   const visitorId = getVisitorId();
   if (visitorId) headers.set("X-Ruby-High-Visitor", visitorId);

@@ -3,6 +3,7 @@ import {
   VIEWER_CONSTANTS,
   attachVisitorHeader,
   getVisitorId,
+  rotateVisitorId,
 } from "../viewer-parts/client-pure.js";
 
 function installBrowserStorage(initial: string | null = null): Map<string, string> {
@@ -46,5 +47,12 @@ describe("viewer visitor id", () => {
 
     const headers = attachVisitorHeader(new Headers());
     expect(headers.get("X-Ruby-High-Visitor")).toBe(visitorId);
+  });
+
+  it("rotates the browser identity for a clean sign-out", () => {
+    const values = installBrowserStorage("rhv_existing_visitor");
+
+    expect(rotateVisitorId()).toBe("rhv_00000000-0000-4000-8000-000000000123");
+    expect(values.get(VIEWER_CONSTANTS.VISITOR_ID_KEY)).toBe("rhv_00000000-0000-4000-8000-000000000123");
   });
 });

@@ -357,11 +357,12 @@ test("boots as a guest, creates a character, answers a card, and opens account t
   await expect(accountDialog).toHaveClass(/is-open/);
   await expect(accountDialog).toHaveAttribute("aria-modal", "true");
   await expect(accountDialog).toHaveAttribute("aria-hidden", "false");
-  await expect(page.locator("#passkey-action")).toHaveText("Use passkey");
-  await expect(page.locator("#passkey-create")).toHaveText("Create passkey");
+  await expect(page.locator("#passkey-action")).toHaveText("Sign in with a passkey");
+  await expect(page.locator("#passkey-create")).toHaveText("Save progress with a passkey");
   await expect(page.locator("#shell")).toHaveAttribute("inert", "");
   await expect(page.locator("#shell")).toHaveAttribute("aria-hidden", "true");
-  await expect(page.locator("#account-tab-account")).toBeFocused();
+  await expect(page.locator("#passkey-autofill")).toBeFocused();
+  await page.locator("#account-tab-account").focus();
   await page.keyboard.press("ArrowRight");
   await expect(page.locator("#account-tab-wallet")).toBeFocused();
   await expect(page.locator("#account-panel-wallet")).toBeVisible();
@@ -390,7 +391,8 @@ test("boots as a guest, creates a character, answers a card, and opens account t
   expect(errors).toEqual([]);
 });
 
-test("creates a passkey and signs the same student back in", async ({ page }) => {
+test("manages passkeys, signs out cleanly, and recovers the same student", async ({ page }) => {
+  test.setTimeout(150_000);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("WebAuthn.enable");
   const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {
@@ -403,35 +405,106 @@ test("creates a passkey and signs the same student back in", async ({ page }) =>
       automaticPresenceSimulation: true,
     },
   });
+  let backupAuthenticatorId = "";
+  let primaryAuthenticatorRemoved = false;
 
   try {
     const { errors, privyRequests } = await openViewer(page);
     await dismissAnnouncements(page);
-    const creationSheet = page.locator("#sheet-overlay");
-    if (await creationSheet.isVisible().catch(() => false)) await page.locator("#sheet-close").click();
+    await createCharacter(page);
+    const studentName = (await page.locator("#you-name").textContent())?.trim();
+    const firstVisitorId = await page.evaluate(() => localStorage.getItem("ruby-high:visitor-id"));
 
     await page.locator("#privy-action").click();
     await page.locator("#passkey-create").click();
     await expect(page.locator("#privy-status")).toContainText("Passkey ready");
+    await expect(page.locator("#passkey-recovery-code")).toBeVisible();
+    const firstRecoveryCode = (await page.locator("#passkey-recovery-value").textContent())?.trim() || "";
+    expect(firstRecoveryCode).toMatch(/^[A-Z2-9]{5}(?:-[A-Z2-9]{5}){3}$/);
     await expect(page.locator("#privy-wallet")).toHaveText("Passkey account");
     await expect(page.locator("#passkey-action")).toBeHidden();
     await expect(page.locator("#privy-signout")).toBeVisible();
+    await expect(page.locator(".passkey-row")).toHaveCount(1);
+
+    const primaryCredentials = await cdp.send("WebAuthn.getCredentials", { authenticatorId });
+    for (const credential of primaryCredentials.credentials) {
+      await cdp.send("WebAuthn.removeCredential", { authenticatorId, credentialId: credential.credentialId });
+    }
+    await cdp.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId });
+    primaryAuthenticatorRemoved = true;
+    const backupAuthenticator = await cdp.send("WebAuthn.addVirtualAuthenticator", {
+      options: {
+        protocol: "ctap2",
+        transport: "usb",
+        hasResidentKey: true,
+        hasUserVerification: true,
+        isUserVerified: true,
+        automaticPresenceSimulation: true,
+      },
+    });
+    backupAuthenticatorId = backupAuthenticator.authenticatorId;
+    await page.locator("#passkey-create").click();
+    await expect(page.locator(".passkey-row")).toHaveCount(2);
+    await page.locator(".passkey-row").first().getByRole("button", { name: "Delete" }).click();
+    await page.locator("#app-confirm-ok").click();
+    await expect(page.locator(".passkey-row")).toHaveCount(1);
 
     await page.locator("#privy-signout").click();
     await expect(page.locator("#passkey-action")).toBeVisible();
+    const freshMe = await page.evaluate(async () => {
+      const response = await fetch("/api/apps/ruby-high/auth/me", { credentials: "same-origin" });
+      return response.json();
+    });
+    expect(freshMe.passkey).toMatchObject({ registered: false, authenticated: false });
+    const secondVisitorId = await page.evaluate(() => localStorage.getItem("ruby-high:visitor-id"));
+    expect(secondVisitorId).toBeTruthy();
+    expect(secondVisitorId).not.toBe(firstVisitorId);
     await page.locator("#passkey-action").click();
     await expect(page.locator("#privy-status")).toHaveText("Signed in with your passkey.");
     await expect(page.locator("#privy-wallet")).toHaveText("Passkey account");
+    await expect(page.locator("#you-name")).toHaveText(studentName || "");
 
     const me = await page.evaluate(async () => {
       const response = await fetch("/api/apps/ruby-high/auth/me", { credentials: "same-origin" });
       return response.json();
     });
-    expect(me.passkey).toEqual({ available: true, registered: true, authenticated: true });
+    expect(me.passkey).toMatchObject({
+      available: true,
+      registered: true,
+      authenticated: true,
+      recent: true,
+      recoveryConfigured: true,
+    });
+    expect(me.passkey.credentials).toHaveLength(1);
+
+    await expect(page.locator("#sheet-overlay")).not.toHaveClass(/is-open/);
+    await expect(page.locator("#privy-signout")).toBeVisible();
+    await page.locator("#privy-signout").click();
+    for (const currentAuthenticatorId of [backupAuthenticatorId]) {
+      const credentials = await cdp.send("WebAuthn.getCredentials", { authenticatorId: currentAuthenticatorId });
+      for (const credential of credentials.credentials) {
+        await cdp.send("WebAuthn.removeCredential", {
+          authenticatorId: currentAuthenticatorId,
+          credentialId: credential.credentialId,
+        });
+      }
+    }
+    await page.locator("#passkey-recovery-input").fill(firstRecoveryCode);
+    await page.locator("#passkey-recovery-submit").click();
+    await expect(page.locator("#privy-status")).toContainText("Account recovered");
+    await expect(page.locator("#you-name")).toHaveText(studentName || "");
+    const rotatedRecoveryCode = (await page.locator("#passkey-recovery-value").textContent())?.trim() || "";
+    expect(rotatedRecoveryCode).toMatch(/^[A-Z2-9]{5}(?:-[A-Z2-9]{5}){3}$/);
+    expect(rotatedRecoveryCode).not.toBe(firstRecoveryCode);
     expect(privyRequests()).toBe(0);
     expect(errors).toEqual([]);
   } finally {
-    await cdp.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId });
+    if (backupAuthenticatorId) {
+      await cdp.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId: backupAuthenticatorId });
+    }
+    if (!primaryAuthenticatorRemoved) {
+      await cdp.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId });
+    }
     await cdp.send("WebAuthn.disable");
   }
 });

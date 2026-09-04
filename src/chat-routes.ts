@@ -2260,6 +2260,16 @@ async function readPasskeyAuthBody(ctx: ChatRouteContext): Promise<{ flowId: str
   };
 }
 
+async function readPasskeyRecoveryBody(ctx: ChatRouteContext): Promise<{ recoveryCode: string }> {
+  const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown> | null;
+  return { recoveryCode: typeof body?.recoveryCode === "string" ? body.recoveryCode.trim() : "" };
+}
+
+async function readPasskeyManagementBody(ctx: ChatRouteContext): Promise<{ id: string }> {
+  const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown> | null;
+  return { id: typeof body?.id === "string" ? body.id.trim() : "" };
+}
+
 function passkeyRelyingParty(buildCallback: (path: string) => string): PasskeyRelyingParty {
   const configuredOrigin = String(process.env.RUBY_HIGH_PASSKEY_ORIGIN || "").trim();
   const origin = new URL(configuredOrigin || buildCallback("/")).origin;
@@ -2293,6 +2303,20 @@ function passkeySessionStatus(auth: AuthService, record: AuthRecord): Record<str
     available: true,
     registered: auth.hasPasskeyForRecord(record),
     authenticated: record.provider === "passkey",
+    recent: auth.hasRecentPasskeyVerification(record),
+    recoveryConfigured: auth.recoveryConfiguredForRecord(record),
+    credentials: auth.passkeySummariesForRecord(record),
+  };
+}
+
+function emptyPasskeySessionStatus(): Record<string, unknown> {
+  return {
+    available: true,
+    registered: false,
+    authenticated: false,
+    recent: false,
+    recoveryConfigured: false,
+    credentials: [],
   };
 }
 
@@ -2411,7 +2435,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
     try {
       const token = auth.parseSessionToken(ctx.cookieHeader);
-      const result = await auth.beginPasskeyRegistration(token, passkeyRelyingParty(buildCallback));
+      const record = auth.resolve(token);
+      const displayName = record
+        ? ruby.getOrCreate(auth.stateKeyForRecord(record)).character?.name
+        : null;
+      const result = await auth.beginPasskeyRegistration(token, passkeyRelyingParty(buildCallback), displayName);
       ctx.json(ctx.res, { ok: true, ...result });
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 401);
@@ -2424,11 +2452,12 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     try {
       const body = await readPasskeyAuthBody(ctx);
       const existingToken = auth.parseSessionToken(ctx.cookieHeader);
-      const { token, record, isReturning } = await auth.completePasskeyRegistration(
+      const { token, record, isReturning, recoveryCode } = await auth.completePasskeyRegistration(
         body.flowId,
         body.response,
         existingToken,
       );
+      auth.destroy(existingToken);
       setCookieHeader(ctx.res, auth.buildSessionCookie(token, { secure }));
       const stateKey = auth.stateKeyForRecord(record);
       const apiKey = readApiKey(ctx, ruby, stateKey);
@@ -2446,9 +2475,86 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         since: record.createdAt,
         label: record.label ?? "Passkey",
         returning: isReturning,
+        ...(recoveryCode ? { recoveryCode } : {}),
       });
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 401);
+    }
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/passkey/recover/options`) {
+    if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
+    try {
+      const { recoveryCode } = await readPasskeyRecoveryBody(ctx);
+      const result = await auth.beginPasskeyRecovery(recoveryCode, passkeyRelyingParty(buildCallback));
+      ctx.json(ctx.res, { ok: true, ...result });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 401);
+    }
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/passkey/recover/verify`) {
+    if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
+    try {
+      const body = await readPasskeyAuthBody(ctx);
+      const { token, record, recoveryCode } = await auth.completePasskeyRecovery(body.flowId, body.response);
+      setCookieHeader(ctx.res, auth.buildSessionCookie(token, { secure }));
+      const stateKey = auth.stateKeyForRecord(record);
+      const apiKey = readApiKey(ctx, ruby, stateKey);
+      const entitlements = hostedEntitlementStatus({ ruby, sessionId: stateKey });
+      ctx.json(ctx.res, {
+        ok: true,
+        session: true,
+        ai: !!apiKey,
+        ai_provider: llmProviderName(),
+        local_ai: isLocalLlmProvider(),
+        hosted_ai: entitlements.hosted_ai,
+        entitlements,
+        passkey: passkeySessionStatus(auth, record),
+        privy: privySessionStatus(auth, record),
+        since: record.createdAt,
+        label: record.label ?? "Passkey",
+        returning: true,
+        recoveryCode,
+      });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 401);
+    }
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/passkey/recovery-code`) {
+    if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
+    try {
+      const token = auth.parseSessionToken(ctx.cookieHeader);
+      const recoveryCode = await auth.regenerateRecoveryCode(token);
+      const record = auth.resolve(token);
+      ctx.json(ctx.res, {
+        ok: true,
+        recoveryCode,
+        passkey: record ? passkeySessionStatus(auth, record) : emptyPasskeySessionStatus(),
+      });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 401);
+    }
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/passkey/delete`) {
+    if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
+    try {
+      const token = auth.parseSessionToken(ctx.cookieHeader);
+      const { id } = await readPasskeyManagementBody(ctx);
+      await auth.deletePasskey(token, id);
+      const record = auth.resolve(token);
+      ctx.json(ctx.res, {
+        ok: true,
+        passkey: record ? passkeySessionStatus(auth, record) : emptyPasskeySessionStatus(),
+      });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 400);
     }
     return true;
   }
@@ -2460,6 +2566,20 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.json(ctx.res, { ok: true, ...result });
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 400);
+    }
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/passkey/reauth/options`) {
+    if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
+    try {
+      const token = auth.parseSessionToken(ctx.cookieHeader);
+      const record = auth.resolve(token);
+      if (!record) throw new Error("Sign in before confirming this account.");
+      const result = await auth.beginPasskeyAuthentication(passkeyRelyingParty(buildCallback), record.userId);
+      ctx.json(ctx.res, { ok: true, ...result });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 401);
     }
     return true;
   }
@@ -2551,11 +2671,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       local_ai: isLocalLlmProvider(),
       hosted_ai: entitlements?.hosted_ai ?? null,
       entitlements,
-      passkey: record ? passkeySessionStatus(auth, record) : {
-        available: true,
-        registered: false,
-        authenticated: false,
-      },
+      passkey: record ? passkeySessionStatus(auth, record) : emptyPasskeySessionStatus(),
       privy: record ? privySessionStatus(auth, record) : {
         configured: !!getPrivyPublicConfigFromEnv(),
         authenticated: false,
@@ -2580,18 +2696,20 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/delete-account`) {
     if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
     const token = auth.parseSessionToken(ctx.cookieHeader);
-    const target = auth.accountDeletionTargetForToken(token);
-    if (!target) {
-      ctx.error(ctx.res, "No signed-in Ruby High account to delete.", 401);
-      return true;
-    }
     try {
+      auth.requireRecentPasskeyForAccount(token);
+      const target = auth.accountDeletionTargetForToken(token);
+      if (!target) {
+        ctx.error(ctx.res, "No signed-in Ruby High account to delete.", 401);
+        return true;
+      }
       const deleted = await ruby.deleteAccountData(target);
       auth.forgetDeletedAccount(target);
       setCookieHeader(ctx.res, auth.buildClearCookie({ secure }));
       ctx.json(ctx.res, { ok: true, deleted });
     } catch (err) {
-      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 500);
+      const message = err instanceof Error ? err.message : String(err);
+      ctx.error(ctx.res, message, message.includes("Use your passkey again") ? 401 : 500);
     }
     return true;
   }

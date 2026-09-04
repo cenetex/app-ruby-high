@@ -39,8 +39,8 @@ flyctl auth token
 ```
 
 PRs targeting `main` run typecheck, tests, and build. Merging to
-`main` deploys `ruby-high` to Fly and then runs the production smoke
-checks against `https://ruby-high.fly.dev`.
+`main` deploys `ruby-high` to Fly. The deploy checks use the Fly
+health route and the canonical app at `https://ruby-high.ai`.
 
 ### 4. Deploy manually
 
@@ -54,7 +54,7 @@ image until the next `flyctl deploy`.
 
 ### 5. Update the OpenRouter callback
 
-In your OpenRouter settings, add `https://ruby-high.fly.dev/api/apps/ruby-high/auth/callback` to the allowed redirect URIs (or replace the existing App Runner one if you're cutting over rather than running both).
+In your OpenRouter settings, add `https://ruby-high.ai/api/apps/ruby-high/auth/callback` to the allowed redirect URIs.
 
 ### 6. Configure passkeys and the Solana wallet connector
 
