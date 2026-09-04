@@ -194,7 +194,7 @@ export class SqliteStateStore implements StateStoreLike {
       const u = value as AuthUserRecord;
       if (
         u &&
-        (u.provider === "openrouter" || u.provider === "guest" || u.provider === "privy") &&
+        (u.provider === "openrouter" || u.provider === "guest" || u.provider === "privy" || u.provider === "passkey") &&
         typeof u.providerUserHash === "string" &&
         typeof u.userId === "string"
       ) {

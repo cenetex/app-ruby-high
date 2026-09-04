@@ -285,7 +285,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     <p class="sub">Play classes for free. Merit Stars pay for teacher chat. Hall Passes pay for images, extra students, and collectible cards.</p>
     <div class="sheet-actions" style="justify-content: center;">
       <button id="signin-guest" class="primary-link" type="button">Continue free</button>
-      <button id="signin-privy" class="secondary-link" type="button" hidden>Sign in</button>
+      <button id="signin-privy" class="secondary-link" type="button">Use passkey</button>
       <a id="signin-cta" class="secondary-link" href="/api/apps/ruby-high/auth/start">Use my AI key</a>
     </div>
     <div id="signin-status" class="stat-budget" aria-live="polite"></div>
@@ -301,11 +301,14 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <div class="account-identity-inline">
         <div class="wallet-panel" id="privy-wallet">Guest session</div>
         <div class="sheet-actions">
-          <button type="button" id="privy-login-widget">Sign in</button>
+          <button type="button" id="passkey-action">Use passkey</button>
+          <button type="button" class="secondary" id="passkey-create">Create passkey</button>
+          <button type="button" class="secondary" id="privy-login-widget" hidden>Connect wallet</button>
           <button type="button" class="secondary" id="privy-signout" hidden>Sign out</button>
         </div>
       </div>
     </div>
+    <p class="sub account-passkey-copy">Use Touch ID, Face ID, Windows Hello, your phone, or a security key. Your device keeps the private key.</p>
     <div class="account-tabs" role="tablist" aria-label="Account areas">
       <button type="button" class="account-tab is-active" id="account-tab-account" data-account-tab="account" role="tab" aria-selected="true" aria-controls="account-panel-account">Profile</button>
       <button type="button" class="account-tab" id="account-tab-wallet" data-account-tab="wallet" role="tab" aria-selected="false" aria-controls="account-panel-wallet">Passes</button>

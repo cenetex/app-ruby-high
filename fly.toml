@@ -33,6 +33,8 @@ primary_region = "iad"
   HOST = "0.0.0.0"
   NODE_ENV = "production"
   RUBY_HIGH_PUBLIC_BASE = "https://ruby-high.ai"
+  RUBY_HIGH_PASSKEY_ORIGIN = "https://ruby-high.ai"
+  RUBY_HIGH_PASSKEY_RP_ID = "ruby-high.ai"
   # Fly's edge is the only public ingress, so its forwarded client/protocol
   # headers may be used for rate limiting and secure request detection.
   RUBY_HIGH_TRUST_PROXY = "true"

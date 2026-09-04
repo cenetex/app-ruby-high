@@ -748,7 +748,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'const roster = (t.faculty_roster || []).filter((f) => f && f.id !== LOUNGE_ID);');
   });
 
-  it("wires the Privy account UI through the lazy widget bundle", () => {
+  it("uses native passkeys for account sign-in and keeps the wallet bundle lazy", () => {
     const html = renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test", loginMethods: ["wallet"] } });
     const script = inlineScript(html);
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
@@ -758,6 +758,9 @@ describe("viewer regression guardrails", () => {
     expect(html).not.toContain('id="hall-pass-btn"');
     expect(html).toContain('id="signin-privy"');
     expect(html).toContain('id="privy-overlay"');
+    expect(html).toContain('id="passkey-action"');
+    expect(html).toContain('id="passkey-create"');
+    expect(html).toContain("Use Touch ID, Face ID, Windows Hello, your phone, or a security key.");
     expect(html).not.toContain('id="privy-phantom-login"');
     expect(html).toContain('id="privy-login-widget"');
     expect(html).not.toContain('id="privy-connect-solana"');
@@ -832,12 +835,19 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "createRubyHighPrivyClient(privyConfig)");
     expect(script).not.toContain("const loadViewerModule = (url) => import(url)");
     expect(script).not.toContain("loadViewerModule(PRIVY_CLIENT_URL)");
-    expectScriptToContain(script, "client.login()");
+    expect(script).not.toContain("client.login()");
     expectScriptToContain(script, "client.onDiagnostic(reportPrivyDiagnostic)");
     expectScriptToContain(script, 'postViewerMetricEvent("privy_auth_error"');
     expectScriptToContain(script, "client.connectSolanaWallet()");
     expectScriptToContain(script, "function reportPrivyDiagnostic(event)");
-    expectScriptToContain(script, "startPrivyLogin");
+    expectScriptToContain(script, "startPasskeyLogin");
+    expectScriptToContain(script, "startPasskeyRegistration");
+    expectScriptToContain(script, '"/auth/passkey/login/options"');
+    expectScriptToContain(script, '"/auth/passkey/login/verify"');
+    expectScriptToContain(script, '"/auth/passkey/register/options"');
+    expectScriptToContain(script, '"/auth/passkey/register/verify"');
+    expectScriptToContain(script, "navigator.credentials.get");
+    expectScriptToContain(script, "navigator.credentials.create");
     expectScriptToContain(script, "startSolanaWalletConnect");
     expectScriptToContain(script, "function friendlyPrivyAccountError(err, fallback)");
     expectScriptToContain(script, "Wallet sign-in is not available. Contact Ruby High support.");
@@ -926,8 +936,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "function createAccountTrustPanelRenderer(deps)");
     expectScriptToContain(clientSource, "const accountTrustRenderer = createAccountTrustPanelRenderer({");
     expectScriptToContain(clientSource, "accountTrustRenderer.render(view);");
-    expectScriptToContain(script, '"Connect a Solana wallet to open packs and reveal Cards."');
-    expectScriptToContain(script, '"Signed in · no Solana wallet"');
+    expectScriptToContain(script, '"Connect a Solana wallet to open packs or mint collectible cards."');
+    expectScriptToContain(script, '"Passkey account"');
     expectScriptToContain(script, "function hallPassPacksForTelemetry(t)");
     expectScriptToContain(script, 'pack.status !== "void"');
     expectScriptToContain(script, "function buildPack(pack, opts)");
@@ -1020,7 +1030,7 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("Mint \" + mintableCount + \" Pending");
     expect(script).not.toContain("Burn for 5 Passes");
     expect(script).not.toContain("burnHallPassCardFromAccount");
-    expectScriptToContain(script, 'await startPrivyLogin({ source: "billing" })');
+    expectScriptToContain(script, "if (!await ensurePasskeyAccount()) return false;");
     expectScriptToContain(script, 'await startSolanaWalletConnect({ source: "billing" })');
     expectScriptToContain(script, 'typeof client.paySolanaQuote !== "function"');
     expectScriptToContain(script, 'title: "Connect your Solana wallet?"');

@@ -40,6 +40,7 @@ import {
   privyServerConfigured,
   verifyPrivyAuth,
 } from "./services/privy-auth.js";
+import type { PasskeyRelyingParty } from "./services/passkey-auth.js";
 import { verifyHallPassCardBurn } from "./services/hall-pass-nfts.js";
 import {
   guestAccessStateForSession,
@@ -2251,6 +2252,25 @@ async function readPrivyAuthBody(ctx: ChatRouteContext): Promise<{ accessToken?:
   };
 }
 
+async function readPasskeyAuthBody(ctx: ChatRouteContext): Promise<{ flowId: string; response: unknown }> {
+  const body = (await ctx.readJsonBody().catch(() => ({}))) as Record<string, unknown> | null;
+  return {
+    flowId: typeof body?.flowId === "string" ? body.flowId.trim() : "",
+    response: body?.response,
+  };
+}
+
+function passkeyRelyingParty(buildCallback: (path: string) => string): PasskeyRelyingParty {
+  const configuredOrigin = String(process.env.RUBY_HIGH_PASSKEY_ORIGIN || "").trim();
+  const origin = new URL(configuredOrigin || buildCallback("/")).origin;
+  const configuredId = String(process.env.RUBY_HIGH_PASSKEY_RP_ID || "").trim();
+  return {
+    id: configuredId || new URL(origin).hostname,
+    name: "Ruby High",
+    origin,
+  };
+}
+
 function bearerToken(value: string | string[] | null | undefined): string {
   const raw = firstHeader(value).trim();
   const match = raw.match(/^Bearer\s+(.+)$/i);
@@ -2265,6 +2285,14 @@ function privySessionStatus(auth: AuthService, record: AuthRecord): Record<strin
     walletAddress: walletAddress || null,
     walletChainType: record.walletChainType ?? null,
     label: record.label ?? null,
+  };
+}
+
+function passkeySessionStatus(auth: AuthService, record: AuthRecord): Record<string, unknown> {
+  return {
+    available: true,
+    registered: auth.hasPasskeyForRecord(record),
+    authenticated: record.provider === "passkey",
   };
 }
 
@@ -2293,6 +2321,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       ctx.pathname === `${AUTH_PREFIX}/start` ||
       ctx.pathname === `${AUTH_PREFIX}/guest` ||
       ctx.pathname === `${AUTH_PREFIX}/privy` ||
+      ctx.pathname.startsWith(`${AUTH_PREFIX}/passkey/`) ||
       ctx.pathname === `${AUTH_PREFIX}/callback`
     ) &&
     !takeAuthToken(ctx)
@@ -2331,6 +2360,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       local_ai: isLocalLlmProvider(),
       hosted_ai: entitlements.hosted_ai,
       entitlements,
+      passkey: passkeySessionStatus(auth, record),
       privy: privySessionStatus(auth, record),
       privy_configured: !!getPrivyPublicConfigFromEnv(),
       since: record.createdAt,
@@ -2370,6 +2400,92 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         privy: privySessionStatus(auth, record),
         since: record.createdAt,
         label: record.label ?? verified.label ?? "Privy",
+      });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 401);
+    }
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/passkey/register/options`) {
+    if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
+    try {
+      const token = auth.parseSessionToken(ctx.cookieHeader);
+      const result = await auth.beginPasskeyRegistration(token, passkeyRelyingParty(buildCallback));
+      ctx.json(ctx.res, { ok: true, ...result });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 401);
+    }
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/passkey/register/verify`) {
+    if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
+    try {
+      const body = await readPasskeyAuthBody(ctx);
+      const existingToken = auth.parseSessionToken(ctx.cookieHeader);
+      const { token, record, isReturning } = await auth.completePasskeyRegistration(
+        body.flowId,
+        body.response,
+        existingToken,
+      );
+      setCookieHeader(ctx.res, auth.buildSessionCookie(token, { secure }));
+      const stateKey = auth.stateKeyForRecord(record);
+      const apiKey = readApiKey(ctx, ruby, stateKey);
+      const entitlements = hostedEntitlementStatus({ ruby, sessionId: stateKey });
+      ctx.json(ctx.res, {
+        ok: true,
+        session: true,
+        ai: !!apiKey,
+        ai_provider: llmProviderName(),
+        local_ai: isLocalLlmProvider(),
+        hosted_ai: entitlements.hosted_ai,
+        entitlements,
+        passkey: passkeySessionStatus(auth, record),
+        privy: privySessionStatus(auth, record),
+        since: record.createdAt,
+        label: record.label ?? "Passkey",
+        returning: isReturning,
+      });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 401);
+    }
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/passkey/login/options`) {
+    if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
+    try {
+      const result = await auth.beginPasskeyAuthentication(passkeyRelyingParty(buildCallback));
+      ctx.json(ctx.res, { ok: true, ...result });
+    } catch (err) {
+      ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 400);
+    }
+    return true;
+  }
+
+  if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/passkey/login/verify`) {
+    if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
+    try {
+      const body = await readPasskeyAuthBody(ctx);
+      const { token, record } = await auth.completePasskeyAuthentication(body.flowId, body.response);
+      setCookieHeader(ctx.res, auth.buildSessionCookie(token, { secure }));
+      const stateKey = auth.stateKeyForRecord(record);
+      const apiKey = readApiKey(ctx, ruby, stateKey);
+      const entitlements = hostedEntitlementStatus({ ruby, sessionId: stateKey });
+      ctx.json(ctx.res, {
+        ok: true,
+        session: true,
+        ai: !!apiKey,
+        ai_provider: llmProviderName(),
+        local_ai: isLocalLlmProvider(),
+        hosted_ai: entitlements.hosted_ai,
+        entitlements,
+        passkey: passkeySessionStatus(auth, record),
+        privy: privySessionStatus(auth, record),
+        since: record.createdAt,
+        label: record.label ?? "Passkey",
+        returning: true,
       });
     } catch (err) {
       ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 401);
@@ -2435,6 +2551,11 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       local_ai: isLocalLlmProvider(),
       hosted_ai: entitlements?.hosted_ai ?? null,
       entitlements,
+      passkey: record ? passkeySessionStatus(auth, record) : {
+        available: true,
+        registered: false,
+        authenticated: false,
+      },
       privy: record ? privySessionStatus(auth, record) : {
         configured: !!getPrivyPublicConfigFromEnv(),
         authenticated: false,

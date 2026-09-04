@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const host = "127.0.0.1";
+const host = "localhost";
+const bindHost = "127.0.0.1";
 const port = Number(process.env.RUBY_HIGH_BROWSER_PORT ?? 3100);
 const externalBaseURL = process.env.PLAYWRIGHT_BASE_URL?.replace(/\/+$/, "");
 const baseURL = externalBaseURL ?? `http://${host}:${port}`;
@@ -26,7 +27,8 @@ export default defineConfig({
       "npm run build",
       [
         `PORT=${port}`,
-        `HOST=${host}`,
+        `HOST=${bindHost}`,
+        `RUBY_HIGH_PUBLIC_BASE=${baseURL}`,
         "RUBY_HIGH_STATE_PATH=.tmp/playwright/state.json",
         "RUBY_HIGH_BUILD=playwright",
         "RUBY_HIGH_PRIVY_APP_ID=privy-app-smoke",

@@ -54,7 +54,7 @@ export async function stubPrivyBundle(page: Page): Promise<() => number> {
 /**
  * Open the Ruby High viewer and wait for it to be ready (no sign-in overlay,
  * you-state not "checking"). The Privy request counter verifies that the
- * wallet bundle stays lazy until the Account surface opens.
+ * wallet bundle stays lazy until a wallet action starts.
  */
 export async function openViewer(page: Page) {
   const errors = watchRuntimeErrors(page);
