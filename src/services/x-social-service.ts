@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { resolve, dirname } from "node:path";
 import type { IAgentRuntime } from "../runtime.js";
 import { Service } from "../runtime.js";
+import type { StateStoreLike } from "./state-store.js";
 import { DEFAULT_OPENROUTER_MODEL } from "../model-defaults.js";
 import { log } from "./logger.js";
 import { fetchLlmChatCompletions, hasConfiguredLlmCredential } from "./llm-provider.js";
@@ -20,13 +21,14 @@ import {
   type ScheduledSchoolUpdateEditorialMode,
   type ScheduledSchoolUpdateContext,
 } from "./ruby-high/post-types.js";
-import { PostAnalytics } from "./ruby-high/post-analytics.js";
+import { PostAnalytics, postBangerScore } from "./ruby-high/post-analytics.js";
 import {
   generateScheduledTweetPlan,
   type PlannedTweetSlot,
   type RecentPlannedPost,
   type ScheduledTweetPlan,
 } from "./ruby-high/tweet-planner.js";
+import { teacherSocialVoicePrompt } from "./ruby-high/social-voice.js";
 
 const MAX_REMOTE_IMAGE_BYTES = 10 * 1024 * 1024;
 
@@ -144,6 +146,7 @@ const X_POST_RATE_LIMIT_RETRY_MS = 60 * 60 * 1000;
 const X_POST_TRANSIENT_RETRY_MS = 15 * 60 * 1000;
 const X_POST_NETWORK_RETRY_MS = 10 * 60 * 1000;
 const X_POST_ERROR_BODY_MAX = 500;
+const X_METRICS_POLL_INTERVAL_MS = 15 * 60 * 1000;
 const RUBY_HIGH_ASSET_PREFIX = "/api/apps/ruby-high/assets";
 const PLAYBOOK_DEFAULT_POST_IMAGE: Record<string, string> = {
   overachiever: "indra",
@@ -155,6 +158,11 @@ const PLAYBOOK_DEFAULT_POST_IMAGE: Record<string, string> = {
 };
 function xClientId(): string { return process.env.RUBY_HIGH_X_CLIENT_ID ?? ""; }
 function xClientSecret(): string { return process.env.RUBY_HIGH_X_CLIENT_SECRET ?? ""; }
+
+function runtimeStateStore(runtime?: IAgentRuntime | null): StateStoreLike | null {
+  const ruby = runtime?.getService<{ chatPersistenceStore?: () => StateStoreLike }>("ruby-high");
+  return ruby?.chatPersistenceStore?.() ?? null;
+}
 
 function xRedirectUri(): string {
   const base = process.env.RUBY_HIGH_PUBLIC_BASE?.replace(/\/+$/, "") ?? "http://127.0.0.1:3000";
@@ -482,6 +490,7 @@ export class XSocialService extends Service {
   private postCounts = new Map<string, { count: number; resetAt: number }>();
   private pendingVerifiers = new Map<string, { verifier: string; teacherId: string; createdAt: number }>();
   private analytics: PostAnalytics;
+  private analyticsTimer: ReturnType<typeof setInterval> | null = null;
   /** Per-teacher last photo tweet date (UTC YYYY-MM-DD). Mirrored onto the
    *  token record so deploys cannot reopen the same day's photo slot. */
   private lastPhotoDate = new Map<string, string>();
@@ -495,14 +504,14 @@ export class XSocialService extends Service {
     }
   >();
 
-  constructor(runtime?: IAgentRuntime | null) {
+  constructor(runtime?: IAgentRuntime | null, analyticsStore?: StateStoreLike | null) {
     super(runtime);
     this.tokenStore = createTokenStore();
-    this.analytics = new PostAnalytics(null);
+    this.analytics = new PostAnalytics(analyticsStore ?? runtimeStateStore(runtime));
   }
 
-  static async start(runtime: IAgentRuntime): Promise<XSocialService> {
-    const svc = new XSocialService(runtime);
+  static async start(runtime: IAgentRuntime, analyticsStore?: StateStoreLike | null): Promise<XSocialService> {
+    const svc = new XSocialService(runtime, analyticsStore);
     try {
       await svc.start();
     } catch (err) {
@@ -524,13 +533,28 @@ export class XSocialService extends Service {
         }
       }
       log.event("x-social.started", { teacherCount: this.tokens.size });
-      void this.analytics.hydrate();
+      await this.analytics.hydrate();
+      this.startAnalyticsTimer();
+      void this.fetchAllPendingMetrics();
     } catch (err) {
       log.error("x-social.start-failed", err, {});
       // Service stays running with empty token cache — OAuth flows and
       // posting will still work for newly-connected teachers once
       // the token store issue is resolved.
     }
+  }
+
+  async stop(): Promise<void> {
+    if (this.analyticsTimer) clearInterval(this.analyticsTimer);
+    this.analyticsTimer = null;
+  }
+
+  private startAnalyticsTimer(): void {
+    if (this.analyticsTimer) return;
+    this.analyticsTimer = setInterval(() => {
+      void this.fetchAllPendingMetrics();
+    }, X_METRICS_POLL_INTERVAL_MS);
+    this.analyticsTimer.unref?.();
   }
 
   // ── OAuth flow ──────────────────────────────────────────────────────────
@@ -852,7 +876,13 @@ export class XSocialService extends Service {
         tweetId,
         ...(mediaId ? { mediaId } : {}),
       });
-      this.analytics.enqueueFetch(tweetId, Date.now());
+      this.analytics.enqueueFetch({
+        tweetId,
+        teacherId: teacher.id,
+        postedAt: Date.now(),
+        kind: ctx.kind,
+        text,
+      });
     }
 
     if (!tweetId) await releasePhotoSlot();
@@ -1491,7 +1521,26 @@ export class XSocialService extends Service {
     const sourcedContext = context.featuredGuest?.xHandle
       ? await this.withRecentFeaturedGuestXPosts(freshToken, context)
       : context;
-    return generateScheduledTweetPlan(teacher, sourcedContext, recentPosts, now);
+    const performanceByKind = new Map<string, { total: number; count: number }>();
+    for (const record of this.analytics.getTopPerforming(undefined, 50)) {
+      if (record.teacherId !== teacher.id) continue;
+      const current = performanceByKind.get(record.kind) ?? { total: 0, count: 0 };
+      current.total += postBangerScore(record);
+      current.count += 1;
+      performanceByKind.set(record.kind, current);
+    }
+    const performanceSignals = Array.from(performanceByKind, ([kind, result]) => ({
+      kind,
+      scorePerThousand: Math.round(result.total / result.count),
+      sampleSize: result.count,
+    })).sort((left, right) => right.scorePerThousand - left.scorePerThousand);
+    return generateScheduledTweetPlan(
+      teacher,
+      sourcedContext,
+      recentPosts,
+      now,
+      performanceSignals,
+    );
   }
 
   /** Publish an LLM-written update from aggregate, privacy-filtered school
@@ -1533,13 +1582,16 @@ export class XSocialService extends Service {
       log.event("x-social.scheduled-text-skipped", { teacherId: teacher.id });
       return null;
     }
-    const acquisitionRef = scheduledSchoolUpdateAcquisitionRef(postKind);
-    const text = appendScheduledSchoolUpdateLink(
-      generatedText,
-      scheduledSchoolUpdateActivationUrl(postKind),
-    );
+    const includeClassLink = opts?.plannedSlot?.callToAction === "take-class";
+    const acquisitionRef = includeClassLink ? scheduledSchoolUpdateAcquisitionRef(postKind) : null;
+    const text = includeClassLink
+      ? appendScheduledSchoolUpdateLink(
+          generatedText,
+          scheduledSchoolUpdateActivationUrl(postKind),
+        )
+      : generatedText;
     if (!text) {
-      log.event("x-social.scheduled-text-skipped", { teacherId: teacher.id, reason: "activation-link" });
+      log.event("x-social.scheduled-text-skipped", { teacherId: teacher.id, reason: "final-copy" });
       return null;
     }
     if (
@@ -1557,7 +1609,7 @@ export class XSocialService extends Service {
         teacherId: teacher.id,
         xScreenName: token.xScreenName,
         kind: postKind,
-        acquisitionRef,
+        ...(acquisitionRef ? { acquisitionRef } : {}),
         text: text.slice(0, 200),
       });
       return { tweetId: "dry-run:school-update", text };
@@ -1588,9 +1640,15 @@ export class XSocialService extends Service {
         kind: postKind,
         tweetId,
         mediaId,
-        acquisitionRef,
+        ...(acquisitionRef ? { acquisitionRef } : {}),
       });
-      this.analytics.enqueueFetch(tweetId, Date.now());
+      this.analytics.enqueueFetch({
+        tweetId,
+        teacherId: teacher.id,
+        postedAt: Date.now(),
+        kind: postKind,
+        text,
+      });
     }
     return tweetId ? { tweetId, text } : null;
   }
@@ -1785,7 +1843,13 @@ export class XSocialService extends Service {
     const tweetId = await this.postTweet(freshToken, text, mediaId);
     if (tweetId) {
       log.event("x-social.posted", { teacherId: teacher.id, xScreenName: token.xScreenName, kind: "reflection", tweetId, mediaId });
-      this.analytics.enqueueFetch(tweetId, Date.now());
+      this.analytics.enqueueFetch({
+        tweetId,
+        teacherId: teacher.id,
+        postedAt: Date.now(),
+        kind: "reflection",
+        text,
+      });
     }
     return tweetId;
   }
@@ -1795,7 +1859,10 @@ export class XSocialService extends Service {
     memories: { date: string; charactersCreated: string[]; classesPassed: Array<{ studentName: string; facultyId?: string; letterGrade?: string }>; gradesAdvanced: Array<{ studentName: string; fromGrade?: string; toGrade?: string }>; graduations: string[]; totalStudents: number; totalQuestionsAnswered: number },
   ): Promise<string> {
     const lines: string[] = [
-      `You are ${teacher.displayName}, a teacher at Ruby High. Here's what happened at school today:`,
+      `You are ${teacher.displayName}, a teacher at Ruby High.`,
+      teacherSocialVoicePrompt(teacher),
+      "",
+      "Here is what happened at school today:",
       "",
     ];
     if (memories.charactersCreated.length > 0) {
@@ -1817,7 +1884,8 @@ export class XSocialService extends Service {
     }
     lines.push(`${memories.totalStudents} students enrolled.`);
     lines.push("");
-    lines.push(`Write a single tweet (max 270 chars) reflecting on today at Ruby High. Sound like yourself — warm, in character. Mention standout students by name if any. End with #RubyHigh.`);
+    lines.push("Write one post under 220 characters. Mention one standout student by name when the facts provide one.");
+    lines.push("Use one concrete receipt and one teacher judgment. Use #RubyHigh only for a real campaign or event.");
     lines.push("");
     lines.push("Tweet:");
 
@@ -1859,9 +1927,8 @@ export class XSocialService extends Service {
       parts.push(`Congratulations to our graduate${memories.graduations.length > 1 ? "s" : ""}, ${memories.graduations.join(", ")}!`);
     }
     if (parts.length === 0) {
-      parts.push(`Another day at Ruby High. ${memories.totalStudents} students, ${memories.totalQuestionsAnswered} questions answered.`);
+      parts.push(`${memories.totalQuestionsAnswered} answers reached the board today. The chalk survived.`);
     }
-    parts.push("#RubyHigh");
     return parts.join(" ");
   }
 
@@ -1886,7 +1953,10 @@ export class XSocialService extends Service {
       .join(" · ") || "no classes yet";
 
     const prompt = [
-      `You are ${teacher.displayName}, a teacher at Ruby High. Post a single tweet (max 270 chars) about this student's report card. Sound like yourself — warm, in character. Use their name.`,
+      `You are ${teacher.displayName}, a teacher at Ruby High.`,
+      teacherSocialVoicePrompt(teacher),
+      "Write one post under 220 characters about this report card. Use the student's name.",
+      "Choose one concrete result. Give one teacher judgment. Use #RubyHigh only for a real campaign or event.",
       "",
       `Student: ${student.name}`,
       `${gradeName} · ${student.playbookId}`,
@@ -1921,7 +1991,7 @@ export class XSocialService extends Service {
 
     if (!text || text.length > 280) {
       // Fallback
-      text = `${student.name}'s ${gradeName} report — ${gradesLine || "just getting started"}. ${statsLine}. ${student.yearbookCount}/4 years sealed. #RubyHigh`;
+      text = `${student.name}: ${gradeName}. ${gradesLine || "No grades yet"}. ${student.yearbookCount}/4 years sealed. The record is specific.`;
       if (text.length > 280) text = text.slice(0, 277) + "...";
     }
 
@@ -1941,7 +2011,13 @@ export class XSocialService extends Service {
     const tweetId = await this.postTweet(freshToken, text, mediaId);
     if (tweetId) {
       log.event("x-social.posted", { teacherId: teacher.id, xScreenName: token.xScreenName, kind: "report-card", tweetId, mediaId });
-      this.analytics.enqueueFetch(tweetId, Date.now());
+      this.analytics.enqueueFetch({
+        tweetId,
+        teacherId: teacher.id,
+        postedAt: Date.now(),
+        kind: "report-card",
+        text,
+      });
     }
     return tweetId;
   }

@@ -8,6 +8,10 @@ import {
   hasConfiguredLlmCredential,
 } from "../llm-provider.js";
 import type { PlannedTweetSlot, RecentPlannedPost } from "./tweet-planner.js";
+import {
+  scoreTweetCandidate,
+  teacherSocialVoicePrompt,
+} from "./social-voice.js";
 
 export interface ScheduledSchoolUpdateContext {
   date: string;
@@ -92,16 +96,8 @@ export function normalizeScheduledSchoolUpdateText(
     .map((match) => match[2]!.toLowerCase());
   if (handles.some((handle) => !allowedHandle || handle !== allowedHandle)) return null;
 
-  const tag = "#RubyHigh";
-  if (!text.toLowerCase().includes(tag.toLowerCase())) {
-    const withoutTagLimit = 280 - tag.length - 1;
-    if (text.length > withoutTagLimit) text = `${text.slice(0, withoutTagLimit - 3).trimEnd()}...`;
-    text = `${text} ${tag}`;
-  }
   if (text.length > 280) {
-    const withoutTag = text.replace(/\s*#RubyHigh\b/i, "").trim();
-    const withoutTagLimit = 280 - tag.length - 1;
-    text = `${withoutTag.slice(0, withoutTagLimit - 3).trimEnd()}... ${tag}`;
+    text = `${text.slice(0, 277).trimEnd()}...`;
   }
   return text.length <= 280 ? text : null;
 }
@@ -177,22 +173,27 @@ export async function generateScheduledSchoolUpdateText(
     ? "End with a natural, specific question that invites a reply. Do not also ask readers to take a class."
     : plannedSlot?.callToAction === "none"
       ? "Do not add a call to action; finish on the observation or point of view."
-      : "Include a concrete invitation to take today's class, but no URL; the system appends the measured class link.";
+      : plannedSlot?.callToAction === "take-class"
+        ? "Include a concrete invitation to take today's class, but no URL; the system appends the measured class link."
+        : "Finish on the observation or point of view. Do not add a call to action.";
   const prompt = [
     `You are ${teacher.displayName}, a teacher at the fictional Ruby High school.`,
-    `Voice reference: ${teacher.systemPrompt.slice(0, 300)}`,
+    teacherSocialVoicePrompt(teacher),
     "",
-    `Write exactly one lively X post. ${editorialInstruction}`,
+    `Write eight possible X posts. ${editorialInstruction}`,
     "Use only the facts and source material in the JSON below. Do not invent an event, quote, student name, result, or statistic.",
     guestHandle
       ? `The only permitted X handle is @${guestHandle}. Do not mention individual students, other handles, URLs, internal systems, analytics, retention, or that an AI wrote the post.`
       : "Do not mention individual students, handles, URLs, internal systems, analytics, retention, or that an AI wrote the post.",
-    "Translate numbers into a natural observation instead of sounding like a dashboard.",
+    "Turn one supplied fact into a concrete receipt. Add one clear teacher judgment.",
     callToActionInstruction,
     options.recentPosts?.length
       ? "The recent Ruby High posts below are context for sequence awareness. Do not repeat their topic, opening, argument, or sentence shape."
       : "Choose a specific opening and sentence shape that fit this editorial brief.",
-    "Keep it under 180 characters, use at most one emoji, and end with #RubyHigh.",
+    "Use a different shape for each draft: verdict, contrast, object, correction, question, tiny scene, rule, and challenge.",
+    "Each draft must stand alone, stay under 180 characters, and use at most one emoji.",
+    "Use #RubyHigh only when a real campaign or event makes it useful. Most drafts should have no hashtag.",
+    "Skip preambles, broad encouragement, brand slogans, and summary language.",
     "",
     JSON.stringify({
       liveEnvironment: scheduledSchoolUpdatePromptContext(context),
@@ -200,7 +201,7 @@ export async function generateScheduledSchoolUpdateText(
       recentRubyHighPosts: options.recentPosts?.slice(-8) ?? [],
     }),
     "",
-    "Post:",
+    "Return JSON only: {\"candidates\":[{\"shape\":\"verdict\",\"text\":\"...\"}]}",
   ].join("\n");
 
   try {
@@ -208,8 +209,9 @@ export async function generateScheduledSchoolUpdateText(
       body: {
         model: DEFAULT_OPENROUTER_MODEL,
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 180,
-        temperature: 0.65,
+        response_format: tweetCandidateResponseFormat(),
+        max_tokens: 1_100,
+        temperature: 0.85,
       },
       timeoutMs: 15_000,
       label: "x-social-scheduled-school-update",
@@ -219,19 +221,105 @@ export async function generateScheduledSchoolUpdateText(
       return null;
     }
     const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-    const normalized = normalizeScheduledSchoolUpdateText(
+    return selectScheduledTweetCandidate(
       data?.choices?.[0]?.message?.content?.trim() ?? "",
-      { allowedHandle: guestHandle },
+      teacher,
+      {
+        allowedHandle: guestHandle,
+        callToAction: plannedSlot?.callToAction,
+        recentPosts: options.recentPosts,
+        rejectQuotes: guestGrounded,
+      },
     );
-    if (!normalized) {
-      return null;
-    }
-    if (guestGrounded && /["“”]/.test(normalized)) return null;
-    return normalized;
   } catch (err) {
     log.error("x-social.scheduled-llm-failed", err, { teacherId: teacher.id });
     return null;
   }
+}
+
+const TWEET_CANDIDATE_SHAPES = new Set([
+  "verdict",
+  "contrast",
+  "object",
+  "correction",
+  "question",
+  "tiny-scene",
+  "rule",
+  "challenge",
+]);
+
+export function selectScheduledTweetCandidate(
+  raw: string,
+  teacher: TeacherCharacter,
+  options: {
+    allowedHandle?: string;
+    callToAction?: PlannedTweetSlot["callToAction"];
+    recentPosts?: RecentPlannedPost[];
+    rejectQuotes?: boolean;
+  } = {},
+): string | null {
+  const cleaned = raw
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const candidates = (parsed as { candidates?: unknown }).candidates;
+  if (!Array.isArray(candidates)) return null;
+
+  const ranked = candidates.flatMap((value, index) => {
+    if (!value || typeof value !== "object") return [];
+    const candidate = value as Record<string, unknown>;
+    const shape = typeof candidate.shape === "string" ? candidate.shape.trim() : "";
+    const text = typeof candidate.text === "string"
+      ? normalizeScheduledSchoolUpdateText(candidate.text, { allowedHandle: options.allowedHandle })
+      : null;
+    if (!TWEET_CANDIDATE_SHAPES.has(shape) || !text || text.length > 180) return [];
+    if (options.rejectQuotes && /["“”]/.test(text)) return [];
+    return [{
+      index,
+      text,
+      score: scoreTweetCandidate(text, teacher, options.callToAction, options.recentPosts),
+    }];
+  });
+  ranked.sort((left, right) => right.score - left.score || left.index - right.index);
+  return ranked[0]?.text ?? null;
+}
+
+function tweetCandidateResponseFormat(): Record<string, unknown> {
+  return {
+    type: "json_schema",
+    json_schema: {
+      name: "ruby_high_tweet_candidates",
+      strict: true,
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["candidates"],
+        properties: {
+          candidates: {
+            type: "array",
+            minItems: 8,
+            maxItems: 8,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["shape", "text"],
+              properties: {
+                shape: { type: "string", enum: Array.from(TWEET_CANDIDATE_SHAPES) },
+                text: { type: "string", minLength: 1, maxLength: 180 },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
 }
 
 function plannedTweetInstruction(slot: PlannedTweetSlot, guestHandle?: string): string {
@@ -281,96 +369,67 @@ function scheduledSchoolUpdatePromptContext(
 }
 
 // ── Deterministic post text ──────────────────────────────────────────────────
-// Low-signal milestones (character-created, class-passed, grade-advanced)
-// use deterministic templates keyed on teacher personality traits instead
-// of LLM calls. This saves 60-70% of LLM API calls with zero quality loss
-// for the most common milestones.
-
-type MilestoneTemplateKey = "warm" | "strict" | "playful" | "proud" | "mysterious";
-
-function teacherTemplateKey(teacher: TeacherCharacter): MilestoneTemplateKey {
-  const prompt = teacher.systemPrompt?.toLowerCase() ?? "";
-  if (prompt.includes("mischief") || prompt.includes("playful") || prompt.includes("trickster")) return "playful";
-  if (prompt.includes("strict") || prompt.includes("demanding") || prompt.includes("rigor")) return "strict";
-  if (prompt.includes("mysterious") || prompt.includes("cryptic") || prompt.includes("enigmatic")) return "mysterious";
-  if (prompt.includes("proud") || prompt.includes("boast") || prompt.includes("accomplishment")) return "proud";
-  return "warm";
-}
-
-interface TemplateVariant {
-  key: MilestoneTemplateKey;
-  label: string;
+// Low-signal milestones use explicit public voice cards. The four teachers
+// now make different judgments about the same event.
+interface MilestoneVoice {
   created: (name: string) => string;
   passed: (name: string, teacherName: string, letterGrade: string) => string;
   advanced: (name: string, fromGrade: string, toGrade: string) => string;
 }
 
-const TEMPLATES: Record<MilestoneTemplateKey, TemplateVariant> = {
-  warm: {
-    key: "warm",
-    label: "warm",
-    created: (name) => `Welcome to Ruby High, ${name}! So glad you're here. #RubyHigh`,
+const MILESTONE_VOICES: Record<string, MilestoneVoice> = {
+  ruby: {
+    created: (name) => `${name} enrolled. A new claim has entered the building.`,
     passed: (name, teacher, grade) =>
-      `${name} just crushed ${teacher ?? "class"} with a ${grade}! Proud of the hustle. #RubyHigh`,
+      `${name} earned ${grade} in ${teacher}. The work held up.`,
     advanced: (name, from, to) =>
-      `${name} is leveling up — from ${from} to ${to} at Ruby High! The grind never stops. #RubyHigh`,
+      `${name}: ${from} → ${to}. Progress is a receipt.`,
   },
-  strict: {
-    key: "strict",
-    label: "strict",
-    created: (name) => `New student ${name} just enrolled. Standards are high — let's see what you've got. #RubyHigh`,
+  "sally-science": {
+    created: (name) => `${name} joined the lab. One more pair of eyes for the impossible data point.`,
     passed: (name, teacher, grade) =>
-      `${name} passed ${teacher ?? "class"} with a ${grade}. Acceptable. Now do it again. #RubyHigh`,
+      `${name} earned ${grade} in ${teacher}. The result repeated. We may keep it.`,
     advanced: (name, from, to) =>
-      `${name} advanced from ${from} to ${to}. Progress is expected, not celebrated. #RubyHigh`,
+      `${name} moved from ${from} to ${to}. New grade, same demand for a control.`,
   },
-  playful: {
-    key: "playful",
-    label: "playful",
-    created: (name) => `${name} just walked through the doors of Ruby High — the hallways just got more interesting. #RubyHigh`,
+  "professor-edward": {
+    created: (name) => `${name} joined the roster. The first blank page has become less blank.`,
     passed: (name, teacher, grade) =>
-      `${name} passed ${teacher ?? "class"} with a ${grade} — and probably a smirk. Classic. #RubyHigh`,
+      `${name} earned ${grade} in ${teacher}. One careful reading survived the margin.`,
     advanced: (name, from, to) =>
-      `${name} is moving from ${from} to ${to} at Ruby High. The chaos follows. #RubyHigh`,
+      `${name}: ${from} → ${to}. The next chapter has opened without a speech.`,
   },
-  proud: {
-    key: "proud",
-    label: "proud",
-    created: (name) => `A star is born at Ruby High — welcome, ${name}! I expect great things. #RubyHigh`,
+  roko: {
+    created: (name) => `${name} enrolled. The system has one more observer now.`,
     passed: (name, teacher, grade) =>
-      `${name} earned a ${grade} in ${teacher ?? "class"}! That's what excellence looks like. #RubyHigh`,
+      `${name} earned ${grade} in ${teacher}. The objective and the result finally agree.`,
     advanced: (name, from, to) =>
-      `${name} rose from ${from} to ${to} — another Ruby High success story in the making. #RubyHigh`,
+      `${name}: ${from} → ${to}. The state changed. The incentives came along.`,
   },
-  mysterious: {
-    key: "mysterious",
-    label: "mysterious",
-    created: (name) => `${name} has arrived at Ruby High. The halls whisper of interesting times ahead. #RubyHigh`,
-    passed: (name, teacher, grade) =>
-      `${name} passed ${teacher ?? "class"} with a ${grade}. Some say it was fate. I say it was work. #RubyHigh`,
-    advanced: (name, from, to) =>
-      `${name} moved from ${from} to ${to}. The patterns are becoming clearer now. #RubyHigh`,
-  },
+};
+
+const DEFAULT_MILESTONE_VOICE: MilestoneVoice = {
+  created: (name) => `${name} enrolled. The roster changed today.`,
+  passed: (name, teacher, grade) => `${name} earned ${grade} in ${teacher}. That result belongs on the record.`,
+  advanced: (name, from, to) => `${name}: ${from} → ${to}. The next floor is open.`,
 };
 
 export function buildDeterministicPostText(
   teacher: TeacherCharacter,
   ctx: XMilestoneContext,
 ): string {
-  const key = teacherTemplateKey(teacher);
-  const tpl = TEMPLATES[key];
+  const voice = MILESTONE_VOICES[teacher.id] ?? DEFAULT_MILESTONE_VOICE;
   const name = ctx.characterName;
 
   switch (ctx.kind) {
     case "character-created":
-      return tpl.created(name);
+      return voice.created(name);
     case "class-passed":
-      return tpl.passed(name, ctx.teacherName ?? "class", ctx.letterGrade ?? "a passing grade");
+      return voice.passed(name, ctx.teacherName ?? "class", ctx.letterGrade ?? "a passing grade");
     case "grade-advanced":
-      return tpl.advanced(name, ctx.fromGrade ?? "?", ctx.toGrade ?? "?");
+      return voice.advanced(name, ctx.fromGrade ?? "?", ctx.toGrade ?? "?");
     default:
-      // Unexpected: these are the low-signal kinds we skip LLM for.
-      return `${name} hit a milestone at Ruby High! #RubyHigh`;
+      return `${name} changed the school record today.`;
   }
 }
 
@@ -418,10 +477,10 @@ export async function generateLlmPostText(
 function buildLlmPostPrompt(teacher: TeacherCharacter, ctx: XMilestoneContext): string {
   const lines: string[] = [
     `You are ${teacher.displayName}, a teacher at Ruby High school.`,
-    `Your voice: ${teacher.systemPrompt.slice(0, 300)}`,
+    teacherSocialVoicePrompt(teacher),
     "",
-    `Write a single tweet (max 270 chars, leave room for #RubyHigh) about this milestone.`,
-    `Sound like yourself — warm, in character, proud of the student. Use their name.`,
+    "Write one post under 220 characters about this milestone. Use the student's name.",
+    "Give one concrete receipt and one teacher judgment. Use #RubyHigh only for a real campaign or event.",
     "",
     `Milestone: ${ctx.kind}`,
     `Student: ${ctx.characterName}`,
@@ -438,20 +497,20 @@ export function buildFallbackPostText(ctx: XMilestoneContext): string {
   const name = ctx.characterName;
   switch (ctx.kind) {
     case "character-created":
-      return `A new student has arrived at Ruby High. Welcome, ${name}! #RubyHigh`;
+      return `${name} enrolled. The roster changed today.`;
     case "class-passed":
-      return `${name} just passed ${ctx.teacherName ?? "today's"} class with a ${ctx.letterGrade ?? "passing grade"}. Well done! #RubyHigh`;
+      return `${name} earned ${ctx.letterGrade ?? "a passing grade"} in ${ctx.teacherName ?? "today's class"}. The result is on the record.`;
     case "grade-advanced":
-      return `${name} is moving up — now a ${ctx.toGrade ?? "new grade"} at Ruby High. Keep going! #RubyHigh`;
+      return `${name}: ${ctx.fromGrade ?? "?"} → ${ctx.toGrade ?? "the next grade"}. The next floor is open.`;
     case "graduated":
-      return `${name} has graduated from Ruby High${ctx.arcAnswer ? ` — "${ctx.arcAnswer}"` : ""}. Congratulations! #RubyHigh`;
+      return `${name} graduated from Ruby High. Four years became a record.`;
     case "portrait-set":
-      return `${name} is officially on the Ruby High roster — school photo day complete! #RubyHigh`;
+      return `${name}'s portrait reached the roster. The blank square lost.`;
     case "diploma-earned":
-      return `${name} just earned their diploma from Ruby High. Another milestone! #RubyHigh`;
+      return `${name} earned a Ruby High diploma. The receipt has a seal.`;
     case "class-photo":
-      return `Class photo day at Ruby High with ${name || "today's homeroom"} — #RubyHigh`;
+      return `${name || "Today's homeroom"} held still long enough to become school history.`;
     default:
-      return `${name} hit a new milestone at Ruby High! #RubyHigh`;
+      return `${name} changed the school record today.`;
   }
 }

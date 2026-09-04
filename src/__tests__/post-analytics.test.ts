@@ -1,10 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   hydratePostAnalyticsState,
   postAnalyticsStateRecord,
   PostAnalytics,
   type PostMetricsRecord,
 } from "../services/ruby-high/post-analytics.js";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("hydratePostAnalyticsState", () => {
   it("returns empty state for null", () => {
@@ -24,19 +28,30 @@ describe("hydratePostAnalyticsState", () => {
       retweets: 2,
       replies: 1,
       quotes: 0,
+      bookmarks: 1,
       kind: "class-passed",
       text: "test tweet",
     };
 
     const stored = postAnalyticsStateRecord({
       records: [record],
-      pendingFetches: new Map([["tweet-2", 3000]]),
+      pendingFetches: new Map([["tweet-2", {
+        teacherId: "ruby",
+        postedAt: 2000,
+        fetchAfter: 3000,
+        kind: "school-update",
+        text: "A claim met its receipt.",
+      }]]),
     });
 
     const hydrated = hydratePostAnalyticsState(stored);
     expect(hydrated.records).toHaveLength(1);
     expect(hydrated.records[0]!.tweetId).toBe("tweet-1");
-    expect(hydrated.pendingFetches.get("tweet-2")).toBe(3000);
+    expect(hydrated.pendingFetches.get("tweet-2")).toMatchObject({
+      teacherId: "ruby",
+      fetchAfter: 3000,
+      kind: "school-update",
+    });
   });
 
   it("drops malformed records", () => {
@@ -73,6 +88,7 @@ describe("PostAnalytics", () => {
       retweets: 0,
       replies: 0,
       quotes: 0,
+      bookmarks: 0,
       kind: "class-passed",
       text: "a",
     });
@@ -86,6 +102,7 @@ describe("PostAnalytics", () => {
       retweets: 20,
       replies: 5,
       quotes: 2,
+      bookmarks: 3,
       kind: "graduated",
       text: "b",
     });
@@ -107,6 +124,7 @@ describe("PostAnalytics", () => {
       retweets: 0,
       replies: 0,
       quotes: 0,
+      bookmarks: 0,
       kind: "class-passed",
       text: "a",
     });
@@ -120,11 +138,48 @@ describe("PostAnalytics", () => {
       retweets: 0,
       replies: 0,
       quotes: 0,
+      bookmarks: 0,
       kind: "class-passed",
       text: "b",
     });
 
-    expect(analytics.getEngagementScore("class-passed")).toBe(5);
+    expect(analytics.getEngagementScore("class-passed")).toBe(34);
     expect(analytics.getEngagementScore("unknown")).toBe(0);
+  });
+
+  it("keeps post context when it fetches X metrics", async () => {
+    const analytics = new PostAnalytics(null);
+    analytics.enqueueFetch({
+      tweetId: "tweet-context",
+      teacherId: "sally-science",
+      postedAt: Date.now() - 20 * 60 * 1000,
+      kind: "school-update",
+      text: "Three trials agreed. The fourth brought a lawyer.",
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [{
+          id: "tweet-context",
+          public_metrics: {
+            impression_count: 400,
+            like_count: 20,
+            retweet_count: 4,
+            reply_count: 3,
+            quote_count: 2,
+            bookmark_count: 5,
+          },
+        }],
+      }),
+    }));
+
+    await expect(analytics.fetchPendingMetrics("token")).resolves.toBe(1);
+    expect(analytics.getTopPerforming()[0]).toMatchObject({
+      tweetId: "tweet-context",
+      teacherId: "sally-science",
+      kind: "school-update",
+      text: "Three trials agreed. The fourth brought a lawyer.",
+      bookmarks: 5,
+    });
   });
 });
