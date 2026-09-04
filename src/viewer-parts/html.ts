@@ -285,7 +285,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     <p class="sub">Play classes for free. Merit Stars pay for teacher chat. Hall Passes pay for images, extra students, and collectible cards.</p>
     <div class="sheet-actions" style="justify-content: center;">
       <button id="signin-guest" class="primary-link" type="button">Continue free</button>
-      <button id="signin-privy" class="secondary-link" type="button">Use passkey</button>
+      <button id="signin-privy" class="secondary-link" type="button">Sign in with a passkey</button>
       <a id="signin-cta" class="secondary-link" href="/api/apps/ruby-high/auth/start">Use my AI key</a>
     </div>
     <div id="signin-status" class="stat-budget" aria-live="polite"></div>
@@ -301,14 +301,14 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       <div class="account-identity-inline">
         <div class="wallet-panel" id="privy-wallet">Guest session</div>
         <div class="sheet-actions">
-          <button type="button" id="passkey-action">Use passkey</button>
-          <button type="button" class="secondary" id="passkey-create">Create passkey</button>
+          <button type="button" id="passkey-action">Sign in with a passkey</button>
+          <button type="button" class="secondary" id="passkey-create">Save progress with a passkey</button>
           <button type="button" class="secondary" id="privy-login-widget" hidden>Connect wallet</button>
           <button type="button" class="secondary" id="privy-signout" hidden>Sign out</button>
         </div>
       </div>
     </div>
-    <p class="sub account-passkey-copy">Use Touch ID, Face ID, Windows Hello, your phone, or a security key. Your device keeps the private key.</p>
+    <p class="sub account-passkey-copy">Use Touch ID, Face ID, Windows Hello, your phone, or a security key. Ruby High stores your public key. Your passkey manager protects the private key.</p>
     <div class="account-tabs" role="tablist" aria-label="Account areas">
       <button type="button" class="account-tab is-active" id="account-tab-account" data-account-tab="account" role="tab" aria-selected="true" aria-controls="account-panel-account">Profile</button>
       <button type="button" class="account-tab" id="account-tab-wallet" data-account-tab="wallet" role="tab" aria-selected="false" aria-controls="account-panel-wallet">Passes</button>
@@ -328,6 +328,38 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
             </div>
           </div>
           <div class="account-character-grid" id="account-character-grid"></div>
+        </section>
+        <section class="account-section account-security-section" id="account-security-section">
+          <div class="account-section-head">
+            <div>
+              <div class="account-section-title">Passkey security</div>
+              <div class="account-section-sub" id="passkey-security-summary">Save your progress across devices.</div>
+            </div>
+            <div class="account-section-actions">
+              <button type="button" class="secondary" id="passkey-recovery-create" hidden>New recovery code</button>
+            </div>
+          </div>
+          <label class="passkey-autofill-field" id="passkey-autofill-label">
+            <span>Passkey account</span>
+            <input id="passkey-autofill" name="username" type="text" autocomplete="username webauthn" placeholder="Choose a saved passkey" />
+          </label>
+          <div class="passkey-list" id="passkey-list"></div>
+          <div class="passkey-recovery-card" id="passkey-recovery-card">
+            <label for="passkey-recovery-input">Lost access? Enter your recovery code.</label>
+            <div class="passkey-recovery-actions">
+              <input id="passkey-recovery-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" />
+              <button type="button" class="secondary" id="passkey-recovery-submit">Recover account</button>
+            </div>
+          </div>
+          <div class="passkey-recovery-code" id="passkey-recovery-code" hidden>
+            <strong>Save this recovery code now</strong>
+            <p>Keep it in a password manager. It works once. A recovery creates a fresh code.</p>
+            <code id="passkey-recovery-value"></code>
+            <div class="account-section-actions">
+              <button type="button" class="secondary" id="passkey-recovery-copy">Copy code</button>
+              <button type="button" class="secondary" id="passkey-recovery-download">Download</button>
+            </div>
+          </div>
         </section>
         <section class="account-section account-public-world-section">
           <div class="account-section-head">

@@ -554,13 +554,22 @@ describe("passkey auth", () => {
       const registered = JSON.parse(registerRes.body);
       expect(registered).toMatchObject({
         session: true,
-        label: "Passkey",
-        passkey: { available: true, registered: true, authenticated: true },
+        label: "Ruby High Student",
+        recoveryCode: expect.stringMatching(/^[A-Z2-9]{5}(?:-[A-Z2-9]{5}){3}$/),
+        passkey: {
+          available: true,
+          registered: true,
+          authenticated: true,
+          recent: true,
+          recoveryConfigured: true,
+          credentials: [expect.objectContaining({ name: "Synced passkey 1", synced: true })],
+        },
       });
       const registeredToken = decodeURIComponent(String(registerRes.getHeader("set-cookie")).match(/rh_session=([^;]+)/)?.[1] || "");
       expect(auth.resolve(registeredToken)).toMatchObject({
         userId: guest.record.userId,
         provider: "passkey",
+        passkeyVerifiedAt: expect.any(Number),
       });
 
       await auth.stop();
@@ -601,6 +610,7 @@ describe("passkey auth", () => {
       expect(auth.resolve(loginToken)).toMatchObject({
         userId: guest.record.userId,
         provider: "passkey",
+        passkeyVerifiedAt: expect.any(Number),
       });
       expect((await stateStore.loadAuth()).users).toEqual(expect.arrayContaining([
         expect.objectContaining({

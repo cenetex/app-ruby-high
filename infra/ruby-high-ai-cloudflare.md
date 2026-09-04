@@ -36,7 +36,9 @@ The import file already includes the ACME CNAME and ownership TXT records return
 
 ## Forwarding
 
-DNS does not perform HTTP forwarding. Use Cloudflare Redirect Rules for host canonicalization:
+The Ruby High server sends a permanent `308` redirect from alternate public hosts to `https://ruby-high.ai`. It preserves the path and query string. Health checks remain available on the Fly host.
+
+You can also use a Cloudflare Redirect Rule for an earlier edge redirect:
 
 | Rule | When incoming request matches | Redirect target |
 |---|---|---|

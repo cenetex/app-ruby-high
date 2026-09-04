@@ -428,6 +428,29 @@ describe("StateStore", () => {
     await expect(fresh.loadServiceState("svc:missing")).resolves.toBeNull();
   });
 
+  it("takes short-lived service state once and drops expired records", async () => {
+    const store = new StateStore(storePath, { debounceMs: 0 });
+    const live = {
+      id: "svc:once",
+      updatedAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      data: { challenge: "one-time" },
+    };
+    await store.saveServiceState(live);
+
+    await expect(store.takeServiceState("svc:once")).resolves.toEqual(live);
+    await expect(store.takeServiceState("svc:once")).resolves.toBeNull();
+    await expect(new StateStore(storePath).loadServiceState("svc:once")).resolves.toBeNull();
+
+    await store.saveServiceState({
+      id: "svc:expired",
+      updatedAt: Date.now() - 2_000,
+      expiresAt: Date.now() - 1_000,
+      data: { challenge: "old" },
+    });
+    await expect(store.loadServiceState("svc:expired")).resolves.toBeNull();
+  });
+
   it("round-trips imported content packs separately from session state", async () => {
     const store = new StateStore(storePath);
     await store.save([blankState("a")]);

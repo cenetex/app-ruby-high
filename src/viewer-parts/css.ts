@@ -9692,6 +9692,86 @@ export const VIEWER_CSS = `
     margin: 0 0 12px;
     max-width: 640px;
   }
+  .passkey-autofill-field,
+  .passkey-recovery-card {
+    display: grid;
+    gap: 6px;
+    color: var(--text-soft);
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .passkey-autofill-field input,
+  .passkey-recovery-actions input {
+    min-width: 0;
+    min-height: 40px;
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 8px;
+    background: rgba(0,0,0,0.2);
+    color: var(--text);
+    font: inherit;
+    padding: 8px 10px;
+  }
+  .passkey-list {
+    display: grid;
+    gap: 7px;
+  }
+  .passkey-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 10px;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.035);
+  }
+  .passkey-row strong,
+  .passkey-row span { display: block; }
+  .passkey-row span {
+    margin-top: 3px;
+    color: var(--text-mute);
+    font-size: 12px;
+  }
+  .passkey-row button,
+  .passkey-recovery-actions button,
+  .passkey-recovery-code button {
+    min-height: 34px;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.07);
+    color: var(--text-soft);
+    cursor: pointer;
+    font-weight: 850;
+    padding: 7px 12px;
+  }
+  .passkey-recovery-card { margin-top: 10px; }
+  .passkey-recovery-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+  .passkey-recovery-code {
+    margin-top: 10px;
+    padding: 11px;
+    border: 1px solid rgba(241,201,92,0.35);
+    border-radius: 8px;
+    background: rgba(241,201,92,0.08);
+  }
+  .passkey-recovery-code p {
+    margin: 5px 0 9px;
+    color: var(--text-soft);
+    font-size: 12px;
+  }
+  .passkey-recovery-code code {
+    display: block;
+    margin-bottom: 9px;
+    color: #ffe08a;
+    font-size: clamp(14px, 3vw, 18px);
+    font-weight: 900;
+    letter-spacing: 0.07em;
+    overflow-wrap: anywhere;
+    user-select: all;
+  }
   .privy-card.account-card .account-character-card {
     border-color: rgba(255,255,255,0.1);
     background: rgba(255,255,255,0.025);
@@ -9850,6 +9930,7 @@ export const VIEWER_CSS = `
     .account-section-head { align-items: flex-start; }
     .account-section-actions { justify-content: flex-start; }
     .account-character-grid { grid-template-columns: 1fr; }
+    .passkey-recovery-actions { grid-template-columns: 1fr; }
     .account-character-card {
       grid-template-columns: 58px minmax(0, 1fr);
       padding: 11px;

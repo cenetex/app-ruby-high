@@ -761,6 +761,11 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="passkey-action"');
     expect(html).toContain('id="passkey-create"');
     expect(html).toContain("Use Touch ID, Face ID, Windows Hello, your phone, or a security key.");
+    expect(html).toContain("Ruby High stores your public key. Your passkey manager protects the private key.");
+    expect(html).toContain('autocomplete="username webauthn"');
+    expect(html).toContain('id="passkey-list"');
+    expect(html).toContain('id="passkey-recovery-input"');
+    expect(html).toContain('id="passkey-recovery-create"');
     expect(html).not.toContain('id="privy-phantom-login"');
     expect(html).toContain('id="privy-login-widget"');
     expect(html).not.toContain('id="privy-connect-solana"');
@@ -846,6 +851,14 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, '"/auth/passkey/login/verify"');
     expectScriptToContain(script, '"/auth/passkey/register/options"');
     expectScriptToContain(script, '"/auth/passkey/register/verify"');
+    expectScriptToContain(script, '"/auth/passkey/reauth/options"');
+    expectScriptToContain(script, '"/auth/passkey/recover/options"');
+    expectScriptToContain(script, '"/auth/passkey/recover/verify"');
+    expectScriptToContain(script, '"/auth/passkey/recovery-code"');
+    expectScriptToContain(script, '"/auth/passkey/delete"');
+    expectScriptToContain(script, "PublicKeyCredential.isConditionalMediationAvailable()");
+    expectScriptToContain(script, 'mediation: "conditional"');
+    expectScriptToContain(script, "localStorage.removeItem(VIEWER_CONSTANTS.VISITOR_ID_KEY)");
     expectScriptToContain(script, "navigator.credentials.get");
     expectScriptToContain(script, "navigator.credentials.create");
     expectScriptToContain(script, "startSolanaWalletConnect");

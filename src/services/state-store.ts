@@ -17,6 +17,10 @@ export interface AuthUserRecord {
   walletAddress?: string;
   walletChainType?: "ethereum" | "solana";
   passkeys?: StoredPasskeyCredential[];
+  /** One-way hash of the current account recovery code. The raw code is
+   * shown once to the user and is never stored. */
+  recoveryCodeHash?: string;
+  recoveryCodeCreatedAt?: number;
   /** Synthetic clients (for example the scheduled smoke test) are retained
    *  operationally but excluded from product analytics. */
   clientSurface?: MetricClientSurface;
@@ -39,6 +43,8 @@ export interface AuthSessionRecord {
   createdAt: number;
   expiresAt: number;
   provider?: AuthUserRecord["provider"];
+  /** Most recent WebAuthn user verification for sensitive account actions. */
+  passkeyVerifiedAt?: number;
   clientSurface?: MetricClientSurface;
 }
 
@@ -263,6 +269,8 @@ export interface StoredSessionQuery {
 export interface StoredServiceStateRecord {
   id: string;
   updatedAt: number;
+  /** Optional absolute expiry for short-lived durable state. */
+  expiresAt?: number;
   data: Record<string, unknown>;
 }
 
@@ -318,6 +326,8 @@ export interface StateStoreLike {
   loadMetricEvents?(): Promise<StoredMetricEventRecord[]>;
   loadSchoolEvents?(query?: StoredSchoolEventQuery): Promise<StoredSchoolEventRecord[]>;
   loadServiceState?(id: string): Promise<StoredServiceStateRecord | null>;
+  /** Atomically read and remove one service-state record when supported. */
+  takeServiceState?(id: string): Promise<StoredServiceStateRecord | null>;
   saveSession(state: QuizState): Promise<void>;
   saveAuthUser(user: AuthUserRecord): Promise<void>;
   saveAuthSession(session: AuthSessionRecord): Promise<void>;
@@ -456,7 +466,25 @@ export class StateStore implements StateStoreLike {
   async loadServiceState(id: string): Promise<StoredServiceStateRecord | null> {
     const parsed = await this.readFileSnapshot();
     if (parsed) this.applyParsedSnapshot(parsed);
-    return this.serviceStates.get(id) ?? null;
+    const record = this.serviceStates.get(id) ?? null;
+    if (record?.expiresAt && record.expiresAt <= Date.now()) {
+      this.serviceStates.delete(id);
+      await this.scheduleWrite();
+      return null;
+    }
+    return record;
+  }
+
+  async takeServiceState(id: string): Promise<StoredServiceStateRecord | null> {
+    const parsed = await this.readFileSnapshot();
+    if (parsed) this.applyParsedSnapshot(parsed);
+    const record = this.serviceStates.get(id) ?? null;
+    if (record) {
+      this.serviceStates.delete(id);
+      await this.writeNow();
+    }
+    if (record?.expiresAt && record.expiresAt <= Date.now()) return null;
+    return record;
   }
 
   private async readFileSnapshot(): Promise<{
@@ -619,7 +647,7 @@ export class StateStore implements StateStoreLike {
         typeof r.data === "object" &&
         !Array.isArray(r.data)
       ) {
-        serviceStates.set(r.id, r);
+        if (!r.expiresAt || r.expiresAt > Date.now()) serviceStates.set(r.id, r);
       }
     }
     const schoolEvents = new Map<string, StoredSchoolEventRecord>();

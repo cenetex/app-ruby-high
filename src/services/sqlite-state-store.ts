@@ -354,6 +354,25 @@ export class SqliteStateStore implements StateStoreLike {
     return null;
   }
 
+  async takeServiceState(id: string): Promise<StoredServiceStateRecord | null> {
+    const pk = `service-state:${encodeURIComponent(id)}`;
+    const nowSec = Math.floor(Date.now() / 1000);
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const row = this.db
+        .prepare("SELECT data FROM kv WHERE pk = ? AND kind = 'serviceState' AND (expires_at IS NULL OR expires_at > ?)")
+        .get(pk, nowSec) as { data?: string } | undefined;
+      this.db.prepare("DELETE FROM kv WHERE pk = ?").run(pk);
+      this.db.exec("COMMIT");
+      if (!row?.data) return null;
+      const record = JSON.parse(row.data) as StoredServiceStateRecord;
+      return record?.id === id ? record : null;
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+  }
+
   // ── writes ─────────────────────────────────────────────────────────────────
 
   private put(pk: string, kind: Kind, data: unknown, updatedAt: number | undefined, expiresAtSec: number | null): void {
@@ -407,7 +426,13 @@ export class SqliteStateStore implements StateStoreLike {
   }
 
   async saveServiceState(record: StoredServiceStateRecord): Promise<void> {
-    this.put(`service-state:${encodeURIComponent(record.id)}`, "serviceState", record, record.updatedAt, null);
+    this.put(
+      `service-state:${encodeURIComponent(record.id)}`,
+      "serviceState",
+      record,
+      record.updatedAt,
+      record.expiresAt ? Math.floor(record.expiresAt / 1000) : null,
+    );
   }
 
   /** Bulk write — used by tests / migrations. Wrapped in a single transaction. */

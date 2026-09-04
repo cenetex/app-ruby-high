@@ -553,6 +553,18 @@ export function runViewerClient(bootstrap) {
     privyWallet: $("privy-wallet"),
     passkeyAction: $("passkey-action"),
     passkeyCreate: $("passkey-create"),
+    passkeySecuritySummary: $("passkey-security-summary"),
+    passkeyAutofillLabel: $("passkey-autofill-label"),
+    passkeyAutofill: $("passkey-autofill"),
+    passkeyList: $("passkey-list"),
+    passkeyRecoveryCard: $("passkey-recovery-card"),
+    passkeyRecoveryInput: $("passkey-recovery-input"),
+    passkeyRecoverySubmit: $("passkey-recovery-submit"),
+    passkeyRecoveryCreate: $("passkey-recovery-create"),
+    passkeyRecoveryCode: $("passkey-recovery-code"),
+    passkeyRecoveryValue: $("passkey-recovery-value"),
+    passkeyRecoveryCopy: $("passkey-recovery-copy"),
+    passkeyRecoveryDownload: $("passkey-recovery-download"),
     privyLoginWidget: $("privy-login-widget"),
     privySignout: $("privy-signout"),
     privyStatus: $("privy-status"),
@@ -814,6 +826,9 @@ export function runViewerClient(bootstrap) {
     available: true,
     registered: false,
     authenticated: false,
+    recent: false,
+    recoveryConfigured: false,
+    credentials: [],
   };
   let privyClient = null;
   let privyClientPromise = null;
@@ -9973,8 +9988,17 @@ export function runViewerClient(bootstrap) {
       available: next.available !== false,
       registered: !!next.registered,
       authenticated: !!next.authenticated,
+      recent: !!next.recent,
+      recoveryConfigured: !!next.recoveryConfigured,
+      credentials: Array.isArray(next.credentials) ? next.credentials.filter((item) => item && typeof item.id === "string") : [],
     };
     renderAccountIdentity();
+  }
+  let conditionalPasskeyAbortController = null;
+  let recoveryCodeForDisplay = "";
+  function abortConditionalPasskey() {
+    if (conditionalPasskeyAbortController) conditionalPasskeyAbortController.abort();
+    conditionalPasskeyAbortController = null;
   }
   function passkeySupported() {
     return !!(window.PublicKeyCredential && navigator.credentials);
@@ -10067,6 +10091,7 @@ export function runViewerClient(bootstrap) {
       passkey: data.passkey,
       privy: data.privy,
     });
+    if (data.recoveryCode) showPasskeyRecoveryCode(data.recoveryCode);
     setPrivyStatus(message, false);
     await fetchSession();
   }
@@ -10074,6 +10099,11 @@ export function runViewerClient(bootstrap) {
     if (!passkeySupported()) {
       setPrivyStatus("This browser needs passkey support. Try Safari, Chrome, or Edge.", true);
       return false;
+    }
+    abortConditionalPasskey();
+    if (passkeyState.registered && passkeyState.authenticated && !passkeyState.recent) {
+      const verified = await startPasskeyReauthentication();
+      if (!verified) return false;
     }
     setPasskeyBusy(true);
     setPrivyStatus("Waiting for your device to create a passkey...", false);
@@ -10099,6 +10129,7 @@ export function runViewerClient(bootstrap) {
       setPrivyStatus("This browser needs passkey support. Try Safari, Chrome, or Edge.", true);
       return false;
     }
+    abortConditionalPasskey();
     setPasskeyBusy(true);
     setPrivyStatus("Waiting for your passkey...", false);
     try {
@@ -10114,6 +10145,161 @@ export function runViewerClient(bootstrap) {
     } catch (err) {
       setPrivyStatus(friendlyPasskeyError(err), true);
       return false;
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
+  async function startPasskeyReauthentication() {
+    if (!passkeySupported()) {
+      setPrivyStatus("This browser needs passkey support. Try Safari, Chrome, or Edge.", true);
+      return false;
+    }
+    abortConditionalPasskey();
+    setPasskeyBusy(true);
+    setPrivyStatus("Confirm this account with your passkey...", false);
+    try {
+      const options = await passkeyJsonRequest("/auth/passkey/reauth/options", {});
+      const credential = await navigator.credentials.get({ publicKey: passkeyRequestOptions(options.publicKey) });
+      if (!credential) throw new Error("Your device did not return a passkey.");
+      const data = await passkeyJsonRequest("/auth/passkey/login/verify", {
+        flowId: options.flowId,
+        response: passkeyCredentialJson(credential),
+      });
+      await finishPasskeySession(data, "Account confirmed.");
+      return true;
+    } catch (err) {
+      setPrivyStatus(friendlyPasskeyError(err), true);
+      return false;
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
+  async function ensureRecentPasskey() {
+    if (!passkeyState.registered || passkeyState.recent) return true;
+    return startPasskeyReauthentication();
+  }
+  async function startConditionalPasskeyLogin() {
+    if (!passkeySupported() || passkeyState.authenticated || conditionalPasskeyAbortController) return;
+    if (typeof PublicKeyCredential.isConditionalMediationAvailable !== "function") return;
+    try {
+      const available = await PublicKeyCredential.isConditionalMediationAvailable();
+      if (!available || passkeyState.authenticated) return;
+      const options = await passkeyJsonRequest("/auth/passkey/login/options", {});
+      const controller = new AbortController();
+      conditionalPasskeyAbortController = controller;
+      const credential = await navigator.credentials.get({
+        publicKey: passkeyRequestOptions(options.publicKey),
+        mediation: "conditional",
+        signal: controller.signal,
+      });
+      if (!credential) return;
+      conditionalPasskeyAbortController = null;
+      const data = await passkeyJsonRequest("/auth/passkey/login/verify", {
+        flowId: options.flowId,
+        response: passkeyCredentialJson(credential),
+      });
+      await finishPasskeySession(data, "Signed in with your passkey.");
+    } catch (err) {
+      conditionalPasskeyAbortController = null;
+      if (err && (err.name === "AbortError" || err.name === "NotAllowedError")) return;
+      setPrivyStatus(friendlyPasskeyError(err), true);
+    }
+  }
+  function showPasskeyRecoveryCode(code) {
+    recoveryCodeForDisplay = String(code || "").trim();
+    if (els.passkeyRecoveryValue) els.passkeyRecoveryValue.textContent = recoveryCodeForDisplay;
+    if (els.passkeyRecoveryCode) els.passkeyRecoveryCode.hidden = !recoveryCodeForDisplay;
+  }
+  async function startPasskeyRecovery() {
+    const recoveryCode = String(els.passkeyRecoveryInput && els.passkeyRecoveryInput.value || "").trim();
+    if (!recoveryCode) {
+      setPrivyStatus("Enter your recovery code.", true);
+      if (els.passkeyRecoveryInput) els.passkeyRecoveryInput.focus();
+      return false;
+    }
+    if (!passkeySupported()) {
+      setPrivyStatus("This browser needs passkey support. Try Safari, Chrome, or Edge.", true);
+      return false;
+    }
+    abortConditionalPasskey();
+    setPasskeyBusy(true);
+    setPrivyStatus("Waiting for your device to create a new passkey...", false);
+    try {
+      const options = await passkeyJsonRequest("/auth/passkey/recover/options", { recoveryCode });
+      const credential = await navigator.credentials.create({ publicKey: passkeyCreationOptions(options.publicKey) });
+      if (!credential) throw new Error("Your device did not create a passkey.");
+      const data = await passkeyJsonRequest("/auth/passkey/recover/verify", {
+        flowId: options.flowId,
+        response: passkeyCredentialJson(credential),
+      });
+      if (els.passkeyRecoveryInput) els.passkeyRecoveryInput.value = "";
+      await finishPasskeySession(data, "Account recovered. Save the fresh recovery code.");
+      return true;
+    } catch (err) {
+      setPrivyStatus(friendlyPasskeyError(err), true);
+      return false;
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
+  async function regeneratePasskeyRecoveryCode() {
+    if (!await ensureRecentPasskey()) return;
+    setPasskeyBusy(true);
+    try {
+      const data = await passkeyJsonRequest("/auth/passkey/recovery-code", {});
+      applyPasskeyState(data.passkey);
+      showPasskeyRecoveryCode(data.recoveryCode);
+      setPrivyStatus("Fresh recovery code ready. Save it now.", false);
+    } catch (err) {
+      setPrivyStatus(friendlyPasskeyError(err), true);
+    } finally {
+      setPasskeyBusy(false);
+    }
+  }
+  async function copyPasskeyRecoveryCode() {
+    if (!recoveryCodeForDisplay) return;
+    try {
+      await copyTextToClipboard(recoveryCodeForDisplay);
+      setPrivyStatus("Recovery code copied.", false);
+    } catch (_err) {
+      setPrivyStatus("Select the recovery code and copy it.", true);
+    }
+  }
+  function downloadPasskeyRecoveryCode() {
+    if (!recoveryCodeForDisplay) return;
+    const blob = new Blob([
+      "Ruby High recovery code\n\n",
+      recoveryCodeForDisplay,
+      "\n\nStore this in a password manager. It works once.\n",
+    ], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "ruby-high-recovery-code.txt";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setPrivyStatus("Recovery code downloaded.", false);
+  }
+  async function deletePasskeyCredential(id, name) {
+    if (!await ensureRecentPasskey()) return;
+    const confirmed = await confirmInApp({
+      kicker: "Passkey security",
+      title: "Delete " + name + "?",
+      copy: "Your other passkey will keep this account available.",
+      confirmText: "Delete passkey",
+      tone: "danger",
+      focus: "cancel",
+    });
+    if (!confirmed) return;
+    setPasskeyBusy(true);
+    try {
+      const data = await passkeyJsonRequest("/auth/passkey/delete", { id });
+      applyPasskeyState(data.passkey);
+      setPrivyStatus("Passkey deleted.", false);
+    } catch (err) {
+      setPrivyStatus(friendlyPasskeyError(err), true);
     } finally {
       setPasskeyBusy(false);
     }
@@ -10212,11 +10398,11 @@ export function runViewerClient(bootstrap) {
     }
     if (els.passkeyAction) {
       els.passkeyAction.hidden = passkeyState.authenticated;
-      els.passkeyAction.textContent = "Use passkey";
+      els.passkeyAction.textContent = "Sign in with a passkey";
     }
     if (els.passkeyCreate) {
       els.passkeyCreate.hidden = passkeyState.registered && !passkeyState.authenticated;
-      els.passkeyCreate.textContent = passkeyState.authenticated ? "Add passkey" : "Create passkey";
+      els.passkeyCreate.textContent = passkeyState.authenticated ? "Add passkey" : "Save progress with a passkey";
     }
     if (els.privyLoginWidget) {
       els.privyLoginWidget.hidden = !passkeyState.authenticated || !privyState.configured || !!solanaAddress;
@@ -10225,6 +10411,48 @@ export function runViewerClient(bootstrap) {
     }
     if (els.privySignout) els.privySignout.hidden = !passkeyState.authenticated;
     if (els.signinPrivy) els.signinPrivy.hidden = false;
+    renderPasskeySecurity();
+  }
+  function passkeyDate(value) {
+    const date = new Date(Number(value));
+    return Number.isFinite(date.getTime()) ? date.toLocaleDateString(undefined, { dateStyle: "medium" }) : "";
+  }
+  function renderPasskeySecurity() {
+    const signedIn = passkeyState.authenticated;
+    if (els.passkeySecuritySummary) {
+      els.passkeySecuritySummary.textContent = signedIn
+        ? passkeyState.credentials.length + " saved passkey" + (passkeyState.credentials.length === 1 ? "" : "s") + ". Add two for safer recovery."
+        : "Sign in, or use a recovery code to create a fresh passkey.";
+    }
+    if (els.passkeyAutofillLabel) els.passkeyAutofillLabel.hidden = signedIn;
+    if (els.passkeyRecoveryCard) els.passkeyRecoveryCard.hidden = signedIn;
+    if (els.passkeyRecoveryCreate) els.passkeyRecoveryCreate.hidden = !signedIn || !passkeyState.registered;
+    if (!els.passkeyList) return;
+    els.passkeyList.replaceChildren();
+    els.passkeyList.hidden = !signedIn;
+    if (!signedIn) return;
+    passkeyState.credentials.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "passkey-row";
+      const text = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = item.name || "Passkey";
+      const meta = document.createElement("span");
+      const created = passkeyDate(item.createdAt);
+      const used = passkeyDate(item.lastUsedAt);
+      meta.textContent = (item.synced ? "Synced" : "Device-bound")
+        + (created ? " · added " + created : "")
+        + (used ? " · used " + used : "");
+      text.append(title, meta);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Delete";
+      button.disabled = passkeyState.credentials.length <= 1;
+      button.title = button.disabled ? "Add another passkey first." : "Delete this passkey";
+      button.addEventListener("click", () => deletePasskeyCredential(item.id, title.textContent));
+      row.append(text, button);
+      els.passkeyList.appendChild(row);
+    });
   }
   async function getPrivyClient() {
     if (!privyConfig) return null;
@@ -10356,7 +10584,9 @@ export function runViewerClient(bootstrap) {
   function showPrivyAccountModal() {
     openViewerModal(els.privyOverlay, {
       onRequestClose: closePrivyAccount,
-      initialFocus: () => els.accountTabs.find((tab) => tab.classList.contains("is-active")) || els.privyClose,
+      initialFocus: () => !passkeyState.authenticated && els.passkeyAutofill
+        ? els.passkeyAutofill
+        : els.accountTabs.find((tab) => tab.classList.contains("is-active")) || els.privyClose,
       fallbackFocus: els.privyAction,
     });
   }
@@ -10367,6 +10597,7 @@ export function runViewerClient(bootstrap) {
       renderAccountIdentity();
       renderAccountPage();
       if (els.accountWorkspace) els.accountWorkspace.scrollTop = 0;
+      void startConditionalPasskeyLogin();
       void syncWalletPackNftsFromAccount({ force: true });
     } catch (err) {
       showPrivyAccountModal();
@@ -10375,6 +10606,7 @@ export function runViewerClient(bootstrap) {
   }
   function closePrivyAccount() {
     if (!els.privyOverlay) return;
+    abortConditionalPasskey();
     closeViewerModal(els.privyOverlay, els.privyAction);
     setPrivyStatus("", false);
   }
@@ -10387,6 +10619,8 @@ export function runViewerClient(bootstrap) {
     if (els.passkeyAction) els.passkeyAction.disabled = !!busy;
     if (els.passkeyCreate) els.passkeyCreate.disabled = !!busy;
     if (els.signinPrivy) els.signinPrivy.disabled = !!busy;
+    if (els.passkeyRecoverySubmit) els.passkeyRecoverySubmit.disabled = !!busy;
+    if (els.passkeyRecoveryCreate) els.passkeyRecoveryCreate.disabled = !!busy;
   }
   async function signOutPrivy() {
     setPrivyBusy(true);
@@ -10394,7 +10628,14 @@ export function runViewerClient(bootstrap) {
     try {
       if (privyClient) await privyClient.logout();
       applyPrivyState({ configured: !!privyConfig, authenticated: false, ready: true });
-      applyPasskeyState({ available: true, registered: passkeyState.registered, authenticated: false });
+      applyPasskeyState({
+        available: true,
+        registered: false,
+        authenticated: false,
+        recent: false,
+        recoveryConfigured: false,
+        credentials: [],
+      });
       await logout();
       setPrivyStatus("Signed out.", false);
     } catch (err) {
@@ -10418,6 +10659,7 @@ export function runViewerClient(bootstrap) {
       focus: "cancel",
     });
     if (!confirmed) return;
+    if (!await ensureRecentPasskey()) return;
     setPrivyBusy(true);
     setPrivyStatus("Deleting account...", false);
     try {
@@ -10430,6 +10672,10 @@ export function runViewerClient(bootstrap) {
       if (!r.ok || !data.ok) throw new Error(data.error || "Could not delete account.");
       clearStoredAuth();
       try {
+        localStorage.removeItem(VIEWER_CONSTANTS.VISITOR_ID_KEY);
+        getVisitorId();
+      } catch (_err) {}
+      try {
         if (privyClient) await privyClient.logout();
       } catch (_err) {}
       applyPrivyState({ configured: !!privyConfig, authenticated: false, ready: true });
@@ -10439,6 +10685,7 @@ export function runViewerClient(bootstrap) {
       hostedAiActive = false;
       lastAuthState = null;
       lastTelemetry = null;
+      showPasskeyRecoveryCode("");
       applyAuthUI();
       setPrivyStatus("Account deleted. Starting fresh...", false);
       setTimeout(() => { window.location.reload(); }, 700);
@@ -10613,11 +10860,18 @@ export function runViewerClient(bootstrap) {
         headers: attachVisitorHeader(new Headers()),
       });
     } catch (e) { /* network failure is fine — local state is what matters */ }
+    try {
+      localStorage.removeItem(VIEWER_CONSTANTS.VISITOR_ID_KEY);
+      getVisitorId();
+    } catch (_err) {}
+    abortConditionalPasskey();
+    showPasskeyRecoveryCode("");
     authed = null;
     aiEnabled = false;
     localAiEnabled = false;
     hostedAiActive = false;
     lastAuthState = null;
+    lastTelemetry = null;
     lastRosterSig = null;
     firstRunCreationOpened = false;
     onboardingIntroTracked = false;
@@ -10625,6 +10879,7 @@ export function runViewerClient(bootstrap) {
     roomHumanHistorySig = "";
     chatHistoryHumanStudentsByFaculty.clear();
     await deriveAuth();
+    if (authed) await fetchSession();
     applyAuthUI();
     if (teacherChatEnabled() && lastTelemetry) loadHistory(lastTelemetry.faculty);
   }
@@ -11337,6 +11592,15 @@ export function runViewerClient(bootstrap) {
   });
   if (els.passkeyAction) els.passkeyAction.addEventListener("click", startPasskeyLogin);
   if (els.passkeyCreate) els.passkeyCreate.addEventListener("click", startPasskeyRegistration);
+  if (els.passkeyRecoverySubmit) els.passkeyRecoverySubmit.addEventListener("click", startPasskeyRecovery);
+  if (els.passkeyRecoveryCreate) els.passkeyRecoveryCreate.addEventListener("click", regeneratePasskeyRecoveryCode);
+  if (els.passkeyRecoveryCopy) els.passkeyRecoveryCopy.addEventListener("click", copyPasskeyRecoveryCode);
+  if (els.passkeyRecoveryDownload) els.passkeyRecoveryDownload.addEventListener("click", downloadPasskeyRecoveryCode);
+  if (els.passkeyRecoveryInput) els.passkeyRecoveryInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    void startPasskeyRecovery();
+  });
   if (els.privyLoginWidget) els.privyLoginWidget.addEventListener("click", async () => {
     await ensureSolanaWalletFromAccount();
   });
