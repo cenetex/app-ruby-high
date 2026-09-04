@@ -2862,9 +2862,8 @@ export function runViewerClient(bootstrap) {
   }
 
   function openCharacterCreation() {
-    if (!lastTelemetry || !lastTelemetry.character) {
-      postOnboardingFunnelStep("onboarding_creation_opened");
-    }
+    if (lastTelemetry?.character) return;
+    postOnboardingFunnelStep("onboarding_creation_opened");
     closePrivyAccount();
     openSheet();
   }
@@ -5685,6 +5684,9 @@ export function runViewerClient(bootstrap) {
     const t = s.telemetry;
     const gainedCharacter = !lastTelemetry?.character && !!t.character;
     lastTelemetry = t;
+    if (t.character && sheetEl.classList.contains("is-creation-overlay") && sheetEl.classList.contains("is-open")) {
+      closeSheet();
+    }
     if (gainedCharacter && els.stream.children.length > 0) clearStream();
     syncOnboardingActions(t);
     syncAiStateFromTelemetry(t);
@@ -5703,7 +5705,9 @@ export function runViewerClient(bootstrap) {
     if (authed && !t.character && !firstRunCreationOpened) {
       firstRunCreationOpened = true;
       // Put every new player at the first useful decision immediately.
-      setTimeout(() => openCharacterCreation(), 0);
+      setTimeout(() => {
+        if (lastTelemetry === t && !lastTelemetry.character) openCharacterCreation();
+      }, 0);
     }
     setAccent(t.facultyAccent);
     rebuildServersRail();
@@ -9995,10 +9999,12 @@ export function runViewerClient(bootstrap) {
     renderAccountIdentity();
   }
   let conditionalPasskeyAbortController = null;
+  let conditionalPasskeyPromise = null;
   let recoveryCodeForDisplay = "";
-  function abortConditionalPasskey() {
+  async function abortConditionalPasskey() {
+    const pending = conditionalPasskeyPromise;
     if (conditionalPasskeyAbortController) conditionalPasskeyAbortController.abort();
-    conditionalPasskeyAbortController = null;
+    if (pending) await pending.catch(() => {});
   }
   function passkeySupported() {
     return !!(window.PublicKeyCredential && navigator.credentials);
@@ -10094,13 +10100,14 @@ export function runViewerClient(bootstrap) {
     if (data.recoveryCode) showPasskeyRecoveryCode(data.recoveryCode);
     setPrivyStatus(message, false);
     await fetchSession();
+    if (sheetOverlayOpen && lastTelemetry?.character) closeSheet();
   }
   async function startPasskeyRegistration() {
     if (!passkeySupported()) {
       setPrivyStatus("This browser needs passkey support. Try Safari, Chrome, or Edge.", true);
       return false;
     }
-    abortConditionalPasskey();
+    await abortConditionalPasskey();
     if (passkeyState.registered && passkeyState.authenticated && !passkeyState.recent) {
       const verified = await startPasskeyReauthentication();
       if (!verified) return false;
@@ -10129,7 +10136,7 @@ export function runViewerClient(bootstrap) {
       setPrivyStatus("This browser needs passkey support. Try Safari, Chrome, or Edge.", true);
       return false;
     }
-    abortConditionalPasskey();
+    await abortConditionalPasskey();
     setPasskeyBusy(true);
     setPrivyStatus("Waiting for your passkey...", false);
     try {
@@ -10154,7 +10161,7 @@ export function runViewerClient(bootstrap) {
       setPrivyStatus("This browser needs passkey support. Try Safari, Chrome, or Edge.", true);
       return false;
     }
-    abortConditionalPasskey();
+    await abortConditionalPasskey();
     setPasskeyBusy(true);
     setPrivyStatus("Confirm this account with your passkey...", false);
     try {
@@ -10178,31 +10185,42 @@ export function runViewerClient(bootstrap) {
     if (!passkeyState.registered || passkeyState.recent) return true;
     return startPasskeyReauthentication();
   }
-  async function startConditionalPasskeyLogin() {
+  function startConditionalPasskeyLogin() {
+    if (conditionalPasskeyPromise) return conditionalPasskeyPromise;
+    const pending = runConditionalPasskeyLogin();
+    conditionalPasskeyPromise = pending;
+    pending.then(
+      () => { if (conditionalPasskeyPromise === pending) conditionalPasskeyPromise = null; },
+      () => { if (conditionalPasskeyPromise === pending) conditionalPasskeyPromise = null; },
+    );
+    return pending;
+  }
+  async function runConditionalPasskeyLogin() {
     if (!passkeySupported() || passkeyState.authenticated || conditionalPasskeyAbortController) return;
     if (typeof PublicKeyCredential.isConditionalMediationAvailable !== "function") return;
+    const controller = new AbortController();
+    conditionalPasskeyAbortController = controller;
     try {
       const available = await PublicKeyCredential.isConditionalMediationAvailable();
-      if (!available || passkeyState.authenticated) return;
+      if (!available || passkeyState.authenticated || controller.signal.aborted) return;
       const options = await passkeyJsonRequest("/auth/passkey/login/options", {});
-      const controller = new AbortController();
-      conditionalPasskeyAbortController = controller;
+      if (controller.signal.aborted) return;
       const credential = await navigator.credentials.get({
         publicKey: passkeyRequestOptions(options.publicKey),
         mediation: "conditional",
         signal: controller.signal,
       });
       if (!credential) return;
-      conditionalPasskeyAbortController = null;
       const data = await passkeyJsonRequest("/auth/passkey/login/verify", {
         flowId: options.flowId,
         response: passkeyCredentialJson(credential),
       });
       await finishPasskeySession(data, "Signed in with your passkey.");
     } catch (err) {
-      conditionalPasskeyAbortController = null;
       if (err && (err.name === "AbortError" || err.name === "NotAllowedError")) return;
       setPrivyStatus(friendlyPasskeyError(err), true);
+    } finally {
+      if (conditionalPasskeyAbortController === controller) conditionalPasskeyAbortController = null;
     }
   }
   function showPasskeyRecoveryCode(code) {
@@ -10221,7 +10239,7 @@ export function runViewerClient(bootstrap) {
       setPrivyStatus("This browser needs passkey support. Try Safari, Chrome, or Edge.", true);
       return false;
     }
-    abortConditionalPasskey();
+    await abortConditionalPasskey();
     setPasskeyBusy(true);
     setPrivyStatus("Waiting for your device to create a new passkey...", false);
     try {
@@ -10606,7 +10624,7 @@ export function runViewerClient(bootstrap) {
   }
   function closePrivyAccount() {
     if (!els.privyOverlay) return;
-    abortConditionalPasskey();
+    void abortConditionalPasskey();
     closeViewerModal(els.privyOverlay, els.privyAction);
     setPrivyStatus("", false);
   }
@@ -10671,10 +10689,7 @@ export function runViewerClient(bootstrap) {
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data.ok) throw new Error(data.error || "Could not delete account.");
       clearStoredAuth();
-      try {
-        localStorage.removeItem(VIEWER_CONSTANTS.VISITOR_ID_KEY);
-        getVisitorId();
-      } catch (_err) {}
+      rotateVisitorId();
       try {
         if (privyClient) await privyClient.logout();
       } catch (_err) {}
@@ -10860,11 +10875,8 @@ export function runViewerClient(bootstrap) {
         headers: attachVisitorHeader(new Headers()),
       });
     } catch (e) { /* network failure is fine — local state is what matters */ }
-    try {
-      localStorage.removeItem(VIEWER_CONSTANTS.VISITOR_ID_KEY);
-      getVisitorId();
-    } catch (_err) {}
-    abortConditionalPasskey();
+    rotateVisitorId();
+    await abortConditionalPasskey();
     showPasskeyRecoveryCode("");
     authed = null;
     aiEnabled = false;
@@ -10873,7 +10885,9 @@ export function runViewerClient(bootstrap) {
     lastAuthState = null;
     lastTelemetry = null;
     lastRosterSig = null;
-    firstRunCreationOpened = false;
+    // Keep the account screen available for passkey sign-in or recovery.
+    // A fresh browser visit still opens the student creator as usual.
+    firstRunCreationOpened = true;
     onboardingIntroTracked = false;
     onboardingFunnelStepsSent.clear();
     roomHumanHistorySig = "";

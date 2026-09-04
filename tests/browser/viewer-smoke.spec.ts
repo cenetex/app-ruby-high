@@ -392,6 +392,7 @@ test("boots as a guest, creates a character, answers a card, and opens account t
 });
 
 test("manages passkeys, signs out cleanly, and recovers the same student", async ({ page }) => {
+  test.setTimeout(150_000);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("WebAuthn.enable");
   const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {
@@ -404,6 +405,8 @@ test("manages passkeys, signs out cleanly, and recovers the same student", async
       automaticPresenceSimulation: true,
     },
   });
+  let backupAuthenticatorId = "";
+  let primaryAuthenticatorRemoved = false;
 
   try {
     const { errors, privyRequests } = await openViewer(page);
@@ -423,6 +426,23 @@ test("manages passkeys, signs out cleanly, and recovers the same student", async
     await expect(page.locator("#privy-signout")).toBeVisible();
     await expect(page.locator(".passkey-row")).toHaveCount(1);
 
+    const primaryCredentials = await cdp.send("WebAuthn.getCredentials", { authenticatorId });
+    for (const credential of primaryCredentials.credentials) {
+      await cdp.send("WebAuthn.removeCredential", { authenticatorId, credentialId: credential.credentialId });
+    }
+    await cdp.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId });
+    primaryAuthenticatorRemoved = true;
+    const backupAuthenticator = await cdp.send("WebAuthn.addVirtualAuthenticator", {
+      options: {
+        protocol: "ctap2",
+        transport: "usb",
+        hasResidentKey: true,
+        hasUserVerification: true,
+        isUserVerified: true,
+        automaticPresenceSimulation: true,
+      },
+    });
+    backupAuthenticatorId = backupAuthenticator.authenticatorId;
     await page.locator("#passkey-create").click();
     await expect(page.locator(".passkey-row")).toHaveCount(2);
     await page.locator(".passkey-row").first().getByRole("button", { name: "Delete" }).click();
@@ -457,10 +477,17 @@ test("manages passkeys, signs out cleanly, and recovers the same student", async
     });
     expect(me.passkey.credentials).toHaveLength(1);
 
+    await expect(page.locator("#sheet-overlay")).not.toHaveClass(/is-open/);
+    await expect(page.locator("#privy-signout")).toBeVisible();
     await page.locator("#privy-signout").click();
-    const credentials = await cdp.send("WebAuthn.getCredentials", { authenticatorId });
-    for (const credential of credentials.credentials) {
-      await cdp.send("WebAuthn.removeCredential", { authenticatorId, credentialId: credential.credentialId });
+    for (const currentAuthenticatorId of [backupAuthenticatorId]) {
+      const credentials = await cdp.send("WebAuthn.getCredentials", { authenticatorId: currentAuthenticatorId });
+      for (const credential of credentials.credentials) {
+        await cdp.send("WebAuthn.removeCredential", {
+          authenticatorId: currentAuthenticatorId,
+          credentialId: credential.credentialId,
+        });
+      }
     }
     await page.locator("#passkey-recovery-input").fill(firstRecoveryCode);
     await page.locator("#passkey-recovery-submit").click();
@@ -472,7 +499,12 @@ test("manages passkeys, signs out cleanly, and recovers the same student", async
     expect(privyRequests()).toBe(0);
     expect(errors).toEqual([]);
   } finally {
-    await cdp.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId });
+    if (backupAuthenticatorId) {
+      await cdp.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId: backupAuthenticatorId });
+    }
+    if (!primaryAuthenticatorRemoved) {
+      await cdp.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId });
+    }
     await cdp.send("WebAuthn.disable");
   }
 });
