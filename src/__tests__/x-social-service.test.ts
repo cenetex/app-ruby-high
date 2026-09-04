@@ -1220,6 +1220,20 @@ describe("XSocialService", () => {
     it("asks the social editor agent for a varied seven-day plan", async () => {
       await connectRuby(svc);
       vi.stubEnv("RUBY_HIGH_OPENROUTER_API_KEY", "test-key");
+      svc.getPostAnalytics().addRecord({
+        tweetId: "prior-school-update",
+        teacherId: "ruby",
+        postedAt: 1,
+        fetchedAt: 2,
+        impressions: 1_000,
+        likes: 40,
+        retweets: 8,
+        replies: 6,
+        quotes: 2,
+        bookmarks: 4,
+        kind: "school-update",
+        text: "Stored locally and kept out of the planning prompt.",
+      });
       const pillars = [
         "school-pulse",
         "student-question",
@@ -1266,6 +1280,8 @@ describe("XSocialService", () => {
       expect(request.response_format?.json_schema?.name).toBe("ruby_high_tweet_plan");
       expect(request.messages?.[0]?.content).toContain("Yesterday's post");
       expect(request.messages?.[0]?.content).toContain("at least four different pillars");
+      expect(request.messages?.[0]?.content).toContain('"performanceSignals":[{"kind":"school-update"');
+      expect(request.messages?.[0]?.content).not.toContain("Stored locally and kept out of the planning prompt.");
     });
 
     it("grounds featured-guest insight copy in the guest's recent X posts", async () => {
