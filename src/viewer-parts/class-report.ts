@@ -174,7 +174,7 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
       prompt.textContent = view.promptLine;
       titleWrap.appendChild(title);
       titleWrap.appendChild(subtitle);
-      titleWrap.appendChild(prompt);
+
       main.appendChild(badge);
       main.appendChild(titleWrap);
 
@@ -186,7 +186,7 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
         img.alt = "";
         img.decoding = "async";
         img.loading = "lazy";
-        img.src = deps.teacherAssetUrl(artAssetId, "full-sticker") || "";
+        img.src = deps.teacherAssetUrl(artAssetId, "face") || "";
         img.onerror = () => art.remove();
         art.appendChild(img);
         main.appendChild(art);
@@ -196,21 +196,32 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
       const sections = deps.document.createElement("div");
       sections.className = "class-result-sections";
       addResultSection(sections, "observation", view.observationLabel, view.observation);
-      if (view.investigationLabel && view.investigation) {
-        addResultSection(sections, "investigation", view.investigationLabel, view.investigation);
-      }
       addResultSection(sections, "consequence", view.consequenceLabel, view.consequence);
       if (view.relationshipLabel && view.relationship) {
         addResultSection(sections, "relationship", view.relationshipLabel, view.relationship);
       }
+      wrap.appendChild(sections);
+
+      const details = deps.document.createElement("details");
+      details.className = "class-report-details";
+      const summary = deps.document.createElement("summary");
+      summary.textContent = "Class details";
+      details.appendChild(summary);
+      details.appendChild(prompt);
+      const detailSections = deps.document.createElement("div");
+      detailSections.className = "class-result-sections";
+      if (view.investigationLabel && view.investigation) {
+        addResultSection(detailSections, "investigation", view.investigationLabel, view.investigation);
+      }
       if (view.memoryLabel && view.memory) {
-        addResultSection(sections, "memory", view.memoryLabel, view.memory);
+        addResultSection(detailSections, "memory", view.memoryLabel, view.memory);
       }
       if (view.followUp) {
-        addResultSection(sections, "follow-up", "Next review", view.followUp);
+        addResultSection(detailSections, "follow-up", "Next review", view.followUp);
       }
-      addResultSection(sections, "progress", view.progressLabel, view.progress);
-      wrap.appendChild(sections);
+      addResultSection(detailSections, "progress", view.progressLabel, view.progress);
+      details.appendChild(detailSections);
+      wrap.appendChild(details);
 
       const metrics = deps.document.createElement("div");
       metrics.className = "class-report-metrics";
@@ -236,6 +247,9 @@ export function createClassReportRenderer(deps: ClassReportRendererDeps): ClassR
       if (signupRequired) {
         title.textContent = "Sign up to continue";
         body.textContent = "Your guest lesson is complete. Keep your student and unlock the rest of Ruby High.";
+      } else if (recordValue(telemetry, "graduation_ready")) {
+        title.textContent = "Your ceremony is ready";
+        body.textContent = "Choose your reward and celebrate the year.";
       } else if (state.essayReady) {
         title.textContent = "Your final response board is ready";
         body.textContent = "Build it from preset cards to finish this year's requirements and start the ceremony.";

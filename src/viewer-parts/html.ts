@@ -36,9 +36,9 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
       </button>
   </header>
   <nav class="app-nav" aria-label="Main navigation">
-    <button type="button" data-app-page="class" aria-current="page" aria-controls="class-page"><span aria-hidden="true">▤</span>Class</button>
-    <button type="button" data-app-page="campus" aria-controls="campus-page"><span aria-hidden="true">⌂</span>Campus</button>
-    <button type="button" data-app-page="yearbook" aria-controls="yearbook-page"><span aria-hidden="true">▥</span>Yearbook</button>
+    <button type="button" data-app-page="class" aria-current="page" aria-controls="class-page"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="15" height="18" rx="2"/><path d="M3 7h4M3 12h4M3 17h4M10 8h6M10 12h6"/></svg>Class</button>
+    <button type="button" data-app-page="campus" aria-controls="campus-page"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7M5 9v12h14V9M9 21v-7h6v7"/><path d="M10 9h4"/></svg>Campus</button>
+    <button type="button" data-app-page="yearbook" aria-controls="yearbook-page"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v16M12 5C9 3 5 3 2 4v15c3-1 7-1 10 2 3-3 7-3 10-2V4c-3-1-7-1-10 1Z"/></svg>Yearbook</button>
     <button class="account-action" id="privy-action" type="button" hidden>Account</button>
   </nav>
   <div id="servers-rail" hidden></div>
@@ -263,7 +263,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         </svg>
       </button>
       <div class="channel-name">
-        <div class="top"><span id="channel-title">Class</span></div>
+        <h1 class="top" id="channel-title" tabindex="-1">Class</h1>
         <div class="sub" id="channel-sub">loading…</div>
       </div>
       <div class="arc-indicator" id="arc-indicator" hidden>

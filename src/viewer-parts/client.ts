@@ -63,7 +63,7 @@ export function runViewerClient(bootstrap) {
 
   function postClassState(t) {
     const progress = t && t.active_course_progress;
-    const report = !!(t && activeDailyClassIsComplete(t) && !t.current && !t.graduation_ready);
+    const report = shouldShowClassReport(t);
     const nextRole = (progress && progress.nextCardRole) || "";
     const nextOpinionPurpose = (progress && progress.nextOpinionPurpose) || "";
     const canPick = scheduledCanPick(t);
@@ -99,6 +99,7 @@ export function runViewerClient(bootstrap) {
   }
   function nextQuestionButtonLabel(t) {
     t = t || lastTelemetry;
+    if (shouldShowClassReport(t)) return "Open yearbook";
     if (t && t.graduation_ready && !t.current) return "Ceremony";
     const round = t && t.active_round;
     const cur = t && t.current;
@@ -109,11 +110,6 @@ export function runViewerClient(bootstrap) {
       return progressView.visible ? progressView.continuationLabel : "Continue";
     }
     if (t && t.graduation_gate && t.graduation_gate.stage === "essay" && !cur) return "Final build";
-    const postClass = postClassState(t);
-    if (postClass.report && guestSignupRequired(t)) return "Sign up";
-    if (postClass.essayReady) return "Final build";
-    if (postClass.socialReady) return "Reflect";
-    if (postClass.report) return "Practice";
     return offlineClassroom ? "Continue" : chatActionLabel(t);
   }
   function updateChatAction(mode) {
@@ -126,7 +122,7 @@ export function runViewerClient(bootstrap) {
     const round = t && t.active_round;
     const cur = t && t.current;
     const live = !!(round && !round.resolved && cur);
-    const ceremonyReady = !!(t && t.graduation_ready && !cur);
+    const ceremonyReady = !!(t && t.graduation_ready && !cur && !shouldShowClassReport(t));
     const inFreeformRound = !!(
       live
       && (t.is_opinion || cur.type === "typed-answer" || cur.type === "image-occlusion" || cur.type === "story-action")
@@ -140,8 +136,8 @@ export function runViewerClient(bootstrap) {
     const postClass = postClassState(t);
     els.nextBtn.title = live
       ? (teacherChatEnabled() ? chatCostTitle(t, "Ask for a hint.") : "Answer the question to continue")
-      : postClass.report && guestSignupRequired(t)
-        ? "Sign up to continue past today's class"
+      : postClass.report
+        ? "Open your school record and earned comics"
       : cur && currentRevealCompletedClass(t)
         ? "Show the class report"
       : cur
@@ -152,8 +148,6 @@ export function runViewerClient(bootstrap) {
         ? "Build your final response"
       : postClass.socialReady
         ? "Start a short homeroom reflection"
-        : postClass.report
-        ? "Start after-class review"
       : t && t.graduation_ready && !cur
         ? "Open the graduation ceremony"
         : teacherChatEnabled()
@@ -904,6 +898,7 @@ export function runViewerClient(bootstrap) {
   let appPage = "class";
   let yearbookPane = "record";
   let yearbookRenderKey = "";
+  let renderedClassReportSignature = "";
   const pageScrollPositions = new Map();
   let billingProductsCache = null;
   let billingMode = "hall-passes";
@@ -1510,7 +1505,7 @@ export function runViewerClient(bootstrap) {
     const entries = c && Array.isArray(c.yearbook) ? c.yearbook : [];
     const roster = t.faculty_roster || [];
     const key = JSON.stringify([c && c.id, c && c.name, t.current_grade, t.faculty,
-      t.active_course_progress, entries, roster.map((f) => [f.id, f.completedClasses, f.requiredClasses, f.courseGrade])]);
+      t.active_course_progress, c && c.dailyClasses, entries, roster.map((f) => [f.id, f.completedClasses, f.requiredClasses, f.courseGrade])]);
     if (key === yearbookRenderKey) return;
     yearbookRenderKey = key;
     const host = document.getElementById("yearbook-record");
@@ -1533,14 +1528,34 @@ export function runViewerClient(bootstrap) {
       host.appendChild(empty);
       return;
     }
+    const history = yearbookClassHistory(c.dailyClasses);
+    const buildSavedReport = (entry) => {
+      const faculty = roster.find((f) => f.id === entry.facultyId) || { id: entry.facultyId, displayName: subjectDisplayName(entry.facultyId) };
+      return classReportRenderer.buildCard(faculty, entry.grade, {
+        facultyId: entry.facultyId, displayName: faculty.displayName,
+        completedClasses: entry.today.result && entry.today.result.completedClasses,
+        requiredClasses: entry.today.result && entry.today.result.requiredClasses,
+        today: entry.today,
+      });
+    };
     const teacher = roster.find((f) => f.id === t.faculty);
-    const report = buildClassReportCard(teacher, t.current_grade);
+    const report = history.length ? buildSavedReport(history[0]) : buildClassReportCard(teacher, t.current_grade);
     if (report) {
       const heading = document.createElement("h2");
       heading.className = "page-section-title";
-      heading.textContent = "Latest class";
+      heading.textContent = "Latest class" + (history[0] && history[0].date ? " · " + history[0].date : "");
       host.append(heading, report);
     }
+    history.slice(1).forEach((entry) => {
+      const report = buildSavedReport(entry);
+      if (!report) return;
+      const details = document.createElement("details");
+      details.className = "yearbook-class-entry";
+      const summary = document.createElement("summary");
+      summary.textContent = [entry.date, subjectDisplayName(entry.facultyId), GRADE_LABELS[entry.grade], entry.today.letterGrade].filter(Boolean).join(" · ");
+      details.append(summary, report);
+      host.appendChild(details);
+    });
     const record = document.createElement("section");
     record.className = "school-record";
     const title = document.createElement("h2");
@@ -2305,6 +2320,11 @@ export function runViewerClient(bootstrap) {
     return classReportRenderer.buildNextStep(lastTelemetry);
   }
   function showBlackboardClassReport(faculty, currentGrade) {
+    const signature = JSON.stringify([faculty && faculty.id, currentGrade,
+      lastTelemetry && lastTelemetry.active_course_progress, lastTelemetry && lastTelemetry.graduation_ready,
+      lastTelemetry && lastTelemetry.graduation_gate, guestSignupRequired(lastTelemetry)]);
+    if (signature === renderedClassReportSignature && els.boardPrompt.querySelector(".class-report-card")) return;
+    renderedClassReportSignature = signature;
     const report = buildClassReportCard(faculty, currentGrade);
     if (!report) {
       showBlackboardEmpty(true);
@@ -2345,12 +2365,15 @@ export function runViewerClient(bootstrap) {
     els.blackboardMeta.appendChild(mode);
 
     els.boardPrompt.replaceChildren(report);
-    const yearbookAction = document.createElement("button");
-    yearbookAction.type = "button";
-    yearbookAction.className = "page-link class-yearbook-action";
-    yearbookAction.textContent = "Open yearbook";
-    yearbookAction.addEventListener("click", () => showAppPage("yearbook"));
-    els.blackboardFoot.replaceChildren(buildClassReportNextStep(), yearbookAction);
+    const followUp = document.createElement("button");
+    followUp.type = "button";
+    followUp.className = "page-link class-follow-up-action";
+    const state = postClassState(lastTelemetry);
+    followUp.textContent = guestSignupRequired(lastTelemetry) ? "Save progress"
+      : lastTelemetry && lastTelemetry.graduation_ready ? "Open ceremony"
+      : state.essayReady ? "Build final response" : state.socialReady ? "Reflect on class" : "Practice this subject";
+    followUp.addEventListener("click", () => void startPostClassPractice(postClassState(lastTelemetry)));
+    els.blackboardFoot.replaceChildren(buildClassReportNextStep(), followUp);
     els.boardReveal.hidden = true;
     els.boardReveal.replaceChildren();
     syncNextButtonDisabled();
@@ -3016,6 +3039,7 @@ export function runViewerClient(bootstrap) {
   function openCharacterCreation() {
     if (lastTelemetry?.character) return;
     postOnboardingFunnelStep("onboarding_creation_opened");
+    showAppPage("class");
     closePrivyAccount();
     openSheet();
   }
@@ -5298,6 +5322,10 @@ export function runViewerClient(bootstrap) {
       await promptGuestSignup();
       return true;
     }
+    if (lastTelemetry && lastTelemetry.graduation_ready) {
+      openSheet();
+      return true;
+    }
     const manualTurn = turnController.beginManual();
     if (!manualTurn) return true;
     const reportKey = classReportKey(lastTelemetry);
@@ -5328,6 +5356,10 @@ export function runViewerClient(bootstrap) {
   }
   async function pickNext() {
     if (teacherChatEnabled() && telemetryPhase(lastTelemetry) === "asking") setMobilePane("chat", false);
+    if (shouldShowClassReport(lastTelemetry)) {
+      showAppPage("yearbook");
+      return;
+    }
     // Graduation ceremony is always accessible — bypass the agent turn guard so
     // the Ceremony button works even while a teacher SSE turn is in flight.
     if (lastTelemetry && lastTelemetry.graduation_ready && !lastTelemetry.current) {
@@ -5343,14 +5375,6 @@ export function runViewerClient(bootstrap) {
       lastChatButtonAt = now;
       await command({ type: "clear" });
       lockedFor = null;
-      return;
-    }
-    const postClass = postClassState(lastTelemetry);
-    if (postClass.report) {
-      const now = Date.now();
-      if (now - lastChatButtonAt < 900) return;
-      lastChatButtonAt = now;
-      await startPostClassPractice(postClass);
       return;
     }
     // When the round clock expired but the room-idle DM turn hasn't resolved
@@ -5940,14 +5964,10 @@ export function runViewerClient(bootstrap) {
     // Header
     const fac = (t.faculty_roster || []).find((f) => f.id === t.faculty);
     els.channelTitle.textContent = channelTitleFor(t, fac);
-    const subjectProgress = t.active_course_progress;
-    const subjectStatus = subjectProgress
-      ? subjectStatusText(subjectProgress)
-      : (t.current_grade ? "Grade " + t.current_grade : "settling in");
     els.channelSub.textContent = t.faculty === LOUNGE_ID
       ? "teachers' lounge"
       : fac
-      ? fac.displayName + " · " + subjectStatus
+      ? fac.displayName + " · " + (GRADE_LABELS[t.current_grade] || "Class")
       : "loading…";
     renderArcIndicator(t);
 
@@ -5975,9 +5995,6 @@ export function runViewerClient(bootstrap) {
         } else {
           applyRevealToBlackboard(t.lastReveal);
           appendResultChip(t.lastReveal);
-        }
-        if (t.lastReveal.questionType !== "story-choice" && t.lastReveal.questionType !== "story-action") {
-          showCongrats(t.lastReveal.encouragement, t.lastReveal.wasCorrect);
         }
         // Teacher reacts + queues next question. Fire immediately so the
         // teacher's response starts streaming first; the student chime
@@ -10978,13 +10995,7 @@ export function runViewerClient(bootstrap) {
       return;
     }
     if (authed) {
-      els.youState.textContent = privyState.authenticated && privyState.walletAddress
-        ? shortWallet(privyState.walletAddress)
-        : passkeyState.authenticated
-          ? "passkey ready"
-        : aiEnabled
-          ? (localAiEnabled ? "on-device AI" : "AI enabled")
-          : activeTeacherUsesServerAi() ? "teacher connected" : "offline mode";
+      els.youState.textContent = "Account";
       els.footerAction.hidden = true;
       if (els.privyAction) {
         els.privyAction.textContent = "Account";
@@ -11538,6 +11549,10 @@ export function runViewerClient(bootstrap) {
       if (nextGroup && !responseCardSelection[nextGroup]) responseBuilderActiveGroup = nextGroup;
       recordTakeStarted();
       syncResponseBuilder(true, false);
+      const nextControl = els.typedSubmitBtn.disabled
+        ? els.responseBuilder.querySelector('.response-card-group:not([hidden]) [data-response-card]:not([hidden]):not(:disabled)')
+        : els.typedSubmitBtn;
+      focusWithoutScroll(nextControl);
     });
   });
   els.responseStepButtons.forEach((button) => {
@@ -11737,9 +11752,6 @@ export function runViewerClient(bootstrap) {
   });
   if (els.signinGuest) els.signinGuest.addEventListener("click", retryGuestSession);
   if (els.privyClose) els.privyClose.addEventListener("click", closePrivyAccount);
-  if (els.privyOverlay) els.privyOverlay.addEventListener("click", (e) => {
-    if (e.target === els.privyOverlay) closePrivyAccount();
-  });
   if (els.passkeyAction) els.passkeyAction.addEventListener("click", startPasskeyLogin);
   if (els.passkeyCreate) els.passkeyCreate.addEventListener("click", startPasskeyRegistration);
   if (els.passkeyRecoverySubmit) els.passkeyRecoverySubmit.addEventListener("click", startPasskeyRecovery);

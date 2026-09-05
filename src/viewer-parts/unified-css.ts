@@ -60,7 +60,7 @@ export const UNIFIED_VIEWER_CSS = `
     background: transparent; border: 1px solid transparent; border-radius: var(--radius-control);
     color: var(--text-mute); font-size: var(--type-body); font-weight: 600; text-align: left;
   }
-  .app-nav button > span { font-size: 22px; line-height: 1; width: 24px; text-align: center; }
+  .app-nav button > svg { width: 21px; height: 21px; flex: 0 0 21px; }
   .app-nav button:hover { background: var(--bg); color: var(--text); }
   .app-nav button[aria-current="page"], #shell[data-app-page="account"] .app-nav .account-action {
     background: var(--ruby-soft); color: var(--ruby-text);
@@ -86,6 +86,7 @@ export const UNIFIED_VIEWER_CSS = `
   .page-link:hover, .page-back:hover { text-decoration: underline; }
   .page-empty .primary, #shell .chat-action-btn, #shell .typed-submit-btn, .sheet-card .primary,
   .sheet-card .primary-link, .sheet-card .sheet-actions > button:not(.secondary),
+  #privy-overlay #passkey-action,
   #privy-overlay .account-section-actions > button:not(.secondary), #account-buy-passes,
   #account-buy-card-packs, #account-create-character {
     background: var(--ruby); color: #fff; border: 1px solid var(--ruby); box-shadow: none;
@@ -103,6 +104,10 @@ export const UNIFIED_VIEWER_CSS = `
   #campus-page .grade-name { margin-top: 8px; font-size: 15px; color: var(--text-mute); }
   #campus-page .channels-list { padding: 0; overflow: visible; flex: none; }
   #campus-page .channel-row { min-height: 70px; margin: 0 0 10px; padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-panel); }
+  #campus-page .room-row-group { gap: 12px; }
+  #campus-page .teacher-profile-button { width: 44px; height: 44px; padding: 0; }
+  #campus-page .channels-header h1 { border: 0; padding: 0; }
+  #campus-page .channels-links { background: transparent; }
   #campus-page .channel-row.is-active { background: var(--bg-elev); border-color: var(--text-fade); }
   #campus-page .channel-row .hash { display: none; }
   #campus-page .teacher-thumb, #campus-page .teacher-card-trigger { width: 44px; height: 44px; min-width: 44px; border-radius: 50%; }
@@ -117,7 +122,7 @@ export const UNIFIED_VIEWER_CSS = `
 
   /* A lesson has one vertical reading order and one scroll area. */
   #class-page .top-bar { position: static; height: auto; min-height: 0; padding: 0 0 20px; background: transparent; border: 0; backdrop-filter: none; }
-  #class-page .channel-name .top { font-size: var(--type-title); line-height: 1.2; font-weight: 650; letter-spacing: -.6px; text-transform: capitalize; }
+  #class-page .channel-name .top { margin: 0; font-size: var(--type-title); line-height: 1.2; font-weight: 650; letter-spacing: -.6px; text-transform: capitalize; }
   #class-page .channel-name .sub { font-size: var(--type-small); margin-top: 8px; line-height: 1.45; }
   #class-page .arc-indicator { display: none; }
   #class-page .mobile-view-toggle:not([hidden]) { display: flex; gap: 8px; padding: 0 0 16px; margin: 0; background: transparent; border: 0; }
@@ -140,9 +145,9 @@ export const UNIFIED_VIEWER_CSS = `
   #class-page .board .reveal { font: var(--type-body)/1.55 var(--board-font); margin: 20px 0 0; }
   #class-page .answers-host { flex: none; padding: 0; margin: 20px 0 0; max-height: none; overflow: visible; }
   #class-page .answers { gap: 12px; padding: 0; grid-template-columns: repeat(2, minmax(0,1fr)); }
-  #class-page .answer { min-height: 62px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--bg); box-shadow: none; color: var(--text); }
+  #class-page .answer { display: flex; align-items: center; gap: 12px; min-height: 62px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--bg); box-shadow: none; color: var(--text); }
   #class-page .answer .label { font: 500 var(--type-body)/1.45 var(--board-font); }
-  #class-page .answer .badge { background: transparent; color: var(--text-mute); font-size: 13px; border: 0; width: 22px; min-width: 22px; }
+  #class-page .answer .badge { position: static; transform: none; flex: 0 0 22px; height: auto; background: transparent; color: var(--text-mute); font-size: 13px; border: 0; width: 22px; min-width: 22px; }
   #class-page .answer:hover:not(:disabled) { background: var(--bg-elev); border-color: var(--text-fade); transform: none; }
   #class-page .answer.is-selected { border-color: var(--ruby); background: var(--ruby-soft); }
   #class-page .answer.is-correct { border-color: #70c18d; background: #254335; }
@@ -152,6 +157,8 @@ export const UNIFIED_VIEWER_CSS = `
   #class-page .typed-answer-host { margin: 20px 0 0; padding: 0; overflow: visible; max-height: none; flex: none; }
   #class-page .response-builder { border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--bg); padding: 16px; }
   #class-page .response-stepper { gap: 8px; }
+  #class-page .response-stepper button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+  #class-page .response-stepper button strong { font-size: 12px; line-height: 1.2; font-weight: 600; }
   #class-page .response-stepper button { min-height: 44px; color: var(--text-mute); font-size: 13px; }
   #class-page .response-stepper button.is-active { color: var(--text); border-color: var(--ruby); background: var(--ruby-soft); }
   #class-page .response-card-grid button { border-radius: var(--radius-control); font-size: 14px; min-height: 96px; }
@@ -179,20 +186,26 @@ export const UNIFIED_VIEWER_CSS = `
   }
   #workspace .class-report-main { display: grid; grid-template-columns: 54px minmax(0,1fr); gap: 16px; min-height: 0; padding: 0; align-items: start; }
   #workspace .class-report-letter { position: static; width: 54px; height: 60px; font: 600 34px/1 Georgia,serif; display: grid; place-items: center; border: 1px solid #cbc7bc; border-radius: 8px; color: var(--paper-ink); background: transparent; box-shadow: none; transform: none; }
-  #workspace .class-report-title { font-size: 22px; line-height: 1.3; color: var(--paper-ink); margin: 0; }
+  #workspace .class-report-title { font-size: 22px; line-height: 1.3; color: var(--paper-ink); margin: 0; white-space: normal; overflow: visible; }
   #workspace .class-report-subtitle, #workspace .class-result-prompt { font-size: 13px; line-height: 1.5; color: var(--paper-muted); margin: 8px 0 0; }
-  #workspace .class-report-teacher-art { display: none; }
+  #workspace .class-report-teacher-art { position: static; display: block; width: 48px; height: 48px; grid-column: 3; grid-row: 1; }
+  #workspace .class-report-teacher-art img { width: 48px; height: 48px; object-fit: cover; border-radius: 50%; transform: none; filter: none; }
+  #workspace .class-report-main:has(.class-report-teacher-art) { grid-template-columns: 54px minmax(0,1fr) 48px; }
+  #workspace .class-report-details { margin-top: 20px; border-top: 1px solid #cbc7bc; }
+  #workspace .class-report-details > summary { min-height: 44px; padding: 12px 0; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--paper-ink); }
   #workspace .class-result-sections { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 24px; }
   #workspace .class-result-section { background: transparent; padding: 0; border: 0; border-radius: 0; }
   #workspace .class-result-label { color: var(--paper-ink); font-size: 14px; line-height: 1.4; font-weight: 650; letter-spacing: 0; text-transform: none; margin: 0 0 5px; }
-  #workspace .class-result-body { color: var(--paper-ink); font-size: 15px; line-height: 1.55; margin: 0; }
+  #workspace .class-result-body { color: var(--paper-ink); font-size: 15px; line-height: 1.55; font-weight: 400; margin: 0; }
   #workspace .class-report-metrics { display: flex; gap: 28px; border-top: 1px solid #cbc7bc; padding-top: 18px; margin-top: 24px; }
-  #workspace .class-report-metric { border: 0; padding: 0; background: transparent; }
+  #workspace .class-report-metric { display: grid; gap: 3px; border: 0; padding: 0; background: transparent; }
   #workspace .class-report-metric .k, #workspace .class-report-metric .d { color: var(--paper-muted); font-size: 12px; }
   #workspace .class-report-metric .v { color: var(--paper-ink); font-size: 20px; }
   #workspace .class-report-next { background: transparent; border: 0; border-radius: 0; padding: 0; }
   #workspace .class-report-next-title { font-size: 15px; }
   #workspace .class-report-next-body { font-size: 13px; line-height: 1.5; color: var(--text-mute); }
+  .yearbook-class-entry { margin-top: 16px; }
+  .yearbook-class-entry summary { min-height: 48px; padding: 12px 0; color: var(--text-soft); cursor: pointer; }
   .school-record-row { display: grid; grid-template-columns: minmax(0,1fr) 150px 100px; gap: 16px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--line); }
   .school-record-row > span { font-size: 13px; color: var(--text-mute); }
   .school-record-row .school-record-grade { text-align: right; color: var(--text); }
@@ -211,7 +224,7 @@ export const UNIFIED_VIEWER_CSS = `
   #privy-overlay .account-identity-inline { display: block; margin: 0 0 12px; }
   #privy-overlay .account-passkey-copy { margin: 12px 0 20px; }
   #privy-overlay .wallet-panel { font-size: 14px; color: var(--text-mute); margin: 0 0 12px; }
-  #privy-overlay .account-character-card { border-radius: var(--radius-panel); background: var(--bg); padding: 16px; }
+  #privy-overlay .account-character-card { grid-template-columns: 64px minmax(0,1fr); gap: 12px; border-radius: var(--radius-panel); background: var(--bg); padding: 16px; }
   #privy-overlay .account-character-portrait { width: 64px; height: 64px; border-radius: 50%; }
   #privy-overlay .account-section-actions > button, #privy-overlay .sheet-actions > button { min-height: 44px; border-radius: var(--radius-control); }
   #privy-overlay .account-details > summary { font-size: 15px; min-height: 44px; padding: 12px 0; }
@@ -231,7 +244,7 @@ export const UNIFIED_VIEWER_CSS = `
     .app-header .you-meta { display: none; }
     .app-nav { flex-direction: row; padding: 6px calc(8px + var(--safe-right)) calc(6px + var(--safe-bot)) calc(8px + var(--safe-left)); gap: 4px; border-right: 0; border-top: 1px solid var(--line); background: var(--bg); }
     .app-nav button { flex: 1; flex-direction: column; justify-content: center; gap: 5px; padding: 7px 4px; min-height: 56px; font-size: 12px; }
-    .app-nav button > span { font-size: 21px; }
+    .app-nav button > svg { width: 21px; height: 21px; }
     .app-nav .account-action { display: none; }
     #workspace .app-page, #workspace .class-page { padding: 20px 16px; }
     #class-page .top-bar { padding-bottom: 16px; }
@@ -250,6 +263,8 @@ export const UNIFIED_VIEWER_CSS = `
     #class-page .response-stepper { gap: 4px; }
     #class-page .response-stepper button { padding: 8px 4px; font-size: 12px; }
     #class-page .class-report-card, #yearbook-page .class-report-card { padding: 20px; }
+    #workspace .class-report-main:has(.class-report-teacher-art) { grid-template-columns: 44px minmax(0,1fr); }
+    #workspace .class-report-teacher-art { display: none; }
     #workspace .class-report-main { grid-template-columns: 44px minmax(0,1fr); gap: 12px; }
     #workspace .class-report-letter { width: 44px; height: 52px; font-size: 28px; }
     #workspace .class-report-title { font-size: 20px; }

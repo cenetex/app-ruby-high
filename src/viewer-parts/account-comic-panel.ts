@@ -14,7 +14,10 @@ export interface AccountComicPanelRenderer {
 }
 
 export function createAccountComicPanelRenderer(deps: AccountComicPanelRendererDeps): AccountComicPanelRenderer {
-  function buildLocker(collection: unknown, view: AccountComicPanelView): HTMLElement {
+  let previousSignature = "";
+  let currentCollection: unknown;
+
+  function buildLocker(view: AccountComicPanelView): HTMLElement {
     const wrap = deps.document.createElement("div");
     wrap.className = "comic-locker";
 
@@ -45,7 +48,7 @@ export function createAccountComicPanelRenderer(deps: AccountComicPanelRendererD
         img.alt = tileView.title;
         img.src = deps.comicPageUrl(tileView.pageNumber);
         tile.appendChild(img);
-        tile.addEventListener("click", () => deps.openReader(collection, tileView.unlock));
+        tile.addEventListener("click", () => deps.openReader(currentCollection, tileView.unlock));
       } else {
         const mark = deps.document.createElement("span");
         mark.className = "comic-page-locked-mark";
@@ -62,12 +65,16 @@ export function createAccountComicPanelRenderer(deps: AccountComicPanelRendererD
     render(collection: unknown): void {
       const container = deps.container;
       if (!container) return;
+      currentCollection = collection;
       const view = deps.viewFor(collection);
       if (deps.summary) {
         deps.summary.textContent = view.summaryText;
       }
+      const signature = JSON.stringify(view);
+      if (signature === previousSignature && container.children.length > 0) return;
+      previousSignature = signature;
       container.replaceChildren();
-      container.appendChild(buildLocker(collection, view));
+      container.appendChild(buildLocker(view));
     },
   };
 }

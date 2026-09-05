@@ -19,7 +19,7 @@ test("saves reduced motion and follows live device changes after resetting it", 
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);
   await page.getByRole("button", { name: "Close student creator" }).click();
-  await page.locator("#privy-action").click();
+  await page.getByRole("button", { name: "Open your account", exact: true }).click();
   await page.getByText("Account settings", { exact: true }).click();
   const motion = page.getByRole("combobox", { name: "Motion", exact: true });
   const duration = () => page.locator(".channel-row").first().evaluate((el) => parseFloat(getComputedStyle(el).transitionDuration));
@@ -35,7 +35,7 @@ test("saves reduced motion and follows live device changes after resetting it", 
   await page.reload();
   await dismissAnnouncements(page);
   await page.getByRole("button", { name: "Close student creator" }).click();
-  await page.locator("#privy-action").click();
+  await page.getByRole("button", { name: "Open your account", exact: true }).click();
   await page.getByText("Account settings", { exact: true }).click();
   await expect(motion).toHaveValue("reduce");
   await expect.poll(duration).toBeLessThan(0.001);
@@ -56,7 +56,7 @@ test("applies reduced motion for this visit when local storage is blocked", asyn
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);
   await page.getByRole("button", { name: "Close student creator" }).click();
-  await page.locator("#privy-action").click();
+  await page.getByRole("button", { name: "Open your account", exact: true }).click();
   await page.getByText("Account settings", { exact: true }).click();
   await page.getByRole("combobox", { name: "Motion", exact: true }).selectOption("reduce");
   await expect(page.locator("html")).toHaveAttribute("data-motion", "reduce");
@@ -137,6 +137,7 @@ test("retries Honor Roll after a server failure", async ({ page }) => {
       ? route.fulfill({ status: 503, contentType: "text/html", body: "<h1>Service unavailable</h1>" })
       : route.continue();
   });
+  await page.getByRole("button", { name: "Campus", exact: true }).click();
   await page.getByRole("button", { name: "View Honor Roll", exact: true }).click();
   await expect(page.locator("#leaderboard-body")).toContainText("Honor Roll is unavailable right now. Try again in a moment.");
   await page.locator("#leaderboard-body").getByRole("button", { name: "Try again", exact: true }).click();
@@ -246,8 +247,8 @@ test("gives challenge and chat their own full phone view", async ({ page }) => {
   await createCharacter(page);
 
   const toggle = page.getByRole("tablist", { name: "Classroom view" });
-  const challengeTab = page.getByRole("tab", { name: "Challenge" });
-  const chatTab = page.getByRole("tab", { name: "Chat", exact: true });
+  const challengeTab = page.getByRole("tab", { name: "Lesson" });
+  const chatTab = page.getByRole("tab", { name: "Class chat", exact: true });
   await expect(toggle).toBeVisible();
   await expect(challengeTab).toHaveAttribute("aria-selected", "true");
   await expect(page.locator("#blackboard-panel")).toBeVisible();
@@ -274,7 +275,7 @@ test("keeps roll results in the conversation without scene controls", async ({ p
   await expect(page.locator(".first-bell-overlay")).toBeVisible();
   await closeFirstBellReportIfVisible(page);
   await expect(page.locator("#board-reveal")).toBeVisible();
-  await page.getByRole("tab", { name: "Chat", exact: true }).click();
+  await page.getByRole("tab", { name: "Class chat", exact: true }).click();
   await expect(page.locator("#stream .class-note-result")).toBeVisible();
   await expect(page.locator("#scene-summary-host, #dialogue-log, #scene-latest")).toHaveCount(0);
 
@@ -284,8 +285,8 @@ test("keeps roll results in the conversation without scene controls", async ({ p
     resultItems: document.querySelectorAll("#stream .class-note-result").length,
   }));
   expect(layout).toEqual({
-    boardOverflow: "auto",
-    streamOverflow: "auto",
+    boardOverflow: "visible",
+    streamOverflow: "visible",
     resultItems: 1,
   });
   expect(errors).toEqual([]);
@@ -327,6 +328,11 @@ test("keeps a specific Class Result after refresh with one truthful next step", 
   }
 
   await page.locator('[data-response-group="claim"] [data-response-card]:not([hidden])').first().click();
+  await page.getByRole("button", { name: "Campus", exact: true }).click();
+  await page.getByRole("button", { name: "Yearbook", exact: true }).click();
+  await page.getByRole("button", { name: "Class", exact: true }).click();
+  await expect(page.locator('[data-response-group="claim"] [aria-pressed="true"]')).toHaveCount(1);
+  await expect(page.locator('[data-response-group="stance"]')).toBeVisible();
   await page.locator('[data-response-group="stance"] [data-response-card][data-value="conditional"]').click();
   await page.locator('[data-response-group="evidence"] [data-response-card][data-value="source"]').click();
   await page.locator('[data-response-group="impact"] [data-response-card][data-value="systems"]').click();
@@ -334,7 +340,7 @@ test("keeps a specific Class Result after refresh with one truthful next step", 
   await page.locator("#typed-submit-btn").click();
   await expect(page.locator("#board-reveal")).toBeVisible({ timeout: 15_000 });
 
-  const report = page.locator(".class-report-card");
+  const report = page.locator("#class-page .class-report-card");
   await continueUntilVisible(report);
   await expect(report.locator(".class-report-title")).toContainText("class result");
   await expect(report.locator(".class-result-prompt")).toContainText("Final prompt:");
@@ -352,8 +358,12 @@ test("keeps a specific Class Result after refresh with one truthful next step", 
 
   await page.reload();
   await dismissAnnouncements(page);
-  await expect(page.locator(".class-report-card")).toBeVisible();
-  await expect(page.locator(".class-report-card")).toHaveText(resultText || "");
+  await expect(report).toBeVisible();
+  await expect(report).toHaveText(resultText || "");
+  await page.getByRole("button", { name: "Open yearbook", exact: true }).click();
+  await expect(page.locator("#yearbook-record .class-report-card").first()).toContainText("depends on the context and who is affected");
+  await page.getByRole("button", { name: "Comics", exact: true }).click();
+  await expect(page.locator("#yearbook-comics")).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -488,24 +498,20 @@ test("boots as a guest, creates a character, answers a card, and opens account t
   await expect(page.locator("#shell")).not.toHaveAttribute("aria-hidden", "true");
   await expect(page.locator("#next-btn")).toBeFocused();
 
-  await expect(page.locator("#you-profile")).toHaveAttribute("aria-label", /Open .+'s student card/);
+  await expect(page.locator("#you-profile")).toHaveAttribute("aria-label", "Open your account");
+  await page.getByRole("button", { name: "Campus", exact: true }).click();
   await expect(page.locator(".teacher-profile-button").first()).toBeVisible();
   await expect(page.locator(".room-row-button").first()).toBeVisible();
   await expect(page.locator(".room-row-group button button")).toHaveCount(0);
 
-  await expect(page.locator("#privy-action")).toBeVisible();
-  await page.locator("#privy-action").click();
+  await page.getByRole("button", { name: "Open your account", exact: true }).click();
   expect(privyRequests()).toBe(0);
-  const accountOverlay = page.locator("#privy-overlay");
-  const accountDialog = page.getByRole("dialog", { name: "Account" });
-  await expect(accountDialog).toHaveClass(/is-open/);
-  await expect(accountDialog).toHaveAttribute("aria-modal", "true");
-  await expect(accountDialog).toHaveAttribute("aria-hidden", "false");
+  const accountPage = page.getByRole("region", { name: "Account", exact: true });
+  await expect(accountPage).toBeVisible();
+  await expect(page.locator("#shell")).not.toHaveAttribute("inert", "");
+  await expect(page.locator("#account-title")).toBeFocused();
   await expect(page.locator("#passkey-action")).toHaveText("Sign in with a passkey");
   await expect(page.locator("#passkey-create")).toHaveText("Save progress with a passkey");
-  await expect(page.locator("#shell")).toHaveAttribute("inert", "");
-  await expect(page.locator("#shell")).toHaveAttribute("aria-hidden", "true");
-  await expect(page.locator("#passkey-autofill")).toBeFocused();
   await page.locator("#account-tab-account").focus();
   await page.keyboard.press("ArrowRight");
   await expect(page.locator("#account-tab-wallet")).toBeFocused();
@@ -513,24 +519,14 @@ test("boots as a guest, creates a character, answers a card, and opens account t
   await page.keyboard.press("ArrowLeft");
   await expect(page.locator("#account-tab-account")).toBeFocused();
   await expect(page.locator("#account-panel-account")).toBeVisible();
-
-  await page.locator("#privy-close").focus();
-  await page.keyboard.press("Shift+Tab");
-  await expect.poll(() => page.evaluate(() => document.activeElement?.closest("#privy-overlay")?.id || "")).toBe("privy-overlay");
-  await page.keyboard.press("Escape");
-  await expect(accountOverlay).not.toHaveClass(/is-open/);
-  await expect(page.locator("#shell")).not.toHaveAttribute("inert", "");
-  await expect(page.locator("#shell")).not.toHaveAttribute("aria-hidden", "true");
-  await expect(page.locator("#privy-action")).toBeFocused();
-
-  await page.locator("#privy-action").click();
-  await expect(accountOverlay).toHaveClass(/is-open/);
-  await page.locator("#account-tab-wallet").click();
-  await expect(page.locator("#account-panel-wallet")).toBeVisible();
-  await page.locator("#account-tab-library").click();
-  await expect(page.locator("#account-panel-library")).toBeVisible();
   await page.locator("#privy-close").click();
-  await expect(accountOverlay).not.toHaveClass(/is-open/);
+  await expect(accountPage).toBeHidden();
+  await expect(page.locator("#channel-title")).toBeFocused();
+  await expect(page.locator("#board-reveal")).toBeVisible();
+  await page.getByRole("button", { name: "Yearbook", exact: true }).click();
+  await page.getByRole("button", { name: "Comics", exact: true }).click();
+  await expect(page.locator("#account-panel-library")).toBeVisible();
+  await expect(page.locator("#account-comics")).toBeVisible();
 
   expect(errors).toEqual([]);
 });
@@ -559,7 +555,7 @@ test("manages passkeys, signs out cleanly, and recovers the same student", async
     const studentName = (await page.locator("#you-name").textContent())?.trim();
     const firstVisitorId = await page.evaluate(() => localStorage.getItem("ruby-high:visitor-id"));
 
-    await page.locator("#privy-action").click();
+    await page.getByRole("button", { name: "Open your account", exact: true }).click();
     await page.locator("#passkey-create").click();
     await expect(page.locator("#privy-status")).toContainText("Passkey ready");
     await expect(page.locator("#passkey-recovery-code")).toBeVisible();
@@ -678,7 +674,7 @@ test("uses one welcome layer, then keeps announcements for returning students", 
   expect(errors).toEqual([]);
 });
 
-test("keeps Honor Roll open across session polling and returns to class", async ({ page }) => {
+test("keeps Honor Roll open across session polling and returns to Campus", async ({ page }) => {
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);
   await createPublicCharacter(page, "Honor Roll Mina");
@@ -688,6 +684,7 @@ test("keeps Honor Roll open across session polling and returns to class", async 
   await closeRewardComicIfVisible(page);
   await closeBlockingSheetIfVisible(page);
 
+  await page.getByRole("button", { name: "Campus", exact: true }).click();
   const honorRoll = page.getByRole("button", { name: "View Honor Roll", exact: true });
   await expect(honorRoll).toBeVisible();
   await honorRoll.click();
@@ -704,8 +701,8 @@ test("keeps Honor Roll open across session polling and returns to class", async 
 
   await page.locator("#leaderboard-back").click();
   await expect(panel).not.toBeVisible();
-  await expect(page.locator("#blackboard-panel")).toBeVisible();
-  await expect(page.locator("#honor-roll-button")).toBeFocused();
+  await expect(page.locator("#campus-page")).toBeVisible();
+  await expect(page.locator("#campus-title")).toBeFocused();
   expect(errors).toEqual([]);
 });
 

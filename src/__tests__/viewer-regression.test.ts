@@ -1231,13 +1231,12 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain("Roll your character to start today's class.");
   });
 
-  it("turns completed guest lessons into a signup CTA instead of raw practice errors", () => {
+  it("leads completed lessons to Yearbook and keeps guest signup available", () => {
     const script = inlineScript(renderedViewer());
 
     expectScriptToContain(script, "function guestSignupRequired");
-    expectScriptToContain(script, 'if (postClass.report && guestSignupRequired(t)) return "Sign up";');
+    expectScriptToContain(script, 'if (shouldShowClassReport(t)) return "Open yearbook";');
     expectScriptToContain(script, "function promptGuestSignup");
-    expectScriptToContain(script, "Sign up to keep your student");
     expectScriptToContain(script, "Sign up to keep your student");
   });
 
@@ -1621,7 +1620,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "faculty: lastTelemetry && lastTelemetry.faculty");
     expectScriptToContain(script, 'intent: "advance"');
     expectScriptToContain(script, 'runAgentTurn("manual"');
-    expectScriptToContain(script, "if (postClass.report)");
+    expectScriptToContain(script, "if (shouldShowClassReport(lastTelemetry))");
     expectScriptToContain(script, "function subjectDisplayName(fid, progress)");
     expectScriptToContain(script, "subjectDisplayName(cg.facultyId, cg.progress)");
   });
@@ -1631,13 +1630,13 @@ describe("viewer regression guardrails", () => {
     const pickNext = clientSource.slice(clientSource.indexOf("async function pickNext()"));
 
     expect(pickNext.indexOf("currentRevealCompletedClass(lastTelemetry)")).toBeGreaterThanOrEqual(0);
-    expect(pickNext.indexOf("currentRevealCompletedClass(lastTelemetry)")).toBeLessThan(
-      pickNext.indexOf("const postClass = postClassState(lastTelemetry)"),
+    expect(pickNext.indexOf("shouldShowClassReport(lastTelemetry)")).toBeLessThan(
+      pickNext.indexOf("lastTelemetry.graduation_ready"),
     );
     expectScriptToContain(pickNext, 'await command({ type: "clear" })');
   });
 
-  it("builds the class report with full-body teacher standee art and a score metric", () => {
+  it("builds the class report with a teacher portrait and a score metric", () => {
     const script = inlineScript(renderedViewer());
     const clientSource = readFileSync(new URL("../viewer-parts/client.ts", import.meta.url), "utf8");
 
@@ -1656,7 +1655,7 @@ describe("viewer regression guardrails", () => {
     );
     expectScriptToContain(script, "dismissedClassReportKey = reportKey");
     expectScriptToContain(script, "class-report-teacher-art");
-    expectScriptToContain(script, 'teacherAssetUrl(artAssetId, "full-sticker")');
+    expectScriptToContain(script, 'teacherAssetUrl(artAssetId, "face")');
     expectScriptToContain(script, 'addMetric(metrics, "score"');
     expectScriptToContain(script, '"class score"');
     expect(clientSource).not.toContain('wrap.className = "class-report-card"');
@@ -1665,18 +1664,9 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain('addMetric("questions"');
   });
 
-  it("stages class report teachers as full-body standees in front of the report card", () => {
-    expect(cssRule('.blackboard-panel[data-question-type="class-report"] .board')).toContain("overflow: visible");
-    expect(cssRule(".board .class-report-card")).toContain("overflow: visible");
-    expect(cssRule(".board .class-report-card")).toContain("position: relative");
-    expect(cssRule(".board .class-report-metric")).toContain("overflow: visible");
-    expect(cssRule(".board .class-report-metric .v")).toContain("overflow: visible");
-
-    expect(cssRule(".board .class-report-main")).toContain("overflow: visible");
-    expect(cssRule(".board .class-report-teacher-art")).toContain("position: absolute");
-    expect(cssRule(".board .class-report-teacher-art")).toContain("height: clamp(176px, 27vw, 236px)");
-    expect(cssRule(".board .class-report-teacher-art")).toContain("drop-shadow");
-    expect(cssRule(".board .class-report-teacher-art img")).toContain("height: 100%");
-    expect(cssRule(".board .class-report-teacher-art img")).toContain("max-width: none");
+  it("gives class reports a shared paper surface and readable details", () => {
+    expect(cssRule("#workspace .class-report-title")).toContain("white-space: normal");
+    expect(cssRule("#workspace .class-result-body")).toContain("font-size: 15px");
+    expect(cssRule("#workspace .class-report-details > summary")).toContain("min-height: 44px");
   });
 });
