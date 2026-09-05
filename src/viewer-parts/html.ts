@@ -402,16 +402,9 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
 
     <section class="stream" id="stream" aria-live="polite" aria-atomic="false"></section>
 
+    <!-- Child privacy: players choose turns; the server supplies dialogue. See docs/player-dialogue-policy.md. -->
     <section class="composer-zone" id="composer-zone">
       <button class="chat-action-btn" id="next-btn" type="button" hidden>Chat</button>
-      <form class="composer-form" id="chat-form" hidden aria-hidden="true">
-        <textarea id="chat-input" rows="1" placeholder="Message — the teacher and class can hear you" disabled></textarea>
-        <button type="submit" class="send-btn" id="chat-send" disabled aria-label="Send">
-          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M5 12l14-7-7 14-2-5-5-2z"/>
-          </svg>
-        </button>
-      </form>
       <div class="checking" id="checking" hidden>checking…</div>
     </section>
     </div>

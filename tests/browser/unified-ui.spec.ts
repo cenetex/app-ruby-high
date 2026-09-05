@@ -7,6 +7,8 @@ for (const width of [320, 390, 768, 1280]) {
     const { errors, privyRequests } = await openViewer(page);
     await dismissAnnouncements(page);
     await createCharacter(page);
+    // Child privacy: classroom speech comes from guided actions and cards.
+    await expect(page.locator('#class-page textarea, #class-page input[type="text"], #class-page [contenteditable="true"]')).toHaveCount(0);
     const question = await page.locator("#board-prompt").innerText();
     const answer = page.locator(".answer:not([disabled])").first();
     await expect(answer).toBeVisible();

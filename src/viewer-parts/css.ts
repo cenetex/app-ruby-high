@@ -7445,46 +7445,6 @@ export const VIEWER_CSS = `
     opacity: 0.55;
     cursor: wait;
   }
-  .composer-form {
-    display: flex;
-    gap: 8px;
-    background: var(--bg-elev);
-    border-radius: 18px;
-    padding: 4px 6px 4px 14px;
-    align-items: flex-end;
-  }
-  .composer-form textarea {
-    flex: 1 1 auto;
-    background: transparent;
-    border: none;
-    outline: none;
-    resize: none;
-    color: var(--text);
-    font: inherit;
-    padding: 10px 0;
-    max-height: 140px;
-    height: 40px;
-    line-height: 1.4;
-    font-size: 16px; /* iOS won't zoom focus on >=16 */
-  }
-  .composer-form textarea::placeholder { color: var(--text-mute); }
-  .composer-form textarea:disabled { color: var(--text-mute); }
-  .composer-form .send-btn {
-    appearance: none;
-    border: none;
-    background: var(--accent);
-    color: #fff;
-    font-weight: 800;
-    border-radius: 14px;
-    padding: 0;
-    width: 40px;
-    height: 40px;
-    align-self: center;
-    display: grid;
-    place-items: center;
-  }
-  .composer-form .send-btn:disabled { opacity: 0.4; }
-  .composer-form .send-btn svg { width: 18px; height: 18px; }
   .checking {
     text-align: center;
     color: var(--text-mute);
@@ -8476,10 +8436,6 @@ export const VIEWER_CSS = `
       min-height: 40px;
       border-radius: 12px;
       font-size: 15px;
-    }
-    .composer-form {
-      border-radius: 16px;
-      padding: 4px 5px 4px 12px;
     }
     .first-bell-card {
       padding: 16px;

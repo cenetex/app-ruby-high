@@ -168,7 +168,7 @@ export const UNIFIED_VIEWER_CSS = `
   #class-page .race-strip { margin: 16px 0 0; padding: 0; border: 0; background: transparent; }
   #class-page .blackboard-foot { margin: 18px 0 0; padding: 0; border: 0; }
   #class-page .composer-zone { position: sticky; bottom: 0; padding: 18px 0; margin-top: 18px; border-top: 1px solid var(--line); background: var(--bg-deep); min-height: 0; z-index: 5; }
-  #class-page .composer-zone:has(#next-btn[hidden]):has(#chat-form[hidden]):has(#checking[hidden]) { display: none; }
+  #class-page .composer-zone:has(#next-btn[hidden]):has(#checking[hidden]) { display: none; }
   #class-page .chat-action-btn { width: auto; min-width: 160px; margin-left: auto; }
   #class-page .stream { padding: 0; min-height: 0; max-height: none; overflow: visible; display: none; }
   #shell[data-mobile-pane="chat"] #class-page .stream, #shell[data-mode="in-lounge"] #class-page .stream { display: flex; }

@@ -5503,7 +5503,10 @@ describe("RubyHighService Phase 1", () => {
     expect(investigate.current?.correctChoice).toBeUndefined();
     expect(investigate.current?.options).toBeUndefined();
     const episodeId = investigate.current!.caseStudy!.episodeId;
+    const beforeInvalidAction = JSON.stringify(ruby.getOrCreate(sid));
     expect(() => ruby.submitTextAnswer(sid, "I inspect the scroll")).toThrow(/Choose HEAD, HEART, HUSTLE, HONOR/);
+    expect(() => ruby.submitTextAnswer(sid, "go private-player-prose")).toThrow(/Choose HEAD, HEART, HUSTLE, HONOR/);
+    expect(JSON.stringify(ruby.getOrCreate(sid))).toBe(beforeInvalidAction);
 
     const investigationReveal = ruby.submitTextAnswer(sid, "head");
     expect(investigationReveal.lastReveal).toMatchObject({
