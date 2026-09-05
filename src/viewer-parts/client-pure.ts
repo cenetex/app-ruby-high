@@ -2644,3 +2644,30 @@ export function renderMarkdownInto(el: HTMLElement | null, source: unknown, opti
     appendParagraph(paraLines.join("\n"));
   }
 }
+
+/** Saved results stay available when the player visits another subject. */
+export function yearbookClassHistory(records: unknown): Array<{
+  grade: string;
+  facultyId: string;
+  date: string;
+  today: Record<string, unknown>;
+  completedAt: number;
+}> {
+  if (!records || typeof records !== "object" || Array.isArray(records)) return [];
+  return Object.values(records).flatMap((value) => {
+    if (!value || typeof value !== "object" || value.status !== "complete" || typeof value.facultyId !== "string") return [];
+    const maximum = Number(value.scoreMax);
+    const total = Number(value.scoreTotal);
+    const score = Number.isFinite(total) && Number.isFinite(maximum) && maximum > 0
+      ? Math.round(Math.max(0, Math.min(100, total / maximum * 100)))
+      : undefined;
+    const timestamp = Number(value.completedAt || value.updatedAt || 0);
+    return [{
+      grade: String(value.grade || ""),
+      facultyId: value.facultyId,
+      date: typeof value.date === "string" ? value.date : "",
+      today: { ...value, score },
+      completedAt: Number.isFinite(timestamp) ? timestamp : 0,
+    }];
+  }).sort((a, b) => b.completedAt - a.completedAt || b.date.localeCompare(a.date) || a.facultyId.localeCompare(b.facultyId));
+}

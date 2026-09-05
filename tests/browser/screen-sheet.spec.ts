@@ -58,22 +58,18 @@ async function dismissAnnouncementsWithoutOpeningCreator(page: Page): Promise<vo
 }
 
 async function openNavigation(page: Page): Promise<void> {
-  const shell = page.locator("#shell");
-  if (!(await shell.evaluate((element) => element.classList.contains("is-rails-open")))) {
-    await page.locator("#hamburger").click();
-  }
-  await expect(shell).toHaveClass(/is-rails-open/);
+  await page.getByRole("button", { name: "Campus", exact: true }).click();
+  await expect(page.locator("#campus-page")).toBeVisible();
 }
 
 async function closeNavigation(page: Page): Promise<void> {
-  const shell = page.locator("#shell");
-  if (await shell.evaluate((element) => element.classList.contains("is-rails-open"))) {
-    // The rail can retain its open class while another modal restores focus.
-    // A DOM click keeps this cleanup deterministic even if the close icon has
-    // just moved outside the small capture viewport.
-    await page.locator("#channels-close").evaluate((element) => (element as HTMLElement).click());
-  }
-  await expect(shell).not.toHaveClass(/is-rails-open/);
+  await page.getByRole("button", { name: "Class", exact: true }).click();
+}
+
+async function openStudentRecord(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Yearbook", exact: true }).click();
+  await page.getByRole("button", { name: "School record", exact: true }).click();
+  await page.getByRole("button", { name: "View student card and full report", exact: true }).click();
 }
 
 async function closeStudentSheet(page: Page): Promise<void> {
@@ -330,24 +326,22 @@ test("generates the complete Ruby High app screen sheet", async ({ page }) => {
   await closeStudentSheet(page);
 
   await openNavigation(page);
-  await page.locator("#you-profile").click();
+  await openStudentRecord(page);
   await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
   await capture("Student card", "School");
   await closeStudentSheet(page);
 
   await openNavigation(page);
-  await page.locator("#privy-action").click();
+  await page.getByRole("button", { name: "Open your account", exact: true }).click();
   await expect(page.locator("#privy-overlay")).toHaveClass(/is-open/);
   await capture("Account overview", "Account");
 
-  for (const tab of [
-    ["wallet", "Account passes"],
-    ["library", "Account library"],
-  ] as const) {
-    await page.locator(`#account-tab-${tab[0]}`).click();
-    await expect(page.locator(`#account-panel-${tab[0]}`)).toBeVisible();
-    await capture(tab[1], "Account");
-  }
+  await page.locator("#account-tab-wallet").click();
+  await capture("Account passes", "Account");
+  await page.getByRole("button", { name: "Yearbook", exact: true }).click();
+  await page.getByRole("button", { name: "Comics", exact: true }).click();
+  await capture("Yearbook comics", "Yearbook");
+  await page.getByRole("button", { name: "Open your account", exact: true }).click();
 
   await page.locator("#account-tab-account").click();
   await showExternalPreview(page, "signin");
@@ -458,7 +452,7 @@ test("generates the complete Ruby High app screen sheet", async ({ page }) => {
   }
 
   await openNavigation(page);
-  await page.locator("#you-profile").click();
+  await openStudentRecord(page);
   await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
   await capture("Student progress", "Progress");
   await expect(page.locator(".mash-grid-wrap")).toBeVisible();
@@ -475,14 +469,16 @@ test("generates the complete Ruby High app screen sheet", async ({ page }) => {
   await closeRewardComicIfVisible(page);
 
   await openNavigation(page);
-  await page.locator("#you-profile").click();
+  await openStudentRecord(page);
   await expect(page.locator("#sheet-overlay")).toHaveClass(/is-open/);
   await expect(page.locator(".paper-archive-summary")).toBeVisible();
   await capture("Grade advance", "Progress");
   await page.locator(".paper-archive-summary").click();
   await expect(page.locator(".paper-archive")).toHaveAttribute("open", "");
-  await capture("Yearbook", "Progress");
   await closeStudentSheet(page);
+  await page.getByRole("button", { name: "Yearbook", exact: true }).click();
+  await page.getByRole("button", { name: "School record", exact: true }).click();
+  await capture("Yearbook", "Progress");
 
   await openNavigation(page);
   await page.locator("#honor-roll-button").click();

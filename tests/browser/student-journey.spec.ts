@@ -36,7 +36,8 @@ test("full student journey: grades 9-12 with item system", async ({ page }) => {
   expect(walletText).toMatch(/Merit Stars|Hall Pass/i);
 
   // Library — comics section renders with collected and locked pages.
-  await page.locator("#account-tab-library").click();
+  await page.getByRole("button", { name: "Yearbook", exact: true }).click();
+  await page.getByRole("button", { name: "Comics", exact: true }).click();
   await expect(page.locator("#account-panel-library")).toBeVisible();
 
   const comicsSection = page.locator("#account-comics");
@@ -52,7 +53,7 @@ test("full student journey: grades 9-12 with item system", async ({ page }) => {
   const libraryText = await page.locator("#account-panel-library").textContent();
   expect(libraryText).toMatch(/comic|pages found/i);
 
-  await page.locator("#privy-close").click();
+  await page.getByRole("button", { name: "Class", exact: true }).click();
   await expect(page.locator("#privy-overlay")).not.toHaveClass(/is-open/);
 
   expect(errors.filter((e: string) => !e.includes("Service Worker") && !e.includes("401"))).toEqual([]);

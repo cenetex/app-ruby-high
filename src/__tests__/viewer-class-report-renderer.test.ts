@@ -99,11 +99,12 @@ describe("class report renderer", () => {
       "A",
       "Ruby class result",
       "Class passed · final answer passed · Freshman · 3/3",
-      "Final prompt: Which source best supports the claim?",
       "What Ruby noticed",
       "Ruby noticed that “The primary source” matched what the final research prompt asked for.",
       "Passing class recorded",
       "Freshman with Ruby: A, 3 of 3 graded cards correct.",
+      "Class details",
+      "Final prompt: Which source best supports the claim?",
       "Course progress",
       "You completed 1 of 3 required Ruby class days for Freshman. Pass 2 more days to finish the course.",
       "correct",
@@ -119,7 +120,7 @@ describe("class report renderer", () => {
     expect(img.tagName).toBe("img");
     expect(img.decoding).toBe("async");
     expect(img.loading).toBe("lazy");
-    expect(img.src).toBe("/assets/teachers/ruby-full-sticker.png");
+    expect(img.src).toBe("/assets/teachers/ruby-face.png");
 
     img.onerror?.();
     expect(art.removed).toBe(true);
@@ -205,6 +206,11 @@ describe("class report renderer", () => {
     const social = renderer({ postClassState: () => ({ socialReady: true }) }).buildNextStep({});
     const practice = renderer({ postClassState: () => ({ practiceReady: true }) }).buildNextStep({});
     const complete = renderer().buildNextStep({});
+    const ceremony = renderer().buildNextStep({ graduation_ready: { grade: "9" } });
+    expect(textTree(ceremony as unknown as FakeElement)).toEqual([
+      "Your ceremony is ready",
+      "Choose your reward and celebrate the year.",
+    ]);
 
     expect((signup as unknown as FakeElement).className).toBe("class-report-next is-signup");
     expect(textTree(signup as unknown as FakeElement)).toEqual([

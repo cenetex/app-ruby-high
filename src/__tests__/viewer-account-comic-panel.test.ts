@@ -160,6 +160,26 @@ describe("account comic panel renderer", () => {
     expect(container.children[0]!.className).toBe("comic-locker");
   });
 
+  it("keeps the focused tile stable during polling and opens the current collection", () => {
+    const container = new FakeElement("div");
+    const opened: unknown[] = [];
+    const renderer = createAccountComicPanelRenderer({
+      document: createDocument(),
+      container: container as unknown as HTMLElement,
+      viewFor: comicView,
+      comicPageUrl: (page) => "/page-" + page + ".jpg",
+      openReader: (collection) => opened.push(collection),
+    });
+    renderer.render({ version: 1 });
+    const originalLocker = container.children[0];
+    const latest = { version: 2 };
+    renderer.render(latest);
+    expect(container.children[0]).toBe(originalLocker);
+    const grid = originalLocker.children.find((el) => el.className === "comic-page-grid")!;
+    grid.children[1].click();
+    expect(opened).toEqual([latest]);
+  });
+
   it("ignores missing containers", () => {
     const renderer = createAccountComicPanelRenderer({
       document: createDocument(),
