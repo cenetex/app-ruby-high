@@ -3,6 +3,7 @@
 // now, not a template-string blob; keep imports out of this file because
 // viewerScript serializes runViewerClient with Function#toString().
 export function runViewerClient(bootstrap) {
+  const motionPreference = initViewerMotionPreference();
   const apiBase = bootstrap.apiBase;
   const sessionId = bootstrap.sessionId;
   const role = bootstrap.role;
@@ -5109,11 +5110,18 @@ export function runViewerClient(bootstrap) {
     focusWithoutScroll(els.leaderboardBack);
     try {
       const r = await apiFetch(apiBase + "/cohort");
-      if (!r.ok) throw new Error("leaderboard " + r.status);
+      if (!r.ok) throw { status: r.status };
       const data = await r.json();
       renderLeaderboard(data);
     } catch (err) {
-      els.leaderboardBody.innerHTML = '<div class="leaderboard-loading">Could not load Honor Roll — try again later.</div>';
+      const message = document.createElement("div");
+      message.className = "leaderboard-loading";
+      message.textContent = viewerRequestError("Honor Roll", err);
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.textContent = "Try again";
+      retry.addEventListener("click", showLeaderboard);
+      els.leaderboardBody.replaceChildren(message, retry);
     }
   }
 
@@ -6093,7 +6101,7 @@ export function runViewerClient(bootstrap) {
     const cards = Array.from(track.children);
     const scrollToCard = (i) => {
       const target = cards[Math.max(0, Math.min(cards.length - 1, i))];
-      if (target && target.scrollIntoView) target.scrollIntoView({ block: "start", behavior: "smooth" });
+      if (target && target.scrollIntoView) target.scrollIntoView({ block: "start", behavior: motionPreference.isReduced() ? "instant" : "smooth" });
     };
     return { track, scrollToCard };
   }
@@ -6553,7 +6561,7 @@ export function runViewerClient(bootstrap) {
               body: JSON.stringify({ requestId: imageRequestId("age-up-portrait") }),
             });
             const data = await r.json().catch(() => ({}));
-            if (!r.ok) throw new Error(responseErrorText(data) || "portrait " + r.status);
+            if (!r.ok) throw { status: r.status };
             if (typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements, data.characterSlots);
             await fetchSession();
             if (sheetOverlayOpen) renderSheet();
@@ -6561,7 +6569,7 @@ export function runViewerClient(bootstrap) {
             showCongrats("Portrait aged up for " + gradeName + ".", true);
           } catch (err) {
             if (btn) { btn.disabled = false; btn.textContent = "✨ Age up portrait"; }
-            showCongrats(err && err.message ? err.message : "Portrait age-up failed.", false);
+            showCongrats(viewerRequestError("Portrait update", err), false);
           }
         },
       });
@@ -7085,7 +7093,7 @@ export function runViewerClient(bootstrap) {
           }),
         });
         const data = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(responseErrorText(data) || "photo " + r.status);
+        if (!r.ok) throw { status: r.status };
         if (typeof data.hallPasses === "number") applyHallPassBalance(data.hallPasses, data.entitlements, data.characterSlots);
         await fetchSession();
         if (sheetOverlayOpen) renderSheet();
@@ -7093,7 +7101,7 @@ export function runViewerClient(bootstrap) {
       } catch (err) {
         btn.disabled = false;
         btn.textContent = "Try again";
-        showCongrats(err && err.message ? err.message : "Photo failed.", false);
+        showCongrats(viewerRequestError("Graduation photo", err), false);
       }
     });
     return btn;
@@ -7382,13 +7390,8 @@ export function runViewerClient(bootstrap) {
     function isTransientRollStatus(statusCode) {
       return statusCode === 408 || statusCode === 502 || statusCode === 503 || statusCode === 504;
     }
-    function rollErrorMessage(err, fallbackStatus) {
-      if (err && err.error != null) return String(err.error);
-      return "request " + fallbackStatus;
-    }
     async function fetchCharacterRoll(body, retryTransient) {
       const waits = retryTransient ? [0, 650] : [0];
-      let lastMessage = "";
       for (let attempt = 0; attempt < waits.length; attempt += 1) {
         if (waits[attempt] > 0) {
           setStatus("Ruby is trying again after a connection problem...");
@@ -7401,13 +7404,10 @@ export function runViewerClient(bootstrap) {
           body: JSON.stringify(body),
         });
         if (r.ok) return await r.json();
-        const err = await r.json().catch(() => ({ error: "request " + r.status }));
-        lastMessage = rollErrorMessage(err, r.status);
         if (!isTransientRollStatus(r.status) || attempt === waits.length - 1) {
-          throw new Error(lastMessage);
+          throw { status: r.status };
         }
       }
-      throw new Error(lastMessage || "Could not create a student. Try again.");
     }
     function applyDisabled() {
       rollBtn.disabled = inFlight.all || inFlight.saving;
@@ -7523,7 +7523,7 @@ export function runViewerClient(bootstrap) {
         rolled = offlineCharacterRoll(components);
         renderRolled(rolled);
         revealForm();
-        setStatus("AI took too long, so Ruby created a student on this device instead.");
+        setStatus(studentRemixFallbackMessage(err));
       } finally {
         if (isFullRoll) {
           inFlight.all = false;
@@ -7638,8 +7638,7 @@ export function runViewerClient(bootstrap) {
           }),
         });
         if (!r.ok) {
-          const err = await r.json().catch(() => ({ error: r.status }));
-          throw new Error(err.error || "portrait " + r.status);
+          throw { status: r.status };
         }
         const data = await r.json();
         if (!data || !data.portraitDataUrl) throw new Error("no image returned");
@@ -7649,7 +7648,7 @@ export function runViewerClient(bootstrap) {
         portraitBtn.textContent = "✨ Try again";
         portraitStatus.textContent = "AI portrait ready.";
       } catch (err) {
-        portraitStatus.textContent = err && err.message ? err.message : "Couldn't generate — keeping the default.";
+        portraitStatus.textContent = viewerRequestError("Portrait generation", err) + " You can start class with your current portrait.";
         portraitStatus.classList.add("is-invalid");
         portraitBtn.textContent = "✨ Generate AI portrait";
       } finally {
@@ -11038,7 +11037,7 @@ export function runViewerClient(bootstrap) {
         return chatStreamStillCurrent(opts);
       },
       onErrorResponse(error) {
-        appendSystem("chat error · " + (error || response.status));
+        appendSystem(viewerRequestError("Teacher chat", error, response.status));
       },
       onEvent(event, parsed) {
         if (event === "speaker") {
@@ -11109,8 +11108,8 @@ export function runViewerClient(bootstrap) {
           refreshSessionAfterStreamEvent();
           streamMsgEl = null;
         } else if (event === "error") {
-          const message = parsed && parsed.message ? parsed.message : "unknown";
-          appendSystem((parsed && parsed.refunded ? "chat failed · " : "error · ") + message);
+          const refund = parsed && parsed.refunded ? " Your Merit Stars were returned." : "";
+          appendSystem(viewerRequestError("Teacher chat", null) + refund);
           refreshSessionAfterStreamEvent();
           playerStreamMsgEl = null;
           studentStreamMsgEl = null;
@@ -11225,7 +11224,7 @@ export function runViewerClient(bootstrap) {
       await consumeSseStream(r, streamGuard);
     } catch (err) {
       if (inOpinion) clearOpinionSubmitted();
-      if (chatStreamStillCurrent(streamGuard)) appendSystem("chat failed · " + (err && err.message ? err.message : "error"));
+      if (chatStreamStillCurrent(streamGuard)) appendSystem(viewerRequestError("Teacher chat", err));
     } finally {
       agentTurn.finish();
       if (!els.chatInput.disabled) els.chatInput.focus();
@@ -11261,7 +11260,7 @@ export function runViewerClient(bootstrap) {
       });
       await consumeSseStream(r, streamGuard);
     } catch (err) {
-      if (chatStreamStillCurrent(streamGuard)) appendSystem("teacher offline · " + (err && err.message ? err.message : "error"));
+      if (chatStreamStillCurrent(streamGuard)) appendSystem(viewerRequestError("Teacher chat", err));
     } finally {
       agentTurn.finish();
     }

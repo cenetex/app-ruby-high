@@ -1,5 +1,7 @@
 # Ruby High
 
+> **Production surface:** the web viewer at `/api/apps/ruby-high/viewer`, implemented in [`src/viewer-parts`](src/viewer-parts/). The [Ruby High 2.0 design](ruby2/DESIGN.md) and [visual language](ruby2/visual-scene/VISUAL_LANGUAGE.md) cover the prototype track. Use the [runbook](README.md) and current tests for operational details.
+
 > A school where the teachers grade you in their own voice. Clear daily classes, bank grades, and keep the yearbook.
 
 <!-- promo-asset: hero-classroom — wide screenshot of the viewer with Ruby's chalkboard, the room rail, and the character card visible -->

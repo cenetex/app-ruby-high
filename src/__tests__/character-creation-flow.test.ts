@@ -152,7 +152,6 @@ describe("character creation flow", () => {
       expect(rollFn).toContain("(isFullRoll && !rolled) || !aiEnabled");
       expect(rollFn).toContain("rolled = offlineCharacterRoll(components)");
       expect(rollFn).toContain("Your student is ready.");
-      expect(rollFn).toContain("AI took too long, so Ruby created a student on this device instead.");
       expect(CLIENT_SOURCE).toContain("timeoutMs: 6000");
     });
   });

@@ -1,5 +1,149 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { closeBlockingSheetIfVisible, closeFirstBellReportIfVisible, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
+
+async function enableTestAi(page: Page) {
+  await page.route(/\/auth\/(me|guest)$/, async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    await route.fulfill({ response, json: { ...data, ai: true, local_ai: true } });
+  });
+  await page.route("**/chat/history?*", async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    await route.fulfill({ response, json: { ...data, authed: true, local_ai: true } });
+  });
+}
+
+test("saves reduced motion and follows live device changes after resetting it", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const { errors } = await openViewer(page);
+  await dismissAnnouncements(page);
+  await page.getByRole("button", { name: "Close student creator" }).click();
+  await page.locator("#privy-action").click();
+  await page.getByText("Account settings", { exact: true }).click();
+  const motion = page.getByRole("combobox", { name: "Motion", exact: true });
+  const duration = () => page.locator(".channel-row").first().evaluate((el) => parseFloat(getComputedStyle(el).transitionDuration));
+  await expect(motion).toHaveValue("system");
+  await expect.poll(duration).toBeGreaterThan(0.001);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect.poll(duration).toBeLessThan(0.001);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await motion.selectOption("reduce");
+  await expect.poll(duration).toBeLessThan(0.001);
+  await expect(page.locator("html")).toHaveAttribute("data-motion", "reduce");
+
+  await page.reload();
+  await dismissAnnouncements(page);
+  await page.getByRole("button", { name: "Close student creator" }).click();
+  await page.locator("#privy-action").click();
+  await page.getByText("Account settings", { exact: true }).click();
+  await expect(motion).toHaveValue("reduce");
+  await expect.poll(duration).toBeLessThan(0.001);
+  await page.setViewportSize({ width: 320, height: 568 });
+  await expect(motion).toBeVisible();
+  await motion.selectOption("system");
+  await expect.poll(duration).toBeGreaterThan(0.001);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect.poll(duration).toBeLessThan(0.001);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test("applies reduced motion for this visit when local storage is blocked", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "localStorage", { get() { throw new DOMException("Blocked", "SecurityError"); } });
+  });
+  const { errors } = await openViewer(page);
+  await dismissAnnouncements(page);
+  await page.getByRole("button", { name: "Close student creator" }).click();
+  await page.locator("#privy-action").click();
+  await page.getByText("Account settings", { exact: true }).click();
+  await page.getByRole("combobox", { name: "Motion", exact: true }).selectOption("reduce");
+  await expect(page.locator("html")).toHaveAttribute("data-motion", "reduce");
+  await expect(page.locator("#account-motion-help")).toHaveText("Applied for this visit.");
+  expect(errors).toEqual([]);
+});
+
+for (const failure of ["server", "network", "timeout"] as const) {
+  test(`starts class after an AI remix ${failure} failure with an accurate explanation`, async ({ page }) => {
+    const runtimeErrors: string[] = [];
+    page.on("pageerror", (error) => runtimeErrors.push(error.message));
+    await enableTestAi(page);
+    await page.route("**/chat/event", (route) => route.fulfill({
+      contentType: "text/event-stream", body: 'event: done\ndata: {}\n\n',
+    }));
+    let attempts = 0;
+    await page.route("**/chat/character/generate", (route) => {
+      attempts += 1;
+      if (failure === "server") return route.fulfill({ status: 502, contentType: "text/html", body: "<h1>Bad gateway</h1>" });
+      if (failure === "network") return route.abort("failed");
+      // Leave the request pending so the viewer's own timeout fires.
+    });
+    await openViewer(page);
+    await dismissAnnouncements(page);
+    await page.getByRole("button", { name: "Advanced", exact: true }).click();
+    await page.getByRole("button", { name: "AI remix student", exact: true }).click();
+    const reason = failure === "timeout" ? "took too long" : failure === "network" ? "lost its connection" : "is unavailable right now";
+    await expect(page.locator("#sheet-card .stat-budget")).toHaveText(
+      `The AI remix ${reason}. Ruby created your student on this device. You can start class.`,
+    );
+    expect(attempts).toBe(failure === "server" ? 2 : 1);
+    await page.getByRole("button", { name: /start first class/i }).click();
+    await expect(page.locator("#sheet-overlay")).not.toHaveClass(/is-open/);
+    await expect(page.locator(".answer:not([disabled])").first()).toBeVisible();
+    expect(runtimeErrors).toEqual([]);
+  });
+}
+
+for (const failure of ["server", "refund"] as const) {
+  test(`shows useful teacher chat ${failure} feedback`, async ({ page }) => {
+    const runtimeErrors: string[] = [];
+    page.on("pageerror", (error) => runtimeErrors.push(error.message));
+    await enableTestAi(page);
+    await page.route(/\/chat\/(event|room-turn)$/, (route) => route.fulfill(failure === "server" ? {
+      status: 502, contentType: "text/html", body: "<h1>Bad gateway</h1>",
+    } : {
+      contentType: "text/event-stream",
+      body: 'event: error\ndata: {"message":"upstream internal details", "refunded":true}\n\n',
+    }));
+    await openViewer(page);
+    await dismissAnnouncements(page);
+    await createCharacter(page);
+    await page.locator("#next-btn").click();
+    const message = "Teacher chat is unavailable right now. Try again in a moment."
+      + (failure === "refund" ? " Your Merit Stars were returned." : "");
+    await expect(page.locator("#stream")).toContainText(message);
+    await expect(page.locator("#stream")).not.toContainText("upstream internal details");
+    await expect(page.locator("#stream")).not.toContainText("502");
+    expect(runtimeErrors).toEqual([]);
+  });
+}
+
+test("retries Honor Roll after a server failure", async ({ page }) => {
+  const runtimeErrors: string[] = [];
+  page.on("pageerror", (error) => runtimeErrors.push(error.message));
+  await openViewer(page);
+  await dismissAnnouncements(page);
+  await createPublicCharacter(page, "Retry Mina");
+  await tickGrade(page);
+  await page.reload();
+  await dismissAnnouncements(page);
+  await closeRewardComicIfVisible(page);
+  await closeBlockingSheetIfVisible(page);
+  let attempts = 0;
+  await page.route("**/api/apps/ruby-high/cohort", (route) => {
+    attempts += 1;
+    return attempts === 1
+      ? route.fulfill({ status: 503, contentType: "text/html", body: "<h1>Service unavailable</h1>" })
+      : route.continue();
+  });
+  await page.getByRole("button", { name: "View Honor Roll", exact: true }).click();
+  await expect(page.locator("#leaderboard-body")).toContainText("Honor Roll is unavailable right now. Try again in a moment.");
+  await page.locator("#leaderboard-body").getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(page.locator("#leaderboard-body")).toContainText("Retry Mina");
+  expect(attempts).toBe(2);
+  expect(runtimeErrors).toEqual([]);
+});
 
 test("canonical issue-174 link opens the Quick Roll/customize choice with bounded attribution", async ({ page }) => {
   let appOpenBody: Record<string, unknown> | null = null;

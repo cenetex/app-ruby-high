@@ -1,5 +1,7 @@
 # Ruby High Visual Language
 
+> **Status: Ruby High 2.0 prototype.** This guide describes the standalone scene in this directory. The live web viewer at `/api/apps/ruby-high/viewer` uses the classroom layout in [`src/viewer-parts`](../../src/viewer-parts/). See the [runbook](../../README.md) for the production app.
+
 ## Core Read
 
 Ruby High should look like a school-day RPG staged through readable dialogue
