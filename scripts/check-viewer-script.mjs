@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import { transformSync } from "esbuild";
 
 const require = createRequire(import.meta.url);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -24,26 +24,12 @@ function resolveLocalModule(specifier, fromFile) {
 function loadTsModule(file) {
   if (cache.has(file)) return cache.get(file).exports;
   const source = readFileSync(file, "utf8");
-  const transpiled = ts.transpileModule(source, {
-    fileName: file,
-    reportDiagnostics: true,
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2022,
-      esModuleInterop: true,
-      skipLibCheck: true,
-    },
+  const transpiled = transformSync(source, {
+    loader: "ts",
+    format: "cjs",
+    target: "es2022",
+    sourcefile: file,
   });
-  const errors = (transpiled.diagnostics ?? []).filter((d) => d.category === ts.DiagnosticCategory.Error);
-  if (errors.length > 0) {
-    const text = ts.formatDiagnosticsWithColorAndContext(errors, {
-      getCanonicalFileName: (name) => name,
-      getCurrentDirectory: () => root,
-      getNewLine: () => "\n",
-    });
-    throw new Error(text);
-  }
-
   const module = { exports: {} };
   cache.set(file, module);
   const localRequire = (specifier) => {
@@ -52,7 +38,7 @@ function loadTsModule(file) {
     }
     return require(specifier);
   };
-  const run = new Function("exports", "require", "module", "__filename", "__dirname", transpiled.outputText);
+  const run = new Function("exports", "require", "module", "__filename", "__dirname", transpiled.code);
   run(module.exports, localRequire, module, file, dirname(file));
   return module.exports;
 }
