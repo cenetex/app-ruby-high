@@ -265,6 +265,9 @@ export async function handleCommandRoute(args: {
       );
     },
     "answer-text": async () => {
+      // Child privacy: this legacy command name carries a game-defined
+      // labyrinth action. submitTextAnswer validates the available actions.
+      // See docs/player-dialogue-policy.md.
       const state = ruby.getOrCreate(stateKey);
       if (state.current?.type !== "story-action") {
         throw new Error("Free-form answers are disabled. Use one of the actions shown in the room.");

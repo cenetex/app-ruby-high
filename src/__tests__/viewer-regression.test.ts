@@ -1288,7 +1288,7 @@ describe("viewer regression guardrails", () => {
   it("keeps stream refreshes from holding the Chat/Practice busy lock", () => {
     const script = inlineScript(renderedViewer());
     const consumeStart = script.indexOf("async function consumeSseStream");
-    const consumeEnd = script.indexOf("async function sendChatMessage");
+    const consumeEnd = script.indexOf("async function runAgentTurn");
     const consumeBody = script.slice(consumeStart, consumeEnd);
 
     expectScriptToContain(script, "function withViewerTimeoutSignal");
@@ -1300,11 +1300,8 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, "const turnController = createViewerTurnController");
     expectScriptToContain(script, "function syncNextButtonDisabled()");
     expectScriptToContain(script, "const manualTurn = turnController.beginManual()");
-    expectScriptToContain(script, "const agentTurn = turnController.beginAgent(false)");
     expectScriptToContain(script, "const buttonTurn = turnController.beginButtonAction()");
     expectScriptToContain(script, "turnController.syncControls()");
-    expectScriptToContain(script, "if (!els.chatInput.disabled) els.chatInput.focus();");
-    expect(script).not.toContain("els.chatInput.disabled = !teacherChatEnabled()");
     expectScriptToContain(consumeBody, "refreshSessionAfterStreamEvent();");
     expect(consumeBody).not.toContain("await fetchSession(");
     expect(script).not.toContain("let agentBusy =");

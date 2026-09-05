@@ -2,25 +2,16 @@ import { describe, expect, it } from "vitest";
 import { createViewerTurnController } from "../viewer-parts/turn-controller.js";
 
 function makeHarness() {
-  let teacherEnabled = true;
   let viewSeq = 1;
   let faculty: string | null = "ruby";
   const controls = {
     nextDisabled: false,
-    composerDisabled: false,
   };
-  const events: Array<{ target: "next" | "composer"; disabled: boolean }> = [];
+  const events: Array<{ target: "next"; disabled: boolean }> = [];
   const controller = createViewerTurnController({
     setNextButtonDisabled(disabled) {
       controls.nextDisabled = disabled;
       events.push({ target: "next", disabled });
-    },
-    setChatComposerDisabled(disabled) {
-      controls.composerDisabled = disabled;
-      events.push({ target: "composer", disabled });
-    },
-    teacherChatEnabled() {
-      return teacherEnabled;
     },
     currentViewSeq() {
       return viewSeq;
@@ -33,9 +24,6 @@ function makeHarness() {
     controller,
     controls,
     events,
-    setTeacherEnabled(value: boolean) {
-      teacherEnabled = value;
-    },
     setViewSeq(value: number) {
       viewSeq = value;
     },
@@ -46,55 +34,54 @@ function makeHarness() {
 }
 
 describe("viewer turn controller", () => {
-  it("locks and releases the main button plus composer for manual turns", () => {
+  it("locks and releases the main button for manual turns", () => {
     const h = makeHarness();
 
     h.controller.syncControls();
-    expect(h.controls).toEqual({ nextDisabled: false, composerDisabled: false });
+    expect(h.controls).toEqual({ nextDisabled: false });
 
     const turn = h.controller.beginManual();
     expect(turn).not.toBeNull();
     expect(h.controller.isBusy()).toBe(true);
-    expect(h.controls).toEqual({ nextDisabled: true, composerDisabled: true });
+    expect(h.controls).toEqual({ nextDisabled: true });
     expect(h.controller.beginManual()).toBeNull();
     expect(h.controller.beginButtonAction()).toBeNull();
 
     turn!.finish();
     expect(h.controller.isBusy()).toBe(false);
-    expect(h.controls).toEqual({ nextDisabled: false, composerDisabled: false });
+    expect(h.controls).toEqual({ nextDisabled: false });
   });
 
   it("keeps controls locked until the newest forced agent turn finishes", () => {
     const h = makeHarness();
     const first = h.controller.beginAgent(false);
     expect(first).not.toBeNull();
-    expect(h.controls).toEqual({ nextDisabled: true, composerDisabled: true });
+    expect(h.controls).toEqual({ nextDisabled: true });
 
     const second = h.controller.beginAgent(true);
     expect(second).not.toBeNull();
 
     first!.finish();
     expect(h.controller.isBusy()).toBe(true);
-    expect(h.controls).toEqual({ nextDisabled: true, composerDisabled: true });
+    expect(h.controls).toEqual({ nextDisabled: true });
 
     second!.finish();
     expect(h.controller.isBusy()).toBe(false);
-    expect(h.controls).toEqual({ nextDisabled: false, composerDisabled: false });
+    expect(h.controls).toEqual({ nextDisabled: false });
   });
 
-  it("keeps the composer disabled when teacher chat is unavailable", () => {
+  it("locks the main button during a button action", () => {
     const h = makeHarness();
-    h.setTeacherEnabled(false);
 
     h.controller.syncControls();
-    expect(h.controls).toEqual({ nextDisabled: false, composerDisabled: true });
+    expect(h.controls).toEqual({ nextDisabled: false });
 
     const turn = h.controller.beginButtonAction();
     expect(turn).not.toBeNull();
-    expect(h.controls).toEqual({ nextDisabled: true, composerDisabled: true });
+    expect(h.controls).toEqual({ nextDisabled: true });
 
     turn!.finish();
-    expect(h.controls).toEqual({ nextDisabled: false, composerDisabled: true });
+    expect(h.controls).toEqual({ nextDisabled: false });
   });
 
   it("invalidates stale stream guards across newer streams, view changes, and faculty changes", () => {
