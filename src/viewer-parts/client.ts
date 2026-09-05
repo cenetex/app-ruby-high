@@ -538,9 +538,6 @@ export function runViewerClient(bootstrap) {
     timerPill: $("timer-pill"),
     timerLabel: $("timer-label"),
     composerZone: $("composer-zone"),
-    chatForm: $("chat-form"),
-    chatInput: $("chat-input"),
-    chatSend: $("chat-send"),
     signinGuest: $("signin-guest"),
     signinPrivy: $("signin-privy"),
     signinStatus: $("signin-status"),
@@ -917,10 +914,6 @@ export function runViewerClient(bootstrap) {
   function setNextButtonDisabled(disabled) {
     if (els.nextBtn) els.nextBtn.disabled = !!disabled;
   }
-  function setChatComposerDisabled(disabled) {
-    els.chatInput.disabled = !!disabled;
-    els.chatSend.disabled = !!disabled;
-  }
   const packMintProgressController = createPackMintProgressController({
     document,
     defaultLines: PACK_MINT_STATUS_LINES,
@@ -940,8 +933,6 @@ export function runViewerClient(bootstrap) {
   }
   const turnController = createViewerTurnController({
     setNextButtonDisabled,
-    setChatComposerDisabled,
-    teacherChatEnabled,
     currentViewSeq() { return chatViewSeq; },
     currentFaculty() { return lastTelemetry && lastTelemetry.faculty; },
   });
@@ -1327,6 +1318,8 @@ export function runViewerClient(bootstrap) {
     els.nextBtn.textContent = "Chatting...";
     els.nextBtn.title = "Reserving " + cost + " Merit Stars. Refunded if chat fails.";
   }
+  // Child-privacy rule: send a bounded intent. The server supplies avatar speech.
+  // See docs/player-dialogue-policy.md before changing this input boundary.
   async function runPlayerChatTurn(intent, extraContext) {
     const manualTurn = turnController.beginManual();
     if (!manualTurn) {
@@ -4121,6 +4114,45 @@ export function runViewerClient(bootstrap) {
     return wrap;
   }
 
+  /** Visual-novel staging for the labyrinth field trip: background,
+   *  stop label, Roko guide sticker, and the room's authored discussion. */
+  function buildCaseTour(caseStudy) {
+    const stage = document.createElement("figure");
+    stage.className = "case-tour";
+    const background = document.createElement("img");
+    background.className = "case-tour-background";
+    background.src = caseStudy.tour.backgroundAsset;
+    background.alt = caseStudy.tour.backgroundAlt;
+    const wash = document.createElement("div");
+    wash.className = "case-tour-wash";
+    wash.setAttribute("aria-hidden", "true");
+    const stop = document.createElement("figcaption");
+    stop.className = "case-tour-stop";
+    const stopKind = document.createElement("span");
+    stopKind.textContent = "Roko's field trip";
+    const stopTitle = document.createElement("strong");
+    stopTitle.textContent = caseStudy.nodeTitle || caseStudy.title;
+    stop.append(stopKind, stopTitle);
+    const guide = document.createElement("img");
+    guide.className = "case-tour-guide";
+    guide.src = caseStudy.tour.guideAsset;
+    guide.alt = caseStudy.tour.guideAlt;
+    const discussion = document.createElement("div");
+    discussion.className = "case-tour-discussion";
+    caseStudy.tour.discussion.forEach((line) => {
+      const exchange = document.createElement("blockquote");
+      exchange.className = "case-tour-line" + (line.speakerId === "roko" ? " is-roko" : " is-goblin");
+      const speaker = document.createElement("strong");
+      speaker.textContent = line.speakerName;
+      const text = document.createElement("p");
+      text.textContent = line.text;
+      exchange.append(speaker, text);
+      discussion.appendChild(exchange);
+    });
+    stage.append(background, wash, stop, guide, discussion);
+    return stage;
+  }
+
   function renderQuestionPrompt(question) {
     const view = questionPromptView(question);
     els.boardPrompt.replaceChildren();
@@ -4145,6 +4177,9 @@ export function runViewerClient(bootstrap) {
       title.textContent = view.caseStudy.title;
       top.append(stage, title);
       caseWrap.appendChild(top);
+      if (view.caseStudy.tour) {
+        caseWrap.appendChild(buildCaseTour(view.caseStudy));
+      }
       if (view.caseStudy.assignmentLabel || (view.caseStudy.route && view.caseStudy.route.length > 0)) {
         const route = document.createElement("div");
         route.className = "case-study-route";
@@ -4644,34 +4679,12 @@ export function runViewerClient(bootstrap) {
       if (!lastTelemetry || lastTelemetry.faculty !== t.faculty) return;
       const liveReveal = lastTelemetry && lastTelemetry.lastReveal;
       if (!liveReveal || liveReveal.questionId !== reveal.questionId || liveReveal.picked !== reveal.picked || liveReveal.correct !== reveal.correct) return;
-      const q = t.current && t.current.id === reveal.questionId ? t.current : null;
-      const type = (q && q.type) || reveal.questionType || (reveal.expectedAnswer != null ? "typed-answer" : "multiple-choice");
-      const options = (type === "multiple-choice" || type === "story-choice") && q && q.options
-        ? q.options
-        : (reveal.questionOptions || null);
-      const optionAnswer = (letter) => {
-        if (!letter || !options) return null;
-        const text = options[letter];
-        return text ? letter + ") " + text : letter;
-      };
+      // Send the reveal identity; the server supplies all lesson and answer text.
       runAgentTurn("answer-graded", {
-        grade: t.current_grade,
         questionId: reveal.questionId,
-        prompt: (q && q.prompt) || reveal.questionPrompt || null,
-        type,
-        subject: (q && q.subject) || reveal.questionSubject || null,
-        difficulty: (q && q.difficulty) || reveal.questionDifficulty || null,
-        options,
         forfeit: !!reveal.forfeit,
         picked: reveal.forfeit ? null : reveal.picked,
         correct: reveal.correct,
-        pickedAnswer: reveal.forfeit ? null : (reveal.answerText || optionAnswer(reveal.picked)),
-        correctAnswer: type === "story-choice" || type === "story-action" ? null : (reveal.expectedAnswer || optionAnswer(reveal.correct)),
-        answerText: reveal.forfeit ? null : (reveal.answerText || null),
-        expectedAnswer: reveal.expectedAnswer || null,
-        answerJudge: reveal.answerJudge || null,
-        explanation: reveal.explanation || null,
-        wasCorrect: reveal.wasCorrect,
       }, { force: true });
     }, Math.max(0, delayMs || 0));
   }
@@ -5517,6 +5530,8 @@ export function runViewerClient(bootstrap) {
     // keeps clicked answers from waiting for a later chat message.
   }
 
+  // The historical function name refers to generated answer text. Players submit
+  // response-card IDs; the server constructs the prose under the dialogue policy.
   async function submitTypedAnswer(event) {
     if (event) event.preventDefault();
     if (typedSubmitting || els.typedSubmitBtn.disabled) return;
@@ -5728,8 +5743,6 @@ export function runViewerClient(bootstrap) {
     }
     syncMobileViewToggle(mode);
     updateChatAction(mode);
-    els.chatForm.hidden = true;
-    setChatComposerDisabled(true);
     // Race strip + answers + advantage + footer-filter all hide via CSS now.
     // We still null out the race-row contents on mode exit so the next
     // round-live paint doesn't double-render stale cards.
@@ -10040,13 +10053,13 @@ export function runViewerClient(bootstrap) {
     lastChimeAt = now;
     return true;
   }
-  async function fireStudentChime({ situation, note, grade, faculty, delayMs, studentId, bypassCooldown, playerText, recordPlayerText }) {
+  async function fireStudentChime({ situation, grade, faculty, delayMs, studentId, bypassCooldown }) {
     if (!bypassCooldown && !studentChimeAllowed()) return false;
     const chimeSeq = chatViewSeq;
     function chimeStillCurrent() {
       return chimeSeq === chatViewSeq && (!faculty || (lastTelemetry && lastTelemetry.faculty === faculty));
     }
-    // If a specific studentId is requested (e.g. a @-mention), use them
+    // If a specific studentId is requested by a room action, use them
     // when they're actually in the active room. Otherwise pick a random
     // in-room student.
     const inRoom = studentsForGrade(grade);
@@ -10069,7 +10082,7 @@ export function runViewerClient(bootstrap) {
       const r = await apiFetch("/api/apps/ruby-high/chat/student-chime", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentId: who.id, situation, note, faculty, playerText, recordPlayerText }),
+        body: JSON.stringify({ studentId: who.id, situation, faculty }),
       });
       let finalLine = "";
       await consumeViewerSseStream(r, {
@@ -10124,9 +10137,6 @@ export function runViewerClient(bootstrap) {
   function scheduleStudentChime(wasCorrect, grade, delayMs) {
     fireStudentChime({
       situation: wasCorrect ? "answer-correct" : "answer-wrong",
-      note: wasCorrect
-        ? "Player just got the question right."
-        : "Player just got the question wrong.",
       grade,
       faculty: lastTelemetry && lastTelemetry.faculty,
       delayMs,
@@ -10985,7 +10995,6 @@ export function runViewerClient(bootstrap) {
   function applyAuthUI() {
     els.checking.hidden = authed !== null;
     if (authed === null) {
-      els.chatForm.hidden = true;
       if (els.nextBtn) els.nextBtn.hidden = true;
       els.checking.hidden = false;
       els.youState.textContent = "checking…";
@@ -11001,16 +11010,12 @@ export function runViewerClient(bootstrap) {
         els.privyAction.textContent = "Account";
         els.privyAction.hidden = false;
       }
-      els.chatForm.hidden = true;
-      setChatComposerDisabled(true);
     } else {
       // Unauthed means even guest-session creation failed; the fallback
       // sign-in overlay is the only thing the user can see.
       els.youState.textContent = "signed out";
       els.footerAction.hidden = true;
       if (els.privyAction) els.privyAction.hidden = true;
-      els.chatForm.hidden = true;
-      setChatComposerDisabled(true);
       if (els.nextBtn) els.nextBtn.hidden = true;
     }
     // Re-render the blackboard so its visibility flips with auth state.
@@ -11301,95 +11306,6 @@ export function runViewerClient(bootstrap) {
       },
       watchdogMs: 45000,
     });
-  }
-
-  async function sendChatMessage(text) {
-    if (!teacherChatEnabled() || !text.trim()) return;
-    const agentTurn = turnController.beginAgent(false);
-    if (!agentTurn) {
-      appendSystem("Chat is already working.");
-      return;
-    }
-    // While the room-idle DM turn is in progress (clock expired, round not
-    // yet resolved), hold player chat so it doesn't race the teacher.
-    if (lastTelemetry && lastTelemetry.active_round && lastTelemetry.active_round.idleTriggered && !lastTelemetry.active_round.resolved) {
-      agentTurn.finish();
-      return;
-    }
-    const targetFaculty = (lastTelemetry && lastTelemetry.faculty) || "ruby";
-
-    // If an opinion question is active and the player hasn't submitted their
-    // response yet, route this chat message to /chat/opinion-submit instead
-    // of the regular agent loop.
-    const opinionQuestionId = lastTelemetry && lastTelemetry.current ? lastTelemetry.current.id : null;
-    const roundAtSubmit = lastTelemetry && lastTelemetry.active_round;
-    const inOpinion = !!(
-      lastTelemetry
-      && lastTelemetry.is_opinion
-      && roundAtSubmit
-      && !roundAtSubmit.resolved
-      && !playerOpinionRecorded(roundAtSubmit)
-      && !(opinionSubmitted && opinionSubmittedQuestionId === opinionQuestionId)
-    );
-
-    const streamGuard = turnController.nextStreamGuard(targetFaculty);
-    try {
-      appendMsg({ kind: "you", name: playerDisplayName(), body: text, color: "var(--accent)" });
-
-      // @-mention: if the player named an in-room classmate, that student
-      // chimes in directly. Each mention bypasses the 5s cooldown and a
-      // small per-student delay keeps overlapping mentions from stomping
-      // each other. Out-of-room mentions are silently ignored.
-      const inRoomStudents = studentsForGrade(lastTelemetry && lastTelemetry.current_grade);
-      const mentionedIds = new Set();
-      for (const s of inRoomStudents) {
-        const escapedName = String(s.name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const re = new RegExp("\\b" + escapedName + "\\b", "i");
-        if (re.test(text)) mentionedIds.add(s.id);
-      }
-      let mentionDelayBase = 600;
-      for (const sid of mentionedIds) {
-        fireStudentChime({
-          situation: "mention",
-          note: "The player addressed you directly. Respond in 1 sentence — react to what they actually said, in your voice.",
-          playerText: text,
-          grade: lastTelemetry && lastTelemetry.current_grade,
-          faculty: lastTelemetry && lastTelemetry.faculty,
-          delayMs: mentionDelayBase,
-          studentId: sid,
-          bypassCooldown: true,
-        });
-        mentionDelayBase += 800 + Math.random() * 600;
-      }
-
-      els.chatInput.value = "";
-      els.chatInput.style.height = "40px";
-      setChatComposerDisabled(true);
-      let r;
-      if (inOpinion) {
-        markOpinionSubmitted(opinionQuestionId);
-        r = await apiFetch("/api/apps/ruby-high/chat/opinion-submit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          timeoutMs: STREAM_CONNECT_TIMEOUT_MS,
-          body: JSON.stringify({ text }),
-        });
-      } else {
-        r = await apiFetch("/api/apps/ruby-high/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          timeoutMs: STREAM_CONNECT_TIMEOUT_MS,
-          body: JSON.stringify({ faculty: targetFaculty, message: text, clientTurnSeq: streamGuard.streamSeq }),
-        });
-      }
-      await consumeSseStream(r, streamGuard);
-    } catch (err) {
-      if (inOpinion) clearOpinionSubmitted();
-      if (chatStreamStillCurrent(streamGuard)) appendSystem(viewerRequestError("Teacher chat", err));
-    } finally {
-      agentTurn.finish();
-      if (!els.chatInput.disabled) els.chatInput.focus();
-    }
   }
 
   // Teacher-driven turn — fires when a state event happens (channel enter,
@@ -11806,14 +11722,6 @@ export function runViewerClient(bootstrap) {
   if (onboardingCreateBtn) onboardingCreateBtn.addEventListener("click", openCharacterCreation);
 
   if (els.youProfile) els.youProfile.addEventListener("click", openPrivyAccount);
-  els.chatForm.addEventListener("submit", (e) => { e.preventDefault(); sendChatMessage(els.chatInput.value); });
-  els.chatInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChatMessage(els.chatInput.value); }
-  });
-  els.chatInput.addEventListener("input", () => {
-    els.chatInput.style.height = "40px";
-    els.chatInput.style.height = Math.min(140, els.chatInput.scrollHeight) + "px";
-  });
 
   applyAuthUI();
   consumeAcquisitionAttribution();

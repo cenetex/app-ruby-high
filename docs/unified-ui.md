@@ -8,6 +8,8 @@ The viewer has three main destinations:
 
 The student portrait opens **Account**, which holds student slots, passkeys, Hall Passes, wallet actions, and device settings.
 
+Class chat uses guided turns for child privacy. Players choose actions and response cards; the game supplies the dialogue. Follow the [player dialogue policy](player-dialogue-policy.md) when changing these controls.
+
 ## Shared layout
 
 Desktop uses a side navigation bar. Phones use the same destinations in a bottom bar. Each page has one scroll area. Browser Back and Forward follow page changes, and refreshing a destination keeps that page open. An active answer or response draft stays in the class while the player visits another page.

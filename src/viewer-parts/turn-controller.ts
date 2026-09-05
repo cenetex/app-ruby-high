@@ -10,8 +10,6 @@ export interface ViewerTurnHandle {
 
 export interface ViewerTurnControllerDeps {
   setNextButtonDisabled(disabled: boolean): void;
-  setChatComposerDisabled(disabled: boolean): void;
-  teacherChatEnabled(): boolean;
   currentViewSeq(): number;
   currentFaculty(): string | null | undefined;
 }
@@ -42,7 +40,6 @@ export function createViewerTurnController(deps: ViewerTurnControllerDeps): View
   function syncControls() {
     const disabled = busy();
     deps.setNextButtonDisabled(disabled);
-    deps.setChatComposerDisabled(!deps.teacherChatEnabled() || disabled);
   }
 
   function beginManual() {

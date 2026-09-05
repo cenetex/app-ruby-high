@@ -9839,9 +9839,15 @@ export class RubyHighService extends Service {
     }
     const trimmed = answerText.trim();
     if (!trimmed) throw new Error("Type an answer before submitting.");
-    const bounded = trimmed.length > 4096 ? `${trimmed.slice(0, 4096)}...` : trimmed;
-    if (q.type === "story-action" && !/^(head|heart|hustle|honor|go [a-z0-9-]+)$/i.test(bounded)) {
-      throw new Error("Choose HEAD, HEART, HUSTLE, HONOR, or one of the visible passages.");
+    let bounded = trimmed.length > 4096 ? `${trimmed.slice(0, 4096)}...` : trimmed;
+    if (q.type === "story-action") {
+      // Child privacy: store a server-owned action, validated before round state
+      // changes. See docs/player-dialogue-policy.md.
+      const actions = ["head", "heart", "hustle", "honor",
+        ...(q.caseStudy?.labyrinth?.availableExits ?? []).map((exit) => `go ${exit.nodeId}`)];
+      const action = actions.find((candidate) => candidate.toLowerCase() === trimmed.toLowerCase());
+      if (!action) throw new Error("Choose HEAD, HEART, HUSTLE, HONOR, or one of the visible passages.");
+      bounded = action;
     }
 
     if (!state.activeRound || state.activeRound.questionId !== q.id) {

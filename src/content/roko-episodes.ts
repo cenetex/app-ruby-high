@@ -49,6 +49,7 @@ export interface RokoAssignmentNode {
   prompt: string;
   explanation: string;
   evidence?: CaseStudyCard["evidence"];
+  discussion?: NonNullable<CaseStudyCard["tour"]>["discussion"];
   choices: RokoAssignmentChoice[];
 }
 
@@ -85,6 +86,7 @@ export interface RokoEpisode {
   stat: keyof CharacterStats;
   evidence: CaseStudyCard["evidence"];
   sources?: CaseStudyCard["sources"];
+  tour?: Omit<NonNullable<CaseStudyCard["tour"]>, "discussion">;
   assignmentGraph?: RokoAssignmentGraph;
   investigation?: RokoEpisodeChoice;
   decision?: RokoEpisodeChoice;
@@ -319,6 +321,12 @@ function caseCard(
     ...(route ? { route } : {}),
     evidence: (node?.evidence ?? episode.evidence).map((item) => ({ ...item })),
     ...(episode.sources ? { sources: episode.sources.map((source) => ({ ...source })) } : {}),
+    ...(episode.tour ? {
+      tour: {
+        ...episode.tour,
+        discussion: node?.discussion?.map((line) => ({ ...line })) ?? [],
+      },
+    } : {}),
     ...(progress?.episodeId === episode.id
       ? { priorChoices: progress.choices.map((choice) => structuredClone(choice)) }
       : {}),

@@ -772,16 +772,16 @@ describe("hosted AI access auth", () => {
 
     const chatRes = new TestResponse();
     await handleChatRoutes(makeCtx(
-      new URL("http://localhost:3000/api/apps/ruby-high/chat"),
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/room-turn"),
       chatRes,
       {
         method: "POST",
         cookieHeader: `rh_session=${token}`,
-        body: { faculty: "ruby", message: "hello" },
+        body: { faculty: "ruby", context: { intent: "hint" } },
       },
     ));
-    expect(chatRes.statusCode).toBe(402);
-    expect(JSON.parse(chatRes.body).error).toContain("Not enough Merit Stars");
+    expect(chatRes.statusCode).toBe(200);
+    expect(chatRes.body).toContain("Not enough Merit Stars");
   });
 
   it("keeps text AI active without a Hall Pass access window", async () => {
@@ -1676,49 +1676,40 @@ describe("chat event context", () => {
     expect(res.body).not.toContain("...");
   });
 
-  it("can persist Chat button player lines when a student is the only responder", async () => {
-    const token = "route-player-line-student-record-token";
-    const record = {
-      userId: "route-player-line-student-record-user",
+
+  it.each([
+    { route: "", faculty: "ruby", body: { message: "private-player-prose" }, status: 410 },
+    { route: "/event", faculty: "ruby", body: { trigger: "manual", context: { playerLine: "private-player-prose" } }, status: 400 },
+    { route: "/event", faculty: "lounge", body: { trigger: "manual", context: { playerLine: "private-player-prose" } }, status: 400 },
+    { route: "/student-chime", faculty: "ruby", body: { studentId: "sami", playerText: "private-player-prose" }, status: 400 },
+    { route: "/student-chime", faculty: "ruby", body: { studentId: "sami", recordPlayerText: true }, status: 400 },
+  ])("enforces guided dialogue at $route in $faculty", async ({ route, faculty, body, status }) => {
+    const token = "guided-dialogue-policy-token";
+    auth.injectSessionForTest(token, {
+      userId: "guided-dialogue-policy-user",
       createdAt: Date.now(),
       expiresAt: Date.now() + 60_000,
-      label: "Route Player Student Record",
-    };
-    auth.injectSessionForTest(token, record);
-    ruby.createCharacter(auth.stateKeyForRecord(record), {
-      name: "Mina",
-      playbookId: "outsider",
-      stats: { head: 2, heart: 1, hustle: 0, honor: -1 },
-      arcAnswer: "I want to notice what everyone else keeps stepping around.",
-      personality: "Quietly intense, observant, and allergic to obvious answers.",
     });
-    (globalThis.fetch as any).mockImplementation(async () => {
-      return llmSseTextResponse("nah mina that wording is definitely suspicious");
-    });
-
+    const stateKey = auth.stateKeyForToken(token);
+    grantChatStars(stateKey);
+    const stateBefore = JSON.stringify(ruby.getOrCreate(stateKey));
+    const historyBefore = chat.history({ sessionToken: token, faculty });
+    const eventsBefore = chat.events_for_test({ sessionToken: token, faculty });
+    const fetchMock = globalThis.fetch as any;
+    fetchMock.mockClear();
     const res = new TestResponse();
     const handled = await handleChatRoutes(makeCtx(
-      new URL("http://localhost:3000/api/apps/ruby-high/chat/student-chime"),
-      res,
-      {
-        method: "POST",
-        cookieHeader: `rh_session=${token}`,
-        apiKeyHeader: "sk-test",
-        body: {
-          faculty: "ruby",
-          studentId: "sami",
-          situation: "player-chat",
-          playerText: "Does this wording feel too neat to anyone else?",
-          recordPlayerText: true,
-        },
-      },
+      new URL(`http://localhost:3000/api/apps/ruby-high/chat${route}`), res,
+      { method: "POST", cookieHeader: `rh_session=${token}`, apiKeyHeader: "sk-test", body: { faculty, ...body } },
     ));
-
     expect(handled).toBe(true);
-    expect(res.statusCode).toBe(200);
-    expect(chat.history({ sessionToken: token, faculty: "ruby" }).some((m) => (
-      m.role === "user" && m.content === "Does this wording feel too neat to anyone else?"
-    ))).toBe(true);
+    expect(res.statusCode).toBe(status);
+    expect(res.body).toContain("Choose a chat action or response cards.");
+    expect(res.body).not.toContain("private-player-prose");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(JSON.stringify(ruby.getOrCreate(stateKey))).toBe(stateBefore);
+    expect(chat.history({ sessionToken: token, faculty })).toEqual(historyBefore);
+    expect(chat.events_for_test({ sessionToken: token, faculty })).toEqual(eventsBefore);
   });
 
   it("replaces one-word student chimes with a fuller fallback line", async () => {
@@ -1771,7 +1762,35 @@ describe("chat event context", () => {
     expect(res.body).toContain("okay Vince, nice one - that answer was clean.");
   });
 
-  it("spends Merit Stars for typed classroom chat", async () => {
+  it("uses game context for classmate replies when browser notes contain prose", async () => {
+    const token = "guided-chime-context-token";
+    auth.injectSessionForTest(token, {
+      userId: "guided-chime-context-user", createdAt: Date.now(), expiresAt: Date.now() + 60_000,
+    });
+    const requests: any[] = [];
+    (globalThis.fetch as any).mockImplementation(async (_input: any, init: any) => {
+      requests.push(JSON.parse(init.body));
+      return llmSseTextResponse("There is another clue on the board.");
+    });
+    const res = new TestResponse();
+    await handleChatRoutes(makeCtx(
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/student-chime"), res,
+      {
+        method: "POST", cookieHeader: `rh_session=${token}`, apiKeyHeader: "sk-test",
+        body: { faculty: "ruby", studentId: "sami", situation: "private-player-prose", note: "private-player-prose" },
+      },
+    ));
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("There is another clue on the board.");
+    expect(requests).toHaveLength(1);
+    expect(JSON.stringify(requests)).toContain("Situation: ambient classroom moment");
+    expect(JSON.stringify(requests)).not.toContain("private-player-prose");
+    expect(res.body).not.toContain("private-player-prose");
+    expect(JSON.stringify(chat.history({ sessionToken: token, faculty: "ruby" }))).not.toContain("private-player-prose");
+    expect(JSON.stringify(chat.events_for_test({ sessionToken: token, faculty: "ruby" }))).not.toContain("private-player-prose");
+  });
+
+  it("spends Merit Stars for guided classroom chat", async () => {
     const token = "route-chat-star-spend-token";
     const record = {
       userId: "route-chat-star-spend-user",
@@ -1781,6 +1800,11 @@ describe("chat event context", () => {
     };
     auth.injectSessionForTest(token, record);
     const stateKey = auth.stateKeyForRecord(record);
+    ruby.createCharacter(stateKey, {
+      name: "Vince", playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "I want to help the class.", personality: "Curious and patient.",
+    });
     grantChatStars(stateKey, CHAT_MERIT_STAR_COST + 1);
     (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
       const [input, init] = args;
@@ -1793,7 +1817,7 @@ describe("chat event context", () => {
 
     const res = new TestResponse();
     const handled = await handleChatRoutes(makeCtx(
-      new URL("http://localhost:3000/api/apps/ruby-high/chat"),
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/room-turn"),
       res,
       {
         method: "POST",
@@ -1801,7 +1825,7 @@ describe("chat event context", () => {
         apiKeyHeader: "sk-test",
         body: {
           faculty: "ruby",
-          message: "What should I look at first?",
+          context: { intent: "hint" },
           clientTurnSeq: 7,
         },
       },
@@ -1815,14 +1839,14 @@ describe("chat event context", () => {
       meritStars: -CHAT_MERIT_STAR_COST,
       source: "chat",
       metadata: expect.objectContaining({
-        route: "typed",
+        route: "room-turn",
         faculty: "ruby",
         clientTurnSeq: "7",
       }),
     });
   });
 
-  it("refunds Merit Stars when typed classroom chat fails before a response", async () => {
+  it("refunds Merit Stars when guided classroom chat fails before a response", async () => {
     const token = "route-chat-star-refund-token";
     const record = {
       userId: "route-chat-star-refund-user",
@@ -1832,14 +1856,20 @@ describe("chat event context", () => {
     };
     auth.injectSessionForTest(token, record);
     const stateKey = auth.stateKeyForRecord(record);
+    ruby.createCharacter(stateKey, {
+      name: "Vince", playbookId: "outsider",
+      stats: { head: 1, heart: 0, hustle: 2, honor: -1 },
+      arcAnswer: "I want to help the class.", personality: "Curious and patient.",
+    });
     grantChatStars(stateKey, CHAT_MERIT_STAR_COST);
+    vi.spyOn(Math, "random").mockReturnValue(0.9);
     (globalThis.fetch as any).mockImplementation(async () => {
       return new Response("model down", { status: 500, statusText: "Bad Gateway" });
     });
 
     const res = new TestResponse();
     const handled = await handleChatRoutes(makeCtx(
-      new URL("http://localhost:3000/api/apps/ruby-high/chat"),
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/room-turn"),
       res,
       {
         method: "POST",
@@ -1847,7 +1877,7 @@ describe("chat event context", () => {
         apiKeyHeader: "sk-test",
         body: {
           faculty: "ruby",
-          message: "What should I look at first?",
+          context: { intent: "hint" },
           clientTurnSeq: 8,
         },
       },
@@ -1862,7 +1892,7 @@ describe("chat event context", () => {
     expect(txs.find((tx) => tx.kind === "merit-star-spend" && tx.source === "chat")).toMatchObject({
       meritStars: -CHAT_MERIT_STAR_COST,
       metadata: expect.objectContaining({
-        route: "typed",
+        route: "room-turn",
         status: "failed",
       }),
     });
@@ -1899,7 +1929,7 @@ describe("chat event context", () => {
     for (const clientTurnSeq of [11, 12]) {
       const res = new TestResponse();
       const handled = await handleChatRoutes(makeCtx(
-        new URL("http://localhost:3000/api/apps/ruby-high/chat"),
+        new URL("http://localhost:3000/api/apps/ruby-high/chat/room-turn"),
         res,
         {
           method: "POST",
@@ -1907,7 +1937,7 @@ describe("chat event context", () => {
           apiKeyHeader: "sk-test",
           body: {
             faculty: "ruby",
-            message: "Can I buy another hint?",
+            context: { intent: "hint" },
             clientTurnSeq,
           },
         },
@@ -1927,7 +1957,7 @@ describe("chat event context", () => {
     expect(ruby.getOrCreate(stateKey).wallet.meritStars).toBe(1);
   });
 
-  it("rejects typed classroom chat without enough Merit Stars", async () => {
+  it("rejects guided classroom chat without enough Merit Stars", async () => {
     const token = "route-chat-star-empty-token";
     const record = {
       userId: "route-chat-star-empty-user",
@@ -1941,7 +1971,7 @@ describe("chat event context", () => {
 
     const res = new TestResponse();
     const handled = await handleChatRoutes(makeCtx(
-      new URL("http://localhost:3000/api/apps/ruby-high/chat"),
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/room-turn"),
       res,
       {
         method: "POST",
@@ -1949,14 +1979,14 @@ describe("chat event context", () => {
         apiKeyHeader: "sk-test",
         body: {
           faculty: "ruby",
-          message: "Anybody there?",
+          context: { intent: "hint" },
           clientTurnSeq: 1,
         },
       },
     ));
 
     expect(handled).toBe(true);
-    expect(res.statusCode).toBe(402);
+    expect(res.statusCode).toBe(200);
     expect(res.body).toContain("Not enough Merit Stars");
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -2332,7 +2362,7 @@ describe("chat event context", () => {
     expect(promptText).not.toContain("Visible board: empty");
   });
 
-  it("threads the resolved card snapshot into answer-graded teacher turns", async () => {
+  it.each([false, true])("uses the saved card snapshot when browser answer context contains prose (board advanced: %s)", async (boardAdvanced) => {
     const token = "route-event-token";
     const record = {
       userId: "route-event-user",
@@ -2341,6 +2371,23 @@ describe("chat event context", () => {
       label: "Route Event",
     };
     auth.injectSessionForTest(token, record);
+    const state = ruby.getOrCreate(auth.stateKeyForToken(token));
+    state.faculty = "sally-science";
+    state.currentGrade = "9";
+    state.lastReveal = {
+      questionId: "cell-q1",
+      questionPrompt: "Which organelle is known as the powerhouse of the cell?",
+      questionType: "multiple-choice",
+      questionOptions: { A: "Nucleus", B: "Mitochondria", C: "Ribosome", D: "Chloroplast" },
+      picked: "B", correct: "B", wasCorrect: true, forfeit: false,
+      explanation: "Mitochondria generate ATP.", encouragement: null,
+    };
+    if (boardAdvanced) {
+      state.current = {
+        id: "next-server-question", type: "multiple-choice", faculty: "sally-science",
+        prompt: "Next server question", options: { A: "New choice", B: "Second", C: "Third", D: "Fourth" }, correctChoice: "A",
+      };
+    }
     (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
       const [input, init] = args;
       capturedChatRequest = {
@@ -2365,24 +2412,13 @@ describe("chat event context", () => {
           faculty: "sally-science",
           trigger: "answer-graded",
           context: {
-            grade: "9",
-            questionId: "cell-q1",
-            prompt: "Which organelle is known as the powerhouse of the cell?",
-            type: "multiple-choice",
-            subject: "biology",
-            difficulty: "easy",
-            options: {
-              A: "Nucleus",
-              B: "Mitochondria",
-              C: "Ribosome",
-              D: "Chloroplast",
-            },
-            picked: "B",
-            correct: "B",
-            pickedAnswer: "B) Mitochondria",
-            correctAnswer: "B) Mitochondria",
-            explanation: "Mitochondria generate ATP.",
-            wasCorrect: true,
+            questionId: "cell-q1", picked: "B", correct: "B", wasCorrect: true,
+            grade: "private-player-prose",
+            prompt: "private-player-prose",
+            options: { A: "private-player-prose", B: "private-player-prose" },
+            type: "private-player-prose", subject: "private-player-prose", difficulty: "private-player-prose",
+            pickedAnswer: "private-player-prose", correctAnswer: "private-player-prose",
+            answerText: "private-player-prose", explanation: "private-player-prose",
           },
         },
       },
@@ -2392,6 +2428,13 @@ describe("chat event context", () => {
     expect(res.statusCode).toBe(200);
     expect(capturedChatRequest).not.toBeNull();
     const promptText = JSON.stringify(capturedChatRequest.body.messages);
+    expect(promptText).not.toContain("private-player-prose");
+    const snapshot = capturedChatRequest.body.messages.find((message: { content?: string }) =>
+      message.content?.includes("RESOLVED CARD SNAPSHOT"))?.content;
+    expect(snapshot).toContain("Which organelle is known as the powerhouse of the cell?");
+    expect(snapshot).not.toContain("Next server question");
+    expect(JSON.stringify(chat.events_for_test({ sessionToken: token, faculty: "sally-science" }))).not.toContain("private-player-prose");
+    expect(JSON.stringify(chat.history({ sessionToken: token, faculty: "sally-science" }))).not.toContain("private-player-prose");
     expect(promptText).toContain("RESOLVED CARD SNAPSHOT");
     expect(promptText).toContain("Which organelle is known as the powerhouse of the cell?");
     expect(promptText).toContain("B) Mitochondria");
@@ -2708,55 +2751,6 @@ describe("chat event context", () => {
     expect(res.body).toContain("stale-answer");
   });
 
-  it("threads lounge Chat button player lines into the next faculty turn", async () => {
-    const token = "route-lounge-player-line-token";
-    auth.injectSessionForTest(token, {
-      userId: "route-lounge-player-line-user",
-      createdAt: Date.now(),
-      expiresAt: Date.now() + 60_000,
-      label: "Route Lounge Player",
-    });
-    grantChatStars(auth.stateKeyForToken(token));
-    (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
-      const [input, init] = args;
-      capturedChatRequest = {
-        url: typeof input === "string" ? input : input.url,
-        body: init?.body ? JSON.parse(init.body) : null,
-      };
-      return new Response(buildSseChunk("Pull up a chair.") as BodyInit, {
-        status: 200,
-        headers: { "Content-Type": "text/event-stream" },
-      });
-    });
-
-    const res = new TestResponse();
-    const handled = await handleChatRoutes(makeCtx(
-      new URL("http://localhost:3000/api/apps/ruby-high/chat/event"),
-      res,
-      {
-        method: "POST",
-        cookieHeader: `rh_session=${token}`,
-        apiKeyHeader: "sk-test",
-        body: {
-          faculty: "lounge",
-          trigger: "manual",
-          context: {
-            playerLine: "Can I sit in for a minute?",
-          },
-        },
-      },
-    ));
-
-    expect(handled).toBe(true);
-    expect(res.statusCode).toBe(200);
-    expect(capturedChatRequest).not.toBeNull();
-    const messages = capturedChatRequest.body.messages as Array<{ role?: string; content?: string }>;
-    expect(messages.some((m) => m.role === "user" && m.content?.includes("Can I sit in for a minute?"))).toBe(true);
-    const promptText = JSON.stringify(messages);
-    expect(promptText).toContain("The student just spoke in the lounge");
-    expect(capturedChatRequest.body.tools).toEqual([]);
-  });
-
   it("includes the active guest teacher in lounge enter turns", async () => {
     const guestPack = fakePublicGuestPack();
     registerPublicPack(guestPack, 1_000);
@@ -2817,55 +2811,6 @@ describe("chat event context", () => {
     expect(capturedChatRequest.body.messages[0].content).not.toContain("guest astrobiology teacher");
   });
 
-  it("threads classroom Chat button player lines into the teacher turn", async () => {
-    const token = "route-class-player-line-token";
-    auth.injectSessionForTest(token, {
-      userId: "route-class-player-line-user",
-      createdAt: Date.now(),
-      expiresAt: Date.now() + 60_000,
-      label: "Route Class Player",
-    });
-    grantChatStars(auth.stateKeyForToken(token));
-    (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
-      const [input, init] = args;
-      capturedChatRequest = {
-        url: typeof input === "string" ? input : input.url,
-        body: init?.body ? JSON.parse(init.body) : null,
-      };
-      return new Response(buildSseChunk("Let's work it from the first clue.") as BodyInit, {
-        status: 200,
-        headers: { "Content-Type": "text/event-stream" },
-      });
-    });
-
-    const res = new TestResponse();
-    const handled = await handleChatRoutes(makeCtx(
-      new URL("http://localhost:3000/api/apps/ruby-high/chat/event"),
-      res,
-      {
-        method: "POST",
-        cookieHeader: `rh_session=${token}`,
-        apiKeyHeader: "sk-test",
-        body: {
-          faculty: "ruby",
-          trigger: "manual",
-          context: {
-            playerLine: "Can someone pressure-test my answer?",
-          },
-        },
-      },
-    ));
-
-    expect(handled).toBe(true);
-    expect(res.statusCode).toBe(200);
-    expect(capturedChatRequest).not.toBeNull();
-    const messages = capturedChatRequest.body.messages as Array<{ role?: string; content?: string }>;
-    expect(messages.some((m) => m.role === "user" && m.content?.includes("Can someone pressure-test my answer?"))).toBe(true);
-    const promptText = JSON.stringify(messages);
-    expect(promptText).toContain("Can someone pressure-test my answer?");
-    expect(promptText).toContain("Reply directly in character");
-  });
-
   it("manual advance Chat turns post a board even when the teacher only narrates", async () => {
     const token = "route-manual-advance-fallback-token";
     auth.injectSessionForTest(token, {
@@ -2905,7 +2850,7 @@ describe("chat event context", () => {
           trigger: "manual",
           context: {
             intent: "advance",
-            playerLine: "What is the read in this room?",
+
           },
         },
       },
@@ -2980,7 +2925,7 @@ describe("chat event context", () => {
           trigger: "manual",
           context: {
             intent: "advance",
-            playerLine: "Okay, practice then. What are we doing next?",
+
           },
         },
       },
@@ -3040,7 +2985,7 @@ describe("chat event context", () => {
           trigger: "manual",
           context: {
             intent: "hint",
-            playerLine: "What should I notice first?",
+
           },
         },
       },
@@ -3097,7 +3042,7 @@ describe("chat event context", () => {
           trigger: "manual",
           context: {
             intent: "report",
-            playerLine: "How did that class actually go?",
+
           },
         },
       },
@@ -3121,6 +3066,16 @@ describe("chat event context", () => {
       createdAt: Date.now(),
       expiresAt: Date.now() + 60_000,
     });
+    const state = ruby.getOrCreate(auth.stateKeyForToken(token));
+    state.faculty = "sally-science";
+    state.lastReveal = {
+      questionId: "cell-timeout",
+      questionPrompt: "Which organelle is known as the powerhouse of the cell?",
+      questionType: "multiple-choice",
+      questionOptions: { A: "Nucleus", B: "Mitochondria", C: "Ribosome", D: "Chloroplast" },
+      picked: "A", correct: "B", wasCorrect: false, forfeit: true,
+      explanation: null, encouragement: null,
+    };
     (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
       const [input, init] = args;
       capturedChatRequest = {
@@ -3144,14 +3099,7 @@ describe("chat event context", () => {
         body: {
           faculty: "sally-science",
           trigger: "answer-graded",
-          context: {
-            prompt: "Which organelle is known as the powerhouse of the cell?",
-            options: { A: "Nucleus", B: "Mitochondria", C: "Ribosome", D: "Chloroplast" },
-            picked: null,
-            correct: "B",
-            correctAnswer: "B) Mitochondria",
-            forfeit: true,
-            wasCorrect: false,
+          context: { questionId: "cell-timeout", forfeit: true,
           },
         },
       },
@@ -3262,13 +3210,13 @@ describe("guest access gates", () => {
 
     const res = new TestResponse();
     const handled = await handleChatRoutes(makeCtx(
-      new URL("http://localhost:3000/api/apps/ruby-high/chat"),
+      new URL("http://localhost:3000/api/apps/ruby-high/chat/room-turn"),
       res,
       {
         method: "POST",
         cookieHeader: `rh_session=${token}`,
         apiKeyHeader: "sk-test",
-        body: { faculty: blockedFaculty, message: "Hello?" },
+        body: { faculty: blockedFaculty, context: { intent: "hint" } },
       },
     ));
 
