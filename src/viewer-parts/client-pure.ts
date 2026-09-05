@@ -48,6 +48,13 @@ export type QuestionPromptCaseView = {
   sources?: Array<{ label: string; url: string; note: string }>;
   priorChoices?: QuestionPromptCaseChoiceView[];
   investigation?: QuestionPromptCaseActionView;
+  tour?: {
+    backgroundAsset: string;
+    backgroundAlt: string;
+    guideAsset: string;
+    guideAlt: string;
+    discussion: Array<{ speakerId: string; speakerName: string; text: string }>;
+  };
   labyrinth?: {
     completedRooms: number;
     requiredRooms: number;
@@ -1935,6 +1942,33 @@ export function questionPromptView(question: unknown): {
   const rawInvestigation = rawCase?.investigation && typeof rawCase.investigation === "object"
     ? rawCase.investigation as LooseRecord
     : null;
+  const safeTourAsset = (value: unknown): string => {
+    const asset = String(value || "");
+    return /^\/api\/apps\/ruby-high\/assets\/[a-z0-9/_\-.]+$/i.test(asset) ? asset : "";
+  };
+  const rawTour = rawCase?.tour && typeof rawCase.tour === "object" ? rawCase.tour as LooseRecord : null;
+  const tourDiscussion = rawTour && Array.isArray(rawTour.discussion)
+    ? rawTour.discussion
+        .filter((line) => line && typeof line === "object")
+        .slice(0, 4)
+        .map((line) => ({
+          speakerId: String((line as LooseRecord).speakerId || "speaker"),
+          speakerName: String((line as LooseRecord).speakerName || "Speaker"),
+          text: String((line as LooseRecord).text || ""),
+        }))
+        .filter((line) => line.text.trim().length > 0)
+    : [];
+  const tourBackground = safeTourAsset(rawTour?.backgroundAsset);
+  const tourGuide = safeTourAsset(rawTour?.guideAsset);
+  const tour = rawTour && tourBackground && tourGuide && tourDiscussion.length > 0
+    ? {
+        backgroundAsset: tourBackground,
+        backgroundAlt: String(rawTour.backgroundAlt || "Labyrinth room"),
+        guideAsset: tourGuide,
+        guideAlt: String(rawTour.guideAlt || "Roko"),
+        discussion: tourDiscussion,
+      }
+    : null;
   const rawRevealedEvidence = rawInvestigation?.revealedEvidence && typeof rawInvestigation.revealedEvidence === "object"
     ? rawInvestigation.revealedEvidence as LooseRecord
     : null;
@@ -2072,6 +2106,7 @@ export function questionPromptView(question: unknown): {
         ...(sources.length > 0 ? { sources } : {}),
         ...(priorChoices.length > 0 ? { priorChoices } : {}),
         ...(investigation ? { investigation } : {}),
+        ...(tour ? { tour } : {}),
         ...(labyrinth ? { labyrinth } : {}),
       }
     : null;

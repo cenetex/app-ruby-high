@@ -4114,6 +4114,45 @@ export function runViewerClient(bootstrap) {
     return wrap;
   }
 
+  /** Visual-novel staging for the labyrinth field trip: background,
+   *  stop label, Roko guide sticker, and the room's authored discussion. */
+  function buildCaseTour(caseStudy) {
+    const stage = document.createElement("figure");
+    stage.className = "case-tour";
+    const background = document.createElement("img");
+    background.className = "case-tour-background";
+    background.src = caseStudy.tour.backgroundAsset;
+    background.alt = caseStudy.tour.backgroundAlt;
+    const wash = document.createElement("div");
+    wash.className = "case-tour-wash";
+    wash.setAttribute("aria-hidden", "true");
+    const stop = document.createElement("figcaption");
+    stop.className = "case-tour-stop";
+    const stopKind = document.createElement("span");
+    stopKind.textContent = "Roko's field trip";
+    const stopTitle = document.createElement("strong");
+    stopTitle.textContent = caseStudy.nodeTitle || caseStudy.title;
+    stop.append(stopKind, stopTitle);
+    const guide = document.createElement("img");
+    guide.className = "case-tour-guide";
+    guide.src = caseStudy.tour.guideAsset;
+    guide.alt = caseStudy.tour.guideAlt;
+    const discussion = document.createElement("div");
+    discussion.className = "case-tour-discussion";
+    caseStudy.tour.discussion.forEach((line) => {
+      const exchange = document.createElement("blockquote");
+      exchange.className = "case-tour-line" + (line.speakerId === "roko" ? " is-roko" : " is-goblin");
+      const speaker = document.createElement("strong");
+      speaker.textContent = line.speakerName;
+      const text = document.createElement("p");
+      text.textContent = line.text;
+      exchange.append(speaker, text);
+      discussion.appendChild(exchange);
+    });
+    stage.append(background, wash, stop, guide, discussion);
+    return stage;
+  }
+
   function renderQuestionPrompt(question) {
     const view = questionPromptView(question);
     els.boardPrompt.replaceChildren();
@@ -4138,6 +4177,9 @@ export function runViewerClient(bootstrap) {
       title.textContent = view.caseStudy.title;
       top.append(stage, title);
       caseWrap.appendChild(top);
+      if (view.caseStudy.tour) {
+        caseWrap.appendChild(buildCaseTour(view.caseStudy));
+      }
       if (view.caseStudy.assignmentLabel || (view.caseStudy.route && view.caseStudy.route.length > 0)) {
         const route = document.createElement("div");
         route.className = "case-study-route";

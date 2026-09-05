@@ -127,6 +127,7 @@ const ASSET_FILES: Record<string, { file: string; mime: string; source?: "assets
   "optimized/ruby-high-logo.webp": { file: "optimized/ruby-high-logo.webp", mime: "image/webp" },
   "optimized/ruby-high-app-icon.webp": { file: "optimized/ruby-high-app-icon.webp", mime: "image/webp" },
   "optimized/ruby-classroom.webp": { file: "optimized/ruby-classroom.webp", mime: "image/webp" },
+  "episodes/roko-labyrinth-hall.webp": { file: "episodes/roko-labyrinth-hall.webp", mime: "image/webp" },
   ...OPTIMIZED_TEACHER_FILES,
   ...OPTIMIZED_STUDENT_FILES,
   "logo.png": { file: "ruby-high-logo.png", mime: "image/png" },
