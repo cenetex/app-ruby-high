@@ -62,6 +62,20 @@ describe("Roko case episodes", () => {
       },
     });
     expect(investigation.storyChoices).toBeUndefined();
+    expect(investigation.caseStudy).toMatchObject({
+      tour: {
+        backgroundAsset: expect.stringContaining("roko-labyrinth-hall.webp"),
+        guideAsset: expect.stringContaining("roko-full-sticker.png"),
+        discussion: expect.arrayContaining([
+          expect.objectContaining({ speakerName: "Roko", text: expect.any(String) }),
+          expect.objectContaining({ speakerName: expect.stringContaining("goblin"), text: expect.any(String) }),
+        ]),
+      },
+    });
+    const sources = investigation.caseStudy!.sources ?? [];
+    expect(sources.some((source) => source.url.includes("lesswrong.com"))).toBe(true);
+    expect(sources.some((source) => source.url.includes("nickbostrom.com"))).toBe(true);
+    expect(sources.some((source) => source.url.includes("metr.org"))).toBe(true);
 
     let progress: CaseStudyProgress = {
       episodeId: episode.id,

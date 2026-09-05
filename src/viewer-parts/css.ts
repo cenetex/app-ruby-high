@@ -3134,6 +3134,118 @@ export const VIEWER_CSS = `
   }
   .board .case-study-route strong { color: #e3c8ff; }
   .board .case-study-route span { color: var(--ink); }
+  .board .case-tour {
+    position: relative;
+    overflow: hidden;
+    margin: 0 0 10px;
+    min-height: 330px;
+    aspect-ratio: 16 / 9;
+    isolation: isolate;
+    border-radius: 8px;
+    background: #20162c;
+  }
+  .board .case-tour-background,
+  .board .case-tour-wash {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .board .case-tour-background {
+    z-index: -3;
+    object-fit: cover;
+  }
+  .board .case-tour-wash {
+    z-index: -2;
+    background:
+      linear-gradient(90deg, rgba(22,12,31,0.18), rgba(22,12,31,0.02) 44%, rgba(22,12,31,0.68)),
+      linear-gradient(0deg, rgba(17,9,24,0.70), transparent 54%);
+    pointer-events: none;
+  }
+  .board .case-tour-stop {
+    position: absolute;
+    z-index: 2;
+    top: 12px;
+    left: 14px;
+    display: grid;
+    gap: 2px;
+    max-width: 48%;
+    padding: 7px 9px;
+    background: rgba(26,14,33,0.78);
+    border-left: 3px solid #f2bd62;
+    border-radius: 0 6px 6px 0;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.55);
+  }
+  .board .case-tour-stop span {
+    color: #f2bd62;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+  .board .case-tour-stop strong {
+    color: #fff5df;
+    font-size: 15px;
+    line-height: 1.15;
+  }
+  .board .case-tour-guide {
+    position: absolute;
+    z-index: 1;
+    left: 2%;
+    bottom: -9%;
+    width: auto;
+    height: 68%;
+    object-fit: contain;
+    filter: drop-shadow(0 14px 15px rgba(0,0,0,0.52));
+    pointer-events: none;
+  }
+  .board .case-tour-discussion {
+    position: absolute;
+    z-index: 3;
+    top: 12px;
+    right: 12px;
+    display: grid;
+    gap: 7px;
+    width: min(58%, 520px);
+    margin: 0;
+  }
+  .board .case-tour-line {
+    margin: 0;
+    padding: 8px 10px;
+    border: 1px solid rgba(255,255,255,0.28);
+    border-radius: 6px;
+    background: rgba(248,240,219,0.94);
+    color: #282029;
+    box-shadow: 3px 4px 0 rgba(20,10,27,0.24);
+  }
+  .board .case-tour-line.is-goblin {
+    margin-left: 11%;
+    background: rgba(224,238,191,0.95);
+    border-color: rgba(92,124,56,0.72);
+  }
+  .board .case-tour-line strong {
+    display: block;
+    margin-bottom: 2px;
+    color: #86404c;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .board .case-tour-line.is-goblin strong { color: #476925; }
+  .board .case-tour-line p {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.28;
+  }
+  @media (max-width: 700px) {
+    .board .case-tour { min-height: 420px; aspect-ratio: auto; }
+    .board .case-tour-background { object-position: 50% center; }
+    .board .case-tour-guide { left: -2%; bottom: -5%; height: 45%; }
+    .board .case-tour-stop { max-width: 70%; }
+    .board .case-tour-discussion { top: 74px; right: 8px; width: 78%; }
+    .board .case-tour-line { padding: 7px 8px; }
+    .board .case-tour-line p { font-size: 10px; }
+  }
   .board .case-labyrinth-state {
     display: flex;
     flex-wrap: wrap;

@@ -152,4 +152,65 @@ describe("viewer question prompt pure helpers", () => {
       sources: [{ label: "Roko's Basilisk", url: "https://www.lesswrong.com/w/rokos-basilisk" }],
     });
   });
+
+  it("builds a safe visual tour with the room's authored discussion", () => {
+    const view = questionPromptView({
+      prompt: "Choose a passage.",
+      caseStudy: {
+        episodeId: "basilisk-archive",
+        title: "The Basilisk in the Archive",
+        hook: "A scroll arrives.",
+        scene: "Goblins gather around a stone map.",
+        stage: "investigate",
+        nodeId: "hall-of-four-doors",
+        nodeTitle: "Hall of Four Doors",
+        evidence: [],
+        tour: {
+          backgroundAsset: "/api/apps/ruby-high/assets/episodes/roko-labyrinth-hall.webp",
+          backgroundAlt: "Goblin archive",
+          guideAsset: "/api/apps/ruby-high/assets/teachers/roko-full-sticker.png",
+          guideAlt: "Roko",
+          discussion: [
+            { speakerId: "roko", speakerName: "Roko", text: "Look at what each path changes." },
+            { speakerId: "nib", speakerName: "Nib", text: "Three human hands open this door." },
+            { speakerId: "empty", speakerName: "Silence", text: "  " },
+          ],
+        },
+      },
+    });
+
+    expect(view.caseStudy).toMatchObject({
+      tour: {
+        backgroundAsset: "/api/apps/ruby-high/assets/episodes/roko-labyrinth-hall.webp",
+        guideAsset: "/api/apps/ruby-high/assets/teachers/roko-full-sticker.png",
+        discussion: [
+          { speakerName: "Roko", text: "Look at what each path changes." },
+          { speakerName: "Nib", text: "Three human hands open this door." },
+        ],
+      },
+    });
+  });
+
+  it("drops a tour that points outside the app's asset routes", () => {
+    const view = questionPromptView({
+      prompt: "Choose a passage.",
+      caseStudy: {
+        episodeId: "basilisk-archive",
+        title: "The Basilisk in the Archive",
+        hook: "A scroll arrives.",
+        scene: "Goblins gather around a stone map.",
+        stage: "investigate",
+        evidence: [],
+        tour: {
+          backgroundAsset: "https://evil.example.com/labyrinth.webp",
+          backgroundAlt: "Off-app background",
+          guideAsset: "/api/apps/ruby-high/assets/teachers/roko-full-sticker.png",
+          guideAlt: "Roko",
+          discussion: [{ speakerId: "roko", speakerName: "Roko", text: "No background, no tour." }],
+        },
+      },
+    });
+
+    expect(view.caseStudy?.tour).toBeUndefined();
+  });
 });

@@ -268,6 +268,22 @@ export interface CaseStudyProgress {
   actedAt: number;
 }
 
+/** A short, authored exchange staged inside a labyrinth room. */
+export interface CaseStudyDiscussionLine {
+  speakerId: string;
+  speakerName: string;
+  text: string;
+}
+
+/** Visual-novel staging for an authored room. */
+export interface CaseStudyTour {
+  backgroundAsset: string;
+  backgroundAlt: string;
+  guideAsset: string;
+  guideAlt: string;
+  discussion: CaseStudyDiscussionLine[];
+}
+
 /** Authored context shown above a question in a case-based lesson. */
 export interface CaseStudyCard {
   episodeId: string;
@@ -282,6 +298,7 @@ export interface CaseStudyCard {
   route?: Array<{ nodeId: string; label: string }>;
   evidence: CaseStudyEvidence[];
   sources?: CaseStudySource[];
+  tour?: CaseStudyTour;
   /** Earlier choices appear only after their causal events are available. */
   priorChoices?: CaseStudyChoiceResult[];
   /** The investigation selected earlier in this case. It appears only after
