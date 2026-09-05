@@ -1,5 +1,7 @@
 # Ruby High 2.0 Design
 
+> **Status: Ruby High 2.0 product plan and prototypes.** The live web viewer at `/api/apps/ruby-high/viewer` is maintained in [`src/viewer-parts`](../src/viewer-parts/). The C engine and visual scene in `ruby2` are development prototypes. See the [runbook](../README.md) for the production app.
+
 > An authored school-year RPG where every class teaches something, every social beat makes the result real, and every day leaves the right memory behind.
 
 Ruby High 2.0 is not a prettier version of the current viewer. It changes the product metaphor from "chat channels with a quiz board" to "a school year you live through."
@@ -4236,6 +4238,8 @@ C rules:
   fallback actions/events, not crash or stall
 
 ## 9. Client And Presentation
+
+This section plans the Ruby High 2.0 client. The production web viewer uses the classroom board, channel rail, and student sheets in `src/viewer-parts`.
 
 ### 9.1 Recommended Client Shape
 

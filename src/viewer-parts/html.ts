@@ -375,6 +375,14 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         </section>
         <details class="account-details">
           <summary>Account settings</summary>
+          <section class="account-section">
+            <label class="account-section-title" for="account-motion">Motion</label>
+            <p class="account-section-sub" id="account-motion-help" aria-live="polite">Saved on this device.</p>
+            <select id="account-motion" aria-describedby="account-motion-help">
+              <option value="system">Use device setting</option>
+              <option value="reduce">Reduce motion</option>
+            </select>
+          </section>
           <section class="account-section account-receipts-section">
             <div class="account-section-title">Activity</div>
             <div class="account-section-sub">Purchases, rewards, and Hall Pass use.</div>

@@ -48,6 +48,8 @@ import { createTeacherStatPillsRenderer } from "./teacher-stat-pills.js";
 import { createTeacherImageStatusView } from "./teacher-image-status.js";
 import { createProfileCardView } from "./profile-card-view.js";
 import { runViewerClient } from "./client.js";
+import { initViewerMotionPreference } from "./motion-preference.js";
+import { viewerRequestFailureKind, viewerRequestError, studentRemixFallbackMessage } from "./player-feedback.js";
 import * as Pure from "./client-pure.js";
 
 // Returns the SPA viewer's browser JS as a string. The heavy browser client
@@ -229,6 +231,10 @@ export function viewerClientScript(): string {
   try { delete window.__RUBY_HIGH_BOOTSTRAP__; } catch (_err) {}
   ${serializeConstants()}
   ${serializePureHelpers()}
+  const initViewerMotionPreference = ${initViewerMotionPreference.toString()};
+  const viewerRequestFailureKind = ${viewerRequestFailureKind.toString()};
+  const viewerRequestError = ${viewerRequestError.toString()};
+  const studentRemixFallbackMessage = ${studentRemixFallbackMessage.toString()};
   const withViewerTimeoutSignal = ${withViewerTimeoutSignal.toString()};
   const createAccountCardReaderRenderer = ${createAccountCardReaderRenderer.toString()};
   const createAccountCharacterPanelRenderer = ${createAccountCharacterPanelRenderer.toString()};

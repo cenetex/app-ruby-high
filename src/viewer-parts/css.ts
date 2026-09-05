@@ -3491,13 +3491,29 @@ export const VIEWER_CSS = `
     from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: translateY(0); }
   }
+  :root[data-motion="reduce"] *,
+  :root[data-motion="reduce"] *::before,
+  :root[data-motion="reduce"] *::after {
+    animation-delay: 0ms !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-delay: 0ms !important;
+    transition-duration: 0.001ms !important;
+  }
+  #account-motion {
+    margin-top: 8px;
+    max-width: 100%;
+  }
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
     *::after {
+      animation-delay: 0ms !important;
       animation-duration: 0.001ms !important;
       animation-iteration-count: 1 !important;
       scroll-behavior: auto !important;
+      transition-delay: 0ms !important;
       transition-duration: 0.001ms !important;
     }
   }
