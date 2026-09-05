@@ -92,6 +92,7 @@
     "vitest": "4.1.10"
   },
   "overrides": {
+    "stream-json": "^3.5.0",
     "@irys/bundles": "0.0.3",
     "@irys/upload": "$@irys/upload",
     "@irys/upload-core": "0.0.10",
