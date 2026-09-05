@@ -21,195 +21,52 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   const crestLogoSrc = `${safeApiBase}/assets/optimized/ruby-high-app-icon.webp${assetVersion}`;
   const wordmarkLogoSrc = `${safeApiBase}/assets/optimized/ruby-high-logo.webp${assetVersion}`;
   return `
-<div class="shell" id="shell">
+<div class="shell" id="shell" data-app-page="class">
 
-  <!-- servers (grades) rail -->
-  <aside class="servers-rail" id="servers-rail">
-    <button class="server-btn is-home" data-grade="home" id="home-btn" title="Ruby High home">
-      <img src="${crestLogoSrc}" alt="" width="128" height="128" />
+  <header class="app-header">
+    <button class="app-brand" id="home-btn" type="button" aria-label="Ruby High home">
+      <img src="${crestLogoSrc}" alt="" width="128" height="128" /><span>Ruby High</span>
     </button>
-    <div class="servers-divider"></div>
-    <!-- grade buttons injected -->
-  </aside>
-
-  <!-- channels rail -->
-  <aside class="channels-rail" id="channels-rail" aria-label="School navigation">
-    <div class="channels-header">
-      <button class="channels-close" id="channels-close" type="button" aria-label="Close navigation">
-        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-          <path d="M6 6l12 12"/><path d="M18 6L6 18"/>
-        </svg>
-      </button>
-      <img class="school-logo" src="${wordmarkLogoSrc}" alt="Ruby High" width="970" height="815" />
-      <div class="school-context">
-        <div class="grade-name" id="grade-title">Ruby High</div>
-      </div>
-    </div>
-    <div class="channels-list" id="channels-list"></div>
-    <div class="channels-footer">
-      <button class="you-profile" id="you-profile" type="button" aria-label="Open student card">
+      <button class="you-profile" id="you-profile" type="button" aria-label="Open your account">
         <span class="you-avatar" id="you-avatar">${escapeHtml((opts.agentName || "U").slice(0, 1).toUpperCase())}</span>
         <span class="you-meta">
           <span class="you-name" id="you-name">${safeAgent}</span>
           <span class="you-state" id="you-state">checking…</span>
         </span>
       </button>
-      <!-- Legacy footer action placeholder. Account now owns AI controls. -->
-      <button class="footer-action" id="footer-action" type="button" hidden></button>
-      <button class="footer-action account-action" id="privy-action" type="button" hidden>Account</button>
+  </header>
+  <nav class="app-nav" aria-label="Main navigation">
+    <button type="button" data-app-page="class" aria-current="page" aria-controls="class-page"><span aria-hidden="true">▤</span>Class</button>
+    <button type="button" data-app-page="campus" aria-controls="campus-page"><span aria-hidden="true">⌂</span>Campus</button>
+    <button type="button" data-app-page="yearbook" aria-controls="yearbook-page"><span aria-hidden="true">▥</span>Yearbook</button>
+    <button class="account-action" id="privy-action" type="button" hidden>Account</button>
+  </nav>
+  <div id="servers-rail" hidden></div>
+  <button id="footer-action" type="button" hidden></button>
+
+  <!-- workspace -->
+  <main class="workspace" id="workspace">
+    <section class="app-page campus-page" id="campus-page" aria-labelledby="campus-title" hidden>
+  <!-- channels rail -->
+  <aside class="channels-rail" id="channels-rail" aria-label="School navigation">
+    <div class="channels-header">
+      <h1 id="campus-title" tabindex="-1">Campus</h1>
+      <button hidden class="channels-close" id="channels-close" type="button" aria-label="Close navigation">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <path d="M6 6l12 12"/><path d="M18 6L6 18"/>
+        </svg>
+      </button>
+      <div class="school-context">
+        <div class="grade-name" id="grade-title">Ruby High</div>
+      </div>
     </div>
+    <div class="channels-list" id="channels-list"></div>
     <div class="channels-links">
       <a class="report-bug-link" id="report-bug-link" href="https://discord.gg/uTXaBVfY" target="_blank" rel="noopener noreferrer" data-discord-link="true" title="Bugs or questions? Join the Ruby High Discord.">Bugs / questions</a>
       <a class="report-bug-link" id="about-link" href="https://annihilism.org" target="_blank" rel="noopener noreferrer" title="The philosophy behind Ruby High.">About</a>
       <a class="report-bug-link" id="books-link" href="https://ratimics.gumroad.com" target="_blank" rel="noopener noreferrer" title="Books by the Ruby High author.">Books</a>
     </div>
   </aside>
-
-  <!-- workspace -->
-  <main class="workspace" id="workspace">
-    <header class="top-bar">
-      <button class="hamburger" id="hamburger" type="button" aria-label="Open navigation" aria-controls="channels-rail" aria-expanded="false">
-        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-          <path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>
-        </svg>
-      </button>
-      <div class="channel-name">
-        <div class="top"><span class="hash">#</span><span id="channel-title">lounge</span></div>
-        <div class="sub" id="channel-sub">loading…</div>
-      </div>
-      <div class="arc-indicator" id="arc-indicator" hidden>
-        <span class="arc-year" id="arc-year">—</span>
-        <span class="arc-sep">·</span>
-        <span class="arc-streak" id="arc-streak" title="Passed daily classes needed for this year">📚 —</span>
-        <span class="arc-sep">·</span>
-        <span class="arc-xp" id="arc-xp" title="Subjects cleared with a C or better this year">✅ —</span>
-        <span class="arc-sep" id="arc-essay-sep" hidden>·</span>
-        <span class="arc-essay" id="arc-essay" title="Final response board required before graduation" hidden>🧩 due</span>
-      </div>
-    </header>
-
-    <nav class="mobile-view-toggle" id="mobile-view-toggle" aria-label="Classroom view" role="tablist" hidden>
-      <button type="button" role="tab" data-mobile-view="challenge" aria-selected="true" aria-controls="blackboard-panel">Challenge</button>
-      <button type="button" role="tab" data-mobile-view="chat" aria-selected="false" aria-controls="stream" tabindex="-1">Chat</button>
-    </nav>
-
-    <section class="lounge-stage" id="lounge-stage">
-      <div class="lounge-title">Teachers' Lounge — listen in</div>
-      <div class="lounge-figures" id="lounge-figures">
-        <!-- Populated by renderLoungeFigures() from the active pack's
-             faculty roster. A pre-init dummy keeps the layout from
-             collapsing before the first telemetry tick. -->
-      </div>
-    </section>
-
-    <section class="blackboard-panel is-empty" id="blackboard-panel">
-      <div class="blackboard-empty" id="blackboard-empty">
-        <div class="onboarding-hero" aria-hidden="true">
-          <div class="onboarding-hero-copy">
-            <span class="onboarding-kicker">First bell</span>
-            <img class="onboarding-wordmark" src="${wordmarkLogoSrc}" alt="" width="970" height="815" fetchpriority="high" />
-            <span class="onboarding-hero-line">Your story starts in homeroom.</span>
-          </div>
-          <img class="onboarding-ruby" src="${safeApiBase}/assets/teachers/ruby-full-sticker.png?v=first-bell-20260823" alt="" width="150" height="512" fetchpriority="high" />
-        </div>
-        <div id="blackboard-empty-text">
-          <div class="onboarding-title">Ruby High</div>
-          <div class="onboarding-sub">Create a student and answer your first question.</div>
-          <div class="onboarding-detail">Ruby and your classmates are ready. Your choices become part of your yearbook.</div>
-        </div>
-        <button class="blackboard-empty-action" id="blackboard-empty-action" type="button" hidden>Create Student</button>
-        <div class="onboarding-actions" id="onboarding-actions" hidden>
-          <button class="blackboard-empty-action" id="onboarding-create-btn" type="button">Create my student</button>
-          <div class="onboarding-reassurance">Free · no sign-up needed · starts now</div>
-        </div>
-      </div>
-
-      <ol class="daily-class-progress" id="daily-class-progress" aria-label="Today's class progress" hidden></ol>
-      <div class="blackboard-meta" id="blackboard-meta" hidden></div>
-      <div class="board-frame-host" id="board-frame-host" hidden>
-        <div class="board-frame">
-          <div class="board" id="board">
-            <div class="prompt" id="board-prompt"></div>
-            <div class="reveal" id="board-reveal" hidden></div>
-          </div>
-        </div>
-        <img class="teacher-figure" id="teacher-figure" alt="" hidden />
-      </div>
-      <div class="answers-host" id="answers-host" hidden>
-        <div class="answers" id="answers">
-          <button class="answer A" data-pick="A" disabled><span class="badge">A</span><span class="label">—</span></button>
-          <button class="answer B" data-pick="B" disabled><span class="badge">B</span><span class="label">—</span></button>
-          <button class="answer C" data-pick="C" disabled><span class="badge">C</span><span class="label">—</span></button>
-          <button class="answer D" data-pick="D" disabled><span class="badge">D</span><span class="label">—</span></button>
-        </div>
-        <div class="advantage-bar" id="advantage-bar" hidden>
-          <button class="advantage-btn" id="advantage-btn" type="button" title="Use one roll for help with this question">🎲 Roll for help</button>
-          <span class="advantage-result" id="advantage-result" hidden></span>
-        </div>
-      </div>
-      <div class="typed-answer-host" id="typed-answer-host" hidden>
-        <div class="labyrinth-action-form" id="labyrinth-action-form" hidden>
-          <strong>What would you do?</strong>
-          <div class="labyrinth-attribute-grid" id="labyrinth-attribute-grid" aria-label="Choose an approach"></div>
-          <div class="labyrinth-exit-grid" id="labyrinth-exit-grid" aria-label="Visible passages"></div>
-          <p>Attributes are approaches, not answers. Passages change your position without completing a room.</p>
-        </div>
-        <form class="typed-answer-form" id="typed-answer-form">
-          <div class="response-builder" id="response-builder" data-active-group="claim">
-            <nav class="response-stepper" aria-label="Response steps">
-              <button type="button" data-response-step="claim" aria-current="step"><span>1</span><strong>Claim</strong></button>
-              <button type="button" data-response-step="stance" disabled><span>2</span><strong>Position</strong></button>
-              <button type="button" data-response-step="evidence" disabled><span>3</span><strong>Evidence</strong></button>
-              <button type="button" data-response-step="impact" disabled><span>4</span><strong>Impact</strong></button>
-            </nav>
-            <div class="response-stage">
-            <fieldset class="response-card-group" data-response-group="claim">
-              <legend class="visually-hidden">Claim</legend>
-              <div class="response-card-grid response-claim-grid">
-                <button type="button" data-response-card data-group="claim" data-value="" hidden><span aria-hidden="true">1</span><strong>—</strong><small>—</small><i class="response-option-check" aria-hidden="true">✓</i></button>
-                <button type="button" data-response-card data-group="claim" data-value="" hidden><span aria-hidden="true">2</span><strong>—</strong><small>—</small><i class="response-option-check" aria-hidden="true">✓</i></button>
-              </div>
-            </fieldset>
-            <fieldset class="response-card-group" data-response-group="stance" hidden>
-              <legend class="visually-hidden">Position</legend>
-              <div class="response-card-grid">
-                <button type="button" data-response-card data-group="stance" data-value="support" data-short="Mostly yes"><span aria-hidden="true">✓</span><strong>Mostly yes</strong><small>Supports claim</small><i class="response-option-check" aria-hidden="true">✓</i></button>
-                <button type="button" data-response-card data-group="stance" data-value="challenge" data-short="Challenge it"><span aria-hidden="true">×</span><strong>Challenge it</strong><small>Missing context</small><i class="response-option-check" aria-hidden="true">✓</i></button>
-                <button type="button" data-response-card data-group="stance" data-value="conditional" data-short="It depends"><span aria-hidden="true">◇</span><strong>It depends</strong><small>Context matters</small><i class="response-option-check" aria-hidden="true">✓</i></button>
-              </div>
-            </fieldset>
-            <fieldset class="response-card-group" data-response-group="evidence" hidden>
-              <legend class="visually-hidden">Evidence</legend>
-              <div class="response-card-grid">
-                <button type="button" data-response-card data-group="evidence" data-value="cause" data-short="Cause & effect"><span aria-hidden="true">↗</span><strong>Cause &amp; effect</strong><small>What changed</small><i class="response-option-check" aria-hidden="true">✓</i></button>
-                <button type="button" data-response-card data-group="evidence" data-value="compare" data-short="Compare"><span aria-hidden="true">⇄</span><strong>Compare</strong><small>Two examples</small><i class="response-option-check" aria-hidden="true">✓</i></button>
-                <button type="button" data-response-card data-group="evidence" data-value="source" data-short="Source check"><span aria-hidden="true">⌕</span><strong>Source check</strong><small>Missing proof</small><i class="response-option-check" aria-hidden="true">✓</i></button>
-              </div>
-            </fieldset>
-            <fieldset class="response-card-group" data-response-group="impact" hidden>
-              <legend class="visually-hidden">Impact</legend>
-              <div class="response-card-grid">
-                <button type="button" data-response-card data-group="impact" data-value="people" data-short="People"><span aria-hidden="true">♥</span><strong>People</strong><small>Human effect</small><i class="response-option-check" aria-hidden="true">✓</i></button>
-                <button type="button" data-response-card data-group="impact" data-value="systems" data-short="Systems"><span aria-hidden="true">▦</span><strong>Systems</strong><small>Rules &amp; structures</small><i class="response-option-check" aria-hidden="true">✓</i></button>
-                <button type="button" data-response-card data-group="impact" data-value="future" data-short="Future"><span aria-hidden="true">◷</span><strong>Future</strong><small>Long-term effect</small><i class="response-option-check" aria-hidden="true">✓</i></button>
-              </div>
-            </fieldset>
-            </div>
-            <div class="response-builder-actions">
-              <div class="visually-hidden" id="response-build-status" aria-live="polite">Claim</div>
-              <button class="typed-submit-btn" id="typed-submit-btn" type="submit" disabled>Submit</button>
-            </div>
-          </div>
-          <button class="typed-mc-btn" id="generate-mc-btn" type="button">Choices</button>
-        </form>
-      </div>
-      <div class="race-strip" id="race-strip" hidden>
-        <span class="timer-pill" id="timer-pill"><span class="ring"></span><span id="timer-label">25s</span></span>
-        <span class="race-row" id="race-row"></span>
-      </div>
-      <div class="blackboard-foot" id="blackboard-foot" hidden>
-      </div>
-    </section>
 
     <section class="leaderboard-panel" id="leaderboard-panel" aria-labelledby="leaderboard-title" hidden>
       <div class="leaderboard-header">
@@ -218,101 +75,45 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           <h2 class="leaderboard-title" id="leaderboard-title">Honor Roll</h2>
           <p class="leaderboard-sub">Top students by year — updated live.</p>
         </div>
-        <button class="leaderboard-back" id="leaderboard-back" type="button">Back to class</button>
+        <button class="leaderboard-back" id="leaderboard-back" type="button">Back to campus</button>
       </div>
       <div class="leaderboard-body" id="leaderboard-body" aria-live="polite">
         <div class="leaderboard-loading">Loading…</div>
       </div>
     </section>
 
-    <section class="stream" id="stream" aria-live="polite" aria-atomic="false"></section>
-
-    <section class="composer-zone" id="composer-zone">
-      <button class="chat-action-btn" id="next-btn" type="button" hidden>Chat</button>
-      <form class="composer-form" id="chat-form" hidden aria-hidden="true">
-        <textarea id="chat-input" rows="1" placeholder="Message — the teacher and class can hear you" disabled></textarea>
-        <button type="submit" class="send-btn" id="chat-send" disabled aria-label="Send">
-          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M5 12l14-7-7 14-2-5-5-2z"/>
-          </svg>
-        </button>
-      </form>
-      <div class="checking" id="checking" hidden>checking…</div>
     </section>
-  </main>
-
-  <div class="scrim" id="scrim"></div>
-</div>
-
-<div class="congrats-toast" id="congrats-toast" aria-live="polite"></div>
-
-<div class="app-confirm-overlay" id="app-confirm-overlay" aria-hidden="true" hidden>
-  <div class="app-confirm-card" role="dialog" aria-modal="true" aria-labelledby="app-confirm-title" aria-describedby="app-confirm-copy">
-    <div class="app-confirm-kicker" id="app-confirm-kicker">Confirm</div>
-    <h2 id="app-confirm-title">Continue?</h2>
-    <p id="app-confirm-copy"></p>
-    <p class="app-confirm-detail" id="app-confirm-detail" hidden></p>
-    <div class="app-confirm-actions">
-      <button type="button" class="secondary" id="app-confirm-cancel">Cancel</button>
-      <button type="button" class="primary" id="app-confirm-ok">Continue</button>
-    </div>
-  </div>
-</div>
-
-<!-- Sign-in fallback. Normal boot creates a guest Ruby High session; this only
-     opens if the app cannot establish even that local session. -->
-<!-- Morning Announcements — PA-system intro shown once per visit -->
-<div class="announcements-overlay" id="announcements-overlay" role="dialog" aria-modal="true" aria-label="Morning Announcements" hidden>
-  <div class="announcements-panel">
-    <div class="announcements-header">
-      <img class="announcements-logo" id="announcements-logo" src="${crestLogoSrc}" alt="Ruby High" />
-      <div class="announcements-date" id="announcements-date"></div>
-    </div>
-    <h2 class="announcements-title" id="announcements-title">Morning Announcements</h2>
-    <div class="announcements-body" id="announcements-body"></div>
-    <div class="announcements-notes" id="announcements-notes"></div>
-    <div class="announcements-actions">
-      <a class="announcements-link" id="announcements-about" href="https://annihilism.org" target="_blank" rel="noopener noreferrer">About</a>
-      <a class="announcements-link" id="announcements-books" href="https://ratimics.gumroad.com" target="_blank" rel="noopener noreferrer">Books</a>
-      <button class="announcements-dismiss" id="announcements-dismiss" type="button">Take your seat</button>
-    </div>
-  </div>
-</div>
-
-<div class="sheet-overlay is-mandatory" id="signin-overlay" role="dialog" aria-modal="true" aria-labelledby="signin-title" aria-hidden="true">
-  <div class="sheet-card signin-card">
-    <h2 id="signin-title">Welcome to Ruby High</h2>
-    <p class="sub">Play classes for free. Merit Stars pay for teacher chat. Hall Passes pay for images, extra students, and collectible cards.</p>
-    <div class="sheet-actions" style="justify-content: center;">
-      <button id="signin-guest" class="primary-link" type="button">Continue free</button>
-      <button id="signin-privy" class="secondary-link" type="button">Sign in with a passkey</button>
-      <a id="signin-cta" class="secondary-link" href="/api/apps/ruby-high/auth/start">Use my AI key</a>
-    </div>
-    <div id="signin-status" class="stat-budget" aria-live="polite"></div>
-  </div>
-</div>
-
-  <!-- Account overlay -->
-  <div class="sheet-overlay" id="privy-overlay" role="dialog" aria-modal="true" aria-labelledby="account-title" aria-hidden="true">
-    <button class="sheet-close" id="privy-close" type="button" aria-label="Close">×</button>
+    <section class="app-page yearbook-page" id="yearbook-page" aria-labelledby="yearbook-title" hidden>
+      <header class="page-heading"><p class="page-kicker">Your school story</p><h1 id="yearbook-title" tabindex="-1">Yearbook</h1><p id="yearbook-subtitle">Class results, completed years, and comics.</p></header>
+      <nav class="page-tabs" aria-label="Yearbook areas">
+        <button type="button" data-yearbook-pane="record" aria-pressed="true">School record</button>
+        <button type="button" data-yearbook-pane="comics" aria-pressed="false">Comics</button>
+      </nav>
+      <section id="yearbook-record" aria-label="School record"></section>
+      <section id="yearbook-comics" aria-label="Comics" hidden>
+      <div class="yearbook-library" id="account-panel-library">
+        <section class="account-section account-comics-section">
+          <div class="account-section-head">
+            <div>
+              <div class="account-section-title">Comics</div>
+              <div class="account-section-sub" id="account-comic-summary"></div>
+            </div>
+          </div>
+          <div id="account-comics"></div>
+        </section>
+      </div>
+</section>
+    </section>
+  <!-- Account page -->
+  <section class="app-page account-page" id="privy-overlay" aria-labelledby="account-title" hidden>
+    <button class="page-back" id="privy-close" type="button">Back to class</button>
   <div class="sheet-card privy-card account-card">
     <div class="account-header-row">
-      <h2 id="account-title">Account</h2>
-      <div class="account-identity-inline">
-        <div class="wallet-panel" id="privy-wallet">Guest session</div>
-        <div class="sheet-actions">
-          <button type="button" id="passkey-action">Sign in with a passkey</button>
-          <button type="button" class="secondary" id="passkey-create">Save progress with a passkey</button>
-          <button type="button" class="secondary" id="privy-login-widget" hidden>Connect wallet</button>
-          <button type="button" class="secondary" id="privy-signout" hidden>Sign out</button>
-        </div>
-      </div>
+      <h1 id="account-title" tabindex="-1">Account</h1>
     </div>
-    <p class="sub account-passkey-copy">Use Touch ID, Face ID, Windows Hello, your phone, or a security key. Ruby High stores your public key. Your passkey manager protects the private key.</p>
     <div class="account-tabs" role="tablist" aria-label="Account areas">
       <button type="button" class="account-tab is-active" id="account-tab-account" data-account-tab="account" role="tab" aria-selected="true" aria-controls="account-panel-account">Profile</button>
       <button type="button" class="account-tab" id="account-tab-wallet" data-account-tab="wallet" role="tab" aria-selected="false" aria-controls="account-panel-wallet">Passes</button>
-      <button type="button" class="account-tab" id="account-tab-library" data-account-tab="library" role="tab" aria-selected="false" aria-controls="account-panel-library">Library</button>
     </div>
     <div class="account-workspace">
       <div class="account-panel is-active" id="account-panel-account" data-account-panel="account" role="tabpanel" aria-labelledby="account-tab-account">
@@ -330,6 +131,17 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           <div class="account-character-grid" id="account-character-grid"></div>
         </section>
         <section class="account-section account-security-section" id="account-security-section">
+      <div class="account-identity-inline">
+        <div class="wallet-panel" id="privy-wallet">Guest session</div>
+        <div class="sheet-actions">
+          <button type="button" id="passkey-action">Sign in with a passkey</button>
+          <button type="button" class="secondary" id="passkey-create">Save progress with a passkey</button>
+          <button type="button" class="secondary" id="privy-login-widget" hidden>Connect wallet</button>
+          <button type="button" class="secondary" id="privy-signout" hidden>Sign out</button>
+        </div>
+      </div>
+    <p class="sub account-passkey-copy">Save your student across devices with a passkey.</p>
+
           <div class="account-section-head">
             <div>
               <div class="account-section-title">Passkey security</div>
@@ -437,20 +249,223 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           <div class="account-hall-pass-cards" id="account-hall-pass-cards"></div>
         </section>
       </div>
-      <div class="account-panel" id="account-panel-library" data-account-panel="library" role="tabpanel" aria-labelledby="account-tab-library" hidden>
-        <section class="account-section account-comics-section">
-          <div class="account-section-head">
-            <div>
-              <div class="account-section-title">Comics</div>
-              <div class="account-section-sub" id="account-comic-summary"></div>
-            </div>
-          </div>
-          <div id="account-comics"></div>
-        </section>
-      </div>
     </div>
     <div id="privy-status" class="stat-budget" aria-live="polite"></div>
     </div>
+</section>
+
+    <div class="class-page" id="class-page">
+
+    <header class="top-bar">
+      <button hidden class="hamburger" id="hamburger" type="button" aria-label="Open navigation" aria-controls="channels-rail" aria-expanded="false">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/>
+        </svg>
+      </button>
+      <div class="channel-name">
+        <div class="top"><span id="channel-title">Class</span></div>
+        <div class="sub" id="channel-sub">loading…</div>
+      </div>
+      <div class="arc-indicator" id="arc-indicator" hidden>
+        <span class="arc-year" id="arc-year">—</span>
+        <span class="arc-sep">·</span>
+        <span class="arc-streak" id="arc-streak" title="Passed daily classes needed for this year">📚 —</span>
+        <span class="arc-sep">·</span>
+        <span class="arc-xp" id="arc-xp" title="Subjects cleared with a C or better this year">✅ —</span>
+        <span class="arc-sep" id="arc-essay-sep" hidden>·</span>
+        <span class="arc-essay" id="arc-essay" title="Final response board required before graduation" hidden>🧩 due</span>
+      </div>
+    </header>
+
+    <nav class="mobile-view-toggle" id="mobile-view-toggle" aria-label="Classroom view" role="tablist" hidden>
+      <button type="button" role="tab" data-mobile-view="challenge" aria-selected="true" aria-controls="blackboard-panel">Lesson</button>
+      <button type="button" role="tab" data-mobile-view="chat" aria-selected="false" aria-controls="stream" tabindex="-1">Class chat</button>
+    </nav>
+
+    <section class="lounge-stage" id="lounge-stage">
+      <div class="lounge-title">Teachers' Lounge — listen in</div>
+      <div class="lounge-figures" id="lounge-figures">
+        <!-- Populated by renderLoungeFigures() from the active pack's
+             faculty roster. A pre-init dummy keeps the layout from
+             collapsing before the first telemetry tick. -->
+      </div>
+    </section>
+
+    <section class="blackboard-panel is-empty" id="blackboard-panel">
+      <div class="blackboard-empty" id="blackboard-empty">
+        <div class="onboarding-hero" aria-hidden="true">
+          <div class="onboarding-hero-copy">
+            <span class="onboarding-kicker">First bell</span>
+            <img class="onboarding-wordmark" src="${wordmarkLogoSrc}" alt="" width="970" height="815" fetchpriority="high" />
+            <span class="onboarding-hero-line">Your story starts in homeroom.</span>
+          </div>
+          <img class="onboarding-ruby" src="${safeApiBase}/assets/teachers/ruby-full-sticker.png?v=first-bell-20260823" alt="" width="150" height="512" fetchpriority="high" />
+        </div>
+        <div id="blackboard-empty-text">
+          <div class="onboarding-title">Ruby High</div>
+          <div class="onboarding-sub">Create a student and answer your first question.</div>
+          <div class="onboarding-detail">Ruby and your classmates are ready. Your choices become part of your yearbook.</div>
+        </div>
+        <button class="blackboard-empty-action" id="blackboard-empty-action" type="button" hidden>Create Student</button>
+        <div class="onboarding-actions" id="onboarding-actions" hidden>
+          <button class="blackboard-empty-action" id="onboarding-create-btn" type="button">Create my student</button>
+          <div class="onboarding-reassurance">Free · no sign-up needed · starts now</div>
+        </div>
+      </div>
+
+      <ol class="daily-class-progress" id="daily-class-progress" aria-label="Today's class progress" hidden></ol>
+      <div class="blackboard-meta" id="blackboard-meta" hidden></div>
+      <div class="board-frame-host" id="board-frame-host" hidden>
+        <div class="board-frame">
+          <div class="board" id="board">
+            <div class="prompt" id="board-prompt"></div>
+            <div class="reveal" id="board-reveal" hidden></div>
+          </div>
+        </div>
+        <img class="teacher-figure" id="teacher-figure" alt="" hidden /><span class="lesson-teacher-name" id="teacher-name"></span>
+      </div>
+      <div class="answers-host" id="answers-host" hidden>
+        <div class="answers" id="answers">
+          <button class="answer A" data-pick="A" disabled><span class="badge">A</span><span class="label">—</span></button>
+          <button class="answer B" data-pick="B" disabled><span class="badge">B</span><span class="label">—</span></button>
+          <button class="answer C" data-pick="C" disabled><span class="badge">C</span><span class="label">—</span></button>
+          <button class="answer D" data-pick="D" disabled><span class="badge">D</span><span class="label">—</span></button>
+        </div>
+        <div class="advantage-bar" id="advantage-bar" hidden>
+          <button class="advantage-btn" id="advantage-btn" type="button" title="Use one roll for help with this question">🎲 Roll for help</button>
+          <span class="advantage-result" id="advantage-result" hidden></span>
+        </div>
+      </div>
+      <div class="typed-answer-host" id="typed-answer-host" hidden>
+        <div class="labyrinth-action-form" id="labyrinth-action-form" hidden>
+          <strong>What would you do?</strong>
+          <div class="labyrinth-attribute-grid" id="labyrinth-attribute-grid" aria-label="Choose an approach"></div>
+          <div class="labyrinth-exit-grid" id="labyrinth-exit-grid" aria-label="Visible passages"></div>
+          <p>Attributes are approaches, not answers. Passages change your position without completing a room.</p>
+        </div>
+        <form class="typed-answer-form" id="typed-answer-form">
+          <div class="response-builder" id="response-builder" data-active-group="claim">
+            <nav class="response-stepper" aria-label="Response steps">
+              <button type="button" data-response-step="claim" aria-current="step"><span>1</span><strong>Claim</strong></button>
+              <button type="button" data-response-step="stance" disabled><span>2</span><strong>Position</strong></button>
+              <button type="button" data-response-step="evidence" disabled><span>3</span><strong>Evidence</strong></button>
+              <button type="button" data-response-step="impact" disabled><span>4</span><strong>Impact</strong></button>
+            </nav>
+            <div class="response-stage">
+            <fieldset class="response-card-group" data-response-group="claim">
+              <legend class="visually-hidden">Claim</legend>
+              <div class="response-card-grid response-claim-grid">
+                <button type="button" data-response-card data-group="claim" data-value="" hidden><span aria-hidden="true">1</span><strong>—</strong><small>—</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="claim" data-value="" hidden><span aria-hidden="true">2</span><strong>—</strong><small>—</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+              </div>
+            </fieldset>
+            <fieldset class="response-card-group" data-response-group="stance" hidden>
+              <legend class="visually-hidden">Position</legend>
+              <div class="response-card-grid">
+                <button type="button" data-response-card data-group="stance" data-value="support" data-short="Mostly yes"><span aria-hidden="true">✓</span><strong>Mostly yes</strong><small>Supports claim</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="stance" data-value="challenge" data-short="Challenge it"><span aria-hidden="true">×</span><strong>Challenge it</strong><small>Missing context</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="stance" data-value="conditional" data-short="It depends"><span aria-hidden="true">◇</span><strong>It depends</strong><small>Context matters</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+              </div>
+            </fieldset>
+            <fieldset class="response-card-group" data-response-group="evidence" hidden>
+              <legend class="visually-hidden">Evidence</legend>
+              <div class="response-card-grid">
+                <button type="button" data-response-card data-group="evidence" data-value="cause" data-short="Cause & effect"><span aria-hidden="true">↗</span><strong>Cause &amp; effect</strong><small>What changed</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="evidence" data-value="compare" data-short="Compare"><span aria-hidden="true">⇄</span><strong>Compare</strong><small>Two examples</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="evidence" data-value="source" data-short="Source check"><span aria-hidden="true">⌕</span><strong>Source check</strong><small>Missing proof</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+              </div>
+            </fieldset>
+            <fieldset class="response-card-group" data-response-group="impact" hidden>
+              <legend class="visually-hidden">Impact</legend>
+              <div class="response-card-grid">
+                <button type="button" data-response-card data-group="impact" data-value="people" data-short="People"><span aria-hidden="true">♥</span><strong>People</strong><small>Human effect</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="impact" data-value="systems" data-short="Systems"><span aria-hidden="true">▦</span><strong>Systems</strong><small>Rules &amp; structures</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+                <button type="button" data-response-card data-group="impact" data-value="future" data-short="Future"><span aria-hidden="true">◷</span><strong>Future</strong><small>Long-term effect</small><i class="response-option-check" aria-hidden="true">✓</i></button>
+              </div>
+            </fieldset>
+            </div>
+            <div class="response-builder-actions">
+              <div class="visually-hidden" id="response-build-status" aria-live="polite">Claim</div>
+              <button class="typed-submit-btn" id="typed-submit-btn" type="submit" disabled>Submit</button>
+            </div>
+          </div>
+          <button class="typed-mc-btn" id="generate-mc-btn" type="button">Choices</button>
+        </form>
+      </div>
+      <div class="race-strip" id="race-strip" hidden>
+        <span class="timer-pill" id="timer-pill"><span class="ring"></span><span id="timer-label">25s</span></span>
+        <span class="race-row" id="race-row"></span>
+      </div>
+      <div class="blackboard-foot" id="blackboard-foot" hidden>
+      </div>
+    </section>
+
+    <section class="stream" id="stream" aria-live="polite" aria-atomic="false"></section>
+
+    <section class="composer-zone" id="composer-zone">
+      <button class="chat-action-btn" id="next-btn" type="button" hidden>Chat</button>
+      <form class="composer-form" id="chat-form" hidden aria-hidden="true">
+        <textarea id="chat-input" rows="1" placeholder="Message — the teacher and class can hear you" disabled></textarea>
+        <button type="submit" class="send-btn" id="chat-send" disabled aria-label="Send">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12l14-7-7 14-2-5-5-2z"/>
+          </svg>
+        </button>
+      </form>
+      <div class="checking" id="checking" hidden>checking…</div>
+    </section>
+    </div>
+  </main>
+
+  <div class="scrim" id="scrim"></div>
+</div>
+
+<div class="congrats-toast" id="congrats-toast" aria-live="polite"></div>
+
+<div class="app-confirm-overlay" id="app-confirm-overlay" aria-hidden="true" hidden>
+  <div class="app-confirm-card" role="dialog" aria-modal="true" aria-labelledby="app-confirm-title" aria-describedby="app-confirm-copy">
+    <div class="app-confirm-kicker" id="app-confirm-kicker">Confirm</div>
+    <h2 id="app-confirm-title">Continue?</h2>
+    <p id="app-confirm-copy"></p>
+    <p class="app-confirm-detail" id="app-confirm-detail" hidden></p>
+    <div class="app-confirm-actions">
+      <button type="button" class="secondary" id="app-confirm-cancel">Cancel</button>
+      <button type="button" class="primary" id="app-confirm-ok">Continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sign-in fallback. Normal boot creates a guest Ruby High session; this only
+     opens if the app cannot establish even that local session. -->
+<!-- Morning Announcements — PA-system intro shown once per visit -->
+<div class="announcements-overlay" id="announcements-overlay" role="dialog" aria-modal="true" aria-label="Morning Announcements" hidden>
+  <div class="announcements-panel">
+    <div class="announcements-header">
+      <img class="announcements-logo" id="announcements-logo" src="${crestLogoSrc}" alt="Ruby High" />
+      <div class="announcements-date" id="announcements-date"></div>
+    </div>
+    <h2 class="announcements-title" id="announcements-title">Morning Announcements</h2>
+    <div class="announcements-body" id="announcements-body"></div>
+    <div class="announcements-notes" id="announcements-notes"></div>
+    <div class="announcements-actions">
+      <a class="announcements-link" id="announcements-about" href="https://annihilism.org" target="_blank" rel="noopener noreferrer">About</a>
+      <a class="announcements-link" id="announcements-books" href="https://ratimics.gumroad.com" target="_blank" rel="noopener noreferrer">Books</a>
+      <button class="announcements-dismiss" id="announcements-dismiss" type="button">Take your seat</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-overlay is-mandatory" id="signin-overlay" role="dialog" aria-modal="true" aria-labelledby="signin-title" aria-hidden="true">
+  <div class="sheet-card signin-card">
+    <h2 id="signin-title">Welcome to Ruby High</h2>
+    <p class="sub">Play classes for free. Merit Stars pay for teacher chat. Hall Passes pay for images, extra students, and collectible cards.</p>
+    <div class="sheet-actions" style="justify-content: center;">
+      <button id="signin-guest" class="primary-link" type="button">Continue free</button>
+      <button id="signin-privy" class="secondary-link" type="button">Sign in with a passkey</button>
+      <a id="signin-cta" class="secondary-link" href="/api/apps/ruby-high/auth/start">Use my AI key</a>
+    </div>
+    <div id="signin-status" class="stat-budget" aria-live="polite"></div>
+  </div>
 </div>
 
 <!-- Character sheet overlay (creation + profile view). The X-button in

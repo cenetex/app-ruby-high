@@ -1,3 +1,5 @@
+import { UNIFIED_VIEWER_CSS } from "./unified-css.js";
+
 // Static CSS for the Ruby High SPA viewer. Extracted from viewer.ts
 // to keep the assembler small. No interpolation here — pure tokens
 // + selectors + media queries.
@@ -9980,4 +9982,4 @@ export const VIEWER_CSS = `
     .creation-single .student-setup .ccg-card-actions .primary { grid-column: 1; }
   }
 
-`;
+` + UNIFIED_VIEWER_CSS;

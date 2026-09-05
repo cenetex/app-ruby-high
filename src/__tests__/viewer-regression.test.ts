@@ -148,7 +148,6 @@ describe("viewer regression guardrails", () => {
 
     for (const overlayId of [
       "signin-overlay",
-      "privy-overlay",
       "sheet-overlay",
       "billing-overlay",
       "bug-report-overlay",
@@ -167,8 +166,8 @@ describe("viewer regression guardrails", () => {
     const html = renderedViewer();
     const script = inlineScript(html);
 
-    expect(html).toContain('<button class="you-profile" id="you-profile" type="button" aria-label="Open student card">');
-    expectScriptToContain(script, 'els.youProfile.setAttribute("aria-label", "Open " + t.character.name + "\'s student card")');
+    expect(html).toContain('<button class="you-profile" id="you-profile" type="button" aria-label="Open your account">');
+    expectScriptToContain(script, 'els.youProfile.setAttribute("aria-label", "Open your account")');
     expectScriptToContain(script, 'reroll.setAttribute("aria-label", "Try another " + label.toLowerCase())');
     expectScriptToContain(script, 'button.className = "teacher-profile-button"');
     expectScriptToContain(script, 'roomButton.className = "room-row-button"');
@@ -203,7 +202,7 @@ describe("viewer regression guardrails", () => {
     expect(VIEWER_CSS).toContain('.shell[data-mobile-pane="challenge"] .stream');
     expect(VIEWER_CSS).toContain('.shell[data-mobile-pane="chat"] .blackboard-panel');
     expectScriptToContain(script, "function syncMobileViewToggle(mode)");
-    expectScriptToContain(script, 'const available = mode === "round-live" || mode === "round-revealed"');
+    expectScriptToContain(script, 'const available = !!(lastTelemetry && lastTelemetry.character) && !leaderboardViewOpen');
     expectScriptToContain(script, 'setMobilePane("chat", false)');
     expect(cssRule(".blackboard-panel")).toContain("overflow: hidden");
     expect(cssRule(".answers-host")).toContain("overflow-y: auto");
@@ -266,22 +265,14 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, 'item.setAttribute("aria-current", "step")');
   });
 
-  it("keeps mobile navigation explicit and keyboard-dismissible", () => {
+  it("uses named Class, Campus, and Yearbook destinations", () => {
     const html = renderedViewer();
-    const script = inlineScript(html);
-
-    expect(html).toContain('id="channels-close"');
-    expect(html).toContain('aria-label="Close navigation"');
-    expect(html).toContain('aria-controls="channels-rail"');
-    expect(html).toContain('aria-expanded="false"');
-    expectScriptToContain(script, "function setRailsOpen(open)");
-    expectScriptToContain(script, "function syncRailsAccessibility(open)");
-    expectScriptToContain(script, 'els.hamburger.setAttribute("aria-expanded", String(open))');
-    expectScriptToContain(script, 'els.workspace.toggleAttribute("inert", overlaysWorkspace)');
-    expectScriptToContain(script, 'desktopRailsQuery.addEventListener("change", (event) => setRailsOpen(event.matches))');
-    expectScriptToContain(script, 'ev.key === "Escape" && window.matchMedia("(max-width: 1099px)").matches');
-    expect(cssRule(".channels-close")).toContain("position: absolute");
-    expect(cssRule(".onboarding-alt")).toContain("box-shadow: none");
+    expect(html).toContain('aria-label="Main navigation"');
+    for (const page of ["class", "campus", "yearbook"]) {
+      expect(html).toContain('data-app-page="' + page + '"');
+      expect(html).toContain('aria-controls="' + page + '-page"');
+    }
+    expect(html).toContain('id="privy-overlay" aria-labelledby="account-title" hidden');
   });
 
   it("builds the race strip from typed view models", () => {
@@ -760,8 +751,7 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="privy-overlay"');
     expect(html).toContain('id="passkey-action"');
     expect(html).toContain('id="passkey-create"');
-    expect(html).toContain("Use Touch ID, Face ID, Windows Hello, your phone, or a security key.");
-    expect(html).toContain("Ruby High stores your public key. Your passkey manager protects the private key.");
+    expect(html).toContain("Save your student across devices with a passkey.");
     expect(html).toContain('autocomplete="username webauthn"');
     expect(html).toContain('id="passkey-list"');
     expect(html).toContain('id="passkey-recovery-input"');
@@ -1155,7 +1145,7 @@ describe("viewer regression guardrails", () => {
     expect(PRIVY_CLIENT_SOURCE).not.toContain("modalOpenedForWalletConnect.current = true;\n      connectWallet({");
   });
 
-  it("keeps Account reduced to profile, passes, and library panes", () => {
+  it("groups account settings and gives comics a Yearbook destination", () => {
     const html = renderedViewer({ privy: { appId: "privy-app-test", clientId: "privy-client-test" } });
     const script = inlineScript(html);
     const characters = html.indexOf('class="account-section account-character-section"');
@@ -1166,7 +1156,7 @@ describe("viewer regression guardrails", () => {
 
     expect(html).toContain('data-account-tab="account"');
     expect(html).toContain('data-account-tab="wallet"');
-    expect(html).toContain('data-account-tab="library"');
+    expect(html).toContain('data-yearbook-pane="comics"');
     expect(html).not.toContain('data-account-tab="cards"');
     expect(html).not.toContain('data-account-tab="receipts"');
     expect(html).not.toContain('data-account-tab="trust"');
@@ -1182,7 +1172,8 @@ describe("viewer regression guardrails", () => {
     expect(wallet).toBeGreaterThan(history);
     expect(html).not.toContain('class="account-section account-ai-section"');
     expect(cards).toBeGreaterThan(wallet);
-    expect(comics).toBeGreaterThan(cards);
+    expect(comics).toBeGreaterThan(html.indexOf('id="yearbook-page"'));
+    expect(comics).toBeLessThan(html.indexOf('id="privy-overlay"'));
     expectScriptToContain(script, "function setAccountPane(pane)");
     expectScriptToContain(script, "function renderAccountTrust()");
     expectScriptToContain(script, "let previousRenderSignature = \"\";");

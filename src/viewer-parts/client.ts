@@ -500,6 +500,7 @@ export function runViewerClient(bootstrap) {
     loungeStage: $("lounge-stage"),
     loungeFigures: $("lounge-figures"),
     teacherFigure: $("teacher-figure"),
+    teacherName: $("teacher-name"),
     blackboardEmpty: $("blackboard-empty"),
     blackboardEmptyText: $("blackboard-empty-text"),
     blackboardEmptyAction: $("blackboard-empty-action"),
@@ -900,6 +901,10 @@ export function runViewerClient(bootstrap) {
   let lastAgentTrigger = null; // dedupe key so we don't re-fire on poll
   let lastSocialSummaryId = null;
   let leaderboardViewOpen = false;
+  let appPage = "class";
+  let yearbookPane = "record";
+  let yearbookRenderKey = "";
+  const pageScrollPositions = new Map();
   let billingProductsCache = null;
   let billingMode = "hall-passes";
   let billingBusy = false;
@@ -1442,11 +1447,152 @@ export function runViewerClient(bootstrap) {
     renderedHistorySig = null;
     lastSocialSummaryId = null;
   }
+  // Page navigation owns destinations; telemetry continues to update the lesson.
+  function showAppPage(page, options) {
+    const next = ["class", "campus", "yearbook", "account"].includes(page) ? page : "class";
+    const changed = next !== appPage;
+    if (changed) pageScrollPositions.set(appPage, els.workspace.scrollTop);
+    if (appPage === "account" && next !== "account") void abortConditionalPasskey();
+    appPage = next;
+    els.shell.dataset.appPage = next;
+    document.getElementById("class-page").hidden = next !== "class";
+    document.getElementById("campus-page").hidden = next !== "campus";
+    document.getElementById("yearbook-page").hidden = next !== "yearbook";
+    els.privyOverlay.hidden = next !== "account";
+    els.privyOverlay.classList.toggle("is-open", next === "account");
+    document.querySelectorAll("[data-app-page]").forEach((button) => {
+      if (button === els.shell) return;
+      if (button.dataset.appPage === next) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
+    els.youProfile.setAttribute("aria-expanded", String(next === "account"));
+    if (next === "campus") {
+      leaderboardViewOpen = false;
+      els.channelsRail.hidden = false;
+      els.leaderboardPanel.hidden = true;
+    }
+    if (next === "class") {
+      leaderboardViewOpen = false;
+      applyViewMode(deriveViewMode(lastTelemetry));
+    }
+    if (next === "yearbook") {
+      renderYearbookPage();
+      renderAccountComics();
+    }
+    if (changed) els.workspace.scrollTop = pageScrollPositions.get(next) || 0;
+    if (!options || options.history !== false) {
+      const url = new URL(window.location.href);
+      if (url.hash !== "#" + next) {
+        url.hash = next;
+        window.history.pushState({ rubyHighPage: next }, "", url);
+      }
+    }
+    if (!options || options.focus !== false) {
+      const headingId = { class: "channel-title", campus: "campus-title", yearbook: "yearbook-title", account: "account-title" }[next];
+      const heading = document.getElementById(headingId);
+      heading.setAttribute("tabindex", "-1");
+      focusWithoutScroll(heading);
+    }
+  }
+
+  function showYearbookPane(pane) {
+    yearbookPane = pane === "comics" ? "comics" : "record";
+    document.getElementById("yearbook-record").hidden = yearbookPane !== "record";
+    document.getElementById("yearbook-comics").hidden = yearbookPane !== "comics";
+    document.querySelectorAll("[data-yearbook-pane]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.yearbookPane === yearbookPane));
+    });
+  }
+
+  function renderYearbookPage() {
+    const t = lastTelemetry || {};
+    const c = t.character;
+    const entries = c && Array.isArray(c.yearbook) ? c.yearbook : [];
+    const roster = t.faculty_roster || [];
+    const key = JSON.stringify([c && c.id, c && c.name, t.current_grade, t.faculty,
+      t.active_course_progress, entries, roster.map((f) => [f.id, f.completedClasses, f.requiredClasses, f.courseGrade])]);
+    if (key === yearbookRenderKey) return;
+    yearbookRenderKey = key;
+    const host = document.getElementById("yearbook-record");
+    host.replaceChildren();
+    document.getElementById("yearbook-subtitle").textContent = c
+      ? c.name + " · " + (GRADE_LABELS[t.current_grade] || "Your school years")
+      : "Your classes and keepsakes have a home here.";
+    if (!c) {
+      const empty = document.createElement("div");
+      empty.className = "page-empty";
+      const title = document.createElement("h2");
+      title.textContent = "Your story starts with a student";
+      const copy = document.createElement("p");
+      copy.textContent = "Take your first class to begin your school record.";
+      const action = document.createElement("button");
+      action.className = "primary";
+      action.textContent = "Create my student";
+      action.addEventListener("click", openCharacterCreation);
+      empty.append(title, copy, action);
+      host.appendChild(empty);
+      return;
+    }
+    const teacher = roster.find((f) => f.id === t.faculty);
+    const report = buildClassReportCard(teacher, t.current_grade);
+    if (report) {
+      const heading = document.createElement("h2");
+      heading.className = "page-section-title";
+      heading.textContent = "Latest class";
+      host.append(heading, report);
+    }
+    const record = document.createElement("section");
+    record.className = "school-record";
+    const title = document.createElement("h2");
+    title.className = "page-section-title";
+    title.textContent = "This year's courses";
+    record.appendChild(title);
+    roster.filter((f) => f.id !== LOUNGE_ID && Number(f.requiredClasses || 0) > 0).forEach((f) => {
+      const row = document.createElement("div");
+      row.className = "school-record-row";
+      const subject = document.createElement("strong");
+      subject.textContent = subjectDisplayName(f.id, f);
+      const progress = document.createElement("span");
+      progress.textContent = Number(f.completedClasses || 0) + " of " + Number(f.requiredClasses || 0) + " class days";
+      const grade = document.createElement("span");
+      grade.className = "school-record-grade";
+      grade.textContent = earnedCourseGrade(f) || "In progress";
+      row.append(subject, progress, grade);
+      record.appendChild(row);
+    });
+    host.appendChild(record);
+    const playbooks = t.playbooks || [];
+    const pb = playbooks.find((p) => p.id === c.playbookId) || {};
+    if (entries.length) {
+      const archive = document.createElement("section");
+      archive.className = "yearbook-archive";
+      const heading = document.createElement("h2");
+      heading.className = "page-section-title";
+      heading.textContent = "Completed years";
+      archive.appendChild(heading);
+      entries.slice().sort((a, b) => Number(b.grade) - Number(a.grade)).forEach((entry) => {
+        archive.appendChild(buildYearbookArchiveEntry(entry, c, pb, playbooks));
+      });
+      host.appendChild(archive);
+    } else {
+      const note = document.createElement("p");
+      note.className = "page-note";
+      note.textContent = "Your first completed year will appear here with its report and keepsakes.";
+      host.appendChild(note);
+    }
+    const profile = document.createElement("button");
+    profile.className = "page-link";
+    profile.textContent = "View student card and full report";
+    profile.addEventListener("click", () => openSheet());
+    host.appendChild(profile);
+  }
+
   function showClassSurface(force) {
     // Session polling repaints the blackboard every few seconds. Honor Roll
     // is an explicit view choice, so background paints must not silently
     // kick the player back to class. Direct navigation actions pass force.
     if (leaderboardViewOpen && !force) return;
+    if (force) showAppPage("class");
     leaderboardViewOpen = false;
     els.leaderboardPanel.hidden = true;
     els.blackboardPanel.hidden = false;
@@ -2199,7 +2345,12 @@ export function runViewerClient(bootstrap) {
     els.blackboardMeta.appendChild(mode);
 
     els.boardPrompt.replaceChildren(report);
-    els.blackboardFoot.replaceChildren(buildClassReportNextStep());
+    const yearbookAction = document.createElement("button");
+    yearbookAction.type = "button";
+    yearbookAction.className = "page-link class-yearbook-action";
+    yearbookAction.textContent = "Open yearbook";
+    yearbookAction.addEventListener("click", () => showAppPage("yearbook"));
+    els.blackboardFoot.replaceChildren(buildClassReportNextStep(), yearbookAction);
     els.boardReveal.hidden = true;
     els.boardReveal.replaceChildren();
     syncNextButtonDisabled();
@@ -3786,6 +3937,7 @@ export function runViewerClient(bootstrap) {
     });
   }
   function renderTeacherFigure(faculty) {
+    els.teacherName.textContent = faculty && faculty.id !== LOUNGE_ID ? faculty.displayName || "Teacher" : "";
     if (!faculty || faculty.id === LOUNGE_ID) {
       // Hide AND clear src so we never carry a stale image into the next room.
       els.teacherFigure.hidden = true;
@@ -5102,7 +5254,8 @@ export function runViewerClient(bootstrap) {
   }
 
   async function showLeaderboard() {
-    closeRails();
+    showAppPage("campus");
+    els.channelsRail.hidden = true;
     leaderboardViewOpen = true;
     hideBlackboard();
     els.leaderboardPanel.hidden = false;
@@ -5174,6 +5327,7 @@ export function runViewerClient(bootstrap) {
     }
   }
   async function pickNext() {
+    if (teacherChatEnabled() && telemetryPhase(lastTelemetry) === "asking") setMobilePane("chat", false);
     // Graduation ceremony is always accessible — bypass the agent turn guard so
     // the Ceremony button works even while a teacher SSE turn is in flight.
     if (lastTelemetry && lastTelemetry.graduation_ready && !lastTelemetry.current) {
@@ -5486,7 +5640,8 @@ export function runViewerClient(bootstrap) {
 
   // ── render (the master apply-telemetry-to-DOM function) ──────────────────
   function setAccent(color) {
-    document.documentElement.style.setProperty("--accent", color || "#d22a2a");
+    document.documentElement.style.setProperty("--teacher-accent", color || "#d22a2a");
+    document.documentElement.style.setProperty("--accent", "#c73543");
   }
   // ── view-mode state machine ─────────────────────────────────────────────
   // Single source of truth for "what should be visible right now". Every
@@ -5519,7 +5674,7 @@ export function runViewerClient(bootstrap) {
   }
   function syncMobileViewToggle(mode) {
     if (!els.mobileViewToggle) return;
-    const available = mode === "round-live" || mode === "round-revealed";
+    const available = !!(lastTelemetry && lastTelemetry.character) && !leaderboardViewOpen;
     els.mobileViewToggle.hidden = !available;
     if (!available) {
       mobilePaneQuestionId = null;
@@ -5868,14 +6023,14 @@ export function runViewerClient(bootstrap) {
 
     if (!t.character) {
       if (els.youName) els.youName.textContent = "Create student";
-      if (els.youProfile) els.youProfile.setAttribute("aria-label", "Create student");
+      if (els.youProfile) els.youProfile.setAttribute("aria-label", "Open your account");
       if (els.youAvatar) {
         els.youAvatar.innerHTML = "";
         els.youAvatar.textContent = "+";
       }
     }
     if (t.character) {
-      if (els.youProfile) els.youProfile.setAttribute("aria-label", "Open " + t.character.name + "'s student card");
+      if (els.youProfile) els.youProfile.setAttribute("aria-label", "Open your account");
       const youName = els.youName;
       if (youName && youName.textContent !== t.character.name) youName.textContent = t.character.name;
       const youAvatar = els.youAvatar;
@@ -5905,6 +6060,7 @@ export function runViewerClient(bootstrap) {
       syncPlayerMessageHeaders();
     }
 
+    if (appPage === "yearbook") renderYearbookPage();
     lastShownGrade = t.current_grade;
     lastShownFaculty = t.faculty;
 
@@ -10599,13 +10755,7 @@ export function runViewerClient(bootstrap) {
     }
   }
   function showPrivyAccountModal() {
-    openViewerModal(els.privyOverlay, {
-      onRequestClose: closePrivyAccount,
-      initialFocus: () => !passkeyState.authenticated && els.passkeyAutofill
-        ? els.passkeyAutofill
-        : els.accountTabs.find((tab) => tab.classList.contains("is-active")) || els.privyClose,
-      fallbackFocus: els.privyAction,
-    });
+    showAppPage("account");
   }
   async function openPrivyAccount() {
     setPrivyStatus("", false);
@@ -10624,7 +10774,7 @@ export function runViewerClient(bootstrap) {
   function closePrivyAccount() {
     if (!els.privyOverlay) return;
     void abortConditionalPasskey();
-    closeViewerModal(els.privyOverlay, els.privyAction);
+    if (appPage === "account") showAppPage("class");
     setPrivyStatus("", false);
   }
   function setPrivyBusy(busy) {
@@ -11275,31 +11425,11 @@ export function runViewerClient(bootstrap) {
   }
 
   // ── rails toggling ────────────────────────────────────────────────────────
-  const desktopRailsQuery = window.matchMedia("(min-width: 1100px)");
-  function syncRailsAccessibility(open) {
-    const overlaysWorkspace = open && !desktopRailsQuery.matches;
-    els.workspace.toggleAttribute("inert", overlaysWorkspace);
-    if (overlaysWorkspace) els.workspace.setAttribute("aria-hidden", "true");
-    else els.workspace.removeAttribute("aria-hidden");
-  }
-  function setRailsOpen(open) {
-    els.shell.classList.toggle("is-rails-open", open);
-    els.hamburger.setAttribute("aria-expanded", String(open));
-    els.hamburger.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
-    syncRailsAccessibility(open);
-  }
-  function openRails() {
-    setRailsOpen(true);
-    if (window.matchMedia("(max-width: 1099px)").matches) focusWithoutScroll(els.channelsClose);
-  }
+  function openRails() { showAppPage("campus"); }
   function closeRails(restoreFocus) {
-    setRailsOpen(false);
-    if (restoreFocus) focusWithoutScroll(els.hamburger);
+    if (restoreFocus) showAppPage("class");
   }
-  function toggleRails() {
-    if (els.shell.classList.contains("is-rails-open")) closeRails(true);
-    else openRails();
-  }
+  function toggleRails() { showAppPage(appPage === "campus" ? "class" : "campus"); }
 
   // ── opinion-mode helpers ────────────────────────────────────────────────
   // The player's opinion submission is just a regular chat message routed to
@@ -11422,14 +11552,21 @@ export function runViewerClient(bootstrap) {
     button.addEventListener("click", () => setMobilePane(button.dataset.mobileView, false));
   });
   els.hamburger.addEventListener("click", toggleRails);
-  if (els.leaderboardBack) els.leaderboardBack.addEventListener("click", () => {
-    showClassSurface(true);
-    const honorRollButton = document.getElementById("honor-roll-button");
-    focusWithoutScroll(desktopRailsQuery.matches ? honorRollButton : els.hamburger);
-  });
+  if (els.leaderboardBack) els.leaderboardBack.addEventListener("click", () => showAppPage("campus"));
   els.scrim.addEventListener("click", () => closeRails(true));
   if (els.channelsClose) els.channelsClose.addEventListener("click", () => closeRails(true));
-  els.homeBtn.addEventListener("click", openRails);
+  els.homeBtn.addEventListener("click", () => showAppPage("class"));
+  document.querySelectorAll(".app-nav [data-app-page]").forEach((button) => {
+    button.addEventListener("click", () => showAppPage(button.dataset.appPage));
+  });
+  document.querySelectorAll("[data-yearbook-pane]").forEach((button) => {
+    button.addEventListener("click", () => showYearbookPane(button.dataset.yearbookPane));
+  });
+  window.addEventListener("popstate", () => {
+    const page = window.location.hash.slice(1);
+    showAppPage(page, { history: false });
+    if (page === "account") { renderAccountIdentity(); renderAccountPage(); }
+  });
   els.footerAction.addEventListener("click", () => {
     if (!authed) return;
     if (localAiEnabled) return;
@@ -11656,7 +11793,7 @@ export function runViewerClient(bootstrap) {
   // portrait affordance until the player explicitly starts Freshman year.
   if (onboardingCreateBtn) onboardingCreateBtn.addEventListener("click", openCharacterCreation);
 
-  if (els.youProfile) els.youProfile.addEventListener("click", () => { if (authed) openSheet(); });
+  if (els.youProfile) els.youProfile.addEventListener("click", openPrivyAccount);
   els.chatForm.addEventListener("submit", (e) => { e.preventDefault(); sendChatMessage(els.chatInput.value); });
   els.chatInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChatMessage(els.chatInput.value); }
@@ -11665,14 +11802,6 @@ export function runViewerClient(bootstrap) {
     els.chatInput.style.height = "40px";
     els.chatInput.style.height = Math.min(140, els.chatInput.scrollHeight) + "px";
   });
-
-  // First boot: open rails on desktop only.
-  if (desktopRailsQuery.matches) {
-    setRailsOpen(true);
-  } else if (window.matchMedia("(min-width: 720px)").matches) {
-    // Tablet: servers rail visible, channels closed.
-  }
-  desktopRailsQuery.addEventListener("change", (event) => setRailsOpen(event.matches));
 
   applyAuthUI();
   consumeAcquisitionAttribution();
@@ -11694,6 +11823,11 @@ export function runViewerClient(bootstrap) {
     postViewerMetricEvent("app_open", acquisitionAttribution || {});
     await fetchSession();
     await applySharedPackFromUrl(sharedPackId);
+    const page = window.location.hash.slice(1);
+    if (["campus", "yearbook", "account"].includes(page)) {
+      showAppPage(page, { history: false, focus: false });
+      if (page === "account") { renderAccountIdentity(); renderAccountPage(); }
+    }
   }
   void bootInitialSession();
   // Privy's React/wallet bundle is intentionally loaded only when the account
