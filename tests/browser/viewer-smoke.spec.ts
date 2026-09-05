@@ -1,5 +1,18 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { closeBlockingSheetIfVisible, closeFirstBellReportIfVisible, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
+
+async function enableTestAi(page: Page) {
+  await page.route(/\/auth\/(me|guest)$/, async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    await route.fulfill({ response, json: { ...data, ai: true, local_ai: true } });
+  });
+  await page.route("**/chat/history?*", async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    await route.fulfill({ response, json: { ...data, authed: true, local_ai: true } });
+  });
+}
 
 test("saves reduced motion and follows live device changes after resetting it", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -55,19 +68,10 @@ for (const failure of ["server", "network", "timeout"] as const) {
   test(`starts class after an AI remix ${failure} failure with an accurate explanation`, async ({ page }) => {
     const runtimeErrors: string[] = [];
     page.on("pageerror", (error) => runtimeErrors.push(error.message));
-    await page.route(/\/auth\/(me|guest)$/, async (route) => {
-      const response = await route.fetch();
-      const data = await response.json();
-      await route.fulfill({ response, json: { ...data, ai: true, local_ai: true } });
-    });
+    await enableTestAi(page);
     await page.route("**/chat/event", (route) => route.fulfill({
       contentType: "text/event-stream", body: 'event: done\ndata: {}\n\n',
     }));
-    await page.route("**/chat/history?*", async (route) => {
-      const response = await route.fetch();
-      const data = await response.json();
-      await route.fulfill({ response, json: { ...data, authed: true, local_ai: true } });
-    });
     let attempts = 0;
     await page.route("**/chat/character/generate", (route) => {
       attempts += 1;
@@ -87,6 +91,30 @@ for (const failure of ["server", "network", "timeout"] as const) {
     await page.getByRole("button", { name: /start first class/i }).click();
     await expect(page.locator("#sheet-overlay")).not.toHaveClass(/is-open/);
     await expect(page.locator(".answer:not([disabled])").first()).toBeVisible();
+    expect(runtimeErrors).toEqual([]);
+  });
+}
+
+for (const failure of ["server", "refund"] as const) {
+  test(`shows useful teacher chat ${failure} feedback`, async ({ page }) => {
+    const runtimeErrors: string[] = [];
+    page.on("pageerror", (error) => runtimeErrors.push(error.message));
+    await enableTestAi(page);
+    await page.route(/\/chat\/(event|room-turn)$/, (route) => route.fulfill(failure === "server" ? {
+      status: 502, contentType: "text/html", body: "<h1>Bad gateway</h1>",
+    } : {
+      contentType: "text/event-stream",
+      body: 'event: error\ndata: {"message":"upstream internal details", "refunded":true}\n\n',
+    }));
+    await openViewer(page);
+    await dismissAnnouncements(page);
+    await createCharacter(page);
+    await page.locator("#next-btn").click();
+    const message = "Teacher chat is unavailable right now. Try again in a moment."
+      + (failure === "refund" ? " Your Merit Stars were returned." : "");
+    await expect(page.locator("#stream")).toContainText(message);
+    await expect(page.locator("#stream")).not.toContainText("upstream internal details");
+    await expect(page.locator("#stream")).not.toContainText("502");
     expect(runtimeErrors).toEqual([]);
   });
 }

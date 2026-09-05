@@ -3502,8 +3502,16 @@ export const VIEWER_CSS = `
     transition-duration: 0.001ms !important;
   }
   #account-motion {
+    display: block;
     margin-top: 8px;
-    max-width: 100%;
+    width: min(100%, 260px);
+    min-height: 44px;
+    padding: 8px 12px;
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 10px;
+    background: var(--bg-elev);
+    color: var(--text);
+    font: inherit;
   }
   @media (prefers-reduced-motion: reduce) {
     *,
