@@ -572,8 +572,10 @@ function buildResolvedAnswerBriefing(args: {
   extraSystemContext: string;
 } {
   const { state, context: c, playerName } = args;
-  const q = state.current;
   const reveal = state.lastReveal;
+  const resolvedId = cleanText(c?.questionId) ?? reveal?.questionId;
+  // A delayed reaction uses the saved reveal after the board has advanced.
+  const q = !resolvedId || state.current?.id === resolvedId ? state.current : null;
   const options = questionOptionsFrom(q, reveal, c);
   const questionId = cleanText(c?.questionId) ?? q?.id ?? reveal?.questionId ?? "unknown";
   const prompt = cleanText(c?.prompt) ?? q?.prompt ?? reveal?.questionPrompt;
@@ -3612,6 +3614,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const body = (await ctx.readJsonBody().catch(() => ({}))) as
       | { responseCards?: unknown; text?: unknown; force?: boolean }
       | null;
+    // Child privacy: card IDs select authored speech. See docs/player-dialogue-policy.md.
     if (typeof body?.text === "string" && body.text.trim()) {
       ctx.error(ctx.res, "Free-form responses are not accepted. Choose response cards instead.", 400);
       return true;

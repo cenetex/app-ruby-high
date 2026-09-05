@@ -2362,7 +2362,7 @@ describe("chat event context", () => {
     expect(promptText).not.toContain("Visible board: empty");
   });
 
-  it("uses the saved card snapshot when browser answer context contains prose", async () => {
+  it.each([false, true])("uses the saved card snapshot when browser answer context contains prose (board advanced: %s)", async (boardAdvanced) => {
     const token = "route-event-token";
     const record = {
       userId: "route-event-user",
@@ -2382,6 +2382,12 @@ describe("chat event context", () => {
       picked: "B", correct: "B", wasCorrect: true, forfeit: false,
       explanation: "Mitochondria generate ATP.", encouragement: null,
     };
+    if (boardAdvanced) {
+      state.current = {
+        id: "next-server-question", type: "multiple-choice", faculty: "sally-science",
+        prompt: "Next server question", options: { A: "New choice", B: "Second", C: "Third", D: "Fourth" }, correctChoice: "A",
+      };
+    }
     (globalThis.fetch as any).mockImplementation(async (...args: any[]) => {
       const [input, init] = args;
       capturedChatRequest = {
@@ -2423,6 +2429,10 @@ describe("chat event context", () => {
     expect(capturedChatRequest).not.toBeNull();
     const promptText = JSON.stringify(capturedChatRequest.body.messages);
     expect(promptText).not.toContain("private-player-prose");
+    const snapshot = capturedChatRequest.body.messages.find((message: { content?: string }) =>
+      message.content?.includes("RESOLVED CARD SNAPSHOT"))?.content;
+    expect(snapshot).toContain("Which organelle is known as the powerhouse of the cell?");
+    expect(snapshot).not.toContain("Next server question");
     expect(JSON.stringify(chat.events_for_test({ sessionToken: token, faculty: "sally-science" }))).not.toContain("private-player-prose");
     expect(JSON.stringify(chat.history({ sessionToken: token, faculty: "sally-science" }))).not.toContain("private-player-prose");
     expect(promptText).toContain("RESOLVED CARD SNAPSHOT");
