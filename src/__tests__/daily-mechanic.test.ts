@@ -147,6 +147,20 @@ function registerGuestPack(id = "pack:weekly-guest"): ContentPack {
   return pack;
 }
 
+/** Deterministic Math.random replacement (mulberry32). The NPC cohort rolls
+ *  2d6 per student per daily, so an unseeded run makes cohort assertions a
+ *  dice throw; seeding keeps the divergence real but reproducible. */
+function seededRandom(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function completeClassOnDate(
   ruby: RubyHighService,
   sid: string,
@@ -484,6 +498,8 @@ describe("NPC cohort — runs in parallel with the player", () => {
     // some will reset multiple times.
     const days = ["2026-05-04", "2026-05-05", "2026-05-06", "2026-05-07", "2026-05-08"];
     const realNow = Date.now;
+    const realRandom = Math.random;
+    Math.random = seededRandom(20260504);
     try {
       for (const d of days) {
         const iso = `${d}T18:00:00Z`;
@@ -494,20 +510,22 @@ describe("NPC cohort — runs in parallel with the player", () => {
       }
     } finally {
       Date.now = realNow;
+      Math.random = realRandom;
     }
     const cohort = ruby.getOrCreate(sid).npcCohort!;
-    // After 5 Dailies, the cohort has diverged — some are still in 9, some
-    // have advanced to 10 or beyond. Just sanity-check the shape is valid;
-    // exact composition depends on dice.
+    // After 5 Dailies the cohort has diverged. The shape holds for every NPC
+    // regardless of how the dice fell.
     for (const npc of cohort) {
       expect(npc.streak.grade).toBe(npc.grade);
       expect(npc.streak.count).toBeGreaterThanOrEqual(0);
       expect(["9", "10", "11", "12"]).toContain(npc.grade);
     }
-    // At least ONE NPC should have advanced past Freshman after 5 dailies
-    // (P(any of 6 advance) is overwhelmingly high).
+    // The point of the test: NPCs tick independently, so after the same five
+    // dailies they do not all end up in the same place. Under this seed five
+    // advance to Sophomore and mika is still a Freshman.
     const someoneMoved = cohort.some((n) => n.grade !== "9" || n.completedGrades.length > 0);
-    expect(someoneMoved).toBe(true);
+    const someoneStayed = cohort.some((n) => n.grade === "9" && n.completedGrades.length === 0);
+    expect({ someoneMoved, someoneStayed }).toEqual({ someoneMoved: true, someoneStayed: true });
   });
 
   it("graduated NPCs stop ticking on subsequent Dailies", async () => {
