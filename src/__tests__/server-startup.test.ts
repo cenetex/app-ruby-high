@@ -135,6 +135,15 @@ describe("production startup guardrails", () => {
     }
   });
 
+  it("runs scheduled production smoke once daily while keeping manual and frequent health checks", () => {
+    const schedules = [...smokeWorkflow.matchAll(/^\s*- cron: "([^"]+)"$/gm)]
+      .map((match) => match[1]);
+    expect(schedules).toEqual(["17 9 * * *"]);
+    expect(smokeWorkflow).toContain("workflow_dispatch: {}");
+    expect(flyConfig).toContain('interval = "30s"');
+    expect(dockerfile).toContain("--interval=30s");
+  });
+
   it("uses the shared host JSON body cap helper", () => {
     expect(serverEntry).toContain('from "./http-server.mjs"');
     expect(devServerEntry).toContain('from "./http-server.mjs"');

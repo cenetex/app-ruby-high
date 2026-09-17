@@ -14,8 +14,7 @@ name: smoke
 
 on:
   schedule:
-    # Every 30 minutes. Cron is in UTC.
-    - cron: "*/30 * * * *"
+    - cron: "17 9 * * *"
   workflow_dispatch: {}
 
 jobs:
