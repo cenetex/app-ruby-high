@@ -8,7 +8,7 @@ on:
       - "src/viewer.ts"
       - "src/viewer-parts/**"
       - "src/routes/assets.ts"
-      - "src/routes/age-gate.ts"
+      - "src/routes/entry-confirmation.ts"
       - "src/routes.ts"
       - "src/chat-routes.ts"
       - "src/services/acquisition-attribution.ts"

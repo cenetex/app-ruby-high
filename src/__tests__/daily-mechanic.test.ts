@@ -1,4 +1,3 @@
-import { buildAgeGroupCookie } from "../routes/age-gate.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -292,7 +291,6 @@ describe("RubyHighService.dailyStatus + playDaily", () => {
     const handled = await handleAppRoutes({
       method: "GET",
       pathname: "/api/apps/ruby-high/session/test",
-      cookieHeader: buildAgeGroupCookie("eligible").split(";")[0],
       runtime,
       res: {},
       error: (_res, message, status = 500) => {
@@ -392,7 +390,6 @@ describe("RubyHighService.dailyStatus + playDaily", () => {
       const handled = await handleAppRoutes({
         method: "GET",
         pathname: "/api/apps/ruby-high/session/test",
-        cookieHeader: buildAgeGroupCookie("eligible").split(";")[0],
         runtime,
         res: {},
         error: (_res, message, status = 500) => {

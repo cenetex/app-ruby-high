@@ -17,7 +17,7 @@
  *      target=_blank-stranded-on-iOS bug if we'd defined "the OAuth
  *      handshake completes" as a smoke target).
  *
- *   4. GET /api/apps/ruby-high/auth/me → 200 + { authed: false, session: false }
+ *   4. Fresh GET /api/apps/ruby-high/auth/me → 428 + entry confirmation
  *      Catches: header-plumbing regression (PR #30's silent
  *      apiKeyHeader-missing on server.mjs would have failed this if
  *      we'd asserted the response shape).
@@ -76,7 +76,7 @@ const REQUIRE_GUEST_AI = requireGuestAiOverride == null
 
 let failed = 0;
 let smokeCookie = "";
-let ageCookie = "";
+let entryCookie = "";
 let smokeGuestAi = false;
 
 function ok(name, msg) {
@@ -88,15 +88,16 @@ function fail(name, msg) {
 }
 
 async function fetchWithTimeout(url, opts = {}, timeoutMs = TIMEOUT_MS) {
+  const { anonymous = false, ...requestOptions } = opts;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     return await fetch(url, {
-      ...opts,
+      ...requestOptions,
       headers: {
         "User-Agent": "RubyHighSmoke/1.0",
         ...(opts.headers || {}),
-        ...(ageCookie ? { Cookie: [opts.headers?.Cookie, ageCookie].filter(Boolean).join("; ") } : {}),
+        ...(anonymous ? {} : entryCookie ? { Cookie: opts.headers?.Cookie || entryCookie } : {}),
       },
       signal: ctrl.signal,
       redirect: "manual",
@@ -153,7 +154,7 @@ function entitlementShapeError(entitlements) {
   return "";
 }
 
-async function postJson(path, body, cookie = smokeCookie) {
+async function postJson(path, body, cookie = smokeCookie || entryCookie) {
   return fetchWithTimeout(`${base}${path}`, {
     method: "POST",
     headers: {
@@ -161,6 +162,7 @@ async function postJson(path, body, cookie = smokeCookie) {
       ...(cookie ? { Cookie: cookie } : {}),
     },
     body: JSON.stringify(body),
+    anonymous: !cookie,
   });
 }
 
@@ -173,13 +175,13 @@ async function waitForAppReady() {
   while (Date.now() <= deadline) {
     attempts++;
     try {
-      if (!ageCookie) {
-        const check = await fetchWithTimeout(`${base}/api/apps/ruby-high/age-check`, {
+      if (!entryCookie) {
+        const check = await fetchWithTimeout(`${base}/api/apps/ruby-high/enter`, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded", Origin: new URL(base).origin },
-          body: "age=18",
+          body: "confirm13Plus=yes",
         });
-        if (check.status === 303) ageCookie = firstSetCookie(check.headers).split(";")[0];
+        if (check.status === 303) entryCookie = firstSetCookie(check.headers).split(";")[0];
       }
       const r = await fetchWithTimeout(`${base}/api/apps/ruby-high/auth/me`);
       const text = await readText(r.clone());
@@ -338,30 +340,21 @@ async function check3AuthStart() {
 }
 
 async function check4AuthMe() {
-  const name = "auth/me";
+  const name = "entry confirmation";
   try {
-    const r = await fetchWithTimeout(`${base}/api/apps/ruby-high/auth/me`);
-    if (r.status !== 200) return fail(name, `expected 200, got ${r.status}`);
-    const body = await r.json().catch(() => null);
-    if (!body || typeof body.authed !== "boolean" || typeof body.session !== "boolean" || typeof body.ai !== "boolean") {
-      return fail(name, `expected { authed/session/ai: boolean }, got ${JSON.stringify(body).slice(0, 200)}`);
+    const r = await fetchWithTimeout(`${base}/api/apps/ruby-high/auth/me`, { anonymous: true });
+    const body = await readJson(r);
+    if (r.status !== 428 || body?.code !== "entry_confirmation_required") {
+      return fail(name, `expected the entry notice, got ${r.status}`);
     }
-    if (body.authed !== false || body.session !== false || body.ai !== false) {
-      // Smoke runs without sending an API key, so the server should always
-      // see no session and no AI. If this returns true, header plumbing has gone
-      // sideways and an arbitrary request is somehow getting credentialed.
-      return fail(name, `anonymous request reported credentialed state: ${JSON.stringify(body).slice(0, 200)}`);
-    }
-    ok(name, "anonymous request reports no session and no AI");
-  } catch (e) {
-    fail(name, e?.message || String(e));
-  }
+    ok(name, "fresh requests complete the 13+ confirmation before player state");
+  } catch (e) { fail(name, e?.message || String(e)); }
 }
 
 async function check5GuestSession() {
   const name = "auth/guest";
   try {
-    const r = await fetchWithTimeout(`${base}/api/apps/ruby-high/auth/guest`, { method: "POST" });
+    const r = await postJson("/api/apps/ruby-high/auth/guest", { confirm13Plus: true }, "");
     if (r.status !== 200) return fail(name, `expected 200, got ${r.status}`);
     const body = await readJson(r);
     if (!body || body.session !== true || typeof body.ai !== "boolean" || body.label !== "Guest") {
@@ -562,7 +555,7 @@ async function check9AuthGate() {
 
 async function check10GuestDailyGate() {
   const name = "guest daily pacing gate";
-  const guest = await postJson("/api/apps/ruby-high/auth/guest", {}, "");
+  const guest = await postJson("/api/apps/ruby-high/auth/guest", { confirm13Plus: true }, "");
   if (guest.status !== 200) {
     return fail(name, `fresh guest session expected 200, got ${guest.status}: ${(await readText(guest)).slice(0, 200)}`);
   }

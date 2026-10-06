@@ -1,4 +1,3 @@
-import { buildAgeGroupCookie } from "../routes/age-gate.js";
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -80,9 +79,17 @@ function makeCtx(
     method,
     pathname: url.pathname,
     url,
-    runtime: null,
+    runtime: pathname.includes("/viewer") ? {
+      getService(type: string) {
+        return type === "ruby-high-auth" ? {
+          parseSessionToken: () => "shell-test-session",
+          resolve: () => ({ userId: "shell-test-user" }),
+          stateKeyForCookie: () => "shell-test-state",
+        } : null;
+      },
+    } : null,
     res: response.res as never,
-    cookieHeader: buildAgeGroupCookie("eligible").split(";")[0],
+    cookieHeader: null,
     error: (_res, message, status = 500) => {
       response.res.statusCode = status;
       response.res.end(JSON.stringify({ error: message }));

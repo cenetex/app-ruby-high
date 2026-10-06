@@ -10944,10 +10944,14 @@ export function runViewerClient(bootstrap) {
     const key = getStoredApiKey();
     if (key) headers.set("X-Openrouter-Key", key);
     attachVisitorHeader(headers);
+    headers.set("Content-Type", "application/json");
     const r = await fetch("/api/apps/ruby-high/auth/guest", {
       method: "POST",
       credentials: "same-origin",
       headers,
+      // The hosted viewer starts after the entry form. Carry this visit
+      // through guest retries and account switches in the current request.
+      body: JSON.stringify({ confirm13Plus: true }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data || !data.session) throw new Error("guest session failed");

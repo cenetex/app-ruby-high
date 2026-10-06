@@ -1,4 +1,3 @@
-import { buildAgeGroupCookie } from "../routes/age-gate.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleAppRoutes, type RouteContext } from "../routes.js";
 import { getActivePack, registerPack, resetActivePack, setActivePack } from "../content/registry.js";
@@ -146,7 +145,7 @@ function makeCommandCtx(
     url: new URL("https://ruby-high.test/api/apps/ruby-high/session/test-session/command"),
     runtime: runtimeFor(ruby, faculty, auth, options.agentAccess),
     res,
-    cookieHeader: `${cookieHeader ?? ""}; ${buildAgeGroupCookie("eligible").split(";")[0]}`,
+    cookieHeader: cookieHeader ?? null,
     apiKeyHeader,
     contentTypeHeader: options.contentTypeHeader === undefined ? "application/json" : options.contentTypeHeader,
     originHeader: options.originHeader ?? null,
@@ -174,7 +173,7 @@ function makeGetCtx(
     url: new URL(`https://ruby-high.test${path}`),
     runtime: runtimeFor(ruby, undefined, auth),
     res: {},
-    cookieHeader: `${cookieHeader ?? ""}; ${buildAgeGroupCookie("eligible").split(";")[0]}`,
+    cookieHeader: cookieHeader ?? null,
     error: (_res, message, status = 500) => { response = { status, body: { error: message } }; },
     json: (_res, data, status = 200) => { response = { status, body: data }; },
     readJsonBody: async () => ({}),
@@ -305,7 +304,7 @@ describe("command route persistence and scheduler misses", () => {
     expect(harness.response?.body.error).toMatch(/could not be persisted/i);
   });
 
-  it("mints a guest session before no-cookie command mutations", async () => {
+  it("requires entry confirmation before creating a player session for commands", async () => {
     await getActivePack();
     const store = new MemorySessionStore();
     const ruby = new RubyHighService({} as never, store);
@@ -329,14 +328,11 @@ describe("command route persistence and scheduler misses", () => {
       const handled = await handleAppRoutes(harness.ctx);
 
       expect(handled).toBe(true);
-      expect(harness.response?.status).toBe(200);
-      expect(ruby.getOrCreate("rh:anonymous").character).toBeNull();
-      const cookie = String(harness.getHeader("set-cookie"));
-      const token = cookie.match(/rh_session=([^;]+)/)?.[1];
-      expect(token).toBeTruthy();
-      const record = auth.resolve(decodeURIComponent(token!));
-      expect(record).not.toBeNull();
-      expect(ruby.getOrCreate(auth.stateKeyForRecord(record!)).character?.name).toBe("Ari");
+      expect(harness.response?.status).toBe(428);
+      expect(harness.response?.body.code).toBe("entry_confirmation_required");
+      expect(harness.getHeader("set-cookie")).toBeUndefined();
+      expect(auth.sessionCount()).toBe(0);
+      expect(store.sessions.size).toBe(0);
     } finally {
       await auth.stop();
     }
@@ -517,19 +513,21 @@ describe("command route persistence and scheduler misses", () => {
     expect(character.advantageRollBonuses).toEqual({ "9": 1, "10": 1, "11": 1, "12": 1 });
   });
 
-  it("rejects bad browser command mutations before minting a guest session", async () => {
+  it("checks browser command origins and content types for a player session", async () => {
     await getActivePack();
     const store = new MemorySessionStore();
     const ruby = new RubyHighService({} as never, store);
     const auth = await AuthService.start({} as never, store);
     try {
+      const guest = await auth.createGuestSession();
+      const cookie = `rh_session=${guest.token}`;
       const crossOrigin = makeCommandCtx(
         ruby,
         { type: "mark-intro-seen" },
         undefined,
         null,
         auth,
-        null,
+        cookie,
         { originHeader: "https://evil.example" },
       );
 
@@ -546,7 +544,7 @@ describe("command route persistence and scheduler misses", () => {
         undefined,
         null,
         auth,
-        null,
+        cookie,
         { contentTypeHeader: "text/plain" },
       );
 
@@ -556,7 +554,7 @@ describe("command route persistence and scheduler misses", () => {
         body: { error: "Command requests must be sent as JSON." },
       });
       expect(nonJson.getHeader("set-cookie")).toBeUndefined();
-      expect(auth.sessionCount()).toBe(0);
+      expect(auth.sessionCount()).toBe(1);
     } finally {
       await auth.stop();
     }
@@ -1282,7 +1280,7 @@ describe("command route persistence and scheduler misses", () => {
         pathname: "/api/apps/ruby-high/session/test-session",
         runtime: runtimeFor(ruby, faculty, auth),
         res: {},
-        cookieHeader: `rh_session=${token}; ${buildAgeGroupCookie("eligible").split(";")[0]}`,
+        cookieHeader: `rh_session=${token}`,
         error: (_res, message, status = 500) => { response = { status, body: { error: message } }; },
         json: (_res, data, status = 200) => { response = { status, body: data }; },
         readJsonBody: async () => ({}),

@@ -1,4 +1,3 @@
-import { buildAgeGroupCookie } from "../routes/age-gate.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleAppRoutes, type RouteContext } from "../routes.js";
 
@@ -29,7 +28,7 @@ function makeHarness(body: unknown, opts: {
         headers[name.toLowerCase()] = value;
       },
     } as never,
-    cookieHeader: `rh_session=test-cookie; ${buildAgeGroupCookie("eligible").split(";")[0]}`,
+    cookieHeader: "rh_session=test-cookie",
     clientIp: opts.clientIp ?? "203.0.113.10",
     contentTypeHeader: opts.contentType === undefined ? "application/json" : opts.contentType,
     originHeader: opts.origin === undefined ? "https://ruby-high.ai" : opts.origin,

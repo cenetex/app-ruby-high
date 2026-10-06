@@ -40,7 +40,7 @@ import { XSocialService } from "./services/x-social-service.js";
 import { handleXSocialRoutes } from "./routes/x-social.js";
 import { X_SOCIAL_PREFIX } from "./routes/constants.js";
 import type { RouteContext } from "./routes/context.js";
-import { handleAgeGate } from "./routes/age-gate.js";
+import { handleEntryConfirmation } from "./routes/entry-confirmation.js";
 import {
   applyWorldReplaySelection,
   firstHeaderValue,
@@ -522,7 +522,7 @@ export async function collectLaunchDiagnostics(
 }
 
 export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
-  if (await handleAgeGate(ctx)) return true;
+  if (await handleEntryConfirmation(ctx)) return true;
   const runtime = getRuntime(ctx.runtime);
 
   if ((ctx.method === "GET" || ctx.method === "HEAD") && ctx.pathname === MANIFEST_PATH) {

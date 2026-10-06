@@ -1,4 +1,3 @@
-import { buildAgeGroupCookie } from "../routes/age-gate.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -91,7 +90,7 @@ function route(opts: {
     res: res as never,
     authorizationHeader: opts.authorizationHeader ?? null,
     lastEventIdHeader: opts.lastEventIdHeader ?? null,
-    cookieHeader: `${opts.cookieHeader ?? ""}; ${buildAgeGroupCookie("eligible").split(";")[0]}`,
+    cookieHeader: opts.cookieHeader ?? null,
     userAgentHeader: opts.userAgentHeader ?? null,
     visitorHeader: opts.visitorHeader ?? null,
     clientIp: opts.clientIp ?? null,

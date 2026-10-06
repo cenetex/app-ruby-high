@@ -1,4 +1,3 @@
-import { handleAgeGate } from "./routes/age-gate.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { IAgentRuntime } from "./runtime.js";
 import {
@@ -2324,7 +2323,6 @@ function emptyPasskeySessionStatus(): Record<string, unknown> {
  */
 export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> {
   if (!ctx.pathname.startsWith(CHAT_PREFIX) && !ctx.pathname.startsWith(AUTH_PREFIX)) return false;
-  if (await handleAgeGate(ctx)) return true;
 
   const runtime = getRuntime(ctx.runtime);
   const auth = getService<AuthService>(runtime, AuthService.serviceType);
@@ -2365,6 +2363,13 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
   if (ctx.method === "POST" && ctx.pathname === `${AUTH_PREFIX}/guest`) {
     if (rejectBadAuthOrigin(ctx, buildCallback)) return true;
     const existingToken = auth.parseSessionToken(ctx.cookieHeader);
+    if (!auth.resolve(existingToken)) {
+      const body = await ctx.readJsonBody();
+      if (!body || typeof body !== "object" || (body as Record<string, unknown>).confirm13Plus !== true) {
+        ctx.json(ctx.res, { error: "Open Ruby High and confirm you are 13+ to start a session.", code: "entry_confirmation_required" }, 428);
+        return true;
+      }
+    }
     const { token, record } = await auth.createGuestSession(
       existingToken,
       ctx.visitorHeader,
