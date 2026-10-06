@@ -49,14 +49,15 @@ function returnPath(value: string | null | undefined): string {
   } catch {
     return VIEWER_PATH;
   }
-  // Only the viewer and agent approval page need a return link. OAuth codes,
-  // credentials, and other request fields stay outside this form.
+  // Preserve only viewer choices, agent approval codes, and one-time agent
+  // launch paths. OAuth credentials stay outside this form.
   if (url.origin !== "https://ruby-high.invalid") return VIEWER_PATH;
+  const agentLaunch = new RegExp(`^${APP_ROUTE_PREFIX}/agent/v1/launch/[A-Za-z0-9_-]{1,160}$`).test(url.pathname);
   const allowedKeys = url.pathname === VIEWER_PATH
     ? ["ref", "rh_source", "rh_campaign", "rh_landing", "rh_entry", "role", "tab"]
     : url.pathname === `${APP_ROUTE_PREFIX}/agent/v1/connect`
       ? ["user_code"]
-      : null;
+      : agentLaunch ? [] : null;
   if (!allowedKeys) return VIEWER_PATH;
   const params = new URLSearchParams();
   for (const key of allowedKeys) {
@@ -72,7 +73,7 @@ function sendPage(ctx: RouteContext, group: AgeGroup | null, message = "", statu
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("Vary", "Cookie");
-  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Referrer-Policy", "same-origin");
   res.setHeader("Content-Security-Policy", `default-src 'none'; base-uri 'none'; form-action 'self'; style-src 'unsafe-inline'; ${VIEWER_FRAME_ANCESTORS_DIRECTIVE}`);
   const next = returnPath(ctx.url ? `${ctx.url.pathname}${ctx.url.search}` : VIEWER_PATH);
   const content = group === "restricted"
@@ -167,7 +168,8 @@ export async function handleAgeGate(ctx: RouteContext): Promise<boolean> {
   }
   if (exempt(ctx) || group === "eligible") return false;
   if ((ctx.method === "GET" || ctx.method === "HEAD") && (ctx.pathname === VIEWER_PATH
-    || ctx.pathname === `${APP_ROUTE_PREFIX}/auth/start` || ctx.pathname === `${APP_ROUTE_PREFIX}/agent/v1/connect`)) {
+    || ctx.pathname === `${APP_ROUTE_PREFIX}/auth/start` || ctx.pathname === `${APP_ROUTE_PREFIX}/agent/v1/connect`
+    || ctx.pathname.startsWith(`${APP_ROUTE_PREFIX}/agent/v1/launch/`))) {
     sendPage(ctx, group);
   } else {
     ctx.json(ctx.res, { error: "Please refresh Ruby High and complete the age check.", code: "age_check_required" }, 428);

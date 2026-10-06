@@ -71,6 +71,7 @@ describe("player age boundary", () => {
     expect(r.body).not.toContain("private");
     expect(r.body).not.toMatch(/<script|viewer-client|localStorage|fonts\.google|gstatic/);
     expect(r.headers.get("cache-control")).toBe("no-store");
+    expect(r.headers.get("referrer-policy")).toBe("same-origin");
     expect(r.headers.get("content-security-policy")).toContain("default-src 'none'");
     expect(r.getService).not.toHaveBeenCalled();
     expect(r.readJsonBody).not.toHaveBeenCalled();
@@ -84,7 +85,7 @@ describe("player age boundary", () => {
     ["GET", "/session/test"], ["POST", "/session/test/command"],
     ["POST", "/metrics/event"], ["POST", "/chat/room-turn"],
     ["POST", "/chat/character/generate"], ["POST", "/billing/checkout"],
-    ["POST", "/agent/v1/device/approve"], ["GET", "/agent/v1/launch/code"],
+    ["POST", "/agent/v1/device/approve"],
     ["POST", "/bug-report"], ["POST", "/packs/register"],
   ])("checks %s %s before services or request data", async (method, path) => {
     const r = request(`${PREFIX}${path}`, { method, cookieHeader: "rh_session=existing", authorizationHeader: "Bearer fake" });
@@ -94,6 +95,14 @@ describe("player age boundary", () => {
     expect(r.getService).not.toHaveBeenCalled();
     expect(r.readJsonBody).not.toHaveBeenCalled();
     expect(r.readRawBody).not.toHaveBeenCalled();
+  });
+
+  it("keeps a one-time agent launch until the age check is complete", async () => {
+    const r = request(`${PREFIX}/agent/v1/launch/one-time-launch`);
+    await handleAppRoutes(r.ctx);
+    expect(r.status).toBe(200);
+    expect(r.body).toContain('name="returnTo" value="/api/apps/ruby-high/agent/v1/launch/one-time-launch"');
+    expect(r.getService).not.toHaveBeenCalled();
   });
 
   it("checks the separately exported chat boundary", async () => {
@@ -171,6 +180,7 @@ describe("age form", () => {
     for (const [destination, expected] of [
       [`${PREFIX}/viewer?rh_source=x&code=secret`, `${PREFIX}/viewer?rh_source=x`],
       [`${PREFIX}/agent/v1/connect?user_code=ABCD-EFGH`, `${PREFIX}/agent/v1/connect?user_code=ABCD-EFGH`],
+      [`${PREFIX}/agent/v1/launch/one-time-launch`, `${PREFIX}/agent/v1/launch/one-time-launch`],
       ["https://other.test/path", `${PREFIX}/viewer`],
       ["http://[", `${PREFIX}/viewer`],
       [`${PREFIX}/auth/callback?code=secret`, `${PREFIX}/viewer`],
