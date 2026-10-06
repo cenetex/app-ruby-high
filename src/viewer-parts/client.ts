@@ -11061,7 +11061,7 @@ export function runViewerClient(bootstrap) {
     onboardingFunnelStepsSent.clear();
     roomHumanHistorySig = "";
     chatHistoryHumanStudentsByFaculty.clear();
-    await deriveAuth();
+    await ensureGuestSession();
     if (authed) await fetchSession();
     applyAuthUI();
     if (teacherChatEnabled() && lastTelemetry) loadHistory(lastTelemetry.faculty);

@@ -591,6 +591,7 @@ test("manages passkeys, signs out cleanly, and recovers the same student", async
     await expect(page.locator(".passkey-row")).toHaveCount(1);
 
     await page.locator("#privy-signout").click();
+    await expect(page.locator("#privy-status")).toHaveText("Signed out.");
     await expect(page.locator("#passkey-action")).toBeVisible();
     const freshMe = await page.evaluate(async () => {
       const response = await fetch("/api/apps/ruby-high/auth/me", { credentials: "same-origin" });
@@ -621,6 +622,7 @@ test("manages passkeys, signs out cleanly, and recovers the same student", async
     await expect(page.locator("#sheet-overlay")).not.toHaveClass(/is-open/);
     await expect(page.locator("#privy-signout")).toBeVisible();
     await page.locator("#privy-signout").click();
+    await expect(page.locator("#privy-status")).toHaveText("Signed out.");
     for (const currentAuthenticatorId of [backupAuthenticatorId]) {
       const credentials = await cdp.send("WebAuthn.getCredentials", { authenticatorId: currentAuthenticatorId });
       for (const credential of credentials.credentials) {
