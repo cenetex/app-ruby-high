@@ -1,3 +1,4 @@
+import { buildAgeGroupCookie } from "../routes/age-gate.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -94,7 +95,7 @@ function makeCtx(url: URL, res: TestResponse, opts: {
     url,
     runtime: runtime(),
     res,
-    cookieHeader: opts.cookieHeader ?? null,
+    cookieHeader: `${opts.cookieHeader ?? ""}; ${buildAgeGroupCookie("eligible").split(";")[0]}`,
     apiKeyHeader: opts.apiKeyHeader ?? null,
     authorizationHeader: opts.authorizationHeader ?? null,
     originHeader: opts.originHeader ?? null,

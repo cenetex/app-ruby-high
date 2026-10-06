@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { closeBlockingSheetIfVisible, closeFirstBellReportIfVisible, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
+import { completeAgeCheck, closeBlockingSheetIfVisible, closeFirstBellReportIfVisible, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
 
 async function enableTestAi(page: Page) {
   await page.route(/\/auth\/(me|guest)$/, async (route) => {
@@ -158,6 +158,7 @@ test("canonical issue-174 link opens the Quick Roll/customize choice with bounde
     "/api/apps/ruby-high/viewer?rh_source=x&rh_campaign=issue-174-v1&rh_landing=quick-roll-v1&rh_entry=viewer",
     { waitUntil: "domcontentloaded" },
   );
+  await completeAgeCheck(page);
   await expect.poll(() => appOpenBody).toMatchObject({
     type: "app_open",
     campaignSource: "x",
@@ -440,6 +441,7 @@ test("keeps Roko's Return response builder actionable on a phone", async ({ page
   expect(finalTelemetry?.current?.type).toBe("opinion");
   expect(finalTelemetry?.response_claims).toHaveLength(2);
   await page.goto("/api/apps/ruby-high/viewer");
+  await completeAgeCheck(page);
   await dismissAnnouncements(page);
   const activeAgentCookie = (await page.context().cookies()).find((cookie) => cookie.name === "rh_agent_session");
   expect(activeAgentCookie).toBeDefined();

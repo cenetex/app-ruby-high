@@ -56,10 +56,18 @@ export async function stubPrivyBundle(page: Page): Promise<() => number> {
  * you-state not "checking"). The Privy request counter verifies that the
  * wallet bundle stays lazy until a wallet action starts.
  */
+export async function completeAgeCheck(page: Page) {
+  if (await page.locator("#age").isVisible()) {
+    await page.getByLabel("How old are you?").fill("18");
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+  }
+}
+
 export async function openViewer(page: Page) {
   const errors = watchRuntimeErrors(page);
   const privyRequests = await stubPrivyBundle(page);
   await page.goto("/api/apps/ruby-high/viewer");
+  await completeAgeCheck(page);
   await expect(page).toHaveTitle(/Ruby High/);
   await expect(page.locator("#shell")).toBeVisible();
   await expect(page.locator("#signin-overlay")).not.toHaveClass(/is-open/);

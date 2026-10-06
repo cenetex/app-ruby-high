@@ -1,3 +1,4 @@
+import { buildAgeGroupCookie } from "../routes/age-gate.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleAppRoutes, type RouteContext } from "../routes.js";
 import { getActivePack, registerPack, resetActivePack, setActivePack } from "../content/registry.js";
@@ -145,7 +146,7 @@ function makeCommandCtx(
     url: new URL("https://ruby-high.test/api/apps/ruby-high/session/test-session/command"),
     runtime: runtimeFor(ruby, faculty, auth, options.agentAccess),
     res,
-    cookieHeader: cookieHeader ?? null,
+    cookieHeader: `${cookieHeader ?? ""}; ${buildAgeGroupCookie("eligible").split(";")[0]}`,
     apiKeyHeader,
     contentTypeHeader: options.contentTypeHeader === undefined ? "application/json" : options.contentTypeHeader,
     originHeader: options.originHeader ?? null,
@@ -173,7 +174,7 @@ function makeGetCtx(
     url: new URL(`https://ruby-high.test${path}`),
     runtime: runtimeFor(ruby, undefined, auth),
     res: {},
-    cookieHeader: cookieHeader ?? null,
+    cookieHeader: `${cookieHeader ?? ""}; ${buildAgeGroupCookie("eligible").split(";")[0]}`,
     error: (_res, message, status = 500) => { response = { status, body: { error: message } }; },
     json: (_res, data, status = 200) => { response = { status, body: data }; },
     readJsonBody: async () => ({}),
@@ -1281,7 +1282,7 @@ describe("command route persistence and scheduler misses", () => {
         pathname: "/api/apps/ruby-high/session/test-session",
         runtime: runtimeFor(ruby, faculty, auth),
         res: {},
-        cookieHeader: `rh_session=${token}`,
+        cookieHeader: `rh_session=${token}; ${buildAgeGroupCookie("eligible").split(";")[0]}`,
         error: (_res, message, status = 500) => { response = { status, body: { error: message } }; },
         json: (_res, data, status = 200) => { response = { status, body: data }; },
         readJsonBody: async () => ({}),

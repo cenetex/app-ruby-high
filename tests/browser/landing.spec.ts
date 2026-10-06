@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { completeAgeCheck } from "./helpers.js";
 
 test("a campaign landing visit reaches class with its source and campaign", async ({ page }) => {
   const events: Record<string, unknown>[] = [];
@@ -10,6 +11,7 @@ test("a campaign landing visit reaches class with its source and campaign", asyn
   });
   await page.goto("/?ref=outreach-discord-v1&rh_source=discord&rh_campaign=outreach-v1&rh_landing=default&rh_entry=viewer");
   await page.getByRole("link", { name: "Start class", exact: true }).click();
+  await completeAgeCheck(page);
   await expect.poll(() => events.find((event) => event.type === "app_open")).toMatchObject({
     campaignSource: "discord", campaignId: "outreach-v1", landingVariant: "default", entrypoint: "viewer",
   });

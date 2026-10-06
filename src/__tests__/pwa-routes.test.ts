@@ -1,3 +1,4 @@
+import { buildAgeGroupCookie } from "../routes/age-gate.js";
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -81,7 +82,7 @@ function makeCtx(
     url,
     runtime: null,
     res: response.res as never,
-    cookieHeader: null,
+    cookieHeader: buildAgeGroupCookie("eligible").split(";")[0],
     error: (_res, message, status = 500) => {
       response.res.statusCode = status;
       response.res.end(JSON.stringify({ error: message }));

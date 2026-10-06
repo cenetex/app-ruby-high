@@ -76,6 +76,7 @@ const REQUIRE_GUEST_AI = requireGuestAiOverride == null
 
 let failed = 0;
 let smokeCookie = "";
+let ageCookie = "";
 let smokeGuestAi = false;
 
 function ok(name, msg) {
@@ -95,6 +96,7 @@ async function fetchWithTimeout(url, opts = {}, timeoutMs = TIMEOUT_MS) {
       headers: {
         "User-Agent": "RubyHighSmoke/1.0",
         ...(opts.headers || {}),
+        ...(ageCookie ? { Cookie: [opts.headers?.Cookie, ageCookie].filter(Boolean).join("; ") } : {}),
       },
       signal: ctrl.signal,
       redirect: "manual",
@@ -171,6 +173,14 @@ async function waitForAppReady() {
   while (Date.now() <= deadline) {
     attempts++;
     try {
+      if (!ageCookie) {
+        const check = await fetchWithTimeout(`${base}/api/apps/ruby-high/age-check`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded", Origin: new URL(base).origin },
+          body: "age=18",
+        });
+        if (check.status === 303) ageCookie = firstSetCookie(check.headers).split(";")[0];
+      }
       const r = await fetchWithTimeout(`${base}/api/apps/ruby-high/auth/me`);
       const text = await readText(r.clone());
       if (r.status === 200) {
