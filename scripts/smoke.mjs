@@ -37,11 +37,8 @@
  *   8. Guest AI generation returns a complete student preview without a
  *      personal AI key. Production fails closed when hosted AI is missing.
  *
- *   9. POST /api/apps/ruby-high/chat/character/generate (no auth) → 401
- *      Catches: requireAuth() not gating the LLM endpoints. This is the
- *      single check that most directly catches PR #30's regression
- *      (server returning 401 was the WORKING behavior; 200 or 5xx would
- *      have signalled the gate broke).
+ *   9. Fresh POST /api/apps/ruby-high/chat/character/generate → 428
+ *      Checks that the entry confirmation runs before fresh AI requests.
  *
  *   10. Guest daily pacing + gate: today's lesson serves direct class cards
  *      (not forced Social cards), then blocks further progress with a signup
@@ -536,18 +533,19 @@ async function check8GuestAiGeneration() {
 }
 
 async function check9AuthGate() {
-  const name = "character/generate auth gate";
+  const name = "AI entry confirmation";
   try {
     const r = await fetchWithTimeout(`${base}/api/apps/ruby-high/chat/character/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",
+      anonymous: true,
     });
-    if (r.status !== 401) {
-      const text = await r.text().catch(() => "");
-      return fail(name, `unauth POST should return 401, got ${r.status} — body: ${text.slice(0, 200)}`);
+    const body = await readJson(r);
+    if (r.status !== 428 || body?.code !== "entry_confirmation_required") {
+      return fail(name, `fresh AI request expected entry confirmation, got ${r.status}`);
     }
-    ok(name, "401 (gate is wired)");
+    ok(name, "entry confirmation runs before fresh AI requests");
   } catch (e) {
     fail(name, e?.message || String(e));
   }
