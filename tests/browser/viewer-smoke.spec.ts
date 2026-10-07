@@ -927,6 +927,7 @@ test("uses account buttons and validates copied recovery codes before a request"
 test("connects agents through a generated code and a clipboard button", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 568 });
   await page.goto("/api/apps/ruby-high/agent/v1/connect?user_code=ABCD-1234");
+  await completeEntryConfirmation(page);
   await expect(page.locator("#code")).toHaveText("ABCD-1234");
   await expect(page.locator("input, textarea, [contenteditable=true]")).toHaveCount(0);
   await page.evaluate(() => {

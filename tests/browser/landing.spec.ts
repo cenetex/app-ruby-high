@@ -32,16 +32,13 @@ test("share kit selects channel copy and offers a manual copy fallback on mobile
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Bring a friend to class.");
   await page.getByLabel("Where are you sharing?").selectOption("hn");
   const message = page.getByLabel("Your invitation");
-  await expect(message).toHaveValue(/https:\/\/ruby-high.ai\/api\/apps\/ruby-high\/viewer\?ref=outreach-hn-v1&rh_source=hn&rh_campaign=outreach-v1/);
+  await expect(message).toContainText(/https:\/\/ruby-high.ai\/api\/apps\/ruby-high\/viewer\?ref=outreach-hn-v1&rh_source=hn&rh_campaign=outreach-v1/);
   await page.getByRole("button", { name: "Copy link", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Text selected. Use your device's Copy action.");
-  expect(await message.evaluate((element) => {
-    const field = element as HTMLTextAreaElement;
-    return field.value.slice(field.selectionStart, field.selectionEnd);
-  })).toBe(await page.getByRole("link", { name: "Preview the invitation link" }).getAttribute("href"));
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(await page.getByRole("link", { name: "Preview the invitation link" }).getAttribute("href"));
 
   await page.getByLabel("Where are you sharing?").selectOption("partner");
-  await expect(message).toHaveValue(/rh_source=partner.*#agents/);
+  await expect(message).toContainText(/rh_source=partner.*#agents/);
   await expect(page.getByRole("status")).toBeEmpty();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(errors).toEqual([]);
