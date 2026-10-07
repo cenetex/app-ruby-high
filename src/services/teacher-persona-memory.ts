@@ -312,7 +312,7 @@ export class TeacherPersonaMemory {
       profile.memories = profile.memories.filter(memory => !removed.has(memory.id));
       profile.overlays = profile.overlays.filter(overlay => !overlay.memoryIds.some(id => removed.has(id)));
       profile.reflectedMemoryIds = profile.reflectedMemoryIds.filter(id => !removed.has(id));
-      profile.activeVersion = profile.overlays.at(-1)?.version ?? null;
+      if (profile.activeVersion != null && !profile.overlays.some(overlay => overlay.version === profile.activeVersion)) profile.activeVersion = profile.overlays.at(-1)?.version ?? null;
     }
     this.persistSoon();
     await this.persistPromise;
@@ -448,10 +448,9 @@ export class TeacherPersonaMemory {
       .filter((memory) => memory.expiresAt > now)
       .slice(-TEACHER_PERSONA_MAX_MEMORIES);
     profile.overlays = profile.overlays.filter(overlay => overlay.createdAt > now - this.memoryTtlMs);
-    if (!profile.overlays.some(overlay => overlay.version === profile.activeVersion)) profile.activeVersion = profile.overlays.at(-1)?.version ?? null;
     const retainedIds = new Set(profile.memories.map((memory) => memory.id));
     profile.overlays = profile.overlays.filter(overlay => overlay.memoryIds.every(id => retainedIds.has(id)));
-    if (!profile.overlays.some(overlay => overlay.version === profile.activeVersion)) profile.activeVersion = profile.overlays.at(-1)?.version ?? null;
+    if (profile.activeVersion != null && !profile.overlays.some(overlay => overlay.version === profile.activeVersion)) profile.activeVersion = profile.overlays.at(-1)?.version ?? null;
     profile.reflectedMemoryIds = profile.reflectedMemoryIds
       .filter((memoryId) => retainedIds.has(memoryId))
       .slice(-TEACHER_PERSONA_MAX_MEMORIES * 2);
@@ -469,7 +468,10 @@ export class TeacherPersonaMemory {
     if (!store.loadServiceState) return;
     const record = await store.loadServiceState(TEACHER_PERSONA_MEMORY_STATE_ID).catch(() => null);
     const profiles = hydrateTeacherPersonaProfiles(record, this.now());
-    for (const profile of profiles) this.profiles.set(profile.teacherId, profile);
+    for (const profile of profiles) {
+      this.pruneProfile(profile, this.now());
+      this.profiles.set(profile.teacherId, profile);
+    }
   }
 
   private persistSoon(): void {
@@ -626,6 +628,7 @@ function teacherPersonaStateRecord(
   return {
     id: TEACHER_PERSONA_MEMORY_STATE_ID,
     updatedAt: now,
+    expiresAt: now + TEACHER_PERSONA_MEMORY_TTL_MS,
     data: {
       version: 1,
       teachers: profiles.map((profile) => ({

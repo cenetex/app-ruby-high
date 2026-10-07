@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { getActivePack } from "../content/registry.js";
+import { AgentAccessService } from "../services/agent-access-service.js";
 import { AuthService } from "../services/auth-service.js";
 import { ChatService } from "../services/chat-service.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
@@ -37,6 +38,46 @@ afterEach(async () => {
 });
 
 describe("privacy cleanup", () => {
+  it("cleans an agent whose owner row expired before a restart", async () => {
+    const a = await auth.createGuestSession();
+    const access = new AgentAccessService({ getSetting: () => "privacy-test-secret" } as never, store);
+    await access.hydrate();
+    try {
+      const device = await access.issueDeviceCode({ agentName: "Owned agent", scopes: ["school:read"] });
+      const credential = await access.approveDeviceCode(device.userCode, auth.stateKeyForRecord(a.record));
+      const token = await access.exchangeDeviceCode(device.deviceCode);
+      if (token.status !== "approved") throw new Error("Expected token.");
+      ruby.getOrCreate(credential.stateKey); await ruby.flushSession(credential.stateKey);
+      const target = auth.accountDeletionTargetForToken(a.token)!;
+      await store.deleteAccountData(target); auth.forgetDeletedAccount(target);
+      expect(await purgeInactiveAccounts({ auth, ruby, chat, agents: access })).toBe(1);
+      expect(access.authenticateBearer(`Bearer ${token.accessToken}`)).toBeNull();
+      expect((await store.load()).has(credential.stateKey)).toBe(false);
+      expect(access.privacyOwnerStateKeys()).toEqual([]);
+    } finally { await access.stop(); }
+  });
+
+  it("keeps agent links for a retry after a storage failure", async () => {
+    const a = await auth.createGuestSession(); const target = auth.accountDeletionTargetForToken(a.token)!;
+    const access = new AgentAccessService({ getSetting: () => "privacy-test-secret" } as never, store);
+    await access.hydrate();
+    try {
+      const device = await access.issueDeviceCode({ agentName: "Owned agent", scopes: ["school:read"] });
+      const credential = await access.approveDeviceCode(device.userCode, target.sessionId);
+      const token = await access.exchangeDeviceCode(device.deviceCode);
+      if (token.status !== "approved") throw new Error("Expected token.");
+      ruby.getOrCreate(credential.stateKey); await ruby.flushSession(credential.stateKey);
+      const deletion = vi.spyOn(ruby, "deleteAccountData").mockRejectedValueOnce(new Error("Test storage failure"));
+      await expect(deletePlayerData({ auth, ruby, chat, agents: access }, target)).rejects.toThrow("Test storage failure");
+      expect(access.authenticateBearer(`Bearer ${token.accessToken}`)).toBeNull();
+      expect(access.privacyOwnerStateKeys()).toEqual([target.sessionId]);
+      deletion.mockRestore();
+      await deletePlayerData({ auth, ruby, chat, agents: access }, target);
+      expect(access.privacyOwnerStateKeys()).toEqual([]);
+      expect((await store.load()).has(credential.stateKey)).toBe(false);
+    } finally { await access.stop(); }
+  });
+
   it("keeps sharing choices when a completed student is archived and reloaded", async () => {
     const state = ruby.createCharacter("archive:privacy", { name: "Mika", playbookId: "overachiever", stats: { head: 2, heart: 0, hustle: -1, honor: 1 }, arcAnswer: "Learn together.", personality: "Curious." });
     const student = state.character!;

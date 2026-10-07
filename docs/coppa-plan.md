@@ -55,7 +55,7 @@ For each vendor, record the data received, purpose, retention, deletion method a
 
 `RUBY_HIGH_STATE_TTL_SECONDS` defaults to 7,776,000 seconds (90 days). Keep the deployed period positive. The hosted JSON factory, SQLite and DynamoDB apply retention to new account records. SQLite also assigns expiry to older account and installation rows. A direct library `new StateStore(...)` uses its explicit settings; the hosted factory supplies the default.
 
-An hourly task removes inactive in-memory accounts, their owned agents and linked room data. Store expiry also applies when rows load. SQLite purges expired rows on open and every 15 minutes. DynamoDB physical deletion follows its TTL service schedule.
+An hourly task removes inactive in-memory accounts, their owned agents and linked room data. It also removes agents whose owner account has already expired when the server restarts. Agent access is revoked before linked cleanup. The owner link stays available until cleanup succeeds so a failed run can retry. Store expiry also applies when rows load. SQLite purges expired rows on open and every 15 minutes. DynamoDB physical deletion follows its TTL service schedule.
 
 Before release, review legacy DynamoDB rows that lack expiry. Older room events and summaries can lack an account link. Use the recorded IDs and source evidence when handling those cases. Review migrated records and historical backups separately.
 

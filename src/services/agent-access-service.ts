@@ -513,6 +513,21 @@ export class AgentAccessService extends Service {
     ].join("; ");
   }
 
+  privacyOwnerStateKeys(): string[] {
+    return Array.from(new Set([...this.credentials.values()].map(record => record.approvedByStateKey)));
+  }
+
+  async revokeOwnerForDeletion(stateKey: string): Promise<string[]> {
+    const owned = Array.from(this.credentials.values()).filter(record => record.approvedByStateKey === stateKey);
+    for (const record of owned) {
+      record.revokedAt = record.revokedAt ?? Date.now();
+      record.autonomy.enabled = false;
+    }
+    await this.persist();
+    await this.flush();
+    return owned.map(record => record.stateKey);
+  }
+
   async deleteOwnerData(stateKey: string): Promise<string[]> {
     const owned = Array.from(this.credentials.values()).filter(record => record.approvedByStateKey === stateKey);
     const ids = new Set(owned.map(record => record.id));

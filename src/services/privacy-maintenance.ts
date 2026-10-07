@@ -8,13 +8,14 @@ import { stateRetentionSeconds } from "./privacy-policy.js";
 export interface PrivacyServices { auth: AuthService; ruby: RubyHighService; chat: ChatService; agents?: AgentAccessService | null }
 
 export async function deletePlayerData(services: PrivacyServices, target: StoredAccountDeletionTarget) {
-  const agentStates = await services.agents?.deleteOwnerData(target.sessionId) ?? [];
+  const agentStates = await services.agents?.revokeOwnerForDeletion(target.sessionId) ?? [];
   for (const sessionId of agentStates) {
     await services.chat.deleteAccountData({ sessionId });
     await services.ruby.deleteAccountData({ sessionId, userId: sessionId });
   }
   await services.chat.deleteAccountData(target);
   const result = await services.ruby.deleteAccountData(target);
+  await services.agents?.deleteOwnerData(target.sessionId);
   services.auth.forgetDeletedAccount(target);
   return result;
 }
@@ -25,7 +26,15 @@ export async function purgeInactiveAccounts(services: PrivacyServices, now = Dat
   await services.chat.purgeExpiredPrivacyData();
   const targets = services.auth.inactiveAccountDeletionTargets(now - seconds * 1000);
   for (const target of targets) await deletePlayerData(services, target);
-  return targets.length;
+  let orphanedOwners = 0;
+  for (const sessionId of services.agents?.privacyOwnerStateKeys() ?? []) {
+    if (!sessionId.startsWith("rh:user:")) continue;
+    const userId = sessionId.slice("rh:user:".length);
+    if (services.auth.accountDeletionTargetForUser(userId)) continue;
+    await deletePlayerData(services, { sessionId, userId });
+    orphanedOwners += 1;
+  }
+  return targets.length + orphanedOwners;
 }
 
 export function startPrivacyMaintenance(services: PrivacyServices): () => void {
