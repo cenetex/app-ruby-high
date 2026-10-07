@@ -7437,6 +7437,7 @@ export function runViewerClient(bootstrap) {
       return creationRowsRenderer.buildRow(fields, label, key);
     }
     const nameRow = makeRow("Name", "name");
+    nameRow.row.classList.add("creation-name-row");
     const playbookRow = makeRow("Style", "playbook");
     const statsRow = makeRow("Stats", "stats");
     const personalityRow = makeRow("Voice", "personality");

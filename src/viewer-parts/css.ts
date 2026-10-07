@@ -9335,6 +9335,21 @@ export const VIEWER_CSS = `
     letter-spacing: 0;
     text-transform: none;
   }
+  .sheet-card.is-creation-sheet .creation-quick-fields .creation-name-row {
+    grid-template-columns: minmax(0, 1fr) 44px;
+  }
+  .sheet-card.is-creation-sheet .creation-quick-fields .creation-name-row .creation-row-label {
+    grid-column: 1 / -1;
+  }
+  .sheet-card.is-creation-sheet .creation-quick-fields .creation-name-row .creation-reroll {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    grid-column: 2;
+    grid-row: 2;
+    width: 44px;
+    min-height: 44px;
+  }
   .sheet-card.is-creation-sheet .creation-quick-fields .creation-edit-input {
     min-height: 44px;
     padding: 10px 12px;

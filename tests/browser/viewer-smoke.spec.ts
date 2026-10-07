@@ -225,6 +225,9 @@ test("keeps creator choices and the start-class action reachable on a small phon
   await expect(page.getByRole("button", { name: "Close student creator" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Try another name", exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Student style" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try another name", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: /start first class/i })).toBeEnabled();
+  await page.screenshot({ path: test.info().outputPath("choice-only-quick-creator-mobile.png") });
   await page.getByRole("button", { name: "Advanced", exact: true }).click();
 
   const style = page.getByRole("combobox", { name: "Student style" });
