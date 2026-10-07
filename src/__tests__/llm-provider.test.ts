@@ -33,6 +33,20 @@ describe("llm-provider", () => {
     expect(resolveLlmApiKey("sk-user")).toBe("sk-user");
   });
 
+  it("enforces remote provider privacy while preserving other routing choices", async () => {
+    let sent: any;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      sent = JSON.parse(String(init?.body));
+      return new Response("{}", { status: 200 });
+    });
+    await fetchLlmChatCompletions({ apiKey: "test-key", body: {
+      model: "custom/model", messages: [], user: "private-player-id",
+      provider: { order: ["Example"], data_collection: "allow", zdr: false },
+    } });
+    expect(sent.provider).toEqual({ order: ["Example"], data_collection: "deny", zdr: true });
+    expect(sent.user).toBeUndefined();
+  });
+
   it("allows course generation to use a dedicated model", () => {
     vi.stubEnv("RUBY_HIGH_COURSE_MODEL", "custom/course-model");
 
@@ -47,6 +61,7 @@ describe("llm-provider", () => {
       temperature: 0.95,
     })).toEqual({
       model: "openai/gpt-5.6-luna",
+      provider: { data_collection: "deny", zdr: true },
       messages: [],
       reasoning_effort: "none",
     });
@@ -57,6 +72,7 @@ describe("llm-provider", () => {
       temperature: 0.45,
     })).toEqual({
       model: "openai/gpt-5.6-terra",
+      provider: { data_collection: "deny", zdr: true },
       messages: [],
     });
   });

@@ -27,7 +27,6 @@ import {
   querySchoolEventRecords,
   storedAccountAuthSessionMatches,
   storedAccountAuthUserMatches,
-  storedAccountDeletionResultTotal,
   storedAccountDraftPackMatches,
   storedAccountMetricEventMatches,
   storedAccountPackInstallationMatches,
@@ -119,6 +118,10 @@ export class SqliteStateStore implements StateStoreLike {
     this.db.exec("CREATE INDEX IF NOT EXISTS kv_kind ON kv(kind);");
     this.db.exec("CREATE INDEX IF NOT EXISTS kv_kind_updated_at ON kv(kind, updated_at DESC);");
     this.db.exec("CREATE INDEX IF NOT EXISTS kv_expires ON kv(expires_at);");
+    if (this.ttlSeconds > 0) {
+      this.db.prepare("UPDATE kv SET expires_at = CAST(json_extract(data, '$.lastLoginAt') / 1000 AS INTEGER) + ? WHERE kind = 'authUser' AND expires_at IS NULL").run(this.ttlSeconds);
+      this.db.prepare("UPDATE kv SET expires_at = CAST(updated_at / 1000 AS INTEGER) + ? WHERE kind = 'packInstallation' AND expires_at IS NULL").run(this.ttlSeconds);
+    }
     this.purgeExpired();
     this.startPeriodicPurge();
   }
@@ -395,7 +398,7 @@ export class SqliteStateStore implements StateStoreLike {
   }
 
   async saveAuthUser(user: AuthUserRecord): Promise<void> {
-    this.put(`auth:user:${user.provider}:${user.providerUserHash}`, "authUser", user, Date.now(), null);
+    this.put(`auth:user:${user.provider}:${user.providerUserHash}`, "authUser", user, Date.now(), this.ttlSeconds > 0 ? Math.floor(user.lastLoginAt / 1000) + this.ttlSeconds : null);
   }
 
   async saveAuthSession(session: AuthSessionRecord): Promise<void> {
@@ -411,7 +414,7 @@ export class SqliteStateStore implements StateStoreLike {
   }
 
   async savePackInstallation(record: StoredPackInstallationRecord): Promise<void> {
-    this.put(this.packInstallationPk(record.userId, record.packId), "packInstallation", record, record.updatedAt, null);
+    this.put(this.packInstallationPk(record.userId, record.packId), "packInstallation", record, record.updatedAt, this.defaultExpiry());
   }
   async saveTeacher(record: StoredTeacherRecord): Promise<void> {
     this.put("teacher:" + encodeURIComponent(record.id), "teacherRecord", record, record.updatedAt, this.defaultExpiry());
@@ -549,7 +552,11 @@ export class SqliteStateStore implements StateStoreLike {
       result.schoolEvents += 1;
     }
 
-    if (storedAccountDeletionResultTotal(result) > 0) this.deleteMany(pks);
+    for (const row of this.keyedRowsOfKind("serviceState")) {
+      const record = row.data as StoredServiceStateRecord;
+      if (record.id.startsWith("auth:passkey:") && record.data.userId === target.userId) pks.push(row.pk);
+    }
+    if (pks.length > 0) this.deleteMany(pks);
     return result;
   }
 

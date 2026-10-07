@@ -62,6 +62,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     </div>
     <div class="channels-list" id="channels-list"></div>
     <div class="channels-links">
+      <a class="report-bug-link" href="${safeApiBase}/privacy" target="_blank" rel="noopener">Privacy</a>
       <a class="report-bug-link" id="report-bug-link" href="https://discord.gg/uTXaBVfY" target="_blank" rel="noopener noreferrer" data-discord-link="true" title="Bugs or questions? Join the Ruby High Discord.">Bugs / questions</a>
       <a class="report-bug-link" id="about-link" href="https://annihilism.org" target="_blank" rel="noopener noreferrer" title="The philosophy behind Ruby High.">About</a>
       <a class="report-bug-link" id="books-link" href="https://ratimics.gumroad.com" target="_blank" rel="noopener noreferrer" title="Books by the Ruby High author.">Books</a>
@@ -185,6 +186,12 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           </div>
           <div class="account-public-world-status" id="account-public-world-status"></div>
         </section>
+        <section class="account-section">
+          <div class="account-section-title">Teacher social posts</div>
+          <p class="account-section-sub">Allow teachers to include this student in posts on X or Telegram.</p>
+          <button type="button" class="secondary" id="account-social-posting">Allow posts</button>
+          <p id="account-social-posting-status" class="account-section-sub" aria-live="polite"></p>
+        </section>
         <details class="account-details">
           <summary>Account settings</summary>
           <section class="account-section">
@@ -202,6 +209,9 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           </section>
           <section class="account-section account-trust-section">
             <div class="account-section-title">Safety and links</div>
+            <p><a href="${safeApiBase}/privacy" target="_blank" rel="noopener">Privacy and deletion</a></p>
+            <button type="button" class="secondary" id="account-privacy-id">Copy privacy request ID</button>
+            <p id="account-privacy-id-status" class="account-section-sub" aria-live="polite"></p>
             <div class="account-section-sub">Official links, wallet safety, and current service details.</div>
             <div class="account-trust-list" id="account-trust-list"></div>
           </section>

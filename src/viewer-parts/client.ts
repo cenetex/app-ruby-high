@@ -2783,6 +2783,12 @@ export function runViewerClient(bootstrap) {
     renderAccountHallPassCards();
     renderAccountCharacters();
     renderAccountPublicWorld();
+    const socialButton = $("account-social-posting");
+    const socialCharacter = lastTelemetry && lastTelemetry.character;
+    if (socialButton) {
+      socialButton.disabled = !socialCharacter || !!billingBusy;
+      socialButton.textContent = socialCharacter && socialCharacter.socialPostingConsent === true ? "Stop posts" : "Allow posts";
+    }
     renderAccountComics();
     renderAccountHistory();
     renderAccountTrust();
@@ -11664,6 +11670,34 @@ export function runViewerClient(bootstrap) {
   if (els.accountCreateCharacter) els.accountCreateCharacter.addEventListener("click", openCharacterCreationFromAccount);
   if (els.accountUnlockSlot) els.accountUnlockSlot.addEventListener("click", unlockCharacterSlotFromAccount);
   if (els.accountPublicWorldToggle) els.accountPublicWorldToggle.addEventListener("click", togglePublicWorldFromAccount);
+  const socialPostingButton = $("account-social-posting");
+  if (socialPostingButton) socialPostingButton.addEventListener("click", async () => {
+    const character = lastTelemetry && lastTelemetry.character;
+    if (!character || billingBusy) return;
+    const status = $("account-social-posting-status");
+    socialPostingButton.disabled = true;
+    try {
+      const enabled = character.socialPostingConsent !== true;
+      await command({ type: "set-social-consent", socialConsent: enabled });
+      if (status) status.textContent = enabled ? "Teacher social posts allowed for this student." : "Teacher social posts stopped for this student.";
+    } catch (err) { if (status) status.textContent = err instanceof Error ? err.message : "Please try again."; }
+    finally { renderAccountPage(); }
+  });
+  const privacyIdButton = $("account-privacy-id");
+  if (privacyIdButton) privacyIdButton.addEventListener("click", async () => {
+    const status = $("account-privacy-id-status");
+    try {
+      const response = await fetch(apiBase + "/auth/me", { credentials: "same-origin" });
+      const data = await response.json();
+      if (!response.ok || !data.privacyAccountId) throw new Error("Open a game session to get your privacy request ID.");
+      try {
+        await navigator.clipboard.writeText(data.privacyAccountId);
+        if (status) status.textContent = "Privacy request ID copied. Include it in your privacy email.";
+      } catch (_err) {
+        if (status) status.textContent = "Privacy request ID: " + data.privacyAccountId;
+      }
+    } catch (err) { if (status) status.textContent = err instanceof Error ? err.message : "Please try again."; }
+  });
   if (els.accountDelete) els.accountDelete.addEventListener("click", deleteAccountFromAccount);
   if (els.blackboardEmptyAction) els.blackboardEmptyAction.addEventListener("click", handleBlackboardEmptyAction);
   if (els.billingClose) els.billingClose.addEventListener("click", closeBilling);

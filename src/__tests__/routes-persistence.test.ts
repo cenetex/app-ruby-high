@@ -624,6 +624,7 @@ describe("command route persistence and scheduler misses", () => {
         personality: "Steady and bright.",
       });
       for (const state of [firstState, secondState]) {
+        state.character!.publicWorldVisible = true;
         state.currentGrade = "10";
         state.faculty = "ruby";
         state.character!.dailyClasses = {
@@ -709,6 +710,7 @@ describe("command route persistence and scheduler misses", () => {
       state.currentGrade = "10";
       state.faculty = "ruby";
       state.character!.socialConsent = true;
+      state.character!.publicWorldVisible = true;
       state.character!.dailyClasses = {
         "10:ruby:2026-06-15": {
           grade: "10",
@@ -771,6 +773,7 @@ describe("command route persistence and scheduler misses", () => {
       state.currentGrade = "10";
       state.faculty = "ruby";
       state.character!.socialConsent = true;
+      state.character!.publicWorldVisible = true;
       state.character!.publicWorldVisible = false;
       state.character!.dailyClasses = {
         "10:ruby:2026-06-15": {
@@ -823,6 +826,7 @@ describe("command route persistence and scheduler misses", () => {
         arcAnswer: "I curate what I see.",
         personality: "Protective and precise.",
       });
+      state.character!.publicWorldVisible = true;
       state.currentGrade = "10";
       state.faculty = "ruby";
       state.character!.dailyClasses = {

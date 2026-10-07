@@ -33,7 +33,6 @@ import {
   querySessionRecords,
   storedAccountAuthSessionMatches,
   storedAccountAuthUserMatches,
-  storedAccountDeletionResultTotal,
   storedAccountDraftPackMatches,
   storedAccountMetricEventMatches,
   storedAccountPackInstallationMatches,
@@ -451,6 +450,7 @@ export class DynamoStateStore implements StateStoreLike {
         pk: `auth:user:${user.provider}:${user.providerUserHash}`,
         authUser: user,
         updatedAt: Date.now(),
+        ...(this.ttlSeconds > 0 ? { expiresAt: Math.floor(user.lastLoginAt / 1000) + this.ttlSeconds } : {}),
       },
     }));
   }
@@ -680,7 +680,11 @@ export class DynamoStateStore implements StateStoreLike {
         result.schoolEvents += 1;
       }
     }
-    if (storedAccountDeletionResultTotal(result) <= 0) return result;
+    for (const item of items) {
+      const record = item.serviceState as StoredServiceStateRecord | undefined;
+      if (record?.id.startsWith("auth:passkey:") && record.data.userId === target.userId && item.pk) pks.push(String(item.pk));
+    }
+    if (pks.length === 0) return result;
     this.invalidateScanCache();
     for (const pk of pks) {
       await this.client.send(new DeleteCommand({

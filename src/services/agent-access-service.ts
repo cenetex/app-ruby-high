@@ -513,6 +513,26 @@ export class AgentAccessService extends Service {
     ].join("; ");
   }
 
+  async deleteOwnerData(stateKey: string): Promise<string[]> {
+    const owned = Array.from(this.credentials.values()).filter(record => record.approvedByStateKey === stateKey);
+    const ids = new Set(owned.map(record => record.id));
+    for (const id of ids) this.credentials.delete(id);
+    for (const [key, device] of this.devicesByHash) {
+      if (device.approvedByStateKey === stateKey || (device.credentialId && ids.has(device.credentialId))) {
+        this.devicesByHash.delete(key);
+        this.devicesByUserCode.delete(device.userCode);
+      }
+    }
+    const keptEvents = this.events.filter(event => !ids.has(event.credentialId));
+    this.events.splice(0, this.events.length, ...keptEvents);
+    for (const [key, record] of this.idempotency) if (ids.has(record.credentialId)) this.idempotency.delete(key);
+    for (const [key, record] of this.launches) if (ids.has(record.credentialId)) this.launches.delete(key);
+    for (const [key, record] of this.viewerSessions) if (ids.has(record.credentialId)) this.viewerSessions.delete(key);
+    await this.persist();
+    await this.flush();
+    return owned.map(record => record.stateKey);
+  }
+
   async flush(): Promise<void> {
     await this.writeChain;
     await this.store.flush?.();

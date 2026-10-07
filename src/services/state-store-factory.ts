@@ -1,3 +1,4 @@
+import { stateRetentionSeconds } from "./privacy-policy.js";
 import { StateStore, type StateStoreLike } from "./state-store.js";
 
 /**
@@ -27,7 +28,7 @@ export interface CreateStateStoreOptions {
   dynamoTable?: string;
   /** DynamoDB backend: region. */
   region?: string;
-  /** TTL seconds (SQLite + DynamoDB). 0 disables. */
+  /** TTL seconds for all backends. 0 disables. */
   ttlSeconds?: number;
 }
 
@@ -60,7 +61,7 @@ export async function createStateStore(opts: CreateStateStoreOptions = {}): Prom
       ttlSeconds: opts.ttlSeconds ?? readTtl(process.env.RUBY_HIGH_STATE_TTL_SECONDS),
     });
   }
-  return new StateStore(opts.jsonPath);
+  return new StateStore(opts.jsonPath, { ttlSeconds: opts.ttlSeconds ?? stateRetentionSeconds() });
 }
 
 function readBackend(raw: string | undefined): "json" | "sqlite" | "dynamodb" {

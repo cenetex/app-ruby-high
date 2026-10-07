@@ -8,6 +8,8 @@ Ruby High is a standalone Node service and installable SPA. Ruby hosts the schoo
 
 Production is on **Fly.io** with SQLite on a Fly Volume; see [`infra/fly-deploy.md`](./infra/fly-deploy.md). The legacy DynamoDB backend and App Runner deployment are archived in [`infra/README.md`](./infra/README.md); the AWS exit migration is documented in [`docs/aws-exit-migration.md`](./docs/aws-exit-migration.md). Public-world service-state migration and rollback notes live in [`docs/world-state-runbook.md`](./docs/world-state-runbook.md).
 
+The [child privacy plan](./docs/coppa-plan.md) covers the teen audience, data uses, retention, deletion, vendor checks and owner release requirements.
+
 The two-wave first-class activation study is documented in [`docs/activation-playtest.md`](./docs/activation-playtest.md), including tracked invitation links, privacy boundaries, observation prompts, and decision thresholds.
 The current dependency-security disposition is recorded in [`docs/dependabot-triage-2026-08-09.md`](./docs/dependabot-triage-2026-08-09.md), separating the Fly runtime from plugin build tooling and offline visual-scene packages.
 
@@ -134,7 +136,11 @@ Scheduled play is opt-in and server-bounded: 15–1440 minute intervals, at most
 | `RUBY_HIGH_STORE_BACKEND` | `json` | `json` for local dev (atomic file at `~/.ruby-high/state.json`), `sqlite` for production (Fly Volume at `/data/ruby-high.db`). The legacy `dynamodb` backend is archived. |
 | `RUBY_HIGH_STATE_PATH` | `~/.ruby-high/state.json` | State file path. For the `sqlite` backend this is the db file path (e.g. `/data/ruby-high.db`). |
 | `RUBY_HIGH_X_SCHEDULED_POSTS_ENABLED` | `0` | Set to `1` to let the first connected teacher publish at most one classroom/teacher-lounge update per 24 hours. A real Guest Faculty rotation change is announced before the normal AI-authored calendar and recorded by week plus pack, so cold starts, deploys, and later daily ticks do not repeat the same flip. Guest welcomes use only verified roster copy and do not depend on the text model. Each post composes a dynamic, identity-locked campus photo from canonical faculty/classmate art, appends a deterministic viewer link, persists cadence across restarts, and backs off six hours after a failed attempt. |
-| `RUBY_HIGH_STATE_TTL_SECONDS` | 90 days | TTL for idle sessions (SQLite `kv_expires` index). |
+| `RUBY_HIGH_STATE_TTL_SECONDS` | 90 days | Retention for hosted game and account records. Keep it positive in production. |
+| `RUBY_HIGH_PRIVACY_OPERATOR` | required in production | Public legal operator name. |
+| `RUBY_HIGH_PRIVACY_EMAIL` | required in production | Public privacy request email. |
+| `RUBY_HIGH_PRIVACY_ADDRESS` | required in production | Public business mailing address. |
+| `RUBY_HIGH_PRIVACY_PHONE` | required in production | Public privacy contact phone. |
 | `RUBY_HIGH_DYNAMO_TABLE` | — | Legacy: required when backend is `dynamodb`. Ignored for `sqlite`/`json`. |
 | `AWS_REGION` | — | Legacy state-store region. Still used for Tigris portrait storage when `RUBY_HIGH_PORTRAITS_BUCKET` is set. |
 | `RUBY_HIGH_ADMIN_TOKEN` | — | Enables private admin routes, including metrics. Keep this in secrets only. |

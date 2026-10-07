@@ -92,6 +92,24 @@ describe("Ruby High Agent API", () => {
     });
   });
 
+  it("revokes one owner's credentials and keeps another owner's access after a reload", async () => {
+    const one = await access.issueDeviceCode({ agentName: "One", scopes: ["school:read"] });
+    const two = await access.issueDeviceCode({ agentName: "Two", scopes: ["school:read"] });
+    const owned = await access.approveDeviceCode(one.userCode, "rh:user:one");
+    await access.approveDeviceCode(two.userCode, "rh:user:two");
+    const first = await access.exchangeDeviceCode(one.deviceCode); const second = await access.exchangeDeviceCode(two.deviceCode);
+    if (first.status !== "approved" || second.status !== "approved") throw new Error("Expected tokens.");
+    const launch = await access.createLaunch(owned.id);
+    const viewer = await access.consumeLaunch(launch);
+    const cookie = access.buildViewerCookie(viewer.viewerToken, false);
+    expect(await access.deleteOwnerData("rh:user:one")).toEqual([owned.stateKey]);
+    expect(access.authenticateBearer(`Bearer ${first.accessToken}`)).toBeNull();
+    expect(access.stateKeyForViewerCookie(cookie)).toBeNull();
+    await access.hydrate();
+    expect(access.authenticateBearer(`Bearer ${first.accessToken}`)).toBeNull();
+    expect(access.authenticateBearer(`Bearer ${second.accessToken}`)).not.toBeNull();
+  });
+
   it("allows the branded Eliza avatar on the browser approval page", async () => {
     const response = await request({
       method: "GET",

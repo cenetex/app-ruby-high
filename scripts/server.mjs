@@ -73,8 +73,14 @@ async function bootServices() {
     TelegramService,
     XSocialService,
     createStateStore,
+    startPrivacyMaintenance,
+    privacyConfigurationErrors,
     handleAppRoutes: appRoutes,
   } = mod;
+  if (process.env.NODE_ENV === "production") {
+    const errors = privacyConfigurationErrors();
+    if (errors.length) throw new Error(errors.join(" "));
+  }
   handleAppRoutes = appRoutes;
   // State backend: selected by RUBY_HIGH_STORE_BACKEND. Production uses
   // sqlite at RUBY_HIGH_STATE_PATH; json remains the local fallback and
@@ -91,6 +97,7 @@ async function bootServices() {
   rubySvc = svc;
   agentAccessSvc = new AgentAccessService(fakeRuntime, stateStore);
   await agentAccessSvc.hydrate();
+  startPrivacyMaintenance({ auth: authSvc, ruby: rubySvc, chat: chatSvc, agents: agentAccessSvc });
   try {
     xSocialSvc = await XSocialService.start(fakeRuntime, stateStore);
     svc.startRotationScheduler();

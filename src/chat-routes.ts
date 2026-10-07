@@ -1,3 +1,4 @@
+import { AgentAccessService } from "./services/agent-access-service.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { IAgentRuntime } from "./runtime.js";
 import {
@@ -5,7 +6,8 @@ import {
   clientSurfaceFromUserAgent,
   type AuthRecord,
 } from "./services/auth-service.js";
-import { ChatService, type AvatarPromptContext, type ChatMessage, type ChatStreamEvent, type ToolCall } from "./services/chat-service.js";
+import { deletePlayerData } from "./services/privacy-maintenance.js";
+import { ChatService, chatSessionHash, type AvatarPromptContext, type ChatMessage, type ChatStreamEvent, type ToolCall } from "./services/chat-service.js";
 import {
   HALL_PASS_CARD_BURN_HALL_PASS_VALUE,
   RubyHighService,
@@ -184,7 +186,7 @@ export function publicChatHistory(
   const pendingTools = new Map<string, { call: ToolCall; faculty?: string }>();
   for (const m of messages) {
     if (m.role === "user") {
-      const isSelf = !!viewerSessionToken && m.authorSessionToken === viewerSessionToken;
+      const isSelf = !!viewerSessionToken && m.authorSessionHash === chatSessionHash(viewerSessionToken);
       out.push({
         role: "user",
         content: m.content,
@@ -2683,6 +2685,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         walletAddress: null,
         walletChainType: null,
       },
+      privacyAccountId: record?.userId ?? null,
       since: record?.createdAt ?? null,
       label: record?.label ?? null,
     });
@@ -2708,8 +2711,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         ctx.error(ctx.res, "No signed-in Ruby High account to delete.", 401);
         return true;
       }
-      const deleted = await ruby.deleteAccountData(target);
-      auth.forgetDeletedAccount(target);
+      const deleted = await deletePlayerData({ auth, ruby, chat, agents: getService<AgentAccessService>(runtime, AgentAccessService.serviceType) }, target);
       setCookieHeader(ctx.res, auth.buildClearCookie({ secure }));
       ctx.json(ctx.res, { ok: true, deleted });
     } catch (err) {
@@ -2737,7 +2739,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const faculty = guestAccess && !guestCanAccessFaculty(guestAccess, requested)
       ? fallbackFaculty
       : requested;
-    const messages = chat.history({ sessionToken: token, faculty });
+    const messages = chat.history({ sessionToken: token, accountId: stateKey, faculty });
     // History is bucketed by room/faculty; the X-Openrouter-Key header decides
     // whether the client is "authed" for chat actions. Both can be present
     // independently — a fresh tab might have a cookie from a prior session
@@ -2748,7 +2750,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       local_ai: isLocalLlmProvider(),
       hosted_ai: entitlements.hosted_ai,
       entitlements,
-      summary: chat.roomSummary({ sessionToken: token, faculty }) ?? "",
+      summary: chat.roomSummary({ sessionToken: token, accountId: stateKey, faculty }) ?? "",
       history: publicChatHistory(messages, token),
     });
     return true;
@@ -2789,7 +2791,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     const state = ruby.getOrCreate(sessionId);
     const intent = cleanPlayerChatIntent(body?.context?.intent) ?? playerIntentForPhase(state);
     const bankStatus = faculty === "lounge" ? null : ruby.questionBankStatus(sessionId, faculty);
-    const isStaleChatEvent = chatEventTurnGuard(sessionId, faculty, body?.clientTurnSeq);
+    const turnIsStale = chatEventTurnGuard(sessionId, faculty, body?.clientTurnSeq);
+    const isStaleChatEvent = () => auth.resolve(token)?.userId !== record?.userId || turnIsStale();
     const { send, end } = openSse(ctx.res);
 
     let preparedCharge: PlayerChatTurnCharge | null = null;
@@ -2853,6 +2856,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       chat.appendPlayerMessage({
         sessionToken: token,
         faculty: historyFaculty,
+        accountId: sessionId,
         authorName,
         authorAvatarUrl: publicPlayerAvatarUrl(ruby, sessionId),
       }, playerLine);
@@ -2870,7 +2874,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
           .filter((s) => s.id !== responder.student.id)
           .map((s) => s.name);
         let teacherSaid: string | undefined;
-        const history = chat.history({ sessionToken: token, faculty });
+        const history = chat.history({ sessionToken: token, accountId: stateKey, faculty });
         for (let i = history.length - 1; i >= 0; i--) {
           const m = history[i];
           if (m.role === "assistant" && m.content && m.content.trim()) {
@@ -2936,7 +2940,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         if (line) {
           turnSucceeded = true;
           chat.appendEvent(
-            { sessionToken: token, faculty },
+            { sessionToken: token, accountId: sessionId, faculty },
             { kind: "chime", text: `${responder.student.name} (classmate) chimed in: "${line}"` },
           );
         }
@@ -3047,7 +3051,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             ? "No scheduled deck card is available right now, and pick_from_bank is unavailable. Do not say the deck is exhausted or dry. Call pose_question exactly once for a custom practice challenge."
             : "No scheduled Ruby High card is available, and pick_from_bank is unavailable. Call pose_question exactly once and write a custom practice question.";
           chat.appendEvent(
-            { sessionToken: token, faculty },
+            { sessionToken: token, accountId: sessionId, faculty },
             { kind: "note", text: noQuestionNote },
           );
           for await (const ev of streamTeacherAvatarTurn(chat, {
@@ -3178,7 +3182,8 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     }
     const grade = ruby.getOrCreate(sessionId).currentGrade;
     const contextIntent = cleanPlayerChatIntent(body?.context?.intent);
-    const isStaleChatEvent = chatEventTurnGuard(sessionId, faculty, body?.clientTurnSeq);
+    const turnIsStale = chatEventTurnGuard(sessionId, faculty, body?.clientTurnSeq);
+    const isStaleChatEvent = () => auth.resolve(token)?.userId !== record?.userId || turnIsStale();
 
     const { send, end } = openSse(ctx.res);
     if (isStaleChatEvent()) {
@@ -3199,7 +3204,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       // synopsis includes "the student just walked in."
       if (trigger === "lounge-enter") {
         chat.appendEvent(
-          { sessionToken: token, faculty: "lounge" },
+          { sessionToken: token, accountId: sessionId, faculty: "lounge" },
           {
             kind: "lounge-enter",
             text: "The student just walked into the teachers' lounge to lurk.",
@@ -3276,7 +3281,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       const playerName = state.character?.name ?? "the player";
       extraSystemContext = buildEssayContext(state, ruby.graduationGate(sessionId)) ?? undefined;
       chat.appendEvent(
-        { sessionToken: token, faculty },
+        { sessionToken: token, accountId: sessionId, faculty },
         {
           kind: "channel-enter",
           text: `${playerName} just walked into your classroom${grade ? ` for ${gradeLabel(grade)} year` : ""}.`,
@@ -3321,7 +3326,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         }
       }
       chat.appendEvent(
-        { sessionToken: token, faculty },
+        { sessionToken: token, accountId: sessionId, faculty },
         { kind: "answer-resolved", text: parts.join(" ") },
       );
       if (characterGraduated(state)) {
@@ -3355,7 +3360,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
         ? extraSystemContext + "\n" + essayCtx2
         : essayCtx2;
       chat.appendEvent(
-        { sessionToken: token, faculty },
+        { sessionToken: token, accountId: sessionId, faculty },
         { kind: "note", text: idle.eventText },
       );
       disableToolsForTurn = true;
@@ -3437,7 +3442,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
             ? "No scheduled deck card is available right now, and pick_from_bank is unavailable. Do not say the deck is exhausted or dry. Call pose_question exactly once for a custom practice challenge."
             : "No scheduled Ruby High card is available, and pick_from_bank is unavailable. Call pose_question exactly once and write a custom practice question.";
           chat.appendEvent(
-            { sessionToken: token, faculty },
+            { sessionToken: token, accountId: sessionId, faculty },
             { kind: "note", text: noQuestionNote },
           );
           for await (const ev of streamTeacherAvatarTurn(chat, {
@@ -3528,7 +3533,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     // actually said to iris so i got nothing rn lol").
     let teacherSaid: string | undefined;
     if (faculty) {
-      const history = chat.history({ sessionToken: token, faculty });
+      const history = chat.history({ sessionToken: token, accountId: stateKey, faculty });
       for (let i = history.length - 1; i >= 0; i--) {
         const m = history[i];
         if (m.role === "assistant" && m.content && m.content.trim()) {
@@ -3574,7 +3579,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       // the dialogue stream.
       if (line && faculty) {
         chat.appendEvent(
-          { sessionToken: token, faculty },
+          { sessionToken: token, accountId: sessionId, faculty },
           {
             kind: "chime",
             text: `${student.name} (classmate) chimed in: "${line}"`,
@@ -3878,7 +3883,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
       // chat); this entry exists so a follow-up teacher turn knows the
       // grading has already happened and doesn't re-grade.
       chat.appendEvent(
-        { sessionToken: token, faculty: facultyId },
+        { sessionToken: token, accountId: sessionId, faculty: facultyId },
         { kind: "opinion-graded", text: `Opinion grading delivered: ${narrativeText}` },
       );
     } catch (err) {
@@ -4693,7 +4698,7 @@ export async function handleChatRoutes(ctx: ChatRouteContext): Promise<boolean> 
     }
     const body = (await ctx.readJsonBody().catch(() => ({}))) as { faculty?: string } | null;
     const faculty = canonicalFacultyForRoute(ruby, auth.stateKeyForRecord(record), body?.faculty ?? "ruby");
-    chat.resetHistory({ sessionToken: token, faculty });
+    chat.resetHistory({ sessionToken: token, accountId: auth.stateKeyForRecord(record), faculty });
     ctx.json(ctx.res, { ok: true });
     return true;
   }
@@ -4735,5 +4740,5 @@ export function noteGradedAnswer(args: {
     },
   });
   const note = `${resolved.eventText} Do not ask for this answer again.`;
-  chat.noteAnswer({ sessionToken: token, faculty }, note);
+  chat.noteAnswer({ sessionToken: token, accountId: sessionId, faculty }, note);
 }

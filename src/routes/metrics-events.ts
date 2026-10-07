@@ -345,17 +345,13 @@ function privyAuthErrorMetadata(body: MetricsEventBody): Record<string, string |
     "diagnosticType",
     "level",
     "stage",
-    "errorMessage",
     "errorName",
     "errorCode",
     "dataError",
-    "dataMessage",
-    "causeMessage",
     "privyErrorCode",
     "walletClientType",
     "connectorType",
     "provider",
-    "addressPreview",
   ];
   for (const field of stringFields) {
     const value = requestString(body[field]);

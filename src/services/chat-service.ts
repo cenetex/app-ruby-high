@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { CHAT_RETENTION_MS } from "./privacy-policy.js";
 import { Service, type IAgentRuntime } from "../runtime.js";
 import { teacherById, type TeacherCharacter } from "../characters/teachers.js";
 import { STUDENTS, type StudentCharacter } from "../characters/students.js";
@@ -49,7 +51,8 @@ export interface ChatMessage {
   /** Faculty id that authored / was active when this message landed. */
   faculty?: string;
   /** Session that authored a player message. The room key itself is global. */
-  authorSessionToken?: string;
+  authorSessionHash?: string;
+  authorAccountId?: string;
   /** Display name for the player that authored a user message. */
   authorName?: string;
   /** Public-safe avatar URL for the player that authored a user message. */
@@ -73,6 +76,7 @@ type ToolDispatchResult = {
 export interface ChatHistoryKey {
   /** The actor's session token. Used for player-message attribution, not room isolation. */
   sessionToken: string;
+  accountId?: string;
   faculty: string;
   authorName?: string;
   authorAvatarUrl?: string;
@@ -109,6 +113,8 @@ export type RoomEventKind =
   | "note";
 
 export interface RoomEvent {
+  authorSessionHash?: string;
+  authorAccountId?: string;
   kind: RoomEventKind;
   /** Pre-formatted line for the model's RECENT EVENTS synopsis. Keep tight. */
   text: string;
@@ -116,8 +122,11 @@ export interface RoomEvent {
 }
 
 interface ChatRoomSummary {
+  accountIds?: string[];
+  sessionHashes?: string[];
   text: string;
   updatedAt: number;
+  oldestSourceAt: number;
   compactedMessages: number;
 }
 
@@ -215,6 +224,7 @@ export class ChatService extends Service {
   override readonly capabilityDescription =
     "Routes chat between students and Ruby High teachers via OpenRouter, with tools that drive the chalkboard.";
 
+  private privacyGeneration = 0;
   private readonly histories = new Map<string, ChatMessage[]>();
   private readonly summaries = new Map<string, ChatRoomSummary>();
   private readonly pendingSummaries = new Map<string, PendingChatRoomSummary>();
@@ -300,10 +310,12 @@ export class ChatService extends Service {
   }
 
   history(key: ChatHistoryKey): ChatMessage[] {
+    this.pruneExpiredRooms();
     return this.histories.get(this.keyOf(key)) ?? [];
   }
 
   roomSummary(key: ChatHistoryKey): string | null {
+    this.pruneExpiredRooms();
     return this.summaries.get(this.keyOf(key))?.text ?? null;
   }
 
@@ -327,7 +339,7 @@ export class ChatService extends Service {
       list = [];
       this.events.set(k, list);
     }
-    list.push({ kind: event.kind, text: event.text, at: event.at ?? Date.now() });
+    list.push({ kind: event.kind, text: event.text, at: event.at ?? Date.now(), authorSessionHash: chatSessionHash(key.sessionToken), ...(key.accountId ? { authorAccountId: key.accountId } : {}) });
     if (list.length > EVENT_LOG_LIMIT) {
       list.splice(0, list.length - EVENT_LOG_LIMIT);
     }
@@ -354,7 +366,8 @@ export class ChatService extends Service {
       role: "user",
       content,
       faculty: key.faculty,
-      authorSessionToken: key.sessionToken,
+      authorSessionHash: chatSessionHash(key.sessionToken),
+      ...(key.accountId ? { authorAccountId: key.accountId } : {}),
       authorName: cleanAuthorName(key.authorName),
       authorAvatarUrl: cleanAuthorAvatarUrl(key.authorAvatarUrl),
       at,
@@ -426,6 +439,7 @@ export class ChatService extends Service {
 
   async *send(opts: SendOpts): AsyncGenerator<ChatStreamEvent> {
     await this.ready();
+    const privacyGeneration = this.privacyGeneration;
     if (!this.ruby) throw new Error("RubyHighService not bound to ChatService.");
     const state = this.ruby.getOrCreate(opts.agentSessionId);
     const rawSpeakerId = opts.speakerFacultyId ?? opts.faculty;
@@ -453,6 +467,7 @@ export class ChatService extends Service {
     const history = this.ensure(key);
     this.trim(key);
     const earlierSummary = await this.refreshRoomSummary(key, opts.apiKey);
+    if (privacyGeneration !== this.privacyGeneration) return;
     if (earlierSummary) yield { type: "summary", text: earlierSummary };
 
     // systemEventNote is the per-turn directive. It does NOT enter
@@ -469,7 +484,8 @@ export class ChatService extends Service {
         role: "user",
         content: opts.userMessage,
         faculty: bucketFaculty,
-        authorSessionToken: opts.sessionToken,
+        authorSessionHash: chatSessionHash(opts.sessionToken),
+        authorAccountId: opts.agentSessionId,
         authorName: cleanAuthorName(opts.authorName),
         authorAvatarUrl: cleanAuthorAvatarUrl(opts.authorAvatarUrl),
         at: Date.now(),
@@ -488,7 +504,7 @@ export class ChatService extends Service {
     }
     const isStaleTurn = () => {
       try {
-        return !!opts.isStale?.();
+        return privacyGeneration !== this.privacyGeneration || !!opts.isStale?.();
       } catch {
         return false;
       }
@@ -583,6 +599,8 @@ export class ChatService extends Service {
         return;
       }
       const assistantMessage: ChatMessage = {
+        authorAccountId: opts.agentSessionId,
+        authorSessionHash: chatSessionHash(opts.sessionToken),
         role: "assistant",
         content: visibleAssistantText,
         toolCalls: assistantToolCalls.length ? assistantToolCalls : undefined,
@@ -675,6 +693,8 @@ export class ChatService extends Service {
         if (!turnStillOwnsRoom) staleRoomTurn = true;
         history.push({
           role: "tool",
+          authorAccountId: opts.agentSessionId,
+          authorSessionHash: chatSessionHash(opts.sessionToken),
           content: JSON.stringify(result.payload),
           toolCallId: call.id,
           faculty: opts.faculty,
@@ -1041,7 +1061,10 @@ export class ChatService extends Service {
     const text = appendRoomSummary(previous?.text ?? "", compacted);
     this.summaries.set(roomKey, {
       text,
+      accountIds: Array.from(new Set([...(previous?.accountIds ?? []), ...compacted.map(message => message.authorAccountId).filter((id): id is string => !!id)])),
+      sessionHashes: Array.from(new Set([...(previous?.sessionHashes ?? []), ...compacted.map(message => message.authorSessionHash).filter((id): id is string => !!id)])),
       updatedAt: Date.now(),
+      oldestSourceAt: Math.min(previous?.oldestSourceAt ?? Date.now(), ...compacted.map(message => message.at)),
       compactedMessages: (previous?.compactedMessages ?? 0) + compacted.length,
     });
     return keep.flat();
@@ -1056,11 +1079,14 @@ export class ChatService extends Service {
     const pending = this.pendingSummaries.get(roomKey);
     if (!pending || pending.messages.length === 0) return null;
 
+    const privacyGeneration = this.privacyGeneration;
+    const oldestSourceAt = this.summaries.get(roomKey)?.oldestSourceAt ?? Date.now();
     const refresh: Promise<string | null> = this.generateRoomSummary(pending, apiKey)
       .then((text) => {
+        if (privacyGeneration !== this.privacyGeneration || oldestSourceAt <= Date.now() - CHAT_RETENTION_MS || !this.pendingSummaries.has(roomKey) || !this.summaries.has(roomKey)) return null;
         const currentPending = this.pendingSummaries.get(roomKey);
         const compactedMessages = this.summaries.get(roomKey)?.compactedMessages ?? pending.messages.length;
-        this.summaries.set(roomKey, { text, updatedAt: Date.now(), compactedMessages });
+        this.summaries.set(roomKey, { ...this.summaries.get(roomKey)!, text, updatedAt: Date.now(), compactedMessages });
         if (currentPending === pending) {
           this.pendingSummaries.delete(roomKey);
         } else if (currentPending) {
@@ -1170,6 +1196,7 @@ export class ChatService extends Service {
       teacher: args.teacher,
       roomId: args.key.faculty,
       sessionToken: args.opts.sessionToken,
+      accountId: args.opts.agentSessionId,
       authorName: args.opts.authorName ?? state?.character?.name,
       text: args.text,
       subject: state?.current?.subject ?? state?.subject ?? undefined,
@@ -1177,7 +1204,60 @@ export class ChatService extends Service {
     });
   }
 
+  async deleteAccountData(target: { sessionId: string; authSessionTokens?: string[] }): Promise<void> {
+    await this.ready();
+    this.privacyGeneration += 1;
+    const hashes = new Set((target.authSessionTokens ?? []).map(chatSessionHash));
+    const matches = (record: { authorAccountId?: string; authorSessionHash?: string }) =>
+      record.authorAccountId === target.sessionId || (!!record.authorSessionHash && hashes.has(record.authorSessionHash));
+    for (const [key, history] of this.histories) {
+      const kept = history.filter(message => !matches(message));
+      if (kept.length === history.length) continue;
+      history.splice(0, history.length, ...kept);
+      this.summaries.delete(key);
+      this.pendingSummaries.delete(key);
+      this.summaryRetryAfter.delete(key);
+    }
+    for (const [key, events] of this.events) this.events.set(key, events.filter(event => !matches(event)));
+    for (const [key, summary] of this.summaries) {
+      if (summary.accountIds?.includes(target.sessionId) || summary.sessionHashes?.some(hash => hashes.has(hash))) {
+        this.summaries.delete(key);
+        this.pendingSummaries.delete(key);
+        this.summaryRetryAfter.delete(key);
+      }
+    }
+    await this.personaMemory.forgetAccount(target.sessionId, target.authSessionTokens ?? []);
+    this.persistSoon();
+    await this.persistPromise;
+    await this.store?.flush?.();
+  }
+
+  async purgeExpiredPrivacyData(): Promise<void> {
+    await this.ready();
+    this.pruneExpiredRooms();
+    await this.personaMemory.purgeExpired();
+    this.persistSoon();
+    await this.persistPromise;
+    await this.store?.flush?.();
+  }
+
+  private pruneExpiredRooms(now = Date.now()): void {
+    const cutoff = now - CHAT_RETENTION_MS;
+    for (const [key, history] of this.histories) {
+      history.splice(0, history.length, ...history.filter(message => message.at > cutoff));
+      if (history.length === 0) this.histories.delete(key);
+    }
+    for (const [key, events] of this.events) {
+      const kept = events.filter(event => event.at > cutoff);
+      if (kept.length) this.events.set(key, kept); else this.events.delete(key);
+    }
+    for (const [key, summary] of this.summaries) {
+      if (summary.oldestSourceAt <= cutoff) { this.summaries.delete(key); this.pendingSummaries.delete(key); }
+    }
+  }
+
   private persistenceRecord(): StoredServiceStateRecord {
+    this.pruneExpiredRooms();
     const keys = new Set([
       ...this.histories.keys(),
       ...this.events.keys(),
@@ -1194,6 +1274,7 @@ export class ChatService extends Service {
     return {
       id: CHAT_SERVICE_STATE_ID,
       updatedAt: Date.now(),
+      expiresAt: Date.now() + CHAT_RETENTION_MS,
       data: { version: 1, rooms },
     };
   }
@@ -1316,14 +1397,15 @@ function normalizePersistedChatRooms(record: StoredServiceStateRecord): Array<{
     if (!key) continue;
     const history = normalizeHistoryForProvider(
       Array.isArray(row.history)
-        ? row.history.map(normalizeChatMessage).filter((m): m is ChatMessage => !!m)
+        ? row.history.map(normalizeChatMessage).filter((m): m is ChatMessage => !!m && m.at > Date.now() - CHAT_RETENTION_MS)
         : [],
       CHAT_ROOM_COMPACT_TRIGGER_GROUPS,
     );
     const events = Array.isArray(row.events)
-      ? row.events.map(normalizeRoomEvent).filter((event): event is RoomEvent => !!event).slice(-EVENT_LOG_LIMIT)
+      ? row.events.map(normalizeRoomEvent).filter((event): event is RoomEvent => !!event && event.at > Date.now() - CHAT_RETENTION_MS).slice(-EVENT_LOG_LIMIT)
       : [];
-    const summary = normalizeChatRoomSummary(row.summary);
+    const parsedSummary = normalizeChatRoomSummary(row.summary);
+    const summary = parsedSummary && parsedSummary.oldestSourceAt > Date.now() - CHAT_RETENTION_MS ? parsedSummary : null;
     rooms.push({ key, history, events, summary });
   }
   return rooms;
@@ -1341,7 +1423,9 @@ function normalizeChatMessage(raw: unknown): ChatMessage | null {
   const toolCalls = normalizeToolCalls(row.toolCalls);
   if (toolCalls.length > 0) message.toolCalls = toolCalls;
   if (typeof row.faculty === "string" && row.faculty) message.faculty = row.faculty;
-  if (typeof row.authorSessionToken === "string" && row.authorSessionToken) message.authorSessionToken = row.authorSessionToken;
+  if (typeof row.authorSessionHash === "string" && row.authorSessionHash) message.authorSessionHash = row.authorSessionHash;
+  else if (typeof row.authorSessionToken === "string" && row.authorSessionToken) message.authorSessionHash = chatSessionHash(row.authorSessionToken);
+  if (typeof row.authorAccountId === "string" && row.authorAccountId) message.authorAccountId = row.authorAccountId;
   if (typeof row.authorName === "string" && row.authorName.trim()) message.authorName = row.authorName.trim().slice(0, 80);
   const authorAvatarUrl = cleanAuthorAvatarUrl(row.authorAvatarUrl);
   if (authorAvatarUrl) message.authorAvatarUrl = authorAvatarUrl;
@@ -1379,7 +1463,7 @@ function normalizeRoomEvent(raw: unknown): RoomEvent | null {
   const text = typeof row.text === "string" ? row.text.trim() : "";
   if (!text) return null;
   const at = Number.isFinite(Number(row.at)) ? Math.floor(Number(row.at)) : Date.now();
-  return { kind, text, at };
+  return { kind, text, at, ...(typeof row.authorAccountId === "string" ? { authorAccountId: row.authorAccountId } : {}), ...(typeof row.authorSessionHash === "string" ? { authorSessionHash: row.authorSessionHash } : {}) };
 }
 
 function normalizeChatRoomSummary(raw: unknown): ChatRoomSummary | null {
@@ -1389,7 +1473,12 @@ function normalizeChatRoomSummary(raw: unknown): ChatRoomSummary | null {
   if (!text) return null;
   const updatedAt = Number.isFinite(Number(row.updatedAt)) ? Math.floor(Number(row.updatedAt)) : Date.now();
   const compactedMessages = Math.max(0, Math.floor(Number(row.compactedMessages ?? 0)));
-  return { text, updatedAt, compactedMessages };
+  return {
+    text, updatedAt, compactedMessages,
+    oldestSourceAt: Number.isFinite(Number(row.oldestSourceAt)) ? Math.floor(Number(row.oldestSourceAt)) : updatedAt,
+    ...(Array.isArray(row.accountIds) ? { accountIds: row.accountIds.filter((id): id is string => typeof id === "string") } : {}),
+    ...(Array.isArray(row.sessionHashes) ? { sessionHashes: row.sessionHashes.filter((id): id is string => typeof id === "string") } : {}),
+  };
 }
 
 function providerSafeHistoryGroups(list: ChatMessage[]): ChatMessage[][] {
@@ -2333,4 +2422,8 @@ function toOpenRouterMessage(
     return { role: "user", content: `${m.authorName}: ${m.content}` };
   }
   return { role: m.role, content: m.content };
+}
+
+export function chatSessionHash(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
 }

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { stubPrivyBundle } from "./helpers.js";
+import { stubPrivyBundle, openViewer, dismissAnnouncements } from "./helpers.js";
 
 const VIEWER = "/api/apps/ruby-high/viewer";
 
@@ -44,4 +44,58 @@ test("confirmation works with scripts disabled", async ({ browser }) => {
   } finally {
     await context.close();
   }
+});
+
+
+test("privacy is readable before entry on a small screen", async ({ page, context }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(VIEWER);
+  await page.getByRole("link", { name: "Privacy", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Privacy at Ruby High", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "privacy@example.invalid", exact: true })).toBeVisible();
+  expect(await context.cookies()).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: "/private/tmp/ruby-high-privacy-mobile.png", fullPage: true });
+  await page.screenshot({ path: "/private/tmp/ruby-high-privacy-mobile-top.png" });
+});
+
+test("a guest can delete the account from account settings", async ({ page, context }) => {
+  await openViewer(page);
+  await dismissAnnouncements(page);
+  await page.getByRole("button", { name: "Close student creator", exact: true }).click();
+  await page.locator("#you-profile").click();
+  await page.getByText("Account settings", { exact: true }).click();
+  await page.locator("#account-delete").click();
+  await page.getByRole("button", { name: "Delete account", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Confirm you are 13+?", exact: true })).toBeVisible();
+  expect(await context.cookies()).toEqual([]);
+});
+
+
+test("school sharing and teacher posts have separate choices", async ({ page }) => {
+  await openViewer(page);
+  const create = await page.request.post("/api/apps/ruby-high/session/browser-smoke/command", { data: {
+    type: "create-character", name: "Mika", playbookId: "overachiever",
+    stats: { head: 2, heart: 0, hustle: -1, honor: 1 }, arcAnswer: "Learn together.", personality: "Curious.",
+  } });
+  expect(create.ok()).toBe(true);
+  const created = await create.json();
+  expect(created.session.character).toMatchObject({ publicWorldVisible: false, socialPostingConsent: false });
+  await page.reload();
+  await dismissAnnouncements(page);
+  await page.locator("#you-profile").click();
+  await expect(page.locator("#account-public-world-toggle")).toHaveText("Show");
+  await expect(page.locator("#account-social-posting")).toHaveText("Allow posts");
+  await page.locator("#account-public-world-toggle").click();
+  await expect(page.locator("#account-public-world-toggle")).toHaveText("Hide");
+  await expect(page.locator("#account-social-posting")).toHaveText("Allow posts");
+  await page.locator("#account-social-posting").click();
+  await expect(page.locator("#account-social-posting")).toHaveText("Stop posts");
+  await expect(page.locator("#account-public-world-toggle")).toHaveText("Hide");
+  await page.locator("#account-social-posting").click();
+  await expect(page.locator("#account-social-posting")).toHaveText("Allow posts");
+  await expect(page.locator("#account-public-world-toggle")).toHaveText("Hide");
+  await page.getByText("Account settings", { exact: true }).click();
+  await page.locator("#account-privacy-id").click();
+  await expect(page.locator("#account-privacy-id-status")).toContainText("Privacy request ID");
 });

@@ -1675,6 +1675,7 @@ describe("RubyHighService Phase 1", () => {
     real.sessionId = "test:social-real";
     real.currentGrade = "9";
     real.character!.name = "Noor";
+    real.character!.socialPostingConsent = true;
     real.character!.createdAt = now;
     real.character!.portraitDataUrl = "/api/apps/ruby-high/assets/portrait/noor.png";
     real.character!.dailyClasses = {
@@ -1860,6 +1861,7 @@ describe("RubyHighService Phase 1", () => {
     const publicState = attachTestCharacter(ruby, "test:class-photo-public");
     publicState.sessionId = "test:class-photo-public";
     publicState.character!.name = "Noor";
+    publicState.character!.socialPostingConsent = true;
 
     const privateState = attachTestCharacter(ruby, "test:class-photo-private");
     privateState.sessionId = "test:class-photo-private";
@@ -1928,6 +1930,7 @@ describe("RubyHighService Phase 1", () => {
     const publicState = attachTestCharacter(ruby, "test:photo-count-public");
     publicState.sessionId = "test:photo-count-public";
     publicState.character!.name = "Noor";
+    publicState.character!.socialPostingConsent = true;
     publicState.character!.dailyClasses = {
       ruby: completedClassRecord("9", "ruby", today, "A", 300),
     };
@@ -4500,6 +4503,7 @@ describe("RubyHighService Phase 1", () => {
     const publicState = attachTestCharacter(ruby, "test:photo-public-consent");
     publicState.sessionId = "test:photo-public-consent";
     publicState.character!.name = "Noor";
+    publicState.character!.socialPostingConsent = true;
     publicState.character!.dailyClasses = {
       ruby: completedClassRecord("9", "ruby", today, "A", 300),
     };

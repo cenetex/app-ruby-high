@@ -49,6 +49,9 @@ if (process.argv.includes("--print-build-id")) {
   process.exit(0);
 }
 
+const privacyCheck = spawnSync("node", ["scripts/check-privacy-config.mjs"], { stdio: "inherit" });
+if (privacyCheck.status !== 0) process.exit(privacyCheck.status ?? 1);
+
 const deploy = spawnSync("flyctl", [
   "deploy",
   "--app",

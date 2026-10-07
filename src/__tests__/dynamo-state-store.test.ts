@@ -397,7 +397,7 @@ describe("DynamoStateStore", () => {
       provider: "openrouter",
       providerUserHash: "hash-1",
       createdAt: 100,
-      lastLoginAt: 200,
+      lastLoginAt: Date.now(),
     });
     await store.saveAuthSession({
       token: "token-1",
@@ -426,7 +426,7 @@ describe("DynamoStateStore", () => {
       providerUserHash: "visitor-delete",
       visitorHash: "visitor-delete",
       createdAt: 100,
-      lastLoginAt: 100,
+      lastLoginAt: Date.now(),
     } as any);
     await store.saveAuthUser({
       userId: "usr_keep",
@@ -434,7 +434,7 @@ describe("DynamoStateStore", () => {
       providerUserHash: "visitor-keep",
       visitorHash: "visitor-keep",
       createdAt: 100,
-      lastLoginAt: 100,
+      lastLoginAt: Date.now(),
     } as any);
     await store.saveAuthSession({ token: "tok-delete", userId: "usr_delete", createdAt: 100, expiresAt: Date.now() + 60_000 });
     await store.saveAuthSession({ token: "tok-keep", userId: "usr_keep", createdAt: 100, expiresAt: Date.now() + 60_000 });
@@ -506,7 +506,7 @@ describe("DynamoStateStore", () => {
         providerUserHash: "visitor-delete",
         visitorHash: "visitor-delete",
         createdAt: 100,
-        lastLoginAt: 100,
+        lastLoginAt: Date.now(),
       }],
       visitorHashes: ["visitor-delete"],
     });

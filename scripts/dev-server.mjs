@@ -22,6 +22,7 @@ import {
   TelegramService,
   XSocialService,
   createStateStore,
+  startPrivacyMaintenance,
   handleAppRoutes,
 } from "../dist/index.js";
 
@@ -81,6 +82,7 @@ const rubySvc = await (async () => {
 chatSvc.setRubyHighService(rubySvc);
 agentAccessSvc = new AgentAccessService(fakeRuntime, stateStore);
 await agentAccessSvc.hydrate();
+startPrivacyMaintenance({ auth: authSvc, ruby: rubySvc, chat: chatSvc, agents: agentAccessSvc });
 
 function makeRouteContext(req, res, url) {
   return createRouteContext({

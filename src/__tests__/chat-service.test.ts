@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ChatService } from "../services/chat-service.js";
+import { ChatService, chatSessionHash } from "../services/chat-service.js";
 import { TeacherPersonaMemory } from "../services/teacher-persona-memory.js";
 import { publicChatHistory } from "../chat-routes.js";
 import { RubyHighService } from "../services/ruby-high-service.js";
@@ -242,7 +242,7 @@ describe("ChatService.send — message composition", () => {
       {
         role: "user",
         content: "Can everyone see this homeroom question?",
-        authorSessionToken: "student-a",
+        authorSessionHash: chatSessionHash("student-a"),
         authorName: "Avery",
       },
     ]);
@@ -259,7 +259,7 @@ describe("ChatService.send — message composition", () => {
       chat.appendPlayerMessage(
         { sessionToken: `student-${i}`, faculty: "lounge", authorName: `Student ${i}` },
         `shared lounge line ${i}`,
-        1_700_000_000_000 + i,
+        Date.now() - 1000 + i,
       );
     }
 
@@ -287,7 +287,7 @@ describe("ChatService.send — message composition", () => {
       chat.appendPlayerMessage(
         { sessionToken: `student-${i}`, faculty: "ruby", authorName: `Student ${i}` },
         `classroom claim ${i}`,
-        1_700_000_005_000 + i,
+        Date.now() - 1000 + i,
       );
     }
 
@@ -338,7 +338,7 @@ describe("ChatService.send — message composition", () => {
       chat.appendPlayerMessage(
         { sessionToken: `attendee-${i}`, faculty: "lounge", authorName: `Attendee ${i}` },
         i === 0 ? marker : `ordinary lounge line ${i}`,
-        1_700_000_010_000 + i,
+        Date.now() - 1000 + i,
       );
     }
 
@@ -1420,7 +1420,7 @@ describe("ChatService.send — message composition", () => {
         role: "assistant",
         content: "",
         faculty: "ruby",
-        at: 1,
+        at: Date.now() - 1000 + 1,
         toolCalls: [
           {
             id: "call_pose",
@@ -1437,7 +1437,7 @@ describe("ChatService.send — message composition", () => {
         content: "{\"ok\":true,\"message\":\"Question posted.\"}",
         toolCallId: "call_pose",
         faculty: "ruby",
-        at: 2,
+        at: Date.now() - 1000 + 2,
       },
     ] as any);
 
@@ -1458,8 +1458,8 @@ describe("ChatService.send — message composition", () => {
         role: "user",
         content: "The shared room can hear me.",
         faculty: "ruby",
-        at: 1,
-        authorSessionToken: "speaker-token",
+        at: Date.now() - 1000 + 1,
+        authorSessionHash: chatSessionHash("speaker-token"),
         authorName: "Avery",
         authorAvatarUrl: "/api/apps/ruby-high/assets/portrait/avery.png",
       },
@@ -1483,19 +1483,19 @@ describe("ChatService.send — message composition", () => {
     mockOpenRouter(buildSseChunk([{ content: "ok", finish: "stop" }]));
     const { chat } = await makeServices();
     (chat as any).histories.set("room::ruby", [
-      { role: "user", content: "old user", faculty: "ruby", at: 1 },
+      { role: "user", content: "old user", faculty: "ruby", at: Date.now() - 1000 + 1 },
       {
         role: "assistant",
         content: "tooling",
         faculty: "ruby",
-        at: 2,
+        at: Date.now() - 1000 + 2,
         toolCalls: [
           { id: "call_a", type: "function", function: { name: "pick_from_bank", arguments: "{}" } },
           { id: "call_b", type: "function", function: { name: "clear_board", arguments: "{}" } },
         ],
       },
-      { role: "tool", content: "{\"ok\":true}", toolCallId: "call_a", faculty: "ruby", at: 3 },
-      { role: "assistant", content: "after broken group", faculty: "ruby", at: 4 },
+      { role: "tool", content: "{\"ok\":true}", toolCallId: "call_a", faculty: "ruby", at: Date.now() - 1000 + 3 },
+      { role: "assistant", content: "after broken group", faculty: "ruby", at: Date.now() - 1000 + 4 },
     ]);
 
     for await (const _ of chat.send({
@@ -1520,7 +1520,7 @@ describe("ChatService.send — message composition", () => {
       role: i % 2 === 0 ? "user" : "assistant",
       content: `filler ${i}`,
       faculty: "ruby",
-      at: i + 1,
+      at: Date.now() - 1000 + i,
     }));
     (chat as any).histories.set("room::ruby", [
       ...filler,
@@ -1528,14 +1528,14 @@ describe("ChatService.send — message composition", () => {
         role: "assistant",
         content: "tooling",
         faculty: "ruby",
-        at: 100,
+        at: Date.now() - 1000 + 100,
         toolCalls: [
           { id: "call_a", type: "function", function: { name: "pick_from_bank", arguments: "{}" } },
           { id: "call_b", type: "function", function: { name: "clear_board", arguments: "{}" } },
         ],
       },
-      { role: "tool", content: "{\"ok\":true}", toolCallId: "call_a", faculty: "ruby", at: 101 },
-      { role: "tool", content: "{\"ok\":true}", toolCallId: "call_b", faculty: "ruby", at: 102 },
+      { role: "tool", content: "{\"ok\":true}", toolCallId: "call_a", faculty: "ruby", at: Date.now() - 1000 + 101 },
+      { role: "tool", content: "{\"ok\":true}", toolCallId: "call_b", faculty: "ruby", at: Date.now() - 1000 + 102 },
     ]);
 
     for await (const _ of chat.send({

@@ -15,6 +15,7 @@ Reference docs. The entry points stay at the repo root:
 - [`course-janus-cyborgism-design.md`](./course-janus-cyborgism-design.md) — design doc for a proposed Janus & Cyborgism Lab guest course in the Project 89 house format
 
 ## Engineering roadmap
+- [`coppa-plan.md`](./coppa-plan.md) — teen audience, data register, retention, deletion and owner release requirements
 - [`player-dialogue-policy.md`](./player-dialogue-policy.md) — the child-privacy reason for guided player dialogue and its code contract
 - [`../ROADMAP.md`](../ROADMAP.md) — issue-backed MMO-readiness and revenue roadmap
 - [`agent-directive-class-spine.md`](./agent-directive-class-spine.md) — agent work order for implementing the class rhythm without adding another named payoff mechanic
