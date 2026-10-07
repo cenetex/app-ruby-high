@@ -55,8 +55,8 @@ test("privacy is readable before entry on a small screen", async ({ page, contex
   await expect(page.getByRole("link", { name: "privacy@example.invalid", exact: true })).toBeVisible();
   expect(await context.cookies()).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: "/private/tmp/ruby-high-privacy-mobile.png", fullPage: true });
-  await page.screenshot({ path: "/private/tmp/ruby-high-privacy-mobile-top.png" });
+  await page.screenshot({ path: test.info().outputPath("privacy-mobile.png"), fullPage: true });
+  await page.screenshot({ path: test.info().outputPath("privacy-mobile-top.png") });
 });
 
 test("a guest can delete the account from account settings", async ({ page, context }) => {
