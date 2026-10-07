@@ -80,7 +80,7 @@ test("school sharing and teacher posts have separate choices", async ({ page }) 
   } });
   expect(create.ok()).toBe(true);
   const created = await create.json();
-  expect(created.session.character).toMatchObject({ publicWorldVisible: false, socialPostingConsent: false });
+  expect(created.session.telemetry.character).toMatchObject({ publicWorldVisible: false, socialPostingConsent: false });
   await page.reload();
   await dismissAnnouncements(page);
   await page.locator("#you-profile").click();
