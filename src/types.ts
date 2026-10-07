@@ -1229,11 +1229,12 @@ export interface PlayerCharacter {
    *  moment, not their backstory. Optional for characters created before
    *  this field existed; the card falls back to arcAnswer when absent. */
   flavorQuote?: string;
-  /** When true, allows teacher X posts about this character's milestones.
-   *  Defaults to true for new characters; can be toggled via command. */
+  /** Legacy public sharing choice. False keeps the student out of school activity. */
   socialConsent?: boolean;
+  /** Explicit permission for teacher posts on outside social services. */
+  socialPostingConsent?: boolean;
   /** Controls whether this character may appear in aggregate school activity
-   *  rooms/feed. Defaults to true; legacy socialConsent=false still removes
+   *  rooms/feed. New characters start private; legacy socialConsent=false removes
    *  the character from shared activity surfaces as a conservative fallback. */
   publicWorldVisible?: boolean;
   /** UTC date (YYYY-MM-DD) of the last text-only X post for this character.
@@ -1388,9 +1389,10 @@ export interface StudentPoolEntry {
   stats: CharacterStats;
   arcAnswer: string;
   flavorQuote?: string;
-  /** When true, allows teacher X posts about this character's milestones.
-   *  Defaults to true for new characters; can be toggled via command. */
+  /** Legacy public sharing choice. False keeps the student out of school activity. */
   socialConsent?: boolean;
+  /** Explicit permission for teacher posts on outside social services. */
+  socialPostingConsent?: boolean;
   /** Controls whether this archived character can appear in school activity
    *  surfaces when it is used as a public student entry. */
   publicWorldVisible?: boolean;

@@ -79,7 +79,15 @@ function makeCtx(
     method,
     pathname: url.pathname,
     url,
-    runtime: null,
+    runtime: pathname.includes("/viewer") ? {
+      getService(type: string) {
+        return type === "ruby-high-auth" ? {
+          parseSessionToken: () => "shell-test-session",
+          resolve: () => ({ userId: "shell-test-user" }),
+          stateKeyForCookie: () => "shell-test-state",
+        } : null;
+      },
+    } : null,
     res: response.res as never,
     cookieHeader: null,
     error: (_res, message, status = 500) => {

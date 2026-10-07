@@ -148,3 +148,6 @@ export {
   VIEWER_FRAME_ANCESTORS_DIRECTIVE,
 } from "./viewer-shell.js";
 export * from "./types.js";
+
+export { privacyConfigurationErrors } from "./routes/privacy.js";
+export { startPrivacyMaintenance } from "./services/privacy-maintenance.js";

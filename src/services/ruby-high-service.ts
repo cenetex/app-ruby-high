@@ -414,7 +414,7 @@ function gradeRank(grade: string): number {
 }
 
 function characterAllowsSocialSharing(ch: PlayerCharacter): boolean {
-  return ch.socialConsent !== false;
+  return ch.socialPostingConsent === true;
 }
 
 function characterHasPublicName(ch: PlayerCharacter): boolean {
@@ -422,7 +422,7 @@ function characterHasPublicName(ch: PlayerCharacter): boolean {
 }
 
 function characterAllowsPublicSharing(ch: PlayerCharacter): boolean {
-  return characterAllowsSocialSharing(ch) && ch.publicWorldVisible !== false && characterHasPublicName(ch);
+  return ch.socialConsent !== false && ch.publicWorldVisible !== false && characterHasPublicName(ch);
 }
 
 function characterDailyClassRecords(ch: PlayerCharacter): DailyClassRecord[] {
@@ -10015,6 +10015,9 @@ export class RubyHighService extends Service {
       arcAnswer: ch.arcAnswer,
       ...(ch.flavorQuote ? { flavorQuote: ch.flavorQuote } : {}),
       personality: ch.personality,
+      ...(typeof ch.socialConsent === "boolean" ? { socialConsent: ch.socialConsent } : {}),
+      ...(typeof ch.socialPostingConsent === "boolean" ? { socialPostingConsent: ch.socialPostingConsent } : {}),
+      ...(typeof ch.publicWorldVisible === "boolean" ? { publicWorldVisible: ch.publicWorldVisible } : {}),
       ...(ch.portraitDataUrl ? { portraitDataUrl: ch.portraitDataUrl } : {}),
       ...(ch.diplomaImageDataUrl ? { diplomaImageDataUrl: ch.diplomaImageDataUrl } : {}),
       ...(characterArrayField(ch, "classPhotos").length ? { classPhotos: characterArrayField(ch, "classPhotos").map((p) => ({ ...p })) } : {}),
@@ -10109,6 +10112,8 @@ export class RubyHighService extends Service {
       ...(inheritedFrom ? { inheritedFrom } : {}),
       mashCard,
       socialConsent: true,
+      socialPostingConsent: false,
+      publicWorldVisible: false,
       // Lifer: starts ahead with one bonus advantage roll per grade.
       ...(input.playbookId === "lifer" ? {
         advantageRollBonuses: { "9": 1, "10": 1, "11": 1, "12": 1 } as Partial<Record<Grade, number>>,
@@ -12926,6 +12931,9 @@ function normalizeStudentPool(value: unknown): StudentPoolEntry[] {
       arcAnswer: typeof e.arcAnswer === "string" ? e.arcAnswer : "",
       ...(typeof e.flavorQuote === "string" && e.flavorQuote ? { flavorQuote: e.flavorQuote } : {}),
       personality: typeof e.personality === "string" ? e.personality : "",
+      ...(typeof e.socialConsent === "boolean" ? { socialConsent: e.socialConsent } : {}),
+      ...(typeof e.socialPostingConsent === "boolean" ? { socialPostingConsent: e.socialPostingConsent } : {}),
+      ...(typeof e.publicWorldVisible === "boolean" ? { publicWorldVisible: e.publicWorldVisible } : {}),
       ...(typeof e.portraitDataUrl === "string" && e.portraitDataUrl ? { portraitDataUrl: e.portraitDataUrl } : {}),
       ...(typeof e.diplomaImageDataUrl === "string" && e.diplomaImageDataUrl ? { diplomaImageDataUrl: e.diplomaImageDataUrl } : {}),
       yearbook: normalizedYearbook,

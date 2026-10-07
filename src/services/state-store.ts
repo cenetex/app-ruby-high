@@ -392,17 +392,19 @@ export class StateStore implements StateStoreLike {
   // window join the same pending promise, and the timer flushes one write.
   // `save()` and `flush()` short-circuit the timer to issue the write now.
   private readonly debounceMs: number;
+  private readonly ttlSeconds: number;
   private pendingTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingPromise: Promise<void> | null = null;
   private pendingResolve: (() => void) | null = null;
   private pendingReject: ((err: unknown) => void) | null = null;
 
-  constructor(path?: string, opts?: { debounceMs?: number }) {
+  constructor(path?: string, opts?: { debounceMs?: number; ttlSeconds?: number }) {
     this.path =
       path ??
       process.env.RUBY_HIGH_STATE_PATH ??
       resolve(homedir(), ".ruby-high", "state.json");
     this.debounceMs = opts?.debounceMs ?? readDebounceMsFromEnv();
+    this.ttlSeconds = opts?.ttlSeconds ?? 0;
   }
 
   async load(): Promise<Map<string, QuizState>> {
@@ -666,6 +668,27 @@ export class StateStore implements StateStoreLike {
     this.metricEvents = metricEvents;
     this.schoolEvents = schoolEvents;
     this.serviceStates = serviceStates;
+    if (this.pruneExpired() > 0) void this.scheduleWrite().catch(() => undefined);
+  }
+
+  private pruneExpired(now = Date.now()): number {
+    if (this.ttlSeconds <= 0) return 0;
+    const cutoff = now - this.ttlSeconds * 1000;
+    let removed = 0;
+    const prune = <T>(map: Map<string, T>, expired: (record: T) => boolean) => {
+      for (const [id, record] of map) if (expired(record)) { map.delete(id); removed += 1; }
+    };
+    prune(this.snapshot, r => r.updatedAt <= cutoff);
+    prune(this.authUsers, r => r.lastLoginAt <= cutoff);
+    prune(this.authSessions, r => r.expiresAt <= now);
+    prune(this.importedPacks, r => r.touchedAt <= cutoff);
+    prune(this.teachers, r => r.updatedAt <= cutoff);
+    prune(this.draftPacks, r => r.updatedAt <= cutoff);
+    prune(this.packInstallations, r => r.updatedAt <= cutoff);
+    prune(this.metricEvents, r => r.occurredAt <= cutoff);
+    prune(this.schoolEvents, r => r.occurredAt <= cutoff);
+    prune(this.serviceStates, r => !!r.expiresAt && r.expiresAt <= now);
+    return removed;
   }
 
   /**
@@ -822,7 +845,14 @@ export class StateStore implements StateStoreLike {
       result.schoolEvents += 1;
     }
 
-    return storedAccountDeletionResultTotal(result) > 0 ? this.scheduleWrite().then(() => result) : Promise.resolve(result);
+    let deletedPending = false;
+    for (const [id, record] of this.serviceStates) {
+      if (id.startsWith("auth:passkey:") && record.data.userId === normalized.userId) {
+        this.serviceStates.delete(id);
+        deletedPending = true;
+      }
+    }
+    return deletedPending || storedAccountDeletionResultTotal(result) > 0 ? this.scheduleWrite().then(() => result) : Promise.resolve(result);
   }
 
   describe(): string {
@@ -830,7 +860,7 @@ export class StateStore implements StateStoreLike {
   }
 
   metricEventRetentionMs(): number | null {
-    return null;
+    return this.ttlSeconds > 0 ? this.ttlSeconds * 1000 : null;
   }
 
   /** Drain any pending debounced write right now and wait for everything
@@ -896,6 +926,7 @@ export class StateStore implements StateStoreLike {
   }
 
   private async writeCurrentSnapshot(): Promise<void> {
+    this.pruneExpired();
     const dir = dirname(this.path);
     await mkdir(dir, { recursive: true, mode: 0o700 });
     const tmp = resolve(dir, `.${basename(this.path)}.${process.pid}.${nextStateStoreWriteSeq()}.tmp`);

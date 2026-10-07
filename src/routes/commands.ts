@@ -398,16 +398,18 @@ export async function handleCommandRoute(args: {
       return await persist(state, "Intro acknowledged");
     },
     "set-social-consent": async () => {
-      const consent = body?.socialConsent ?? true;
+      const consent = body?.socialConsent;
+      if (typeof consent !== "boolean") throw new Error("Choose whether to allow social posting.");
       const state = ruby.getOrCreate(stateKey);
       if (!state.character) throw new Error("No student to update.");
-      state.character.socialConsent = !!consent;
+      state.character.socialPostingConsent = consent;
       state.updatedAt = Date.now();
       void ruby.flushSession(stateKey);
       return await persist(state, consent ? "Social posting enabled" : "Social posting disabled");
     },
     "set-public-presence": async () => {
-      const visible = body?.publicWorldVisible ?? true;
+      const visible = body?.publicWorldVisible;
+      if (typeof visible !== "boolean") throw new Error("Choose whether to show your student.");
       const state = ruby.getOrCreate(stateKey);
       if (!state.character) throw new Error("No student to update.");
       if (visible) {

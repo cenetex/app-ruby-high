@@ -304,7 +304,7 @@ describe("command route persistence and scheduler misses", () => {
     expect(harness.response?.body.error).toMatch(/could not be persisted/i);
   });
 
-  it("mints a guest session before no-cookie command mutations", async () => {
+  it("requires entry confirmation before creating a player session for commands", async () => {
     await getActivePack();
     const store = new MemorySessionStore();
     const ruby = new RubyHighService({} as never, store);
@@ -328,14 +328,11 @@ describe("command route persistence and scheduler misses", () => {
       const handled = await handleAppRoutes(harness.ctx);
 
       expect(handled).toBe(true);
-      expect(harness.response?.status).toBe(200);
-      expect(ruby.getOrCreate("rh:anonymous").character).toBeNull();
-      const cookie = String(harness.getHeader("set-cookie"));
-      const token = cookie.match(/rh_session=([^;]+)/)?.[1];
-      expect(token).toBeTruthy();
-      const record = auth.resolve(decodeURIComponent(token!));
-      expect(record).not.toBeNull();
-      expect(ruby.getOrCreate(auth.stateKeyForRecord(record!)).character?.name).toBe("Ari");
+      expect(harness.response?.status).toBe(428);
+      expect(harness.response?.body.code).toBe("entry_confirmation_required");
+      expect(harness.getHeader("set-cookie")).toBeUndefined();
+      expect(auth.sessionCount()).toBe(0);
+      expect(store.sessions.size).toBe(0);
     } finally {
       await auth.stop();
     }
@@ -516,19 +513,21 @@ describe("command route persistence and scheduler misses", () => {
     expect(character.advantageRollBonuses).toEqual({ "9": 1, "10": 1, "11": 1, "12": 1 });
   });
 
-  it("rejects bad browser command mutations before minting a guest session", async () => {
+  it("checks browser command origins and content types for a player session", async () => {
     await getActivePack();
     const store = new MemorySessionStore();
     const ruby = new RubyHighService({} as never, store);
     const auth = await AuthService.start({} as never, store);
     try {
+      const guest = await auth.createGuestSession();
+      const cookie = `rh_session=${guest.token}`;
       const crossOrigin = makeCommandCtx(
         ruby,
         { type: "mark-intro-seen" },
         undefined,
         null,
         auth,
-        null,
+        cookie,
         { originHeader: "https://evil.example" },
       );
 
@@ -545,7 +544,7 @@ describe("command route persistence and scheduler misses", () => {
         undefined,
         null,
         auth,
-        null,
+        cookie,
         { contentTypeHeader: "text/plain" },
       );
 
@@ -555,7 +554,7 @@ describe("command route persistence and scheduler misses", () => {
         body: { error: "Command requests must be sent as JSON." },
       });
       expect(nonJson.getHeader("set-cookie")).toBeUndefined();
-      expect(auth.sessionCount()).toBe(0);
+      expect(auth.sessionCount()).toBe(1);
     } finally {
       await auth.stop();
     }
@@ -625,6 +624,7 @@ describe("command route persistence and scheduler misses", () => {
         personality: "Steady and bright.",
       });
       for (const state of [firstState, secondState]) {
+        state.character!.publicWorldVisible = true;
         state.currentGrade = "10";
         state.faculty = "ruby";
         state.character!.dailyClasses = {
@@ -710,6 +710,7 @@ describe("command route persistence and scheduler misses", () => {
       state.currentGrade = "10";
       state.faculty = "ruby";
       state.character!.socialConsent = true;
+      state.character!.publicWorldVisible = true;
       state.character!.dailyClasses = {
         "10:ruby:2026-06-15": {
           grade: "10",
@@ -772,6 +773,7 @@ describe("command route persistence and scheduler misses", () => {
       state.currentGrade = "10";
       state.faculty = "ruby";
       state.character!.socialConsent = true;
+      state.character!.publicWorldVisible = true;
       state.character!.publicWorldVisible = false;
       state.character!.dailyClasses = {
         "10:ruby:2026-06-15": {
@@ -824,6 +826,7 @@ describe("command route persistence and scheduler misses", () => {
         arcAnswer: "I curate what I see.",
         personality: "Protective and precise.",
       });
+      state.character!.publicWorldVisible = true;
       state.currentGrade = "10";
       state.faculty = "ruby";
       state.character!.dailyClasses = {

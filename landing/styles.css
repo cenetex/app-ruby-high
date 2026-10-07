@@ -1340,3 +1340,5 @@ nav a {
     transition-duration: 0.01ms !important;
   }
 }
+
+#share-message { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 1rem; }

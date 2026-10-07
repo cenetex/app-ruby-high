@@ -835,10 +835,10 @@ function renderConnectPage(userCode: string): string {
   <style>
     :root{color-scheme:dark;font-family:ui-rounded,system-ui,sans-serif;background:#111827;color:#f8fafc}
     body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#164e63,#111827 55%)}
-    main{width:min(480px,calc(100vw - 40px));padding:32px;border:1px solid #2dd4bf55;border-radius:24px;background:#0f172ae8;box-shadow:0 24px 80px #0008}
+    main{box-sizing:border-box;width:min(480px,calc(100vw - 24px));padding:24px;border:1px solid #2dd4bf55;border-radius:24px;background:#0f172ae8;box-shadow:0 24px 80px #0008}
     .teacher{display:flex;gap:18px;align-items:center}.teacher img{width:92px;height:92px;border-radius:50%;object-fit:cover;background:#fce7e7;border:3px solid #2dd4bf}
     h1{font-size:28px;margin:0 0 6px}p{color:#cbd5e1;line-height:1.5}
-    label{display:block;margin:24px 0 8px;font-weight:700}input{box-sizing:border-box;width:100%;padding:14px 16px;border:1px solid #475569;border-radius:12px;background:#020617;color:white;font:700 22px/1 monospace;text-transform:uppercase;letter-spacing:.12em}
+    code{display:block;margin:12px 0;box-sizing:border-box;width:100%;padding:14px 16px;border:1px solid #475569;border-radius:12px;background:#020617;color:white;font:700 22px/1 monospace;text-transform:uppercase;letter-spacing:.12em}
     button{width:100%;margin-top:18px;padding:14px;border:0;border-radius:12px;background:#14b8a6;color:#042f2e;font-weight:900;font-size:16px;cursor:pointer}
     button:disabled{opacity:.55;cursor:wait}.note{font-size:13px}.status{min-height:24px;color:#5eead4;font-weight:700}
   </style>
@@ -849,8 +849,8 @@ function renderConnectPage(userCode: string): string {
       <img src="/api/apps/ruby-high/assets/teachers/eliza-face.png" alt="Eliza">
       <div><h1>Connect an AI agent</h1><p>The agent gets its own student account. It cannot act until you allow it.</p></div>
     </div>
-    <label for="code">Code shown by the agent</label>
-    <input id="code" value="${safeCode}" maxlength="9" autocomplete="one-time-code" placeholder="ABCD-1234">
+    <p>Code shown by the agent: <code id="code">${safeCode}</code></p>
+    <button id="paste-code" type="button">Use copied agent code</button>
     <p class="note">Approval lets the agent read school information and play as a student. The agent stays hidden from shared school activity unless you turn on sharing. If this browser has not entered Ruby High yet, <a href="/api/apps/ruby-high/viewer" target="_blank" rel="noopener">open the school</a> first.</p>
     <button id="approve">Approve agent</button>
     <p id="status" class="status" role="status"></p>
@@ -858,10 +858,18 @@ function renderConnectPage(userCode: string): string {
   <script>
     const button=document.getElementById("approve");
     const status=document.getElementById("status");
+    document.getElementById("paste-code").addEventListener("click",async()=>{
+      try {
+        const copied=String(await navigator.clipboard.readText()).trim().toUpperCase();
+        if(!/^[A-F0-9]{4}-[A-F0-9]{4}$/.test(copied))throw new Error("code");
+        document.getElementById("code").textContent=copied;
+        status.textContent="Agent code ready. Review the access below.";
+      }catch{status.textContent="Copy the agent code and allow clipboard access, then try again."}
+    });
     button.addEventListener("click",async()=>{
       button.disabled=true;status.textContent="Approving…";
       try{
-        const response=await fetch("${AGENT_API_PREFIX}/device/approve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userCode:document.getElementById("code").value})});
+        const response=await fetch("${AGENT_API_PREFIX}/device/approve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userCode:document.getElementById("code").textContent})});
         const body=await response.json();
         if(!response.ok)throw new Error(body.message||body.error||"Approval failed.");
         status.textContent=body.message||"Approved. Return to the agent.";

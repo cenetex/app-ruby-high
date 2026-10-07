@@ -77,6 +77,27 @@ describe("AuthService passkey security", () => {
     origin: "http://localhost:3000",
   };
 
+  it("stops a passkey result that arrives after its account was deleted", async () => {
+    const auth = await freshAuth(); const guest = await auth.createGuestSession();
+    const pending = await auth.beginPasskeyRegistration(guest.token, relyingParty);
+    let resolveVerification!: (value: any) => void;
+    let started!: () => void;
+    const verificationStarted = new Promise<void>(resolve => { started = resolve; });
+    const restore = setPasskeyAuthVerifiersForTest({ registration: async () => {
+      started(); return new Promise(resolve => { resolveVerification = resolve; });
+    } });
+    try {
+      const completion = auth.completePasskeyRegistration(pending.flowId, {}, guest.token);
+      const rejected = expect(completion).rejects.toThrow("deleted");
+      await verificationStarted;
+      auth.forgetDeletedAccount(auth.accountDeletionTargetForToken(guest.token)!);
+      resolveVerification({ id: "late-passkey", publicKey: "test", counter: 0, deviceType: "singleDevice", backedUp: false });
+      await rejected;
+      expect(auth.resolve(guest.token)).toBeNull();
+      expect(auth.accountDeletionTargetForUser(guest.record.userId)).toBeNull();
+    } finally { restore(); }
+  });
+
   it("keeps a registration challenge durable and one-time across a restart", async () => {
     const dir = await mkdtemp(join(tmpdir(), "ruby-high-passkey-state-"));
     tmpDirs.push(dir);

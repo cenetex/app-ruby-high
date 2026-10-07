@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { closeBlockingSheetIfVisible, closeFirstBellReportIfVisible, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
+import { completeEntryConfirmation, closeBlockingSheetIfVisible, closeFirstBellReportIfVisible, closeRewardComicIfVisible, contributeLiveRoomGoalForDev, createCharacter, createPublicCharacter, dismissAnnouncements, openViewer, tickGrade } from "./helpers.js";
 
 async function enableTestAi(page: Page) {
   await page.route(/\/auth\/(me|guest)$/, async (route) => {
@@ -158,6 +158,7 @@ test("canonical issue-174 link opens the Quick Roll/customize choice with bounde
     "/api/apps/ruby-high/viewer?rh_source=x&rh_campaign=issue-174-v1&rh_landing=quick-roll-v1&rh_entry=viewer",
     { waitUntil: "domcontentloaded" },
   );
+  await completeEntryConfirmation(page);
   await expect.poll(() => appOpenBody).toMatchObject({
     type: "app_open",
     campaignSource: "x",
@@ -175,7 +176,7 @@ test("canonical issue-174 link opens the Quick Roll/customize choice with bounde
     "Stats, voice, rerolls, and custom portraits are optional.",
   );
   await expect(page.locator(".creation-row")).toHaveCount(5);
-  await expect(page.getByRole("textbox", { name: "Student name" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try another name", exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Student style" })).toBeVisible();
   await expect(page.getByRole("button", { name: /start first class/i })).toBeEnabled();
 });
@@ -210,7 +211,7 @@ test("enrolls a first student through the creation sheet into First Bell", async
   expect(errors).toEqual([]);
 });
 
-test("keeps creator editing and the start-class action reachable on a small phone", async ({ page }) => {
+test("keeps creator choices and the start-class action reachable on a small phone", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 568 });
   const { errors } = await openViewer(page);
   await dismissAnnouncements(page);
@@ -222,17 +223,22 @@ test("keeps creator editing and the start-class action reachable on a small phon
 
   await expect(sheet).toHaveClass(/is-open/);
   await expect(page.getByRole("button", { name: "Close student creator" })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Student name" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try another name", exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Student style" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try another name", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: /start first class/i })).toBeEnabled();
+  await page.screenshot({ path: test.info().outputPath("choice-only-quick-creator-mobile.png") });
   await page.getByRole("button", { name: "Advanced", exact: true }).click();
 
-  const name = page.getByRole("textbox", { name: "Student name" });
   const style = page.getByRole("combobox", { name: "Student style" });
   await expect(page.getByRole("button", { name: "Try another stats" })).toBeFocused();
-  await name.fill("Mina");
+  await page.getByRole("button", { name: "Try another name", exact: true }).click();
   await style.selectOption("outsider");
-  await expect(page.locator(".is-creation-candidate-card .ccg-name")).toHaveText("Mina");
+  await expect(page.locator(".is-creation-candidate-card .ccg-name")).not.toBeEmpty();
+  await expect(page.locator("input:not([type=hidden]), textarea, [contenteditable=true]")).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await page.screenshot({ path: test.info().outputPath("choice-only-creator-mobile.png") });
 
   await page.getByRole("button", { name: "Done" }).click();
   await expect(page.getByRole("button", { name: /start first class/i })).toBeVisible();
@@ -590,6 +596,7 @@ test("manages passkeys, signs out cleanly, and recovers the same student", async
     await expect(page.locator(".passkey-row")).toHaveCount(1);
 
     await page.locator("#privy-signout").click();
+    await expect(page.locator("#privy-status")).toHaveText("Signed out.");
     await expect(page.locator("#passkey-action")).toBeVisible();
     const freshMe = await page.evaluate(async () => {
       const response = await fetch("/api/apps/ruby-high/auth/me", { credentials: "same-origin" });
@@ -620,6 +627,7 @@ test("manages passkeys, signs out cleanly, and recovers the same student", async
     await expect(page.locator("#sheet-overlay")).not.toHaveClass(/is-open/);
     await expect(page.locator("#privy-signout")).toBeVisible();
     await page.locator("#privy-signout").click();
+    await expect(page.locator("#privy-status")).toHaveText("Signed out.");
     for (const currentAuthenticatorId of [backupAuthenticatorId]) {
       const credentials = await cdp.send("WebAuthn.getCredentials", { authenticatorId: currentAuthenticatorId });
       for (const credential of credentials.credentials) {
@@ -629,7 +637,9 @@ test("manages passkeys, signs out cleanly, and recovers the same student", async
         });
       }
     }
-    await page.locator("#passkey-recovery-input").fill(firstRecoveryCode);
+    await page.evaluate((code) => {
+      Object.defineProperty(navigator.clipboard, "readText", { configurable: true, value: async () => code });
+    }, firstRecoveryCode);
     await page.locator("#passkey-recovery-submit").click();
     await expect(page.locator("#privy-status")).toContainText("Account recovered");
     await expect(page.locator("#you-name")).toHaveText(studentName || "");
@@ -886,3 +896,59 @@ for (const viewport of [
     expect(errors).toEqual([]);
   });
 }
+
+
+test("uses account buttons and validates copied recovery codes before a request", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  const { errors } = await openViewer(page);
+  await dismissAnnouncements(page);
+  await page.getByRole("button", { name: "Close student creator", exact: true }).click();
+  await page.getByRole("button", { name: "Open your account", exact: true }).click();
+  await expect(page.locator("#passkey-recovery-submit")).toBeVisible();
+  await expect(page.locator("input:not([type=hidden]), textarea, [contenteditable=true]")).toHaveCount(0);
+  let recoveryRequests = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/auth/passkey/recover/")) recoveryRequests += 1;
+  });
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { readText: async () => "private text copied by mistake" } });
+  });
+  await page.locator("#passkey-recovery-submit").click();
+  await expect(page.locator("#privy-status")).toContainText("Copy your saved Ruby High recovery code");
+  expect(recoveryRequests).toBe(0);
+  await page.evaluate(() => {
+    navigator.clipboard.readText = async () => { throw new DOMException("Blocked", "NotAllowedError"); };
+  });
+  await page.locator("#passkey-recovery-submit").click();
+  await expect(page.locator("#privy-status")).toContainText("allow clipboard access");
+  expect(recoveryRequests).toBe(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: test.info().outputPath("choice-only-account-mobile.png") });
+  expect(errors).toEqual([]);
+});
+
+test("connects agents through a generated code and a clipboard button", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto("/api/apps/ruby-high/agent/v1/connect?user_code=ABCD-1234");
+  await completeEntryConfirmation(page);
+  await expect(page.locator("#code")).toHaveText("ABCD-1234");
+  await expect(page.locator("input, textarea, [contenteditable=true]")).toHaveCount(0);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { readText: async () => "private text" } });
+  });
+  await page.getByRole("button", { name: "Use copied agent code" }).click();
+  await expect(page.locator("#status")).toContainText("Copy the agent code");
+  await expect(page.locator("#code")).toHaveText("ABCD-1234");
+  await page.evaluate(() => { navigator.clipboard.readText = async () => "  ab12-cd34  "; });
+  await page.getByRole("button", { name: "Use copied agent code" }).click();
+  await expect(page.locator("#code")).toHaveText("AB12-CD34");
+  let approvedBody: unknown;
+  await page.route("**/agent/v1/device/approve", async (route) => {
+    approvedBody = route.request().postDataJSON();
+    await route.fulfill({ json: { message: "Approved test agent." } });
+  });
+  await page.getByRole("button", { name: "Approve agent", exact: true }).click();
+  await expect(page.locator("#status")).toHaveText("Approved test agent.");
+  expect(approvedBody).toEqual({ userCode: "AB12-CD34" });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});

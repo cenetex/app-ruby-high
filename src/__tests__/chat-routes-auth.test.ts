@@ -106,7 +106,7 @@ function makeCtx(url: URL, res: TestResponse, opts: {
       res.statusCode = status;
       res.body = JSON.stringify(data);
     },
-    readJsonBody: async () => opts.body ?? {},
+    readJsonBody: async () => opts.body ?? (url.pathname.endsWith("/auth/guest") ? { confirm13Plus: true } : {}),
   };
 }
 
@@ -330,6 +330,44 @@ describe("auth callback redirect sanitization", () => {
     expect(callbackHandled).toBe(true);
     expect(callbackRes.statusCode).toBe(400);
     expect(callbackRes.body).toContain("Auth state cookie mismatch");
+  });
+});
+
+describe("guest entry confirmation", () => {
+  it.each([{}, { confirm13Plus: false }, { confirm13Plus: "yes" }])("requires a boolean answer for a fresh session: %j", async (body) => {
+    const res = new TestResponse();
+    await handleChatRoutes(makeCtx(new URL("http://localhost:3000/api/apps/ruby-high/auth/guest"), res, {
+      method: "POST", body, originHeader: "http://localhost:3000",
+    }));
+    expect(res.statusCode).toBe(428);
+    expect(JSON.parse(res.body).code).toBe("entry_confirmation_required");
+    expect(res.getHeader("set-cookie")).toBeUndefined();
+    expect(auth.sessionCount()).toBe(0);
+    expect(await stateStore.loadAuth()).toEqual({ users: [], sessions: [] });
+  });
+
+  it("discards the confirmation and extra age fields after guest creation", async () => {
+    const res = new TestResponse();
+    await handleChatRoutes(makeCtx(new URL("http://localhost:3000/api/apps/ruby-high/auth/guest"), res, {
+      method: "POST", body: { confirm13Plus: true, age: 13, birthDate: "2013-01-01" },
+    }));
+    expect(res.statusCode).toBe(200);
+    await stateStore.flush();
+    const saved = await stateStore.loadAuth();
+    expect(Object.keys(saved.users[0]).sort()).toEqual(["createdAt", "label", "lastLoginAt", "provider", "providerUserHash", "userId"]);
+    expect(Object.keys(saved.sessions[0]).sort()).toEqual(["createdAt", "expiresAt", "provider", "token", "userId"]);
+    expect(JSON.stringify(saved)).not.toMatch(/confirm13Plus|birthDate|2013-01-01|"age"|ageGroup/);
+  });
+
+  it("continues an existing session using its normal cookie", async () => {
+    const guest = await auth.createGuestSession();
+    const res = new TestResponse();
+    await handleChatRoutes(makeCtx(new URL("http://localhost:3000/api/apps/ruby-high/auth/guest"), res, {
+      method: "POST", body: {}, cookieHeader: `rh_session=${guest.token}`,
+    }));
+    expect(res.statusCode).toBe(200);
+    expect(res.getHeader("set-cookie")).toBeUndefined();
+    expect(auth.sessionCount()).toBe(1);
   });
 });
 

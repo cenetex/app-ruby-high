@@ -36,6 +36,31 @@ function remember(
 }
 
 describe("TeacherPersonaMemory", () => {
+  it("removes linked observations and learned cues across a restart", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "teacher-privacy-"));
+    cleanupPaths.push(directory);
+    const path = join(directory, "state.json");
+    const memory = new TeacherPersonaMemory({ schedulerEnabled: false,
+      reflector: async () => ({ perspective: "Recent classes favor evidence.", teachingApproaches: ["Asks for an example."], evolvingInterests: ["AI literacy"] }),
+    });
+    memory.setStore(new StateStore(path)); await memory.ready();
+    remember(memory, 1, { accountId: "rh:user:own", at: Date.now() });
+    remember(memory, 2, { accountId: "rh:user:other", at: Date.now() });
+    await memory.reflectTeacherNow("ruby");
+    expect(memory.activeOverlay("ruby")).not.toBeNull();
+    await memory.flush();
+    const restored = new TeacherPersonaMemory({ schedulerEnabled: false });
+    restored.setStore(new StateStore(path)); await restored.ready();
+    await restored.forgetAccount("rh:user:own", []);
+    expect(restored.snapshot("ruby")?.memories).toHaveLength(1);
+    expect(restored.activeOverlay("ruby")).toBeNull();
+    const again = new TeacherPersonaMemory({ schedulerEnabled: false });
+    again.setStore(new StateStore(path)); await again.ready();
+    expect(again.snapshot("ruby")?.memories).toHaveLength(1);
+    expect(again.activeOverlay("ruby")).toBeNull();
+    await memory.stop(); await restored.stop(); await again.stop();
+  });
+
   it("keeps private observations separate from generalized reflection cues", () => {
     const memory = new TeacherPersonaMemory({ schedulerEnabled: false });
     const record = remember(memory, 1, {

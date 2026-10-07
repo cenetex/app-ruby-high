@@ -547,11 +547,8 @@ export function runViewerClient(bootstrap) {
     passkeyAction: $("passkey-action"),
     passkeyCreate: $("passkey-create"),
     passkeySecuritySummary: $("passkey-security-summary"),
-    passkeyAutofillLabel: $("passkey-autofill-label"),
-    passkeyAutofill: $("passkey-autofill"),
     passkeyList: $("passkey-list"),
     passkeyRecoveryCard: $("passkey-recovery-card"),
-    passkeyRecoveryInput: $("passkey-recovery-input"),
     passkeyRecoverySubmit: $("passkey-recovery-submit"),
     passkeyRecoveryCreate: $("passkey-recovery-create"),
     passkeyRecoveryCode: $("passkey-recovery-code"),
@@ -1440,7 +1437,6 @@ export function runViewerClient(bootstrap) {
     const next = ["class", "campus", "yearbook", "account"].includes(page) ? page : "class";
     const changed = next !== appPage;
     if (changed) pageScrollPositions.set(appPage, els.workspace.scrollTop);
-    if (appPage === "account" && next !== "account") void abortConditionalPasskey();
     appPage = next;
     els.shell.dataset.appPage = next;
     document.getElementById("class-page").hidden = next !== "class";
@@ -2783,6 +2779,12 @@ export function runViewerClient(bootstrap) {
     renderAccountHallPassCards();
     renderAccountCharacters();
     renderAccountPublicWorld();
+    const socialButton = $("account-social-posting");
+    const socialCharacter = lastTelemetry && lastTelemetry.character;
+    if (socialButton) {
+      socialButton.disabled = !socialCharacter || !!billingBusy;
+      socialButton.textContent = socialCharacter && socialCharacter.socialPostingConsent === true ? "Stop posts" : "Allow posts";
+    }
     renderAccountComics();
     renderAccountHistory();
     renderAccountTrust();
@@ -7311,16 +7313,19 @@ export function runViewerClient(bootstrap) {
       await navigator.clipboard.writeText(text);
       return;
     }
-    const area = document.createElement("textarea");
-    area.value = text;
-    area.setAttribute("readonly", "");
+    const area = document.createElement("pre");
+    area.textContent = text;
     area.style.position = "fixed";
     area.style.left = "-9999px";
     document.body.appendChild(area);
-    area.select();
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(area);
+    if (selection) { selection.removeAllRanges(); selection.addRange(range); }
     try {
       if (!document.execCommand("copy")) throw new Error("copy failed");
     } finally {
+      if (selection) selection.removeAllRanges();
       area.remove();
     }
   }
@@ -7432,20 +7437,11 @@ export function runViewerClient(bootstrap) {
       return creationRowsRenderer.buildRow(fields, label, key);
     }
     const nameRow = makeRow("Name", "name");
+    nameRow.row.classList.add("creation-name-row");
     const playbookRow = makeRow("Style", "playbook");
     const statsRow = makeRow("Stats", "stats");
     const personalityRow = makeRow("Voice", "personality");
     const quoteRow = makeRow("Quote", "flavorQuote");
-
-    const nameInput = document.createElement("input");
-    nameInput.type = "text";
-    nameInput.className = "creation-edit-input";
-    nameInput.maxLength = 48;
-    nameInput.autocomplete = "nickname";
-    nameInput.setAttribute("aria-label", "Student name");
-    nameInput.placeholder = "Student name";
-    nameRow.val.replaceChildren(nameInput);
-    nameRow.input = nameInput;
 
     const playbookSelect = document.createElement("select");
     playbookSelect.className = "creation-edit-input creation-playbook-select";
@@ -7606,7 +7602,6 @@ export function runViewerClient(bootstrap) {
           : "Make a student";
       saveBtn.hidden = !rolled;
       saveBtn.disabled = !rolled || !String(rolled.name || "").trim() || inFlight.all || inFlight.saving;
-      nameInput.disabled = !rolled || inFlight.all || inFlight.saving || inFlight.name;
       playbookSelect.disabled = !rolled || inFlight.all || inFlight.saving || inFlight.playbook;
       customizeBtn.disabled = !rolled || inFlight.all || inFlight.saving;
       doneBtn.disabled = !rolled || inFlight.all || inFlight.saving;
@@ -7735,18 +7730,6 @@ export function runViewerClient(bootstrap) {
     rollBtn.addEventListener("click", () => {
       if (inFlight.all || inFlight.saving) return;
       void rollComponents();
-    });
-
-    nameInput.addEventListener("input", () => {
-      if (!rolled) return;
-      rolled = { ...rolled, name: nameInput.value };
-      candidateName.textContent = nameInput.value.trim() || "Your student";
-      if (aiPortraitDataUrl) {
-        aiPortraitDataUrl = null;
-        portraitImg.src = defaultPortraitFor(rolled.playbookId);
-        portraitStatus.textContent = "Name changed — using the included portrait.";
-      }
-      applyDisabled();
     });
 
     playbookSelect.addEventListener("change", () => {
@@ -8264,7 +8247,7 @@ export function runViewerClient(bootstrap) {
     packQuestionGenerationBusy = false;
     packQuestionGenerationAbortController = null;
     packQuestionGenerationKind = "";
-    if (courseMaterialsInputEl) courseMaterialsInputEl.value = "";
+    if (courseMaterialsInputEl) courseMaterialsInputEl.selectedIndex = 0;
     if (courseGenerationStatusEl) {
       courseGenerationStatusEl.textContent = "";
       courseGenerationStatusEl.classList.remove("is-invalid");
@@ -8320,7 +8303,7 @@ export function runViewerClient(bootstrap) {
     if (packSearchBtn) packSearchBtn.disabled = packImportBusy;
     syncGuestAutoButton();
     syncPackEditorGuardControls();
-    packEditEl.querySelectorAll("input, textarea").forEach((field) => {
+    packEditEl.querySelectorAll("select").forEach((field) => {
       field.disabled = packImportBusy;
     });
     syncPackGenerationControls();
@@ -9094,17 +9077,6 @@ export function runViewerClient(bootstrap) {
     }
     renderPackTeacherEditor();
   }
-  function updatePendingTeacherRollField(field, value) {
-    if (!pendingTeacherRoll) return;
-    const next = { ...pendingTeacherRoll };
-    const text = String(value || "");
-    if (field === "displayName") next.displayName = text;
-    else if (field === "subject") next.subject = text;
-    else if (field === "description") next.description = text;
-    else if (field === "quote") next.quote = text;
-    pendingTeacherRoll = next;
-    refreshPendingTeacherPreview();
-  }
   function refreshPendingTeacherPreview() {
     teacherPreviewUpdater.refresh(packTeacherDetailEl, pendingTeacherRoll);
   }
@@ -9127,7 +9099,6 @@ export function runViewerClient(bootstrap) {
       imageReason: teacherImageGenerationStatusReason(),
       imageCreditHint: teacherImageCreditHint(),
       statsNode: buildTeacherStatPills(roll.stats),
-      onFieldInput: updatePendingTeacherRollField,
       onReroll(key) {
         rollTeacherCandidate([key]);
         renderPackTeacherEditor();
@@ -9529,7 +9500,7 @@ export function runViewerClient(bootstrap) {
     if (!currentDraft) return;
     const emptyDraft = Array.isArray(currentDraft.teachers) && currentDraft.teachers.length === 0;
     if (packEditTitleEl) packEditTitleEl.textContent = emptyDraft ? "Create Course" : "Edit Course";
-    if (packEditSubtitleEl) packEditSubtitleEl.textContent = emptyDraft ? "Add course materials here." : (currentDraft.name || "Draft course");
+    if (packEditSubtitleEl) packEditSubtitleEl.textContent = emptyDraft ? "Choose a topic for your course." : (currentDraft.name || "Draft course");
     if (packNameInputEl) packNameInputEl.value = currentDraft.name || "";
     if (packDescriptionInputEl) packDescriptionInputEl.value = currentDraft.description || "";
     renderPackTeacherEditor();
@@ -10032,9 +10003,6 @@ export function runViewerClient(bootstrap) {
   if (courseCancelGenerationBtn) courseCancelGenerationBtn.addEventListener("click", cancelQuestionGeneration);
   if (packNameInputEl) packNameInputEl.addEventListener("input", schedulePackAutosave);
   if (packDescriptionInputEl) packDescriptionInputEl.addEventListener("input", schedulePackAutosave);
-  [teacherDisplayNameInputEl, teacherSocialsInputEl, teacherProfileImageInputEl, teacherPersonaInputEl, teacherMaterialsInputEl].forEach((field) => {
-    if (field) field.addEventListener("input", scheduleTeacherAutosave);
-  });
   packEditEl.querySelectorAll(".pack-editor-tab").forEach((btn) => {
     btn.addEventListener("click", () => {
       selectedPackTab = btn.getAttribute("data-pack-tab") || "materials";
@@ -10180,14 +10148,7 @@ export function runViewerClient(bootstrap) {
     };
     renderAccountIdentity();
   }
-  let conditionalPasskeyAbortController = null;
-  let conditionalPasskeyPromise = null;
   let recoveryCodeForDisplay = "";
-  async function abortConditionalPasskey() {
-    const pending = conditionalPasskeyPromise;
-    if (conditionalPasskeyAbortController) conditionalPasskeyAbortController.abort();
-    if (pending) await pending.catch(() => {});
-  }
   function passkeySupported() {
     return !!(window.PublicKeyCredential && navigator.credentials);
   }
@@ -10289,7 +10250,6 @@ export function runViewerClient(bootstrap) {
       setPrivyStatus("This browser needs passkey support. Try Safari, Chrome, or Edge.", true);
       return false;
     }
-    await abortConditionalPasskey();
     if (passkeyState.registered && passkeyState.authenticated && !passkeyState.recent) {
       const verified = await startPasskeyReauthentication();
       if (!verified) return false;
@@ -10318,7 +10278,6 @@ export function runViewerClient(bootstrap) {
       setPrivyStatus("This browser needs passkey support. Try Safari, Chrome, or Edge.", true);
       return false;
     }
-    await abortConditionalPasskey();
     setPasskeyBusy(true);
     setPrivyStatus("Waiting for your passkey...", false);
     try {
@@ -10343,7 +10302,6 @@ export function runViewerClient(bootstrap) {
       setPrivyStatus("This browser needs passkey support. Try Safari, Chrome, or Edge.", true);
       return false;
     }
-    await abortConditionalPasskey();
     setPasskeyBusy(true);
     setPrivyStatus("Confirm this account with your passkey...", false);
     try {
@@ -10367,61 +10325,23 @@ export function runViewerClient(bootstrap) {
     if (!passkeyState.registered || passkeyState.recent) return true;
     return startPasskeyReauthentication();
   }
-  function startConditionalPasskeyLogin() {
-    if (conditionalPasskeyPromise) return conditionalPasskeyPromise;
-    const pending = runConditionalPasskeyLogin();
-    conditionalPasskeyPromise = pending;
-    pending.then(
-      () => { if (conditionalPasskeyPromise === pending) conditionalPasskeyPromise = null; },
-      () => { if (conditionalPasskeyPromise === pending) conditionalPasskeyPromise = null; },
-    );
-    return pending;
-  }
-  async function runConditionalPasskeyLogin() {
-    if (!passkeySupported() || passkeyState.authenticated || conditionalPasskeyAbortController) return;
-    if (typeof PublicKeyCredential.isConditionalMediationAvailable !== "function") return;
-    const controller = new AbortController();
-    conditionalPasskeyAbortController = controller;
-    try {
-      const available = await PublicKeyCredential.isConditionalMediationAvailable();
-      if (!available || passkeyState.authenticated || controller.signal.aborted) return;
-      const options = await passkeyJsonRequest("/auth/passkey/login/options", {});
-      if (controller.signal.aborted) return;
-      const credential = await navigator.credentials.get({
-        publicKey: passkeyRequestOptions(options.publicKey),
-        mediation: "conditional",
-        signal: controller.signal,
-      });
-      if (!credential) return;
-      const data = await passkeyJsonRequest("/auth/passkey/login/verify", {
-        flowId: options.flowId,
-        response: passkeyCredentialJson(credential),
-      });
-      await finishPasskeySession(data, "Signed in with your passkey.");
-    } catch (err) {
-      if (err && (err.name === "AbortError" || err.name === "NotAllowedError")) return;
-      setPrivyStatus(friendlyPasskeyError(err), true);
-    } finally {
-      if (conditionalPasskeyAbortController === controller) conditionalPasskeyAbortController = null;
-    }
-  }
   function showPasskeyRecoveryCode(code) {
     recoveryCodeForDisplay = String(code || "").trim();
     if (els.passkeyRecoveryValue) els.passkeyRecoveryValue.textContent = recoveryCodeForDisplay;
     if (els.passkeyRecoveryCode) els.passkeyRecoveryCode.hidden = !recoveryCodeForDisplay;
   }
   async function startPasskeyRecovery() {
-    const recoveryCode = String(els.passkeyRecoveryInput && els.passkeyRecoveryInput.value || "").trim();
-    if (!recoveryCode) {
-      setPrivyStatus("Enter your recovery code.", true);
-      if (els.passkeyRecoveryInput) els.passkeyRecoveryInput.focus();
+    let recoveryCode;
+    try { recoveryCode = String(await navigator.clipboard.readText()).trim().toUpperCase(); }
+    catch { setPrivyStatus("Copy your recovery code and allow clipboard access, then try again.", true); return false; }
+    if (!/^[A-Z2-9]{5}(?:-[A-Z2-9]{5}){3}$/.test(recoveryCode)) {
+      setPrivyStatus("Copy your saved Ruby High recovery code, then try again.", true);
       return false;
     }
     if (!passkeySupported()) {
       setPrivyStatus("This browser needs passkey support. Try Safari, Chrome, or Edge.", true);
       return false;
     }
-    await abortConditionalPasskey();
     setPasskeyBusy(true);
     setPrivyStatus("Waiting for your device to create a new passkey...", false);
     try {
@@ -10432,7 +10352,6 @@ export function runViewerClient(bootstrap) {
         flowId: options.flowId,
         response: passkeyCredentialJson(credential),
       });
-      if (els.passkeyRecoveryInput) els.passkeyRecoveryInput.value = "";
       await finishPasskeySession(data, "Account recovered. Save the fresh recovery code.");
       return true;
     } catch (err) {
@@ -10624,7 +10543,6 @@ export function runViewerClient(bootstrap) {
         ? passkeyState.credentials.length + " saved passkey" + (passkeyState.credentials.length === 1 ? "" : "s") + ". Add two for safer recovery."
         : "Sign in, or use a recovery code to create a fresh passkey.";
     }
-    if (els.passkeyAutofillLabel) els.passkeyAutofillLabel.hidden = signedIn;
     if (els.passkeyRecoveryCard) els.passkeyRecoveryCard.hidden = signedIn;
     if (els.passkeyRecoveryCreate) els.passkeyRecoveryCreate.hidden = !signedIn || !passkeyState.registered;
     if (!els.passkeyList) return;
@@ -10791,7 +10709,6 @@ export function runViewerClient(bootstrap) {
       renderAccountIdentity();
       renderAccountPage();
       if (els.accountWorkspace) els.accountWorkspace.scrollTop = 0;
-      void startConditionalPasskeyLogin();
       void syncWalletPackNftsFromAccount({ force: true });
     } catch (err) {
       showPrivyAccountModal();
@@ -10800,7 +10717,6 @@ export function runViewerClient(bootstrap) {
   }
   function closePrivyAccount() {
     if (!els.privyOverlay) return;
-    void abortConditionalPasskey();
     if (appPage === "account") showAppPage("class");
     setPrivyStatus("", false);
   }
@@ -10944,10 +10860,14 @@ export function runViewerClient(bootstrap) {
     const key = getStoredApiKey();
     if (key) headers.set("X-Openrouter-Key", key);
     attachVisitorHeader(headers);
+    headers.set("Content-Type", "application/json");
     const r = await fetch("/api/apps/ruby-high/auth/guest", {
       method: "POST",
       credentials: "same-origin",
       headers,
+      // The hosted viewer starts after the entry form. Carry this visit
+      // through guest retries and account switches in the current request.
+      body: JSON.stringify({ confirm13Plus: true }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data || !data.session) throw new Error("guest session failed");
@@ -11041,7 +10961,6 @@ export function runViewerClient(bootstrap) {
       });
     } catch (e) { /* network failure is fine — local state is what matters */ }
     rotateVisitorId();
-    await abortConditionalPasskey();
     showPasskeyRecoveryCode("");
     authed = null;
     aiEnabled = false;
@@ -11057,7 +10976,7 @@ export function runViewerClient(bootstrap) {
     onboardingFunnelStepsSent.clear();
     roomHumanHistorySig = "";
     chatHistoryHumanStudentsByFaculty.clear();
-    await deriveAuth();
+    await ensureGuestSession();
     if (authed) await fetchSession();
     applyAuthUI();
     if (teacherChatEnabled() && lastTelemetry) loadHistory(lastTelemetry.faculty);
@@ -11511,48 +11430,22 @@ export function runViewerClient(bootstrap) {
   if (els.signinPrivy) els.signinPrivy.addEventListener("click", startPasskeyLogin);
 
   // ── bug-report surface ─────────────────────────────────────────────────
-  // Capture the last few console errors + unhandled rejections so the
-  // bug-report prefill includes them. Limit to a small ring buffer
-  // so a chatty page doesn't bloat the URL we end up encoding.
-  const RECENT_ERRORS = [];
-  const ERROR_LIMIT = 5;
-  function recordError(label, msg) {
-    if (!msg) return;
-    const stamp = new Date().toISOString().slice(11, 19);
-    const line = stamp + " " + label + ": " + String(msg).slice(0, 240);
-    RECENT_ERRORS.push(line);
-    if (RECENT_ERRORS.length > ERROR_LIMIT) RECENT_ERRORS.shift();
-  }
-  window.addEventListener("error", (e) => {
-    recordError("error", (e && (e.message || (e.error && e.error.message))) || "unknown");
-  });
-  window.addEventListener("unhandledrejection", (e) => {
-    recordError("unhandledrejection", (e && e.reason && (e.reason.message || e.reason)) || "unknown");
-  });
-  // Wrap console.error so anything we deliberately log lands in the
-  // ring buffer too. The original is preserved.
+  const reportErrorCounts = { error: 0, unhandledrejection: 0, consoleError: 0 };
+  window.addEventListener("error", () => { reportErrorCounts.error = Math.min(100, reportErrorCounts.error + 1); });
+  window.addEventListener("unhandledrejection", () => { reportErrorCounts.unhandledrejection = Math.min(100, reportErrorCounts.unhandledrejection + 1); });
   const origConsoleError = console.error.bind(console);
   console.error = function (...args) {
-    try { recordError("console.error", args.map((a) => a && a.message ? a.message : String(a)).join(" ")); }
-    catch { /* ignore */ }
+    reportErrorCounts.consoleError = Math.min(100, reportErrorCounts.consoleError + 1);
     origConsoleError(...args);
   };
-
   function collectBugReportContext() {
-    const ch = lastTelemetry && lastTelemetry.character;
-    const grade = lastTelemetry && lastTelemetry.current_grade;
-    const faculty = lastTelemetry && lastTelemetry.faculty;
     return {
-      url: window.location.href,
-      userAgent: navigator.userAgent,
-      timestamp: new Date().toISOString(),
-      session: authed,
-      aiEnabled,
-      character: ch ? ch.name + " (" + (ch.playbookId || "?") + ")" : "none",
-      grade: grade || "—",
-      faculty: faculty || "—",
-      viewport: window.innerWidth + "×" + window.innerHeight,
-      recentErrors: RECENT_ERRORS.slice(),
+      session: !!authed,
+      aiEnabled: !!aiEnabled,
+      grade: Number(lastTelemetry && lastTelemetry.current_grade) || 0,
+      width: window.innerWidth,
+      height: window.innerHeight,
+      ...reportErrorCounts,
     };
   }
   function setBugReportBusy(busy) {
@@ -11584,21 +11477,21 @@ export function runViewerClient(bootstrap) {
   }
   async function submitBugReport(e) {
     if (e) e.preventDefault();
-    const description = els.bugReportText ? els.bugReportText.value.trim() : "";
+    const category = els.bugReportText ? els.bugReportText.value : "classroom";
     setBugReportBusy(true);
     setBugReportStatus("Sending report…", false);
     try {
       const r = await apiFetch(apiBase + "/bug-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description, context: collectBugReportContext() }),
+        body: JSON.stringify({ category, context: collectBugReportContext() }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data.success) {
         throw new Error(data.error || "report " + r.status);
       }
       setBugReportStatus("Report sent.", false);
-      if (els.bugReportText) els.bugReportText.value = "";
+      if (els.bugReportText) els.bugReportText.selectedIndex = 0;
       setBugReportBusy(false);
       setTimeout(closeBugReport, 900);
     } catch (err) {
@@ -11660,6 +11553,34 @@ export function runViewerClient(bootstrap) {
   if (els.accountCreateCharacter) els.accountCreateCharacter.addEventListener("click", openCharacterCreationFromAccount);
   if (els.accountUnlockSlot) els.accountUnlockSlot.addEventListener("click", unlockCharacterSlotFromAccount);
   if (els.accountPublicWorldToggle) els.accountPublicWorldToggle.addEventListener("click", togglePublicWorldFromAccount);
+  const socialPostingButton = $("account-social-posting");
+  if (socialPostingButton) socialPostingButton.addEventListener("click", async () => {
+    const character = lastTelemetry && lastTelemetry.character;
+    if (!character || billingBusy) return;
+    const status = $("account-social-posting-status");
+    socialPostingButton.disabled = true;
+    try {
+      const enabled = character.socialPostingConsent !== true;
+      await command({ type: "set-social-consent", socialConsent: enabled });
+      if (status) status.textContent = enabled ? "Teacher social posts allowed for this student." : "Teacher social posts stopped for this student.";
+    } catch (err) { if (status) status.textContent = err instanceof Error ? err.message : "Please try again."; }
+    finally { renderAccountPage(); }
+  });
+  const privacyIdButton = $("account-privacy-id");
+  if (privacyIdButton) privacyIdButton.addEventListener("click", async () => {
+    const status = $("account-privacy-id-status");
+    try {
+      const response = await fetch(apiBase + "/auth/me", { credentials: "same-origin" });
+      const data = await response.json();
+      if (!response.ok || !data.privacyAccountId) throw new Error("Open a game session to get your privacy request ID.");
+      try {
+        await navigator.clipboard.writeText(data.privacyAccountId);
+        if (status) status.textContent = "Privacy request ID copied. Include it in your privacy email.";
+      } catch (_err) {
+        if (status) status.textContent = "Privacy request ID: " + data.privacyAccountId;
+      }
+    } catch (err) { if (status) status.textContent = err instanceof Error ? err.message : "Please try again."; }
+  });
   if (els.accountDelete) els.accountDelete.addEventListener("click", deleteAccountFromAccount);
   if (els.blackboardEmptyAction) els.blackboardEmptyAction.addEventListener("click", handleBlackboardEmptyAction);
   if (els.billingClose) els.billingClose.addEventListener("click", closeBilling);
@@ -11674,11 +11595,6 @@ export function runViewerClient(bootstrap) {
   if (els.passkeyRecoveryCreate) els.passkeyRecoveryCreate.addEventListener("click", regeneratePasskeyRecoveryCode);
   if (els.passkeyRecoveryCopy) els.passkeyRecoveryCopy.addEventListener("click", copyPasskeyRecoveryCode);
   if (els.passkeyRecoveryDownload) els.passkeyRecoveryDownload.addEventListener("click", downloadPasskeyRecoveryCode);
-  if (els.passkeyRecoveryInput) els.passkeyRecoveryInput.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter") return;
-    event.preventDefault();
-    void startPasskeyRecovery();
-  });
   if (els.privyLoginWidget) els.privyLoginWidget.addEventListener("click", async () => {
     await ensureSolanaWalletFromAccount();
   });

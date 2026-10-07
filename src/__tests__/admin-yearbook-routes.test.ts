@@ -3257,6 +3257,8 @@ describe("admin metrics route", () => {
         stage: "authenticate",
         errorMessage: "Could not log in with wallet",
         dataMessage: "Solana wallet auth is disabled",
+        causeMessage: "Private cause text",
+        addressPreview: "Private wallet preview",
         privyErrorCode: "ERROR_WALLET_CONNECTION",
         walletClientType: "phantom",
         connectorType: "injected",
@@ -3278,8 +3280,6 @@ describe("admin metrics route", () => {
       status: "error",
       metadata: expect.objectContaining({
         diagnosticType: "phantom.siws.authenticate.error",
-        errorMessage: "Could not log in with wallet",
-        dataMessage: "Solana wallet auth is disabled",
         privyErrorCode: "ERROR_WALLET_CONNECTION",
         walletClientType: "phantom",
         connectorType: "injected",
@@ -3289,6 +3289,9 @@ describe("admin metrics route", () => {
         hasSignMessage: true,
       }),
     });
+    for (const field of ["errorMessage", "dataMessage", "causeMessage", "addressPreview"]) expect(diagnostic?.metadata).not.toHaveProperty(field);
+    expect(JSON.stringify(diagnostic)).not.toContain("Private cause text");
+    expect(JSON.stringify(diagnostic)).not.toContain("Private wallet preview");
   });
 
   it("records bounded first-run enrollment failures without advancing the funnel", async () => {

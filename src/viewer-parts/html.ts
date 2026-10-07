@@ -62,6 +62,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     </div>
     <div class="channels-list" id="channels-list"></div>
     <div class="channels-links">
+      <a class="report-bug-link" href="${safeApiBase}/privacy" target="_blank" rel="noopener">Privacy</a>
       <a class="report-bug-link" id="report-bug-link" href="https://discord.gg/uTXaBVfY" target="_blank" rel="noopener noreferrer" data-discord-link="true" title="Bugs or questions? Join the Ruby High Discord.">Bugs / questions</a>
       <a class="report-bug-link" id="about-link" href="https://annihilism.org" target="_blank" rel="noopener noreferrer" title="The philosophy behind Ruby High.">About</a>
       <a class="report-bug-link" id="books-link" href="https://ratimics.gumroad.com" target="_blank" rel="noopener noreferrer" title="Books by the Ruby High author.">Books</a>
@@ -151,15 +152,10 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
               <button type="button" class="secondary" id="passkey-recovery-create" hidden>New recovery code</button>
             </div>
           </div>
-          <label class="passkey-autofill-field" id="passkey-autofill-label">
-            <span>Passkey account</span>
-            <input id="passkey-autofill" name="username" type="text" autocomplete="username webauthn" placeholder="Choose a saved passkey" />
-          </label>
           <div class="passkey-list" id="passkey-list"></div>
           <div class="passkey-recovery-card" id="passkey-recovery-card">
-            <label for="passkey-recovery-input">Lost access? Enter your recovery code.</label>
+            <p>Lost access? Copy your saved recovery code, then choose Recover account.</p>
             <div class="passkey-recovery-actions">
-              <input id="passkey-recovery-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" />
               <button type="button" class="secondary" id="passkey-recovery-submit">Recover account</button>
             </div>
           </div>
@@ -185,6 +181,12 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           </div>
           <div class="account-public-world-status" id="account-public-world-status"></div>
         </section>
+        <section class="account-section">
+          <div class="account-section-title">Teacher social posts</div>
+          <p class="account-section-sub">Allow teachers to include this student in posts on X or Telegram.</p>
+          <button type="button" class="secondary" id="account-social-posting">Allow posts</button>
+          <p id="account-social-posting-status" class="account-section-sub" aria-live="polite"></p>
+        </section>
         <details class="account-details">
           <summary>Account settings</summary>
           <section class="account-section">
@@ -202,6 +204,9 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
           </section>
           <section class="account-section account-trust-section">
             <div class="account-section-title">Safety and links</div>
+            <p><a href="${safeApiBase}/privacy" target="_blank" rel="noopener">Privacy and deletion</a></p>
+            <button type="button" class="secondary" id="account-privacy-id">Copy privacy request ID</button>
+            <p id="account-privacy-id-status" class="account-section-sub" aria-live="polite"></p>
             <div class="account-section-sub">Official links, wallet safety, and current service details.</div>
             <div class="account-trust-list" id="account-trust-list"></div>
           </section>
@@ -487,12 +492,12 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
   <button class="sheet-close" id="bug-report-close" type="button" aria-label="Close">×</button>
   <form class="sheet-card is-bug-report-sheet" id="bug-report-form">
     <h2 id="bug-report-title">Report a bug</h2>
-    <p class="sub">Send details that can help us find and fix the problem.</p>
+    <p class="sub">Choose the part of the app that needs a fix.</p>
     <div class="field">
       <label for="bug-report-text">What broke?</label>
-      <textarea id="bug-report-text" rows="5" maxlength="4000" placeholder="What happened, and what did you expect?"></textarea>
+      <select id="bug-report-text"><option value="classroom">Classroom view</option><option value="gameplay">Game action</option><option value="account">Account access</option><option value="purchase">Purchase or reward</option></select>
     </div>
-    <div class="bug-report-context">Recent app errors and classroom details will be attached.</div>
+    <div class="bug-report-context">App error counts, screen size and class grade will be attached.</div>
     <div class="stat-budget" id="bug-report-status" aria-live="polite"></div>
     <div class="sheet-actions">
       <button type="button" class="secondary" id="bug-report-cancel">Cancel</button>
@@ -514,7 +519,7 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     <div class="pack-grid" id="pack-list"></div>
     <div class="pack-section-title">Find courses</div>
     <div class="pack-search-row">
-      <input type="search" id="pack-search-input" placeholder="Search course titles or subjects" autocomplete="off" />
+      <select id="pack-search-input" aria-label="Course subject"><option value="">All courses</option><option value="science">Science</option><option value="reasoning">Reasoning</option><option value="AI">AI</option><option value="ethics">Ethics</option><option value="systems">Systems</option></select>
       <button type="button" class="pack-action" id="pack-search-btn">Search</button>
     </div>
     <div class="pack-grid" id="pack-search-list"></div>
@@ -540,7 +545,8 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
     <p class="sub" id="pack-edit-subtitle">Draft course.</p>
     <div class="pack-editor">
       <section class="pack-course-generator" id="pack-course-generator" hidden>
-        <textarea id="course-materials-input" rows="10" maxlength="80000" placeholder="Add course materials here"></textarea>
+        <label for="course-materials-input">Course topic</label>
+        <select id="course-materials-input"><option value="Teach evidence, experiments and scientific reasoning through short classroom examples.">Science</option><option value="Teach clear claims, evidence and careful reasoning through short classroom examples.">Reasoning</option><option value="Teach AI literacy, model limits and safe use through short classroom examples.">AI literacy</option><option value="Teach ethical choices, trust and responsibility through short classroom examples.">Ethics</option><option value="Teach feedback loops, incentives and systems through short classroom examples.">Systems</option></select>
         <div class="pack-course-generator-actions">
           <button type="button" class="pack-action" id="course-generate-btn">Generate course</button>
           <button type="button" class="pack-action danger" id="course-cancel-generation-btn" hidden>Cancel</button>
@@ -566,9 +572,9 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         </div>
         <div class="pack-tab-panel is-active" id="pack-tab-materials">
           <div class="teacher-creator">
-            <input id="teacher-material-url-input" type="url" placeholder="Link to a public Markdown file">
-            <button type="button" class="secondary" id="teacher-load-url-btn">Load link</button>
-            <textarea id="teacher-materials-input" rows="8" maxlength="80000" placeholder="Paste your course materials"></textarea>
+            <output id="teacher-material-url-input" aria-label="Course source link"></output>
+            <button type="button" class="secondary" id="teacher-load-url-btn">Read course source</button>
+            <output id="teacher-materials-input" aria-label="Course materials"></output>
           </div>
         </div>
         <div class="pack-tab-panel" id="pack-tab-questions">
@@ -582,11 +588,11 @@ export function viewerHtmlBody(opts: ViewerRenderOptions): string {
         <div class="pack-tab-panel" id="pack-tab-settings">
           <div class="teacher-creator">
             <div class="teacher-creator-row">
-              <input id="teacher-display-name-input" type="text" placeholder="Teacher display name">
-              <input id="teacher-socials-input" type="url" placeholder="Teacher's public profile link">
+              <output id="teacher-display-name-input" aria-label="Teacher name"></output>
+              <output id="teacher-socials-input" aria-label="Teacher public profile"></output>
             </div>
-            <input id="teacher-profile-image-input" type="url" placeholder="Profile image URL">
-            <textarea id="teacher-persona-input" rows="4" maxlength="2400" placeholder="Describe how this teacher speaks and teaches"></textarea>
+            <output id="teacher-profile-image-input" aria-label="Teacher image"></output>
+            <output id="teacher-persona-input" aria-label="Teaching style"></output>
           </div>
         </div>
       </section>

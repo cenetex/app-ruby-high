@@ -8,6 +8,8 @@ Ruby High is a standalone Node service and installable SPA. Ruby hosts the schoo
 
 Production is on **Fly.io** with SQLite on a Fly Volume; see [`infra/fly-deploy.md`](./infra/fly-deploy.md). The legacy DynamoDB backend and App Runner deployment are archived in [`infra/README.md`](./infra/README.md); the AWS exit migration is documented in [`docs/aws-exit-migration.md`](./docs/aws-exit-migration.md). Public-world service-state migration and rollback notes live in [`docs/world-state-runbook.md`](./docs/world-state-runbook.md).
 
+The [child privacy plan](./docs/coppa-plan.md) covers the teen audience, data uses, retention, deletion, vendor checks and owner release requirements.
+
 The two-wave first-class activation study is documented in [`docs/activation-playtest.md`](./docs/activation-playtest.md), including tracked invitation links, privacy boundaries, observation prompts, and decision thresholds.
 The current dependency-security disposition is recorded in [`docs/dependabot-triage-2026-08-09.md`](./docs/dependabot-triage-2026-08-09.md), separating the Fly runtime from plugin build tooling and offline visual-scene packages.
 
@@ -19,7 +21,7 @@ npm run build
 npm run dev:server
 ```
 
-Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Normal play starts with a Ruby High session cookie. The Account screen can turn that session into a passkey account with Touch ID, Face ID, Windows Hello, a phone, or a security key. OpenRouter sign-in is available for BYOK AI (PKCE, your own key, no card). Privy can connect an optional Solana wallet for packs and collectible cards. Browser-owned OpenRouter keys default to sessionStorage and can opt into localStorage persistence with `rh_openrouter_persist=1`. Game state, auth sessions, and session-scoped packs persist through the configured store (SQLite in production, JSON file in local dev); teacher chat transcripts are process-local and reset on server restart/deploy. Requires Node ≥24 for the built-in `node:sqlite` module.
+Open http://127.0.0.1:3000/api/apps/ruby-high/viewer. Hosted play starts with “Confirm you are 13+?” and a “Yes, continue” button. That request starts a normal Ruby High game session. The server discards the confirmation answer. The form uses plain HTML and system fonts. A returning session opens the game through its usual session cookie. The Account screen can turn that session into a passkey account with Touch ID, Face ID, Windows Hello, a phone, or a security key. OpenRouter sign-in is available for BYOK AI (PKCE, your own key, no card). Privy can connect an optional Solana wallet for packs and collectible cards. Browser-owned OpenRouter keys default to sessionStorage and can opt into localStorage persistence with `rh_openrouter_persist=1`. Game state, auth sessions, and session-scoped packs persist through the configured store (SQLite in production, JSON file in local dev); teacher chat transcripts are process-local and reset on server restart/deploy. Requires Node ≥24 for the built-in `node:sqlite` module.
 
 ## Ruby High 2.0 C wedge
 
@@ -134,7 +136,11 @@ Scheduled play is opt-in and server-bounded: 15–1440 minute intervals, at most
 | `RUBY_HIGH_STORE_BACKEND` | `json` | `json` for local dev (atomic file at `~/.ruby-high/state.json`), `sqlite` for production (Fly Volume at `/data/ruby-high.db`). The legacy `dynamodb` backend is archived. |
 | `RUBY_HIGH_STATE_PATH` | `~/.ruby-high/state.json` | State file path. For the `sqlite` backend this is the db file path (e.g. `/data/ruby-high.db`). |
 | `RUBY_HIGH_X_SCHEDULED_POSTS_ENABLED` | `0` | Set to `1` to let the first connected teacher publish at most one classroom/teacher-lounge update per 24 hours. A real Guest Faculty rotation change is announced before the normal AI-authored calendar and recorded by week plus pack, so cold starts, deploys, and later daily ticks do not repeat the same flip. Guest welcomes use only verified roster copy and do not depend on the text model. Each post composes a dynamic, identity-locked campus photo from canonical faculty/classmate art, appends a deterministic viewer link, persists cadence across restarts, and backs off six hours after a failed attempt. |
-| `RUBY_HIGH_STATE_TTL_SECONDS` | 90 days | TTL for idle sessions (SQLite `kv_expires` index). |
+| `RUBY_HIGH_STATE_TTL_SECONDS` | 90 days | Retention for hosted game and account records. Keep it positive in production. |
+| `RUBY_HIGH_PRIVACY_OPERATOR` | required in production | Public legal operator name. |
+| `RUBY_HIGH_PRIVACY_EMAIL` | required in production | Public privacy request email. |
+| `RUBY_HIGH_PRIVACY_ADDRESS` | required in production | Public business mailing address. |
+| `RUBY_HIGH_PRIVACY_PHONE` | required in production | Public privacy contact phone. |
 | `RUBY_HIGH_DYNAMO_TABLE` | — | Legacy: required when backend is `dynamodb`. Ignored for `sqlite`/`json`. |
 | `AWS_REGION` | — | Legacy state-store region. Still used for Tigris portrait storage when `RUBY_HIGH_PORTRAITS_BUCKET` is set. |
 | `RUBY_HIGH_ADMIN_TOKEN` | — | Enables private admin routes, including metrics. Keep this in secrets only. |
@@ -271,3 +277,67 @@ The container itself is host-agnostic — anywhere that speaks Docker, sets `POR
 ## License
 
 MIT for the code, copyright RATi Open Software Foundation. The Ruby High characters (Ruby, Sally Science, Professor Edward, Roko, and the six student cast) and their artwork are dedicated to the public domain under **CC0 1.0** — see [`CC0-CHARACTERS.md`](./CC0-CHARACTERS.md). The mechanics layer is **CC BY 4.0** — see [`DESIGN.md`](./DESIGN.md) §6 and §12.
+
+
+## Six-risk launch review — October 6, 2026
+
+The intended audience is teens age 13 and older and adults. This review covers
+the hosted app source at this PR. Legal review should confirm the actual and
+intended audience using the game, artwork, marketing, and audience evidence.
+[FTC COPPA guidance](https://www.ftc.gov/business-guidance/resources/complying-coppa-frequently-asked-questions)
+explains the different rules for general, mixed, and child-directed services.
+A 13+ entry notice is one part of this review. Audience classification,
+third-party data use, retention, and account deletion also need owner review. Review existing player records and arrange deletion or a lawful consent flow for any known under-13 data.
+
+| Topic | App evidence and action |
+|---|---|
+| 13+ entry and COPPA | The entry screen asks “Confirm you are 13+?” A confirmation starts the usual game session, and the answer is discarded. The viewer starts its client after entry. Account, game, and metric records keep their usual fields. The FTC guidance calls for accurate age entry for a neutral age screen. This button serves as a 13+ notice. Counsel must review audience classification and the appropriate COPPA plan. |
+| Fonts | `landing/styles.css` and `src/viewer-parts/css.ts` load font files from app assets. Font names and license types are listed in `assets/fonts/README.md`. Both pages set `font-src` to local sources. |
+| Session replay | The viewer sends first-party game events with fixed fields through `metrics/event`. Reviewed dependencies and page scripts support event counts and game state. Before adding a replay or tracking vendor, review consent, input masking, vendor terms, and data retention. |
+| Marketing email | Reviewed app routes handle passkeys, OAuth, game events, billing, and social posts. Owner review must cover separate mailing tools and launch lists. Before a campaign, include the sender's valid postal address, an opt-out link or reply method, accurate headers, and clear ad identification. Keep the opt-out method working for 30 days and honor requests within 10 business days. [FTC email guide](https://www.ftc.gov/business-guidance/resources/can-spam-act-compliance-guide-business). |
+| Renewal terms | `src/routes/billing.ts` creates Stripe Checkout with `mode=payment`. Hall Pass top-ups and SOL packs are one-time purchases. Before adding a subscription, show price, billing period, automatic renewal, trial end, and cancellation terms beside the purchase action. Obtain and keep express consent; supply the required notices and easy cancellation. [California renewal guidance](https://oag.ca.gov/node/608083). |
+| Copyright and DMCA | Creator materials, source URLs, published teacher packs, portraits, and public yearbook pages need a rights and takedown review. The owner must confirm the live DMCA registration and public agent contact details. Follow the steps below. |
+
+The entry notice is served by the hosted route boundary. Fresh guest requests also require confirmation before session creation. Static art,
+public share pages, and NFT metadata stay readable. Admin routes, signed
+payment webhooks, and agent bearer routes keep their own access checks. A
+human starts a normal game session before approving an agent. Existing agent viewer cookies keep their usual access checks.
+Account deletion and logout remain available through their usual session and
+origin checks. The separate offline SPA is a local testing build; review its
+audience and data flows before public distribution.
+
+### Register the DMCA agent
+
+1. Choose the legal service provider and its agent. Gather the provider's legal
+   name and address, alternate names such as Ruby High and ruby-high.ai, and
+   the agent's name, postal address, phone number, and email. Use accurate
+   business contact details and review which details become public.
+2. Open the [Copyright Office DMCA directory](https://www.copyright.gov/dmca-directory/).
+   Search for the provider and its alternate names. Use its existing account
+   and designation when a valid record already exists.
+3. Create a directory account, add the service provider and alternate names,
+   add the agent, review the record, and pay the current $6 designation fee.
+   Keep the confirmation and registration number.
+4. Publish the same agent name, address, phone number, and email on a public
+   copyright page. Link it from the landing page and Account screen. Add the
+   notice and counter-notice process, a repeat-infringer policy, and an owner
+   workflow that promptly handles valid reports and disputed removals.
+5. Verify the live directory record and public page. Renew the designation
+   before its three-year expiry and update changed details promptly.
+
+[Copyright Office directory FAQ](https://copyright.gov/dmca-directory/faq.html)
+covers fees and renewal. Its [Section 512 guide](https://www.copyright.gov/512/)
+covers the other safe-harbor conditions. Registration is one condition; rights,
+notice handling, repeat-infringer enforcement, and the service's conduct also
+matter. The statutory maximum of $150,000 concerns willful infringement per
+work when the legal requirements are met. [Copyright statute](https://www.copyright.gov/title17/92chap5.html).
+
+### Penalty claims in the shared post
+
+The post points to real legal issues. The dollar figures are maximums or
+case-specific awards. The FTC describes COPPA penalties per violation;
+application depends on the facts and relevant law. Its email guide describes
+penalties for each violating email. California claims need an applicable
+statute and facts about interception, parties, and consent. Courts assess
+font-related privacy damages on the facts of each case. Have counsel assess
+the live service and its vendors before treating any figure as likely exposure.

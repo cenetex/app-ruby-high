@@ -88,6 +88,12 @@ export function prepareLlmRequestBody<T extends Record<string, unknown>>(body: T
     ...body,
     model,
   };
+  if (!isLocalLlmProvider()) {
+    const routing = body.provider && typeof body.provider === "object" && !Array.isArray(body.provider)
+      ? body.provider as Record<string, unknown> : {};
+    prepared.provider = { ...routing, data_collection: "deny", zdr: true };
+    delete prepared.user;
+  }
   if (!isLocalLlmProvider() && model.startsWith("openai/gpt-5.6-")) {
     delete prepared.temperature;
     if (model === DEFAULT_OPENROUTER_MODEL && prepared.reasoning_effort == null) {

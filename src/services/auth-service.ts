@@ -690,6 +690,7 @@ export class AuthService extends Service {
       relyingParty: pending.relyingParty,
       credential: match.credential,
     });
+    if (!this.usersById.has(match.user.userId)) throw new Error("This account was deleted. Start a new session.");
     const now = Date.now();
     const user: AuthUserRecord = {
       ...match.user,
@@ -844,6 +845,7 @@ export class AuthService extends Service {
     verified: Awaited<ReturnType<typeof verifyPasskeyRegistration>>;
     rotateRecoveryCode: boolean;
   }): Promise<{ token: string; record: AuthRecord; isReturning: boolean; recoveryCode?: string }> {
+    if (!this.usersById.has(input.userId)) throw new Error("This account was deleted. Start a new session.");
     const collision = this.passkeysByCredentialId.get(input.verified.id);
     if (collision && collision.user.userId !== input.userId) {
       throw new Error("This passkey belongs to another Ruby High account.");
@@ -966,22 +968,33 @@ export class AuthService extends Service {
   accountDeletionTargetForToken(token: string | null): StoredAccountDeletionTarget | null {
     const record = this.resolve(token);
     if (!token || !record) return null;
+    return this.accountDeletionTargetForUser(record.userId);
+  }
+
+  accountDeletionTargetForUser(userId: string): StoredAccountDeletionTarget | null {
+    if (!this.usersById.has(userId)) return null;
     const authUsers = Array.from(this.usersByProviderHash.values())
-      .filter((user) => user.userId === record.userId);
+      .filter((user) => user.userId === userId);
     const authSessionTokens = Array.from(this.sessions.entries())
-      .filter(([, session]) => session.userId === record.userId)
+      .filter(([, session]) => session.userId === userId)
       .map(([sessionToken]) => sessionToken);
-    if (!authSessionTokens.includes(token)) authSessionTokens.push(token);
     const visitorHashes = Array.from(new Set(authUsers
       .map((user) => user.visitorHash)
       .filter((value): value is string => !!value)));
     return {
-      userId: record.userId,
-      sessionId: this.stateKeyForRecord(record),
+      userId,
+      sessionId: `rh:user:${userId}`,
       authSessionTokens,
       authUsers,
       visitorHashes,
     };
+  }
+
+  inactiveAccountDeletionTargets(cutoff: number): StoredAccountDeletionTarget[] {
+    return Array.from(this.usersById.values())
+      .filter(user => user.lastLoginAt <= cutoff)
+      .map(user => this.accountDeletionTargetForUser(user.userId))
+      .filter((target): target is StoredAccountDeletionTarget => !!target);
   }
 
   forgetDeletedAccount(target: StoredAccountDeletionTarget): void {
@@ -1004,6 +1017,9 @@ export class AuthService extends Service {
       }
     }
     this.usersById.delete(target.userId);
+    for (const [id, pending] of this.pendingPasskeys) {
+      if (pending.userId === target.userId) this.pendingPasskeys.delete(id);
+    }
   }
 
   stateKeyForCookie(cookieHeader: string | undefined | null): string {

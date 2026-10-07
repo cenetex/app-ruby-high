@@ -22,6 +22,7 @@ export interface TeacherMemorySource {
   kind: TeacherMemoryKind;
   roomId: string;
   sessionHash?: string;
+  accountHash?: string;
   subject?: string;
   eventKind?: string;
 }
@@ -107,6 +108,7 @@ export interface RememberTeacherTurnInput {
   teacher: TeacherCharacter;
   roomId: string;
   sessionToken: string;
+  accountId?: string;
   authorName?: string;
   text: string;
   subject?: string;
@@ -222,6 +224,7 @@ export class TeacherPersonaMemory {
         kind: "teacher-turn",
         roomId: boundedText(input.roomId, 120),
         sessionHash: hashSessionToken(input.sessionToken),
+        ...(input.accountId ? { accountHash: hashSessionToken(input.accountId) } : {}),
         ...(subject ? { subject } : {}),
       },
     };
@@ -296,6 +299,32 @@ export class TeacherPersonaMemory {
     await this.hydratePromise.catch(() => undefined);
     await this.persistPromise.catch(() => undefined);
     await this.store?.flush?.().catch(() => undefined);
+  }
+
+  async forgetAccount(accountId: string, sessionTokens: string[]): Promise<void> {
+    await this.ready();
+    await Promise.allSettled(this.reflectionInFlight.values());
+    const hashes = new Set(sessionTokens.map(hashSessionToken));
+    const accountHash = hashSessionToken(accountId);
+    for (const profile of this.profiles.values()) {
+      const removed = new Set(profile.memories.filter(memory => memory.source.accountHash === accountHash ||
+        (!!memory.source.sessionHash && hashes.has(memory.source.sessionHash))).map(memory => memory.id));
+      profile.memories = profile.memories.filter(memory => !removed.has(memory.id));
+      profile.overlays = profile.overlays.filter(overlay => !overlay.memoryIds.some(id => removed.has(id)));
+      profile.reflectedMemoryIds = profile.reflectedMemoryIds.filter(id => !removed.has(id));
+      if (profile.activeVersion != null && !profile.overlays.some(overlay => overlay.version === profile.activeVersion)) profile.activeVersion = profile.overlays.at(-1)?.version ?? null;
+    }
+    this.persistSoon();
+    await this.persistPromise;
+    await this.store?.flush?.();
+  }
+
+  async purgeExpired(): Promise<void> {
+    await this.ready();
+    for (const profile of this.profiles.values()) this.pruneProfile(profile, this.now());
+    this.persistSoon();
+    await this.persistPromise;
+    await this.store?.flush?.();
   }
 
   private profileFor(
@@ -418,7 +447,10 @@ export class TeacherPersonaMemory {
     profile.memories = profile.memories
       .filter((memory) => memory.expiresAt > now)
       .slice(-TEACHER_PERSONA_MAX_MEMORIES);
+    profile.overlays = profile.overlays.filter(overlay => overlay.createdAt > now - this.memoryTtlMs);
     const retainedIds = new Set(profile.memories.map((memory) => memory.id));
+    profile.overlays = profile.overlays.filter(overlay => overlay.memoryIds.every(id => retainedIds.has(id)));
+    if (profile.activeVersion != null && !profile.overlays.some(overlay => overlay.version === profile.activeVersion)) profile.activeVersion = profile.overlays.at(-1)?.version ?? null;
     profile.reflectedMemoryIds = profile.reflectedMemoryIds
       .filter((memoryId) => retainedIds.has(memoryId))
       .slice(-TEACHER_PERSONA_MAX_MEMORIES * 2);
@@ -436,7 +468,10 @@ export class TeacherPersonaMemory {
     if (!store.loadServiceState) return;
     const record = await store.loadServiceState(TEACHER_PERSONA_MEMORY_STATE_ID).catch(() => null);
     const profiles = hydrateTeacherPersonaProfiles(record, this.now());
-    for (const profile of profiles) this.profiles.set(profile.teacherId, profile);
+    for (const profile of profiles) {
+      this.pruneProfile(profile, this.now());
+      this.profiles.set(profile.teacherId, profile);
+    }
   }
 
   private persistSoon(): void {
@@ -593,6 +628,7 @@ function teacherPersonaStateRecord(
   return {
     id: TEACHER_PERSONA_MEMORY_STATE_ID,
     updatedAt: now,
+    expiresAt: now + TEACHER_PERSONA_MEMORY_TTL_MS,
     data: {
       version: 1,
       teachers: profiles.map((profile) => ({
@@ -688,6 +724,7 @@ function normalizeMemory(value: unknown): TeacherMemoryRecord | null {
       kind,
       roomId,
       ...(boundedText(details.sessionHash, 64) ? { sessionHash: boundedText(details.sessionHash, 64) } : {}),
+      ...(boundedText(details.accountHash, 64) ? { accountHash: boundedText(details.accountHash, 64) } : {}),
       ...(safeSubject(details.subject) ? { subject: safeSubject(details.subject) } : {}),
       ...(boundedText(details.eventKind, 80) ? { eventKind: boundedText(details.eventKind, 80) } : {}),
     },

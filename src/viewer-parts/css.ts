@@ -900,7 +900,7 @@ export const VIEWER_CSS = `
     gap: 8px;
     margin: 8px 0;
   }
-  .pack-search-row input {
+  .pack-search-row select {
     width: 100%;
     min-width: 0;
   }
@@ -1092,11 +1092,10 @@ export const VIEWER_CSS = `
   .pack-course-generator[hidden] {
     display: none;
   }
-  .pack-course-generator textarea {
+  .pack-course-generator select {
     width: 100%;
     box-sizing: border-box;
-    min-height: 220px;
-    resize: vertical;
+    min-height: 40px;
     border-radius: 8px;
     border: 1px solid var(--line);
     background: var(--bg);
@@ -1370,14 +1369,13 @@ export const VIEWER_CSS = `
     gap: 8px;
     margin: 8px 0 12px;
   }
+  .teacher-creator output { display: block; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16rem; overflow-y: auto; }
   .teacher-creator-row {
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 8px;
   }
-  .teacher-creator input,
-  .teacher-creator select,
-  .teacher-creator textarea {
+  .teacher-creator output {
     width: 100%;
     box-sizing: border-box;
     border-radius: 8px;
@@ -1387,11 +1385,6 @@ export const VIEWER_CSS = `
     padding: 9px 10px;
     font: inherit;
     font-size: 13px;
-  }
-  .teacher-creator textarea {
-    resize: vertical;
-    min-height: 112px;
-    line-height: 1.35;
   }
   .teacher-publish-toggle {
     display: flex;
@@ -9341,6 +9334,21 @@ export const VIEWER_CSS = `
     font-weight: 700;
     letter-spacing: 0;
     text-transform: none;
+  }
+  .sheet-card.is-creation-sheet .creation-quick-fields .creation-name-row {
+    grid-template-columns: minmax(0, 1fr) 44px;
+  }
+  .sheet-card.is-creation-sheet .creation-quick-fields .creation-name-row .creation-row-label {
+    grid-column: 1 / -1;
+  }
+  .sheet-card.is-creation-sheet .creation-quick-fields .creation-name-row .creation-reroll {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    grid-column: 2;
+    grid-row: 2;
+    width: 44px;
+    min-height: 44px;
   }
   .sheet-card.is-creation-sheet .creation-quick-fields .creation-edit-input {
     min-height: 44px;

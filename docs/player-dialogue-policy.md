@@ -25,4 +25,6 @@ The aim is to reduce collection of children's personal information at the source
 - `src/routes/commands.ts`: bounded lesson answers and labyrinth actions.
 - `src/__tests__/chat-routes-auth.test.ts`: requests containing player prose and successful guided turns.
 
-Identity fields, credentials, course authoring, and the separately authenticated agent API are separate data flows. This policy describes human-player classroom dialogue. Their privacy rules need to be reviewed when those flows change.
+Public player screens also use choices for profiles, courses and bug reports. Student names and teacher details come from generated candidates. Recovery and agent connection use buttons to read a copied credential. Keep the public app based on choices across these flows.
+
+Private admin setup, vendor wallet or payment screens, and the separately authenticated APIs are separate data flows. Review their privacy rules when those flows change.
