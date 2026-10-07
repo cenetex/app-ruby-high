@@ -78,7 +78,6 @@ function baseInput(overrides: Record<string, unknown> = {}) {
     imageReason: "",
     imageCreditHint: "1 Hall Pass",
     statsNode: new FakeElement("stats") as unknown as HTMLElement,
-    onFieldInput: vi.fn(),
     onReroll: vi.fn(),
     onChooseImage: vi.fn(),
     onGenerateImage: vi.fn(),
@@ -100,8 +99,10 @@ describe("teacher roll controls renderer", () => {
       "Teacher Roll",
       "Start with a ready-made Ruby High teacher, then try another version of any part you want to change.",
       "Name",
+      "Ruby",
       "↻",
       "Class",
+      "Homeroom",
       "↻",
       "Image",
       "Ruby",
@@ -110,18 +111,20 @@ describe("teacher roll controls renderer", () => {
       "Stats",
       "↻",
       "Style",
+      "Warm but exacting.",
       "Quote",
+      "Bell rings.",
       "↻",
     ]);
 
     const fields = (card.children[1] as FakeElement).children[2] as FakeElement;
-    const nameInput = fields.children[0]!.children[1]!.children[0] as FakeElement;
-    expect(nameInput.tagName).toBe("input");
-    expect(nameInput.value).toBe("Ruby");
-    expect(nameInput.maxLength).toBe(64);
-    nameInput.value = "Professor Ruby";
-    nameInput.dispatch("input");
-    expect(input.onFieldInput).toHaveBeenCalledWith("displayName", "Professor Ruby");
+    const nameValue = fields.children[0]!.children[1] as FakeElement;
+    expect(nameValue.textContent).toBe("Ruby");
+    const allTags = (node: FakeElement): string[] => [node.tagName, ...node.children.flatMap(allTags)];
+    expect(allTags(card)).not.toContain("input");
+    expect(allTags(card)).not.toContain("textarea");
+    fields.children[0]!.children[2]!.dispatch("click");
+    expect(input.onReroll).toHaveBeenCalledWith("name");
 
     const classReroll = fields.children[1]!.children[2] as FakeElement;
     classReroll.dispatch("click");
@@ -163,7 +166,7 @@ describe("teacher roll controls renderer", () => {
     expect(textTree(custom)).toEqual([
       "Generating",
       "Cancel generation",
-      "Keep editing while the image generates. Save and Close unlock after it finishes or you cancel.",
+      "Keep choosing while the image generates. Save and Close unlock after it finishes or you cancel.",
     ]);
 
     cancel.dispatch("click");
@@ -182,13 +185,11 @@ describe("teacher roll controls renderer", () => {
 
     const card = renderer.build(input) as unknown as FakeElement;
     const fields = (card.children[1] as FakeElement).children[2] as FakeElement;
-    const nameInput = fields.children[0]!.children[1]!.children[0] as FakeElement;
     const nameReroll = fields.children[0]!.children[2] as FakeElement;
     const custom = fields.children[2]!.children[1]!.children[1] as FakeElement;
     const generate = custom.children[0] as FakeElement;
     const status = custom.children[2] as FakeElement;
 
-    expect(nameInput.disabled).toBe(true);
     expect(nameReroll.disabled).toBe(true);
     expect(generate.disabled).toBe(true);
     expect(generate.title).toBe("Unlock OpenRouter first.");

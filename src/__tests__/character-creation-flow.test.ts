@@ -210,10 +210,10 @@ describe("character creation flow", () => {
       expectScriptToContain(script, '"Try another "');
     });
 
-    it("offers direct name and student-style editing while preserving the explanation", () => {
+    it("offers generated names and student-style choices while preserving the explanation", () => {
       const script = renderedViewerScript();
 
-      expectScriptToContain(script, 'nameInput.setAttribute("aria-label", "Student name")');
+      expect(script).not.toContain('nameInput');
       expectScriptToContain(script, 'playbookSelect.setAttribute("aria-label", "Student style")');
       expectScriptToContain(script, 'customizeBtn.addEventListener("click"');
       expectScriptToContain(script, 'doneBtn.addEventListener("click"');

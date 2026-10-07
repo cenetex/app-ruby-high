@@ -752,9 +752,9 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="passkey-action"');
     expect(html).toContain('id="passkey-create"');
     expect(html).toContain("Save your student across devices with a passkey.");
-    expect(html).toContain('autocomplete="username webauthn"');
+    expect(html).not.toContain('autocomplete="username webauthn"');
     expect(html).toContain('id="passkey-list"');
-    expect(html).toContain('id="passkey-recovery-input"');
+    expect(html).toContain("Copy your saved recovery code");
     expect(html).toContain('id="passkey-recovery-create"');
     expect(html).not.toContain('id="privy-phantom-login"');
     expect(html).toContain('id="privy-login-widget"');
@@ -846,8 +846,7 @@ describe("viewer regression guardrails", () => {
     expectScriptToContain(script, '"/auth/passkey/recover/verify"');
     expectScriptToContain(script, '"/auth/passkey/recovery-code"');
     expectScriptToContain(script, '"/auth/passkey/delete"');
-    expectScriptToContain(script, "PublicKeyCredential.isConditionalMediationAvailable()");
-    expectScriptToContain(script, 'mediation: "conditional"');
+    expect(script).not.toContain('mediation: "conditional"');
     expectScriptToContain(script, "rotateVisitorId()");
     expectScriptToContain(script, "navigator.credentials.get");
     expectScriptToContain(script, "navigator.credentials.create");
@@ -1413,7 +1412,7 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="bug-report-form"');
     expectScriptToContain(script, 'apiBase + "/bug-report"');
     expectScriptToContain(script, "!els.reportBugLink.dataset.discordLink");
-    expectScriptToContain(script, "RECENT_ERRORS");
+    expectScriptToContain(script, "reportErrorCounts");
     expect(script).not.toContain("github.com/cenetex/app-ruby-high/issues/new");
     expect(script).not.toContain("mailto:hello@ratimics.com");
   });
@@ -1549,12 +1548,12 @@ describe("viewer regression guardrails", () => {
     expect(script).not.toContain('"Active pack switched. Reloading..."');
   });
 
-  it("keeps new content pack setup focused on pasted course materials", () => {
+  it("keeps new content pack setup focused on topic choices", () => {
     const html = renderedViewer();
     const script = inlineScript(html);
 
     expect(html).toContain('id="course-materials-input"');
-    expect(html).toContain("Add course materials here");
+    expect(html).toContain("Course topic");
     expect(html).toContain("Generate course");
     expect(html).not.toContain('id="pack-name-input"');
     expect(html).not.toContain('id="pack-description-input"');
@@ -1562,7 +1561,7 @@ describe("viewer regression guardrails", () => {
     expect(html).not.toContain('<span class="pack-teacher-title">New Teacher</span>');
     expect(html).not.toContain('<span class="pack-teacher-subtitle">Create manually</span>');
     expectScriptToContain(script, 'packEditTitleEl.textContent = emptyDraft ? "Create Course" : "Edit Course"');
-    expectScriptToContain(script, 'packEditSubtitleEl.textContent = emptyDraft ? "Add course materials here."');
+    expectScriptToContain(script, 'packEditSubtitleEl.textContent = emptyDraft ? "Choose a topic for your course."');
     expectScriptToContain(script, 'if (teacherSidebar) teacherSidebar.hidden = emptyDraft');
     expectScriptToContain(script, "if (Object.keys(patch).length === 0) return;");
     expect(script).not.toContain('packAddTeacherBtn.addEventListener("click", addDraftTeacher)');
@@ -1576,7 +1575,7 @@ describe("viewer regression guardrails", () => {
     expect(html).toContain('id="course-materials-input"');
     expect(html).toContain('id="course-generation-progress"');
     expect(html).toContain('id="course-generation-checklist"');
-    expect(html).toContain("Add course materials here");
+    expect(html).toContain("Course topic");
     expect(html).toContain("Generate course");
     expect(html).toContain("Publish course (3 Hall Passes)");
     expect(html).toContain('id="course-generate-btn"');

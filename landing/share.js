@@ -34,25 +34,28 @@ function updateInvitation() {
   }).toString();
   if (source === "partner") url.hash = "agents";
   invitationUrl = url.href;
-  message.value = `${invitations[source]}\n\n${invitationUrl}`;
+  message.textContent = `${invitations[source]}\n\n${invitationUrl}`;
   preview.href = invitationUrl;
   note.textContent = notes[source] || "A personal note makes a good first bell.";
   status.textContent = "";
 }
 
 async function copyInvitation(linkOnly) {
-  const text = linkOnly ? invitationUrl : message.value;
+  const text = linkOnly ? invitationUrl : message.textContent;
   try {
     await navigator.clipboard.writeText(text);
     status.textContent = linkOnly ? "Link copied. Ready to share." : "Invitation copied. Ready to share.";
   } catch {
     message.focus();
-    if (linkOnly) {
-      const start = message.value.lastIndexOf(invitationUrl);
-      message.setSelectionRange(start, start + invitationUrl.length);
-    } else {
-      message.select();
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(message);
+    if (linkOnly && message.firstChild) {
+      const start = message.textContent.lastIndexOf(invitationUrl);
+      range.setStart(message.firstChild, start);
+      range.setEnd(message.firstChild, start + invitationUrl.length);
     }
+    if (selection) { selection.removeAllRanges(); selection.addRange(range); }
     status.textContent = "Text selected. Use your device's Copy action.";
   }
 }

@@ -4,58 +4,23 @@ import { log } from "../services/logger.js";
 import type { RouteContext } from "./context.js";
 
 const DEFAULT_REPO = "cenetex/app-ruby-high";
-const MAX_DESCRIPTION_CHARS = 4_000;
-const MAX_CONTEXT_CHARS = 1_000;
-const MAX_ERROR_CHARS = 280;
+const BUG_CATEGORIES = {
+  classroom: "A classroom view is broken.",
+  gameplay: "A game action failed.",
+  account: "Account access failed.",
+  purchase: "A purchase or reward failed.",
+} as const;
 const BUG_REPORT_LIMITER = new TokenBucket(3, 1 / 120);
 
-type BugReportContext = {
-  url?: unknown;
-  userAgent?: unknown;
-  timestamp?: unknown;
-  session?: unknown;
-  aiEnabled?: unknown;
-  character?: unknown;
-  grade?: unknown;
-  faculty?: unknown;
-  viewport?: unknown;
-  recentErrors?: unknown;
-};
-
 type BugReportBody = {
+  category?: unknown;
   description?: unknown;
-  context?: BugReportContext | null;
+  context?: Record<string, unknown> | null;
 } | null;
 
 function firstHeader(value: string | string[] | null | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
   return value ?? "";
-}
-
-function redactSecrets(input: string): string {
-  return input
-    .replace(/sk-[A-Za-z0-9_-]{8,}/g, "sk-[redacted]")
-    .replace(/([?&](?:code|state|access_token|id_token|token|key)=)[^&\s)]+/gi, "$1[redacted]")
-    .replace(/\b(authorization|bearer|token|api[_-]?key)(["':=\s]+)([A-Za-z0-9._~+/-]{12,})/gi, "$1$2[redacted]");
-}
-
-function cleanText(value: unknown, maxChars: number): string {
-  if (typeof value !== "string") return "";
-  return redactSecrets(value.replace(/\u0000/g, "").trim()).slice(0, maxChars);
-}
-
-function cleanScalar(value: unknown, maxChars = MAX_CONTEXT_CHARS): string {
-  if (typeof value === "boolean") return value ? "yes" : "no";
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  return cleanText(value, maxChars);
-}
-
-function cleanErrors(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((entry) => cleanText(entry, MAX_ERROR_CHARS))
-    .filter(Boolean)
-    .slice(-5);
 }
 
 function rateKey(ctx: RouteContext): string {
@@ -73,41 +38,26 @@ function parseRepo(raw: string): { owner: string; repo: string } | null {
   return valid ? { owner, repo } : null;
 }
 
-function makeIssueTitle(description: string): string {
-  const firstLine = description
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean);
-  const suffix = (firstLine || "Ruby High bug report").replace(/\s+/g, " ").slice(0, 88);
-  return `[bug] ${suffix}`;
+function boundedNumber(value: unknown, max: number): string {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= max ? String(value) : "unknown";
 }
 
-function makeIssueBody(description: string, context: BugReportContext | null): string {
-  const recentErrors = cleanErrors(context?.recentErrors);
-  const rows = [
-    "**What happened?**",
-    description || "_No description provided._",
+function makeIssueBody(description: string, context: Record<string, unknown> | null): string {
+  return [
+    "**Problem choice**",
+    description,
     "",
-    "---",
-    "**Auto-collected context**",
-    `- url: ${cleanScalar(context?.url) || "unknown"}`,
-    `- user-agent: ${cleanScalar(context?.userAgent) || "unknown"}`,
-    `- timestamp: ${cleanScalar(context?.timestamp) || new Date().toISOString()}`,
-    `- session: ${cleanScalar(context?.session) || "unknown"}`,
-    `- ai enabled: ${cleanScalar(context?.aiEnabled) || "unknown"}`,
-    `- character: ${cleanScalar(context?.character) || "none"}`,
-    `- grade: ${cleanScalar(context?.grade) || "unknown"}`,
-    `- faculty: ${cleanScalar(context?.faculty) || "unknown"}`,
-    `- viewport: ${cleanScalar(context?.viewport) || "unknown"}`,
-    "",
-    "**Recent console errors**",
-  ];
-  if (recentErrors.length) {
-    rows.push("```", recentErrors.join("\n"), "```");
-  } else {
-    rows.push("_(none in this session)_");
-  }
-  return rows.join("\n");
+    "**App diagnostics**",
+    `- timestamp: ${new Date().toISOString()}`,
+    `- session: ${typeof context?.session === "boolean" ? String(context.session) : "unknown"}`,
+    `- ai enabled: ${typeof context?.aiEnabled === "boolean" ? String(context.aiEnabled) : "unknown"}`,
+    `- grade: ${boundedNumber(context?.grade, 12)}`,
+    `- viewport width: ${boundedNumber(context?.width, 10000)}`,
+    `- viewport height: ${boundedNumber(context?.height, 10000)}`,
+    `- browser errors: ${boundedNumber(context?.error, 100)}`,
+    `- unhandled rejections: ${boundedNumber(context?.unhandledrejection, 100)}`,
+    `- console errors: ${boundedNumber(context?.consoleError, 100)}`,
+  ].join("\n");
 }
 
 function requestLooksLikeJson(ctx: RouteContext): boolean {
@@ -176,6 +126,13 @@ export async function handleBugReportRoute(ctx: RouteContext): Promise<true> {
     return true;
   }
 
+  const category = body?.category;
+  if (body?.description !== undefined || typeof category !== "string" || !Object.hasOwn(BUG_CATEGORIES, category)) {
+    ctx.error(ctx.res, "Choose a problem from the report menu.", 400);
+    return true;
+  }
+  const description = BUG_CATEGORIES[category as keyof typeof BUG_CATEGORIES];
+
   const token = (process.env.RUBY_HIGH_GITHUB_ISSUES_TOKEN || "").trim();
   if (!token) {
     ctx.error(ctx.res, "Bug reporting is not configured on this server yet.", 501);
@@ -187,9 +144,8 @@ export async function handleBugReportRoute(ctx: RouteContext): Promise<true> {
     return true;
   }
 
-  const description = cleanText(body?.description, MAX_DESCRIPTION_CHARS);
   const issueBody = makeIssueBody(description, body?.context ?? null);
-  const issueTitle = makeIssueTitle(description);
+  const issueTitle = `[bug] ${description}`;
 
   let response: Response;
   try {

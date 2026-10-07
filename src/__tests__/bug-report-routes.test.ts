@@ -49,7 +49,7 @@ describe("bug report route", () => {
     delete process.env.RUBY_HIGH_GITHUB_ISSUES_TOKEN;
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    const harness = makeHarness({ description: "board froze" }, { clientIp: "203.0.113.11" });
+    const harness = makeHarness({ category: "classroom" }, { clientIp: "203.0.113.11" });
 
     const handled = await handleAppRoutes(harness.ctx);
 
@@ -59,7 +59,7 @@ describe("bug report route", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("creates a private GitHub issue with redacted report context", async () => {
+  it("creates a GitHub issue with a fixed category and bounded app diagnostics", async () => {
     process.env.RUBY_HIGH_GITHUB_ISSUES_TOKEN = "ghp_test_token";
     process.env.RUBY_HIGH_GITHUB_ISSUES_REPO = "cenetex/app-ruby-high";
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ number: 42 }), {
@@ -68,7 +68,7 @@ describe("bug report route", () => {
     }));
     vi.stubGlobal("fetch", fetchMock);
     const harness = makeHarness({
-      description: "Teacher leaked sk-openrouter-test123456789 in chat.",
+      category: "classroom",
       context: {
         url: "https://ruby-high.ai/api/apps/ruby-high/viewer?code=oauth-secret",
         userAgent: "Vitest",
@@ -76,7 +76,12 @@ describe("bug report route", () => {
         session: true,
         aiEnabled: true,
         character: "Vince (outsider)",
-        grade: "10",
+        grade: 10,
+        width: 1280,
+        height: 720,
+        error: 1,
+        unhandledrejection: "private message",
+        consoleError: 5000,
         faculty: "ruby",
         viewport: "1280x720",
         recentErrors: ["Authorization: Bearer sk-openrouter-abc123456789"],
@@ -94,12 +99,35 @@ describe("bug report route", () => {
     expect(url).toBe("https://api.github.com/repos/cenetex/app-ruby-high/issues");
     expect(init.headers.Authorization).toBe("Bearer ghp_test_token");
     const payload = JSON.parse(init.body);
-    expect(payload.title).toContain("[bug] Teacher leaked");
+    expect(payload.title).toBe("[bug] A classroom view is broken.");
     expect(payload.labels).toEqual(["bug", "user-report"]);
-    expect(payload.body).toContain("Vince (outsider)");
-    expect(payload.body).toContain("code=[redacted]");
+    expect(payload.body).toContain("grade: 10");
+    expect(payload.body).toContain("viewport width: 1280");
+    expect(payload.body).toContain("browser errors: 1");
+    expect(payload.body).toContain("unhandled rejections: unknown");
+    expect(payload.body).toContain("console errors: unknown");
+    for (const text of ["Vince", "oauth-secret", "Vitest", "private message", "2026-05-14"]) {
+      expect(payload.body).not.toContain(text);
+    }
     expect(payload.body).not.toContain("sk-openrouter-test123456789");
     expect(payload.body).not.toContain("sk-openrouter-abc123456789");
+  });
+
+  it("rejects free text and unknown categories before calling GitHub", async () => {
+    process.env.RUBY_HIGH_GITHUB_ISSUES_TOKEN = "ghp_test_token";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    for (const [index, body] of [
+      { description: "My private information" },
+      { category: "classroom", description: "My private information" },
+      { category: "My private information" },
+      { category: "__proto__" },
+    ].entries()) {
+      const harness = makeHarness(body, { clientIp: `203.0.113.${80 + index}` });
+      await handleAppRoutes(harness.ctx);
+      expect(harness.response?.status).toBe(400);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects non-JSON and cross-origin browser posts before calling GitHub", async () => {
@@ -107,14 +135,14 @@ describe("bug report route", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const nonJson = makeHarness({ description: "x" }, {
+    const nonJson = makeHarness({ category: "classroom" }, {
       clientIp: "203.0.113.13",
       contentType: "text/plain",
     });
     await handleAppRoutes(nonJson.ctx);
     expect(nonJson.response?.status).toBe(415);
 
-    const badOrigin = makeHarness({ description: "x" }, {
+    const badOrigin = makeHarness({ category: "classroom" }, {
       clientIp: "203.0.113.14",
       origin: "https://evil.example",
     });
@@ -128,14 +156,14 @@ describe("bug report route", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const malformed = makeHarness({ description: "x" }, { clientIp: "203.0.113.16" });
+    const malformed = makeHarness({ category: "classroom" }, { clientIp: "203.0.113.16" });
     malformed.ctx.readJsonBody = async () => {
       throw new SyntaxError("Unexpected end of JSON input");
     };
     await handleAppRoutes(malformed.ctx);
     expect(malformed.response?.status).toBe(400);
 
-    const oversized = makeHarness({ description: "x" }, { clientIp: "203.0.113.17" });
+    const oversized = makeHarness({ category: "classroom" }, { clientIp: "203.0.113.17" });
     oversized.ctx.readJsonBody = async () => {
       const err = new Error("Request body too large") as Error & { statusCode: number };
       err.statusCode = 413;
@@ -154,7 +182,7 @@ describe("bug report route", () => {
     const statuses: Array<number | undefined> = [];
 
     for (let i = 0; i < 4; i += 1) {
-      const harness = makeHarness({ description: "x" }, { clientIp: "203.0.113.66" });
+      const harness = makeHarness({ category: "classroom" }, { clientIp: "203.0.113.66" });
       harness.ctx.readJsonBody = async () => {
         parseCalls += 1;
         throw new SyntaxError("Unexpected end of JSON input");
@@ -175,7 +203,7 @@ describe("bug report route", () => {
       headers: { "Content-Type": "application/json" },
     }));
     vi.stubGlobal("fetch", fetchMock);
-    const harness = makeHarness({ description: "custom domain" }, {
+    const harness = makeHarness({ category: "classroom" }, {
       clientIp: "203.0.113.15",
       callbackOrigin: "https://ruby-high.internal.example",
       origin: "https://ruby-high.ai",

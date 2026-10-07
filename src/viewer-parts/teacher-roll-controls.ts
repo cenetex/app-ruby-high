@@ -22,7 +22,6 @@ export interface TeacherRollControlsInput {
   imageReason: string;
   imageCreditHint: string;
   statsNode: HTMLElement;
-  onFieldInput: (field: string, value: string) => void;
   onReroll: (key: string) => void;
   onChooseImage: (choice: string) => void;
   onGenerateImage: () => void;
@@ -62,12 +61,7 @@ export function createTeacherRollControlsRenderer(
     value: unknown,
     opts?: {
       className?: string;
-      editField?: string;
-      maxLength?: number;
-      multiline?: boolean;
-      placeholder?: string;
       reroll?: boolean;
-      rows?: number;
     },
   ): void {
     const row = deps.document.createElement("div");
@@ -77,22 +71,7 @@ export function createTeacherRollControlsRenderer(
     lab.textContent = label;
     const val = deps.document.createElement("div");
     val.className = "creation-row-value";
-    if (opts && opts.editField) {
-      const edit = deps.document.createElement(opts.multiline ? "textarea" : "input");
-      edit.className = "creation-edit-input" + (opts.multiline ? " is-multiline" : "");
-      if (!opts.multiline) (edit as HTMLInputElement).type = "text";
-      (edit as HTMLInputElement | HTMLTextAreaElement).value = String(value || "");
-      (edit as HTMLInputElement | HTMLTextAreaElement).placeholder = opts.placeholder || "";
-      if (opts.maxLength) (edit as HTMLInputElement | HTMLTextAreaElement).maxLength = opts.maxLength;
-      if (opts.multiline) (edit as HTMLTextAreaElement).rows = opts.rows || 2;
-      (edit as HTMLInputElement | HTMLTextAreaElement).disabled = input.importBusy;
-      edit.addEventListener("input", () => {
-        input.onFieldInput(opts.editField || "", (edit as HTMLInputElement | HTMLTextAreaElement).value);
-      });
-      val.appendChild(edit);
-    } else {
-      appendValue(val, value);
-    }
+    appendValue(val, value);
     row.appendChild(lab);
     row.appendChild(val);
     if (!opts || opts.reroll !== false) {
@@ -171,7 +150,7 @@ export function createTeacherRollControlsRenderer(
       const credit = deps.document.createElement("div");
       credit.className = "creation-portrait-status is-credit-hint";
       credit.textContent = input.imageBusy
-        ? "Keep editing while the image generates. Save and Close unlock after it finishes or you cancel."
+        ? "Keep choosing while the image generates. Save and Close unlock after it finishes or you cancel."
         : input.imageCreditHint;
       custom.appendChild(credit);
       const statusText = input.imageBusy ? "" : (input.imageStatus || (input.roll.profileImageUrl ? "Custom teacher image ready." : ""));
@@ -211,12 +190,12 @@ export function createTeacherRollControlsRenderer(
       fields.className = "creation-fields";
       controlsBody.appendChild(fields);
 
-      makeRow(fields, input, "Name", "name", input.roll.displayName, { editField: "displayName", maxLength: 64, placeholder: "Teacher name" });
-      makeRow(fields, input, "Class", "style", input.roll.subject, { editField: "subject", maxLength: 80, placeholder: "Class or subject" });
+      makeRow(fields, input, "Name", "name", input.roll.displayName);
+      makeRow(fields, input, "Class", "style", input.roll.subject);
       appendImageRow(fields, input);
       makeRow(fields, input, "Stats", "stats", input.statsNode, { className: "is-compact-stats" });
-      makeRow(fields, input, "Style", "style", input.roll.description, { editField: "description", multiline: true, maxLength: 220, placeholder: "Teaching style", reroll: false });
-      makeRow(fields, input, "Quote", "quote", input.roll.quote, { editField: "quote", multiline: true, maxLength: 160, placeholder: "Teacher quote" });
+      makeRow(fields, input, "Style", "style", input.roll.description, { reroll: false });
+      makeRow(fields, input, "Quote", "quote", input.roll.quote);
       return controlsCard;
     },
   };

@@ -17,7 +17,7 @@ Sources: [FTC COPPA FAQ](https://www.ftc.gov/business-guidance/resources/complyi
 ## Collection rules
 
 1. Players choose action and card IDs. The game supplies classroom speech. Follow the [player dialogue policy](./player-dialogue-policy.md) at the viewer and server boundaries.
-2. Ask players to use fictional student names. Review identity fields and creator tools as separate data flows.
+2. Use generated fictional names and reroll buttons. Public player screens use fixed choices for bug reports, course search and course topics. Teacher details are generated displays. Account recovery and agent connection read a copied code after an explicit button click and clipboard permission. Review private admin setup, authenticated APIs and vendor payment or wallet screens as separate data flows.
 3. Use account and visitor IDs for login, saved progress, preferences, first party service measurement and security. A hash or cookie is still a persistent identifier under COPPA when the rule applies.
 4. Review every new SDK, metric field, upload or model input before adding it. Record its purpose, recipients and deletion period.
 5. New students start with public school activity and teacher social posts off. Each has its own Account choice. Public sharing needs a separate review if younger children become part of the audience.
@@ -36,9 +36,9 @@ The internal operations exception has conditions. It applies to limited persiste
 | Fixed metrics and auth error codes | Service quality and security; app server | Default 90-day state period. The auth error endpoint drops message text and wallet previews. Account deletion removes linked metrics. |
 | Passkey public credentials, recovery hash and auth challenges | Account security; app server | Account retention and deletion apply. Challenges have a short expiry. Account deletion removes bound challenges. |
 | Optional wallet IDs, payment and purchase records | Wallet login, purchases and network transactions; Privy, Stripe and Solana services | App account records follow app retention. Vendor finance records and public chain records need a separate retention review. |
-| Creator content and generated artwork | Course and portrait features; app server, model providers, S3-compatible storage and sometimes Arweave | Owned app records are removed by account deletion. Uploaded objects, published copies and vendor copies need an owner process. Public chain and Arweave records can remain available. |
+| Chosen course topics, generated lessons, teachers and artwork | Course and portrait features; app server, model providers, S3-compatible storage and sometimes Arweave | Owned app records are removed by account deletion. Uploaded objects, published copies and vendor copies need an owner process. Public chain and Arweave records can remain available. |
 | Approved agent credentials, events and saved students | Optional agent play; app server | Owner deletion revokes linked credentials and removes owned agent students and linked dialogue. |
-| Bug reports and community posts | Support and public community features; GitHub, Discord, X and Telegram | The default GitHub issue repository is public. Keep private requests in the privacy channel. Review public copies and vendor deletion tools when handling requests. |
+| Fixed bug categories, numeric diagnostics and community posts | Support and public community features; GitHub, Discord, X and Telegram | The default GitHub issue repository is public. Keep private requests in the privacy channel. Review public copies and vendor deletion tools when handling requests. |
 | Host access logs, network information and backups | Delivery, abuse control and recovery; hosting and storage services | Owner must confirm current log and backup limits, access controls and the process for restored copies. |
 
 This register is based on source review. The operator must verify deployed settings, vendor accounts and older stored copies.
