@@ -78,18 +78,18 @@
     "arweave": "^2.0.1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
-    "@privy-io/react-auth": "3.39.0",
-    "@stripe/stripe-js": "^9.15.0",
-    "@types/node": "^26.4.1",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.5",
-    "@vitest/coverage-v8": "4.1.11",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "tsup": "^8.0.0",
+    "@playwright/test": "^1.64.1",
+    "@privy-io/react-auth": "3.50.0",
+    "@stripe/stripe-js": "^10.1.0",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitest/coverage-v8": "5.0.5",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tsup": "^9.0.0",
     "typescript": "6.0.3",
-    "vitest": "4.1.11"
+    "vitest": "5.0.5"
   },
   "overrides": {
     "stream-json": "^3.5.0",
