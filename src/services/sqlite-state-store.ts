@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { dirname } from "node:path";
 import { chmodSync, mkdirSync } from "node:fs";
 import type { QuizState } from "../types.js";
+import { isSmokeSurfaceRecord, isSyntheticQuizState, SYNTHETIC_SESSION_SQL } from "./synthetic-records.js";
 import type {
   AuthSessionRecord,
   AuthStoreSnapshot,
@@ -83,6 +84,11 @@ export interface SqliteStateStoreOptions {
   ttlSeconds?: number;
 }
 
+/** Smoke and synthetic rows only need to live long enough for the smoke run
+ *  and same-day debugging. Keeping them forever grew production to 12k+
+ *  synthetic sessions and ran the boot load out of memory. */
+const SYNTHETIC_TTL_SECONDS = 24 * 60 * 60;
+
 export class SqliteStateStore implements StateStoreLike {
   private readonly db: DatabaseSync;
   private readonly path: string;
@@ -119,6 +125,7 @@ export class SqliteStateStore implements StateStoreLike {
     this.db.exec("CREATE INDEX IF NOT EXISTS kv_kind ON kv(kind);");
     this.db.exec("CREATE INDEX IF NOT EXISTS kv_kind_updated_at ON kv(kind, updated_at DESC);");
     this.db.exec("CREATE INDEX IF NOT EXISTS kv_expires ON kv(expires_at);");
+    this.expireSyntheticRows();
     this.purgeExpired();
     this.startPeriodicPurge();
   }
@@ -416,10 +423,36 @@ export class SqliteStateStore implements StateStoreLike {
     // node:sqlite rejects `undefined`/NaN binds. Records may omit their
     // timestamp (legacy/partial states), so coerce defensively.
     const ts = Number.isFinite(updatedAt) ? Math.floor(updatedAt as number) : Date.now();
-    const exp = expiresAtSec != null && Number.isFinite(expiresAtSec) ? Math.floor(expiresAtSec) : null;
+    const synthetic = kind === "session" ? isSyntheticQuizState(data as QuizState) : isSmokeSurfaceRecord(data);
+    const requested = expiresAtSec != null && Number.isFinite(expiresAtSec) ? Math.floor(expiresAtSec) : null;
+    const exp = synthetic ? this.syntheticExpiry(requested) : requested;
     this.db
       .prepare("INSERT OR REPLACE INTO kv (pk, kind, data, updated_at, expires_at) VALUES (?, ?, ?, ?, ?)")
       .run(pk, kind, JSON.stringify(data), ts, exp);
+  }
+
+  /** The sooner of the requested expiry and the synthetic-row TTL. */
+  private syntheticExpiry(requested: number | null): number {
+    const short = Math.floor(Date.now() / 1000) + SYNTHETIC_TTL_SECONDS;
+    return requested == null ? short : Math.min(requested, short);
+  }
+
+  /** Give existing smoke/synthetic rows the short TTL. Covers rows written
+   *  before writes applied it, including guest auth users that own a
+   *  synthetic session. */
+  private expireSyntheticRows(): void {
+    const exp = this.syntheticExpiry(null);
+    this.db.prepare(`
+      UPDATE kv SET expires_at = ?
+      WHERE (expires_at IS NULL OR expires_at > ?)
+        AND (
+          (kind = 'session' AND ${SYNTHETIC_SESSION_SQL})
+          OR (kind IN ('authUser', 'authSession', 'metricEvent') AND json_extract(data, '$.clientSurface') = 'smoke')
+          OR (kind = 'authUser' AND ('rh:user:' || json_extract(data, '$.userId')) IN (
+            SELECT pk FROM kv WHERE kind = 'session' AND ${SYNTHETIC_SESSION_SQL}
+          ))
+        )
+    `).run(exp, exp);
   }
 
   /** Default TTL expiry (seconds epoch), or null when TTL is disabled. */
@@ -483,7 +516,8 @@ export class SqliteStateStore implements StateStoreLike {
     this.db.exec("BEGIN");
     try {
       for (const state of list) {
-        stmt.run(state.sessionId, JSON.stringify(state), state.updatedAt ?? Date.now(), expiry);
+        const rowExpiry = isSyntheticQuizState(state) ? this.syntheticExpiry(expiry) : expiry;
+        stmt.run(state.sessionId, JSON.stringify(state), state.updatedAt ?? Date.now(), rowExpiry);
       }
       this.db.exec("COMMIT");
     } catch (err) {

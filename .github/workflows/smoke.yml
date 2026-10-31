@@ -14,8 +14,11 @@ name: smoke
 
 on:
   schedule:
-    # Every 30 minutes. Cron is in UTC.
-    - cron: "*/30 * * * *"
+    # Every 6 hours. Cron is in UTC. Each deploy already runs a smoke in
+    # deploy-fly.yml, so this only catches drift between deploys. Every 30
+    # minutes was 48 runs a day: it kept the scale-to-zero machine awake and
+    # filled the database with smoke sessions.
+    - cron: "17 */6 * * *"
   workflow_dispatch: {}
 
 jobs:

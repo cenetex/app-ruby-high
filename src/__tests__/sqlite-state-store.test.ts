@@ -52,6 +52,49 @@ describe("SqliteStateStore", () => {
     expect(visits).toBe(1);
   });
 
+  it("gives smoke sessions and smoke-surface records a one-day TTL", async () => {
+    const s = store(30 * 24 * 60 * 60);
+    const smoke = {
+      ...session("rh:user:usr_smoke", 1),
+      character: { name: "Smoke Tester", personality: "A synthetic smoke-test student", flavorQuote: "smoke test" },
+    } as unknown as QuizState;
+    await s.saveSession(smoke);
+    await s.saveSession(session("rh:user:usr_real", 1));
+    await s.saveMetricEvent({ id: "m1", name: "app_open", occurredAt: 1, day: "2026-01-01", clientSurface: "smoke" } as StoredMetricEventRecord);
+    const rows = (s as unknown as { db: { prepare(sql: string): { all(): Array<{ pk: string; expires_at: number }> } } }).db
+      .prepare("SELECT pk, expires_at FROM kv").all();
+    const expiry = Object.fromEntries(rows.map((row) => [row.pk, row.expires_at - Math.floor(Date.now() / 1000)]));
+    expect(expiry["rh:user:usr_smoke"]).toBeLessThanOrEqual(24 * 60 * 60);
+    expect(expiry["metric-event:2026-01-01:m1"]).toBeLessThanOrEqual(24 * 60 * 60);
+    expect(expiry["rh:user:usr_real"]).toBeGreaterThan(24 * 60 * 60);
+  });
+
+  it("expires existing smoke rows and their guest users when opened", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ruby-high-sqlite-smoke-"));
+    const path = join(dir, "state.db");
+    try {
+      const first = new SqliteStateStore({ path, ttlSeconds: 0 });
+      const db = (first as unknown as { db: { prepare(sql: string): { run(...args: unknown[]): void } } }).db;
+      const put = db.prepare("INSERT INTO kv (pk, kind, data, updated_at, expires_at) VALUES (?, ?, ?, 1, NULL)");
+      put.run("rh:user:usr_smoke", "session", JSON.stringify({ sessionId: "rh:user:usr_smoke", synthetic: true }));
+      put.run("auth:user:guest:smoke", "authUser", JSON.stringify({ userId: "usr_smoke", provider: "guest" }));
+      put.run("rh:user:usr_real", "session", JSON.stringify({ sessionId: "rh:user:usr_real" }));
+      put.run("auth:user:guest:real", "authUser", JSON.stringify({ userId: "usr_real", provider: "guest" }));
+      first.close();
+      const second = new SqliteStateStore({ path, ttlSeconds: 0 });
+      const rows = (second as unknown as { db: { prepare(sql: string): { all(): Array<{ pk: string; expires_at: number | null }> } } }).db
+        .prepare("SELECT pk, expires_at FROM kv").all();
+      const expiry = Object.fromEntries(rows.map((row) => [row.pk, row.expires_at]));
+      expect(expiry["rh:user:usr_smoke"]).not.toBeNull();
+      expect(expiry["auth:user:guest:smoke"]).not.toBeNull();
+      expect(expiry["rh:user:usr_real"]).toBeNull();
+      expect(expiry["auth:user:guest:real"]).toBeNull();
+      second.close();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("round-trips sessions", async () => {
     const s = store();
     await s.saveSession(session("rh:user:a", 10));
