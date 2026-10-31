@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
+import { isSyntheticQuizState } from "./synthetic-records.js";
 import { XSocialService, type XMilestoneContext } from "./x-social-service.js";
 import {
   buildPublicWorldCohorts,
@@ -15125,26 +15126,6 @@ function isSyntheticMetricEvent(
 ): boolean {
   return event.clientSurface === "smoke"
     || (!!event.sessionId && syntheticSessionIds.has(event.sessionId));
-}
-
-/** Explicit marking handles all new smoke runs. The narrow character
- * fingerprints remove the historical scheduled-smoke rows that predate the
- * marker without sweeping up ordinary players. */
-function isSyntheticQuizState(state: QuizState | undefined): boolean {
-  if (!state) return false;
-  if (state.synthetic === true) return true;
-  const name = String(state.character?.name ?? "");
-  const personality = String(state.character?.personality ?? "").toLowerCase();
-  const flavorQuote = String(state.character?.flavorQuote ?? "").toLowerCase();
-  return (
-    name.startsWith("Smoke ")
-    && personality.includes("synthetic smoke-test")
-    && flavorQuote === "smoke test"
-  ) || (
-    name.startsWith("Pacing ")
-    && personality.includes("synthetic pacing smoke-test")
-    && flavorQuote === "pacing smoke"
-  );
 }
 
 function inferMetricClientSurface(
