@@ -70,7 +70,7 @@
     "@metaplex-foundation/umi": "^1.5.1",
     "@metaplex-foundation/umi-bundle-defaults": "^1.5.1",
     "@privy-io/node": "^0.34.0",
-    "@simplewebauthn/server": "^14.0.0",
+    "@simplewebauthn/server": "^14.0.1",
     "@solana-program/memo": "^0.13.1",
     "@solana-program/token": "^0.16.1",
     "@solana/kit": "^8.2.0",
