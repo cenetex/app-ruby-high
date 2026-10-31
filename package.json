@@ -73,7 +73,7 @@
     "@simplewebauthn/server": "^14.0.0",
     "@solana-program/memo": "^0.13.1",
     "@solana-program/token": "^0.16.1",
-    "@solana/kit": "^8.2.0",
+    "@solana/kit": "^8.3.0",
     "@solana/web3.js": "^1.98.4",
     "arweave": "^2.0.1"
   },
