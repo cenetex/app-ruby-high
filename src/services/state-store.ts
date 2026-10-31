@@ -318,6 +318,11 @@ export interface StoredAccountDeletionResult {
 export interface StateStoreLike {
   load(): Promise<Map<string, QuizState>>;
   loadRecentSessions?(query?: StoredSessionQuery): Promise<Map<string, QuizState>>;
+  /** Synchronous single-session read. Backends that support it let the
+   *  service load only recent sessions at startup and fault in the rest. */
+  loadSessionSync?(sessionId: string): QuizState | null;
+  /** Synchronous streaming scan over stored sessions. Return true to stop. */
+  scanSessionsSync?(visit: (state: QuizState) => boolean | void, opts?: { contains?: string }): void;
   loadAuth(): Promise<AuthStoreSnapshot>;
   loadPacks(): Promise<StoredContentPackRecord[]>;
   loadTeachers(): Promise<StoredTeacherRecord[]>;

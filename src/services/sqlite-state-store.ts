@@ -131,7 +131,7 @@ export class SqliteStateStore implements StateStoreLike {
       "SELECT data FROM kv WHERE kind = ? AND (expires_at IS NULL OR expires_at > ?)",
     );
     const out: unknown[] = [];
-    for (const row of stmt.all(kind, nowSec) as Array<{ data: string }>) {
+    for (const row of stmt.iterate(kind, nowSec) as Iterable<{ data: string }>) {
       try {
         out.push(JSON.parse(row.data));
       } catch {
@@ -147,7 +147,7 @@ export class SqliteStateStore implements StateStoreLike {
       "SELECT pk, data FROM kv WHERE kind = ? AND (expires_at IS NULL OR expires_at > ?)",
     );
     const out: Array<{ pk: string; data: unknown }> = [];
-    for (const row of stmt.all(kind, nowSec) as Array<{ pk: string; data: string }>) {
+    for (const row of stmt.iterate(kind, nowSec) as Iterable<{ pk: string; data: string }>) {
       try {
         out.push({ pk: row.pk, data: JSON.parse(row.data) });
       } catch {
@@ -176,8 +176,8 @@ export class SqliteStateStore implements StateStoreLike {
     const nowSec = Math.floor(Date.now() / 1000);
     const rows = this.db.prepare(
       "SELECT data FROM kv WHERE kind = 'session' AND updated_at >= ? AND (expires_at IS NULL OR expires_at > ?) ORDER BY updated_at DESC, pk DESC LIMIT ?",
-    ).all(since, nowSec, limit);
-    for (const row of rows as Array<{ data: string }>) {
+    ).iterate(since, nowSec, limit);
+    for (const row of rows as Iterable<{ data: string }>) {
       try {
         const state = JSON.parse(row.data) as QuizState;
         if (state && typeof state.sessionId === "string") map.set(state.sessionId, state);
@@ -186,6 +186,43 @@ export class SqliteStateStore implements StateStoreLike {
       }
     }
     return map;
+  }
+
+  /** Read one session synchronously. The service uses this to fault in
+   *  sessions that were not loaded at startup. */
+  loadSessionSync(sessionId: string): QuizState | null {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const row = this.db.prepare(
+      "SELECT data FROM kv WHERE pk = ? AND kind = 'session' AND (expires_at IS NULL OR expires_at > ?)",
+    ).get(sessionId, nowSec) as { data: string } | undefined;
+    if (!row) return null;
+    try {
+      const state = JSON.parse(row.data) as QuizState;
+      return state && typeof state.sessionId === "string" ? state : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Stream stored sessions one row at a time so callers can search every
+   *  session without holding them all in memory. `contains` skips rows whose
+   *  raw JSON does not include the text. Return true from visit to stop. */
+  scanSessionsSync(visit: (state: QuizState) => boolean | void, opts: { contains?: string } = {}): void {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const contains = opts.contains ?? "";
+    const rows = this.db.prepare(
+      "SELECT data FROM kv WHERE kind = 'session' AND (expires_at IS NULL OR expires_at > ?) AND instr(data, ?) > 0",
+    ).iterate(nowSec, contains) as Iterable<{ data: string }>;
+    for (const row of rows) {
+      let state: QuizState;
+      try {
+        state = JSON.parse(row.data) as QuizState;
+      } catch {
+        continue;
+      }
+      if (!state || typeof state.sessionId !== "string") continue;
+      if (visit(state) === true) return;
+    }
   }
 
   async loadAuth(): Promise<AuthStoreSnapshot> {

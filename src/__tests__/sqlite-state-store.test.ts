@@ -36,6 +36,22 @@ describe("SqliteStateStore", () => {
     }
   });
 
+  it("reads one session and streams filtered sessions synchronously", async () => {
+    const s = store();
+    await s.save([session("a", 1), session("b", 2), { ...session("c", 3), note: "needle" } as unknown as QuizState]);
+    expect(s.loadSessionSync("b")?.sessionId).toBe("b");
+    expect(s.loadSessionSync("missing")).toBeNull();
+    const seen: string[] = [];
+    s.scanSessionsSync((state) => { seen.push(state.sessionId); });
+    expect(seen.sort()).toEqual(["a", "b", "c"]);
+    const matched: string[] = [];
+    s.scanSessionsSync((state) => { matched.push(state.sessionId); }, { contains: "needle" });
+    expect(matched).toEqual(["c"]);
+    let visits = 0;
+    s.scanSessionsSync(() => { visits += 1; return true; });
+    expect(visits).toBe(1);
+  });
+
   it("round-trips sessions", async () => {
     const s = store();
     await s.saveSession(session("rh:user:a", 10));
