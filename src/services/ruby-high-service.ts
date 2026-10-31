@@ -366,6 +366,11 @@ const SCHOOL_EVENT_LIMIT = 80;
 const SCHOOL_WORLD_RECENT_EVENT_LIMIT = 100;
 const SCHOOL_WORLD_EVENT_CACHE_LIMIT = SCHOOL_WORLD_RECENT_EVENT_LIMIT * 4;
 const SCHOOL_WORLD_SESSION_REFRESH_LIMIT = 5_000;
+// Stores with sync single-session reads (SQLite) only load recent sessions at
+// boot and fault in older ones on demand. Loading every session at once ran
+// the 512 MB production VM out of heap once the table passed ~12k sessions.
+const STARTUP_SESSION_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const STARTUP_SESSION_LIMIT = 5_000;
 const SCHOOL_WORLD_STORE_REFRESH_MS = 2_000;
 const ANSWER_HISTORY_LIMIT = 500;
 const RECENT_QUESTION_AVOIDANCE_COUNT = 4;
@@ -2002,7 +2007,7 @@ export class RubyHighService extends Service {
     if (typeof this.store.flush === "function") await this.store.flush();
 
     const publicEventIds = new Set<string>();
-    const state = this.sessions.get(deletionTarget.sessionId);
+    const state = this.sessionFor(deletionTarget.sessionId);
     if (state && Array.isArray(state.schoolEvents)) {
       for (const event of state.schoolEvents) {
         publicEventIds.add(publicSchoolWorldEvent(event).id);
@@ -2483,7 +2488,7 @@ export class RubyHighService extends Service {
   }
 
   private metricClientSurfaceForEvent(input: MetricEventInput): MetricClientSurface {
-    const state = input.sessionId ? this.sessions.get(input.sessionId) : undefined;
+    const state = input.sessionId ? this.sessionFor(input.sessionId) : undefined;
     if (isSyntheticQuizState(state)) return "smoke";
     return inferMetricClientSurface({
       ...input,
@@ -3956,23 +3961,26 @@ export class RubyHighService extends Service {
   findYearbookShare(shareId: string, grade: Grade): YearbookShareCard | null {
     const clean = shareId.trim();
     if (!clean) return null;
-    for (const state of this.sessions.values()) {
-      const hit = yearbookShareCardsForState(state).find((card) =>
+    let hit: YearbookShareCard | null = null;
+    this.forEachSession((_sessionId, state) => {
+      hit = yearbookShareCardsForState(state).find((card) =>
         card.shareId === clean && card.grade === grade
-      );
-      if (hit) return hit;
-    }
-    return null;
+      ) ?? null;
+      return hit !== null;
+    });
+    return hit;
   }
 
   findFirstBellShare(shareId: string): FirstBellShareCard | null {
     const clean = shareId.trim();
     if (!clean) return null;
-    for (const state of this.sessions.values()) {
+    let hit: FirstBellShareCard | null = null;
+    this.forEachSession((_sessionId, state) => {
       const card = firstBellShareCardForState(state);
-      if (card?.shareId === clean) return card;
-    }
-    return null;
+      if (card?.shareId === clean) hit = card;
+      return hit !== null;
+    });
+    return hit;
   }
 
   graduationPhotoScene(sessionId: string, input?: { grade?: Grade }): GraduationPhotoScene {
@@ -4107,12 +4115,14 @@ export class RubyHighService extends Service {
   walletTransactionOwner(idempotencyKey: string): { sessionId: string; transaction: RubyHighWalletTransaction } | null {
     const id = idempotencyKey.trim();
     if (!id) return null;
-    for (const [sessionId, state] of this.sessions.entries()) {
+    let hit: { sessionId: string; transaction: RubyHighWalletTransaction } | null = null;
+    this.forEachSession((sessionId, state) => {
       state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
       const transaction = state.wallet.operationLedger?.[id] ?? state.wallet.transactions?.find((tx) => tx.id === id) ?? null;
-      if (transaction) return { sessionId, transaction };
-    }
-    return null;
+      if (transaction) hit = { sessionId, transaction };
+      return hit !== null;
+    }, { contains: JSON.stringify(id).slice(1, -1) });
+    return hit;
   }
 
   walletTransactions(sessionId: string): RubyHighWalletTransaction[] {
@@ -4130,16 +4140,18 @@ export class RubyHighService extends Service {
     const key = metadataKey.trim();
     const value = metadataValue.trim();
     if (!key || !value) return null;
-    for (const [sessionId, state] of this.sessions.entries()) {
+    let hit: { sessionId: string; transaction: RubyHighWalletTransaction } | null = null;
+    this.forEachSession((sessionId, state) => {
       state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
       const transactions = Object.values(state.wallet.operationLedger ?? {});
       const fallback = state.wallet.transactions ?? [];
       const transaction = (transactions.length > 0 ? transactions : fallback).find((candidate) => (
         (!kind || candidate.kind === kind) && String(candidate.metadata?.[key] ?? "") === value
       ));
-      if (transaction) return { sessionId, transaction };
-    }
-    return null;
+      if (transaction) hit = { sessionId, transaction };
+      return hit !== null;
+    }, { contains: JSON.stringify(value).slice(1, -1) });
+    return hit;
   }
 
   recordWalletMarker(
@@ -4971,7 +4983,8 @@ export class RubyHighService extends Service {
     const byWallet = new Map<string, CosyWorldWalletCardExport>();
     const cards: RubyHighHallPassCard[] = [];
     const packs: RubyHighHallPassPack[] = [];
-    for (const state of this.sessions.values()) {
+    // Only sessions with a minted card or pack can contribute.
+    this.forEachSession((_sessionId, state) => {
       state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
       for (const card of normalizeHallPassCards(state.wallet.hallPassCards)) {
         if (
@@ -4997,7 +5010,7 @@ export class RubyHighService extends Service {
         }
         packs.push(pack);
       }
-    }
+    }, { contains: "\"mintSignature\"" });
     const ownerships = cards.length > 0
       ? await currentOwnershipForCards(cards.map((card) => card.mintAddress!))
       : new Map<string, CosyWorldCardOwnership>();
@@ -5189,42 +5202,46 @@ export class RubyHighService extends Service {
   findHallPassCardById(cardId: string): RubyHighHallPassCard | null {
     const id = typeof cardId === "string" ? cardId.trim() : "";
     if (!id) return null;
-    for (const state of this.sessions.values()) {
+    let hit: RubyHighHallPassCard | null = null;
+    this.forEachSession((_sessionId, state) => {
       state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
-      const card = normalizeHallPassCards(state.wallet.hallPassCards)
-        .find((candidate) => candidate.id === id);
-      if (card) return card;
-    }
-    return null;
+      hit = normalizeHallPassCards(state.wallet.hallPassCards)
+        .find((candidate) => candidate.id === id) ?? null;
+      return hit !== null;
+    }, { contains: JSON.stringify(id).slice(1, -1) });
+    return hit;
   }
 
   findHallPassCardByMetadata(characterId: string, serial: number): RubyHighHallPassCard | null {
     const wantedCharacter = typeof characterId === "string" ? characterId.trim() : "";
     const wantedSerial = Math.max(1, Math.floor(Number(serial || 0)));
     if (!wantedCharacter || !Number.isFinite(wantedSerial)) return null;
+    let minted: RubyHighHallPassCard | null = null;
     let fallback: RubyHighHallPassCard | null = null;
-    for (const state of this.sessions.values()) {
+    this.forEachSession((_sessionId, state) => {
       state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
       const card = normalizeHallPassCards(state.wallet.hallPassCards)
         .find((candidate) => candidate.characterId === wantedCharacter && candidate.serial === wantedSerial);
-      if (!card) continue;
-      if (card.mintAddress && card.mintSignature) return card;
+      if (!card) return false;
+      if (card.mintAddress && card.mintSignature) minted = card;
       fallback ??= card;
-    }
-    return fallback;
+      return minted !== null;
+    }, { contains: JSON.stringify(wantedCharacter).slice(1, -1) });
+    return minted ?? fallback;
   }
 
   findHallPassPackByMetadata(productId: string, serial: number): RubyHighHallPassPack | null {
     const product = typeof productId === "string" ? productId.trim() : "";
     const wantedSerial = Math.max(1, Math.floor(Number(serial || 0)));
     if (!product || !Number.isFinite(wantedSerial)) return null;
-    for (const state of this.sessions.values()) {
+    let hit: RubyHighHallPassPack | null = null;
+    this.forEachSession((_sessionId, state) => {
       state.wallet = normalizeWallet(state.wallet, state.score.points ?? 0);
-      const pack = normalizeHallPassPacks(state.wallet.hallPassPacks)
-        .find((candidate) => candidate.productId === product && candidate.serial === wantedSerial);
-      if (pack) return pack;
-    }
-    return null;
+      hit = normalizeHallPassPacks(state.wallet.hallPassPacks)
+        .find((candidate) => candidate.productId === product && candidate.serial === wantedSerial) ?? null;
+      return hit !== null;
+    }, { contains: JSON.stringify(product).slice(1, -1) });
+    return hit;
   }
 
   recordHallPassCardMintPreparation(sessionId: string, input: HallPassCardMintPreparationInput): RubyHighHallPassCard {
@@ -5320,13 +5337,15 @@ export class RubyHighService extends Service {
     if (!ownerWalletAddress || !mintAddress || !mintSignature || !metadataUri) {
       throw new Error("Card mint record is incomplete.");
     }
-    for (const [otherSessionId, otherState] of this.sessions) {
-      const duplicate = normalizeHallPassCards(otherState.wallet.hallPassCards)
-        .find((candidate) => candidate.mintAddress === mintAddress && (
+    let duplicate = false;
+    this.forEachSession((otherSessionId, otherState) => {
+      duplicate = normalizeHallPassCards(otherState.wallet?.hallPassCards)
+        .some((candidate) => candidate.mintAddress === mintAddress && (
           otherSessionId !== sessionId || candidate.id !== card.id
         ));
-      if (duplicate) throw new Error("Card NFT has already been recorded for another card.");
-    }
+      return duplicate;
+    }, { contains: JSON.stringify(mintAddress).slice(1, -1) });
+    if (duplicate) throw new Error("Card NFT has already been recorded for another card.");
     const at = typeof input.at === "number" && Number.isFinite(input.at) ? Math.floor(input.at) : Date.now();
     card.ownerWalletAddress = ownerWalletAddress;
     card.mintAddress = mintAddress;
@@ -5753,7 +5772,12 @@ export class RubyHighService extends Service {
       this.store.loadTeachers(),
       this.store.loadDraftPacks(),
       this.store.loadPackInstallations(),
-      this.store.load(),
+      this.store.loadSessionSync && this.store.loadRecentSessions
+        ? this.store.loadRecentSessions({
+          since: Date.now() - STARTUP_SESSION_WINDOW_MS,
+          limit: STARTUP_SESSION_LIMIT,
+        })
+        : this.store.load(),
       this.store.loadMetricEvents?.() ?? Promise.resolve([]),
       this.store.loadSchoolEvents?.({ limit: SCHOOL_WORLD_EVENT_CACHE_LIMIT }) ?? Promise.resolve([]),
       this.store.loadServiceState?.(PHOTO_POST_SCHEDULER_STATE_ID) ?? Promise.resolve(null),
@@ -5849,6 +5873,7 @@ export class RubyHighService extends Service {
       repaired = this.reconcileLoadedPackState(state) || repaired;
       this.sessions.set(k, state);
     }
+    loaded.clear();
     for (const event of storedMetricEvents) {
       this.metricEvents.set(event.id, event);
     }
@@ -5869,6 +5894,53 @@ export class RubyHighService extends Service {
     this.hydrateLiveRoomGoalState(storedLiveRoomGoalState);
     this.loaded = true;
     if (repaired) await this.persistAll();
+  }
+
+  /** Look up a session in memory, then fall back to the store for sessions
+   *  that were not loaded at startup. Never creates a session. */
+  private sessionFor(sessionId: string): QuizState | undefined {
+    const cached = this.sessions.get(sessionId);
+    if (cached || !this.loaded || !this.store.loadSessionSync) return cached;
+    let raw: QuizState | null = null;
+    try {
+      raw = this.store.loadSessionSync(sessionId);
+    } catch (err) {
+      log.error("ruby-high.session-fault-in-failed", err, { sessionId });
+      // Refuse to fall through to a fresh session that would overwrite the row.
+      throw err;
+    }
+    return raw ? this.adoptStoredSession(raw) : undefined;
+  }
+
+  private adoptStoredSession(raw: QuizState): QuizState {
+    const cached = this.sessions.get(raw.sessionId);
+    if (cached) return cached;
+    const state = normalizeLoaded(raw);
+    let repaired = repairGeneratedPortraitAssetRefs(state);
+    repaired = this.reconcileLoadedPackState(state) || repaired;
+    this.sessions.set(state.sessionId, state);
+    if (repaired) void this.persistSession(state.sessionId);
+    return state;
+  }
+
+  /** Visit in-memory sessions, then stored sessions that are not in memory.
+   *  Stored rows stream one at a time and stay out of memory unless `adopt`
+   *  is set; set it when the visitor mutates the state. `contains` lets the
+   *  store skip rows whose raw JSON cannot match. Return true to stop. */
+  private forEachSession(
+    visit: (sessionId: string, state: QuizState) => boolean | void,
+    opts: { contains?: string; adopt?: boolean } = {},
+  ): void {
+    for (const [sessionId, state] of this.sessions) {
+      if (visit(sessionId, state) === true) return;
+    }
+    if (!this.loaded || !this.store.scanSessionsSync) return;
+    const inMemory = new Set(this.sessions.keys());
+    this.store.scanSessionsSync((raw) => {
+      if (inMemory.has(raw.sessionId)) return false;
+      const state = opts.adopt ? this.adoptStoredSession(raw) : normalizeLoaded(raw);
+      return visit(state.sessionId, state) === true;
+    }, { contains: opts.contains });
   }
 
   private reconcileLoadedPackState(state: QuizState): boolean {
@@ -6252,8 +6324,8 @@ export class RubyHighService extends Service {
     return [...activeFaculty().map(toFacultyMember), LOUNGE_FACULTY];
   }
 
-  getOrCreate(sessionId: string): QuizState {
-    let state = this.sessions.get(sessionId);
+  getOrCreate(sessionId: string, opts: { fresh?: boolean } = {}): QuizState {
+    let state = opts.fresh ? this.sessions.get(sessionId) : this.sessionFor(sessionId);
     if (!state) {
       // New sessions are born already enrolled at Freshman year. The "intro"
       // phase + null grade combo is kept around only for derivePhaseForLegacy
@@ -8419,7 +8491,7 @@ export class RubyHighService extends Service {
   }
 
   completeGraduation(sessionId: string, reward: GraduationReward): QuizState {
-    const hadPendingCeremony = !!this.sessions.get(sessionId)?.character?.pendingGraduation;
+    const hadPendingCeremony = !!this.sessionFor(sessionId)?.character?.pendingGraduation;
     const state = this.getOrCreate(sessionId);
     const ch = state.character;
     const pending = ch?.pendingGraduation;
@@ -10353,11 +10425,11 @@ export class RubyHighService extends Service {
   }
 
   resetSession(sessionId: string): QuizState {
-    const current = this.sessions.get(sessionId) ?? null;
+    const current = this.sessionFor(sessionId) ?? null;
     const wallet = current ? normalizeWallet(current.wallet, current.score.points ?? 0) : null;
     const characterSlots = current ? normalizeCharacterSlots(current.characterSlots) : null;
     this.sessions.delete(sessionId);
-    const state = this.getOrCreate(sessionId);
+    const state = this.getOrCreate(sessionId, { fresh: true });
     if (wallet) state.wallet = { ...wallet, meritStars: Math.max(0, Math.floor(Number(state.score.points ?? 0))) };
     if (characterSlots) state.characterSlots = characterSlots;
     void this.persistSession(sessionId);
@@ -10575,7 +10647,7 @@ export class RubyHighService extends Service {
   }
 
   private isClassPhotoRevealTarget(sessionId: string): boolean {
-    const state = this.sessions.get(sessionId);
+    const state = this.sessionFor(sessionId);
     const ch = state?.character;
     if (!ch) return false;
     if (!characterAllowsSocialSharing(ch)) return false;
@@ -10728,7 +10800,7 @@ export class RubyHighService extends Service {
           : pick.photo.kind === "diploma" ? "diploma-earned"
           : pick.photo.kind === "class-photo" ? "class-photo"
           : "graduated",
-      characterName: this.sessions.get(pick.sessionId)?.character?.name ?? "A student",
+      characterName: this.sessionFor(pick.sessionId)?.character?.name ?? "A student",
       imageUrl: pick.photo.imageUrl,
       portraitUrl: pick.photo.kind === "portrait" ? pick.photo.imageUrl : undefined,
       diplomaUrl: pick.photo.kind === "diploma" ? pick.photo.imageUrl : undefined,
@@ -11150,9 +11222,9 @@ export class RubyHighService extends Service {
     const eventsById = new Map(this.getSchoolWorldEvents(eventLimit, now).map((event) => [event.id, event]));
     const reports: PublicWorldModerationReport[] = [];
     const reportCountsByEventId = new Map<string, number>();
-    for (const [sessionId, state] of this.sessions) {
+    this.forEachSession((sessionId, state) => {
       const stateReports = normalizePublicWorldEventReports(state.publicWorldEventReports);
-      if (stateReports.length === 0) continue;
+      if (stateReports.length === 0) return;
       const reporterId = publicWorldReporterId(sessionId);
       const reporterCharacterName = state.character?.name && typeof state.character.name === "string"
         ? state.character.name.trim().slice(0, 80) || null
@@ -11172,7 +11244,7 @@ export class RubyHighService extends Service {
           event: event ? publicWorldModerationEventContext(event) : null,
         });
       }
-    }
+    }, { contains: "\"publicWorldEventReports\"" });
     for (const report of reports) {
       report.reportCountForEvent = reportCountsByEventId.get(report.eventId) ?? 1;
       report.moderatorNote = this.publicWorldModeratorNotes.get(report.eventId) ?? null;
@@ -11194,17 +11266,17 @@ export class RubyHighService extends Service {
     if (!id) throw new Error("reportId is required.");
     const changedSessionIds: string[] = [];
     let dismissedCount = 0;
-    for (const [sessionId, state] of this.sessions) {
+    this.forEachSession((sessionId, state) => {
       const reports = normalizePublicWorldEventReports(state.publicWorldEventReports);
-      if (reports.length === 0) continue;
+      if (reports.length === 0) return;
       const retained = reports.filter((report) => report.id !== id);
       const removed = reports.length - retained.length;
-      if (removed <= 0) continue;
+      if (removed <= 0) return;
       dismissedCount += removed;
       state.publicWorldEventReports = retained;
       state.updatedAt = now;
       changedSessionIds.push(sessionId);
-    }
+    }, { contains: JSON.stringify(id).slice(1, -1), adopt: true });
     for (const sessionId of changedSessionIds) {
       await this.flushSession(sessionId);
     }
@@ -11279,7 +11351,7 @@ export class RubyHighService extends Service {
 
   private publicWorldHiddenEventIdsForSession(sessionId: string | null | undefined): Set<string> {
     if (!sessionId) return new Set();
-    const state = this.sessions.get(sessionId);
+    const state = this.sessionFor(sessionId);
     if (!state) return new Set();
     return new Set(normalizePublicWorldHiddenEventIds(state.publicWorldHiddenEventIds));
   }
